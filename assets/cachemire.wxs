@@ -29,6 +29,8 @@
       <ComponentGroupRef Id="AppFiles" />
     </Feature>
 
+    <CustomAction Id="LaunchCachemire" FileRef="CachemireExe" ExeCommand="" Execute="immediate" Impersonate="yes" Return="asyncNoWait" />
+
     <ComponentGroup Id="AppFiles" Directory="INSTALLFOLDER">
       <Component Id="MainExe" Guid="c2a9e4d7-5b18-4f3e-8c6a-1d9e0f7b3a52">
         <File Id="CachemireExe" Source="$(var.ExePath)" Name="cachemire.exe" KeyPath="yes">
@@ -86,6 +88,9 @@
         </Control>
       </Dialog>
 
+      <Property Id="WIXUI_EXITDIALOGOPTIONALCHECKBOXTEXT" Value="Open Cachemire now" />
+      <Property Id="WIXUI_EXITDIALOGOPTIONALCHECKBOX" Value="1" />
+      <Publish Dialog="ExitDialog" Control="Finish" Event="DoAction" Value="LaunchCachemire" Order="998" Condition="WIXUI_EXITDIALOGOPTIONALCHECKBOX = 1 AND NOT Installed AND NOT REMOVE" />
       <Publish Dialog="ExitDialog" Control="Finish" Event="EndDialog" Value="Return" Order="999" />
 
       <InstallUISequence>

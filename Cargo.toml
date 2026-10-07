@@ -11,13 +11,13 @@ members = ["xtask"]
 
 [dependencies]
 tokio = { version = "1", features = ["rt-multi-thread", "sync", "time"] }
-redis = { version = "1", features = ["tokio-comp", "connection-manager", "tokio-rustls-comp", "tls-rustls-webpki-roots"] }
+redis = { version = "1", default-features = false, features = ["script", "tokio-comp", "connection-manager", "tokio-rustls-comp", "tls-rustls-webpki-roots"] }
 serde = { version = "1.0", features = ["derive"] }
 serde_json = { version = "1.0", features = ["preserve_order"] }
 uuid = { version = "1", features = ["v4"] }
 url = "2"
 percent-encoding = "2"
-arboard = { version = "3", features = ["wayland-data-control"] }
+arboard = { version = "3", default-features = false, features = ["wayland-data-control"] }
 rfd = "0.17"
 # SSH tunnels to the Redis server; `ring` rather than the default aws-lc-rs,
 # which needs a C toolchain (cmake/nasm) to build on Windows
@@ -40,7 +40,9 @@ aws-smithy-http-client = { version = "1", features = ["rustls-ring"] }
 aws-smithy-runtime-api = "1"
 aws-types = "1"
 open = "5"
-slint = { git = "https://github.com/iRed4321/SlintFork.git", branch = "patched/1.18.1", features = ["unstable-winit-030"] }
+ureq = { version = "3", default-features = false, features = ["rustls"] }
+semver = "1"
+slint = { git = "https://github.com/iRed4321/SlintFork.git", branch = "patched/1.18.1", default-features = false, features = ["std", "backend-winit", "renderer-software", "compat-1-2", "unstable-winit-030"] }
 rust-i18n = "4"
 sys-locale = "0.3"
 

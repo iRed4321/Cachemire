@@ -54,6 +54,18 @@ msgstr ""
 "Écrivez une requête Redisql ci-dessus (FROM/JOIN/WHERE/SELECT/LIMIT), puis "
 "Exécuter."
 
+#: ui/components/about.slint:60
+msgid "GitHub repository"
+msgstr "Dépôt GitHub"
+
+#: ui/components/about.slint:75
+msgid "Checking..."
+msgstr "Vérification..."
+
+#: ui/components/about.slint:75
+msgid "Check for updates"
+msgstr "Rechercher des mises à jour"
+
 #: ui/components/cloud-picker.slint:36
 msgid "No AWS profiles found"
 msgstr "Aucun profil AWS trouvé"

@@ -35,6 +35,7 @@ mod table_text;
 mod tabs;
 mod theme_colors;
 mod toast;
+mod updates;
 mod value_actions;
 mod window_state;
 
@@ -182,7 +183,6 @@ fn main() -> Result<(), slint::PlatformError> {
     let save_window_state = window_state::install(&window);
 
     toast::init(&window);
-    window.global::<About>().set_version(env!("CARGO_PKG_VERSION").into());
 
     window.on_request_drag_window({
         let weak = window.as_weak();
@@ -213,6 +213,7 @@ fn main() -> Result<(), slint::PlatformError> {
     // the interface language: needs the window (Slint) and the settings
     i18n::apply(state.settings.lock_recover().language());
     let rt = backend::runtime::spawn();
+    updates::init(&window, rt.clone());
     // no auto-connect here — the title bar and keyspace panel both start
     // empty until the user picks a connection from the title bar's picker
     let app = app::install(app::App {

@@ -21,6 +21,7 @@ pub mod session;
 pub mod settings_store;
 pub mod ssh_tunnel;
 pub mod state;
+pub mod updates;
 
 pub fn now_ms() -> i64 {
     SystemTime::now()

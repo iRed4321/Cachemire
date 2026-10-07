@@ -336,3 +336,23 @@ _version: 2
   fr: "il y a %{n} j"
 "%{ago} · %{ms} ms":
   fr: "%{ago} · %{ms} ms"
+
+# the About window's update check
+"Download and install":
+  fr: "Télécharger et installer"
+"Open the release page":
+  fr: "Ouvrir la page de la version"
+"This is the development version: it doesn't look for updates.":
+  fr: "Ceci est la version de développement : elle ne recherche pas de mises à jour."
+"Checking for updates...":
+  fr: "Recherche de mises à jour..."
+"Version %{version} is available.":
+  fr: "La version %{version} est disponible."
+"Cachemire is up to date.":
+  fr: "Cachemire est à jour."
+"Couldn't check for updates: %{error}":
+  fr: "Impossible de rechercher les mises à jour : %{error}"
+"Downloading version %{version}...":
+  fr: "Téléchargement de la version %{version}..."
+"Couldn't download the update: %{error}":
+  fr: "Impossible de télécharger la mise à jour : %{error}"

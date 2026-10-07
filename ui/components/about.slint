@@ -1,9 +1,18 @@
 import { Theme } from "theme.slint";
+import { ModalButton } from "widgets.slint";
 
-// The "i" button's window: who made the app and which version this is (set by Rust).
+// The "i" button's window: who made the app, which version this is and whether a newer one
+// exists (all set by Rust).
 export global About {
     in-out property <bool> open: false;
     in property <string> version: "";
+    in property <string> status: "";
+    in property <bool> busy: false;
+    in property <bool> update-available: false;
+    in property <string> download-label: "";
+    callback open-repo();
+    callback check();
+    callback download();
 }
 
 export component AboutModal inherits Rectangle {
@@ -46,6 +55,38 @@ export component AboutModal inherits Rectangle {
                     font-size: Theme.pt(12.5px);
                     color: Theme.text-secondary;
                     horizontal-alignment: center;
+                }
+                repo := Text {
+                    text: @tr("GitHub repository");
+                    font-size: Theme.pt(12px);
+                    color: Theme.accent-blue;
+                    horizontal-alignment: center;
+
+                    TouchArea {
+                        mouse-cursor: pointer;
+                        clicked => { About.open-repo(); }
+                    }
+                }
+                Rectangle { height: Theme.px(8px); }
+                HorizontalLayout {
+                    alignment: center;
+                    spacing: Theme.px(8px);
+                    ModalButton {
+                        text: About.busy ? @tr("Checking...") : @tr("Check for updates");
+                        clicked => { if (!About.busy) { About.check(); } }
+                    }
+                    if About.update-available: ModalButton {
+                        text: About.download-label;
+                        primary: true;
+                        clicked => { if (!About.busy) { About.download(); } }
+                    }
+                }
+                if About.status != "": Text {
+                    text: About.status;
+                    font-size: Theme.pt(12px);
+                    color: Theme.text-secondary;
+                    horizontal-alignment: center;
+                    wrap: word-wrap;
                 }
             }
         }
