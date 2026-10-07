@@ -1,6 +1,6 @@
 [package]
 name = "cachemire"
-version = "3.0.0-beta.12"
+version = "0.0.0-dev"
 edition = "2024"
 build = "build.rs"
 description = "Redis key explorer"
