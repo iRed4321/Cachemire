@@ -182,7 +182,7 @@ pub fn run_task(part: Part, stable_now: bool, no_tag: bool) -> Result<()> {
     commit_version(&root, &format!("release {tag}"))?;
     git(&root, &["tag", "-a", &tag, "-m", &format!("Cachemire {new}")])?;
     write_version(&root, line, &Version::parse(PLACEHOLDER).map_err(|e| e.to_string())?)?;
-    commit_version(&root, &format!("back to {PLACEHOLDER}"))?;
+    commit_version(&root, &format!("[AUTO] back to {PLACEHOLDER}"))?;
     println!("Released {new}: committed and tagged {tag}, then back to {PLACEHOLDER}. Build the packages from {tag}, push with `git push --follow-tags`.");
     Ok(())
 }

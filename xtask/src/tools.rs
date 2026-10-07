@@ -1,6 +1,8 @@
 //! Helpers shared by the tasks: running commands and finding the repository.
 
-use std::path::PathBuf;
+use std::fs::File;
+use std::io;
+use std::path::{Path, PathBuf};
 use std::process::Command;
 
 pub type Result<T> = std::result::Result<T, String>;
@@ -35,4 +37,16 @@ pub fn git(dir: &std::path::Path, args: &[&str]) -> Result<String> {
         return Err(format!("`git {}` failed: {}", args.join(" "), String::from_utf8_lossy(&output.stderr).trim()));
     }
     Ok(String::from_utf8_lossy(&output.stdout).trim().to_string())
+}
+
+/// Writes `zip_path`, a zip holding just `file` with the Unix `mode`.
+pub fn zip_file(file: &Path, zip_path: &Path, mode: u32) -> Result<()> {
+    println!("Creating zip: {}", zip_path.display());
+    let err = |e: &dyn std::fmt::Display| format!("zip {}: {e}", zip_path.display());
+    let mut zip = zip::ZipWriter::new(File::create(zip_path).map_err(|e| err(&e))?);
+    let options = zip::write::SimpleFileOptions::default().compression_method(zip::CompressionMethod::Deflated).unix_permissions(mode);
+    zip.start_file(file.file_name().and_then(|n| n.to_str()).unwrap_or("cachemire"), options).map_err(|e| err(&e))?;
+    io::copy(&mut File::open(file).map_err(|e| err(&e))?, &mut zip).map_err(|e| err(&e))?;
+    zip.finish().map_err(|e| err(&e))?;
+    Ok(())
 }

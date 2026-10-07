@@ -4,19 +4,19 @@
 use std::path::{Path, PathBuf};
 use std::process::Command;
 
-use crate::tools::{Result, cargo, repo_root, run, works};
+use crate::tools::{Result, cargo, repo_root, run, works, zip_file};
 use crate::version::{in_release, read_version};
 
 const TOOL_URL: &str = "https://github.com/AppImage/appimagetool/releases/download/continuous/appimagetool-x86_64.AppImage";
 
-pub fn run_task(fast: bool, stable: bool) -> Result<()> {
+pub fn run_task(fast: bool, stable: bool, with_zip: bool) -> Result<()> {
     if !cfg!(all(target_os = "linux", target_arch = "x86_64")) {
         return Err("build-appimage only runs on x86_64 Linux".into());
     }
-    in_release(fast, stable, || build(fast))
+    in_release(fast, stable, || build(fast, with_zip))
 }
 
-fn build(fast: bool) -> Result<()> {
+fn build(fast: bool, with_zip: bool) -> Result<()> {
     let root = repo_root();
     let profile = if fast { "fast" } else { "release" };
     let version = read_version(&std::fs::read_to_string(root.join("Cargo.toml")).map_err(|e| e.to_string())?)?;
@@ -33,6 +33,9 @@ fn build(fast: bool) -> Result<()> {
     // extract-and-run: no FUSE needed to run appimagetool itself
     run(Command::new(appimagetool(&root)?).env("APPIMAGE_EXTRACT_AND_RUN", "1").env("ARCH", "x86_64").arg(&app_dir).arg(&output))?;
     println!("\nAppImage: {}", output.display());
+    if with_zip {
+        zip_file(&output, &output.with_extension("AppImage.zip"), 0o755)?;
+    }
     Ok(())
 }
 

@@ -11,10 +11,14 @@ concurrency:
 
 env:
   CARGO_TERM_COLOR: always
+  CARGO_TERM_QUIET: true
+  CARGO_TERM_PROGRESS_WHEN: never
 
 jobs:
   test:
     name: Test (${{ matrix.os }})
+    # the "back to 0.0.0-dev" commit of `cargo bump` changes nothing worth testing
+    if: ${{ !startsWith(github.event.head_commit.message, '[AUTO]') }}
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false

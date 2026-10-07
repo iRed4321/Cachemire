@@ -1,19 +1,17 @@
 //! `cargo xtask build-windows`: the release executable, an MSI installer (WiX v6 or v7) and
-//! a portable zip and a zip of the MSI, in target/windows. Built from the latest release tag.
+//! a portable zip (and a zip of the MSI on request), in target/windows. Built from the latest release tag.
 
-use std::fs::File;
-use std::io;
 use std::path::PathBuf;
 use std::process::Command;
 
-use crate::tools::{Result, cargo, repo_root, run, works};
+use crate::tools::{Result, cargo, repo_root, run, works, zip_file};
 use crate::version::{in_release, msi_version, read_version};
 
-pub fn run_task(fast: bool, stable: bool, clean: bool, skip_installer: bool) -> Result<()> {
-    in_release(fast, stable, || build(fast, clean, skip_installer))
+pub fn run_task(fast: bool, stable: bool, clean: bool, skip_installer: bool, with_zip: bool) -> Result<()> {
+    in_release(fast, stable, || build(fast, clean, skip_installer, with_zip))
 }
 
-fn build(fast: bool, clean: bool, skip_installer: bool) -> Result<()> {
+fn build(fast: bool, clean: bool, skip_installer: bool, with_zip: bool) -> Result<()> {
     let root = repo_root();
     let profile = if fast { "fast" } else { "release" };
     let release = root.join("target").join(profile);
@@ -32,7 +30,7 @@ fn build(fast: bool, clean: bool, skip_installer: bool) -> Result<()> {
 
     std::fs::create_dir_all(&out).map_err(|e| e.to_string())?;
     let zip_path = out.join(format!("Cachemire-Portable-{version}-x64.zip"));
-    zip_file(&exe, &zip_path)?;
+    zip_file(&exe, &zip_path, 0o755)?;
 
     let mut msi = None;
     if !skip_installer {
@@ -55,26 +53,19 @@ fn build(fast: bool, clean: bool, skip_installer: bool) -> Result<()> {
             .arg("-o")
             .arg(&path)
             .arg(root.join("assets/cachemire.wxs")))?;
-        zip_file(&path, &path.with_extension("msi.zip"))?;
+        if with_zip {
+            zip_file(&path, &path.with_extension("msi.zip"), 0o644)?;
+        }
         msi = Some(path);
     }
 
     println!("\nExecutable: {}\nPortable:   {}", exe.display(), zip_path.display());
     if let Some(msi) = msi {
-        println!("Installer:  {}\nMSI zip:    {}", msi.display(), msi.with_extension("msi.zip").display());
+        println!("Installer:  {}", msi.display());
+        if with_zip {
+            println!("MSI zip:    {}", msi.with_extension("msi.zip").display());
+        }
     }
-    Ok(())
-}
-
-/// A zip holding just `file`.
-fn zip_file(file: &PathBuf, zip_path: &PathBuf) -> Result<()> {
-    println!("Creating zip: {}", zip_path.display());
-    let err = |e: &dyn std::fmt::Display| format!("zip {}: {e}", zip_path.display());
-    let mut zip = zip::ZipWriter::new(File::create(zip_path).map_err(|e| err(&e))?);
-    let options = zip::write::SimpleFileOptions::default().compression_method(zip::CompressionMethod::Deflated);
-    zip.start_file(file.file_name().and_then(|n| n.to_str()).unwrap_or("cachemire"), options).map_err(|e| err(&e))?;
-    io::copy(&mut File::open(file).map_err(|e| err(&e))?, &mut zip).map_err(|e| err(&e))?;
-    zip.finish().map_err(|e| err(&e))?;
     Ok(())
 }
 

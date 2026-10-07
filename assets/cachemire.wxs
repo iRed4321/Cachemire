@@ -29,6 +29,14 @@
       <ComponentGroupRef Id="AppFiles" />
     </Feature>
 
+    <!-- Uninstall with DELETEUSERDATA=1 (the checkbox of StartDlg): removes the user's data folder
+         (connections, settings, history), as the user who runs the uninstall. -->
+    <SetProperty Id="DeleteUserDataCmd" Value="cmd.exe /c rmdir /s /q &quot;[AppDataFolder]Cachemire&quot;" Before="DeleteUserData" Sequence="execute" Condition="REMOVE=&quot;ALL&quot; AND NOT UPGRADINGPRODUCTCODE AND DELETEUSERDATA=1" />
+    <CustomAction Id="DeleteUserData" Property="DeleteUserDataCmd" Execute="deferred" Impersonate="yes" Return="ignore" />
+    <InstallExecuteSequence>
+      <Custom Action="DeleteUserData" Before="RemoveFiles" Condition="REMOVE=&quot;ALL&quot; AND NOT UPGRADINGPRODUCTCODE AND DELETEUSERDATA=1" />
+    </InstallExecuteSequence>
+
     <CustomAction Id="LaunchCachemire" FileRef="CachemireExe" ExeCommand="" Execute="immediate" Impersonate="yes" Return="asyncNoWait" />
 
     <ComponentGroup Id="AppFiles" Directory="INSTALLFOLDER">
@@ -71,6 +79,8 @@
         <Control Id="TextInstall" Type="Text" X="25" Y="70" Width="320" Height="60" Transparent="yes" NoPrefix="yes" Text="Click Install to add Cachemire to this computer. Nothing is installed until you do." Hidden="yes" ShowCondition="NOT Installed AND NOT WIX_UPGRADE_DETECTED" />
         <Control Id="TextUpdate" Type="Text" X="25" Y="70" Width="320" Height="60" Transparent="yes" NoPrefix="yes" Text="An older version of Cachemire is installed. Click Update to replace it with this version. Nothing changes until you do." Hidden="yes" ShowCondition="NOT Installed AND WIX_UPGRADE_DETECTED" />
         <Control Id="TextUninstall" Type="Text" X="25" Y="70" Width="320" Height="60" Transparent="yes" NoPrefix="yes" Text="Cachemire is installed on this computer. Click Uninstall to remove it. Nothing is removed until you do." Hidden="yes" ShowCondition="Installed" />
+
+        <Control Id="DeleteUserDataCheck" Type="CheckBox" X="25" Y="140" Width="320" Height="18" Property="DELETEUSERDATA" CheckBoxValue="1" Text="Also delete my connections, settings and history" Hidden="yes" ShowCondition="Installed" />
 
         <Control Id="InstallButton" Type="PushButton" X="236" Y="243" Width="56" Height="17" Default="yes" Text="Install" Hidden="yes" ShowCondition="NOT Installed AND NOT WIX_UPGRADE_DETECTED">
           <Publish Event="EndDialog" Value="Return" />

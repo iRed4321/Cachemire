@@ -35,7 +35,7 @@ enum Task {
         #[arg(long)]
         no_tag: bool,
     },
-    /// Release exe, MSI installer (and its zip) and portable zip
+    /// Release exe, MSI installer and portable zip
     BuildWindows {
         /// Use the `fast` profile (no LTO, quicker link) and build the working tree, not a release; output in target/windows-fast
         #[arg(long)]
@@ -49,6 +49,9 @@ enum Task {
         /// Skip the MSI installer
         #[arg(long)]
         skip_installer: bool,
+        /// Also zip the package (the installer, .deb or AppImage)
+        #[arg(long)]
+        with_zip: bool,
     },
     /// Release build packed as a single-file AppImage in target/appimage
     BuildAppimage {
@@ -58,6 +61,9 @@ enum Task {
         /// Build the latest stable release instead of the latest one
         #[arg(long)]
         stable: bool,
+        /// Also zip the package (the installer, .deb or AppImage)
+        #[arg(long)]
+        with_zip: bool,
     },
     /// Release build packaged as a .deb in target/debian (needs cargo-deb)
     BuildDeb {
@@ -67,6 +73,9 @@ enum Task {
         /// Build the latest stable release instead of the latest one
         #[arg(long)]
         stable: bool,
+        /// Also zip the package (the installer, .deb or AppImage)
+        #[arg(long)]
+        with_zip: bool,
     },
     /// Cargo install plus the desktop entry and icons (Linux) or the Start menu shortcut (Windows)
     Install {
@@ -80,9 +89,9 @@ fn main() {
     let result = match Cli::parse().task {
         Task::I18n => i18n::run_task(),
         Task::Bump { part, stable, no_tag } => version::run_task(part, stable, no_tag),
-        Task::BuildWindows { fast, stable, clean, skip_installer } => windows::run_task(fast, stable, clean, skip_installer),
-        Task::BuildAppimage { fast, stable } => appimage::run_task(fast, stable),
-        Task::BuildDeb { fast, stable } => deb::run_task(fast, stable),
+        Task::BuildWindows { fast, stable, clean, skip_installer, with_zip } => windows::run_task(fast, stable, clean, skip_installer, with_zip),
+        Task::BuildAppimage { fast, stable, with_zip } => appimage::run_task(fast, stable, with_zip),
+        Task::BuildDeb { fast, stable, with_zip } => deb::run_task(fast, stable, with_zip),
         Task::Install { skip_binary } => install::run_task(skip_binary),
     };
     if let Err(e) = result {
