@@ -1,0 +1,29 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="493" height="58" viewBox="0 0 493 58">
+  <title>Cachemire installer banner</title>
+  <defs>
+    <clipPath id="ball-clip"><circle r="80"/></clipPath>
+    <clipPath id="ball-place"><circle cx="456" cy="27" r="22"/></clipPath>
+  </defs>
+  <rect width="493" height="58" fill="#F6EEE1"/>
+  <g clip-path="url(#ball-place)">
+    <g transform="translate(456,27) scale(0.275)">
+      <circle r="80" fill="#C2562F"/>
+      <g clip-path="url(#ball-clip)" fill="none" stroke-width="7" stroke-linecap="round">
+        <g transform="rotate(-30)" stroke="#E58B66">
+          <path d="M-100 -45 C-45 -75 45 -75 100 -45"/>
+          <path d="M-100 -10 C-45 -40 45 -40 100 -10"/>
+          <path d="M-100 25 C-45 -5 45 -5 100 25"/>
+          <path d="M-100 60 C-45 30 45 30 100 60"/>
+        </g>
+        <g transform="rotate(50)" stroke="#9E3B1B">
+          <path d="M-100 -10 C-45 -40 45 -40 100 -10"/>
+          <path d="M-100 25 C-45 -5 45 -5 100 25"/>
+          <path d="M-100 60 C-45 30 45 30 100 60"/>
+        </g>
+      </g>
+    </g>
+  </g>
+  <path d="M0 50 C120 44 240 56 360 50 S460 46 493 49 L493 58 L0 58 Z" fill="#EBDABF"/>
+  <path d="M0 53 C120 47 240 59 360 53 S460 49 493 52 L493 58 L0 58 Z" fill="#DDC095"/>
+  <path d="M0 55.5 C120 49.5 240 61.5 360 55.5 S460 51.5 493 54.5 L493 58 L0 58 Z" fill="#C49A62"/>
+</svg>

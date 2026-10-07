@@ -1,0 +1,472 @@
+import { Theme } from "theme.slint";
+import { IconKey, IconClose, IconSearch, IconQuery, IconSidebar } from "icons.slint";
+import { SquareIconButton } from "widgets.slint";
+import { TabData } from "types.slint";
+import { TabStrip } from "../globals.slint";
+export { TabData }
+
+component Tab inherits Rectangle {
+    in property <string> label;
+    in property <length> tab-width: 190px;
+    in property <bool> active: false;
+    in property <bool> closable: false;
+    in property <bool> keyed: false;
+    in property <bool> searching: false;
+    in property <bool> querying: false;
+    in property <bool> dragging: false;
+    callback clicked();
+    callback closed();
+    // drag-moved carries the total window-relative x distance since the
+    // drag's press (see VScrollBar's thumb TouchArea in widgets.slint for
+    // the coordinate frame) — TabBar turns that into this tab's on-screen x.
+    callback drag-started();
+    callback drag-moved(length);
+    callback drag-ended();
+    // right-click, with the pointer's window-relative position so the
+    // caller can place a context menu there
+    callback context-requested(x: length, y: length);
+    // Hover tooltip with the full key, raised as a request with a
+    // window-relative anchor (`x`/`bottom`): drawn at window level since
+    // the tab bar clips its own content.
+    callback tooltip-show(x: length, bottom: length);
+    callback tooltip-hide();
+
+    // Shown once the pointer has rested on the tab, so sweeping across the bar
+    // doesn't flash tooltips, and never for the drag overlay copy. A press
+    // hides it until the pointer leaves.
+    property <bool> hovered: area.has-hover;
+    property <bool> tooltip-shown: false;
+    property <bool> tooltip-suppressed: false;
+    function hide-tooltip() {
+        if tooltip-shown {
+            tooltip-shown = false;
+            tooltip-hide();
+        }
+    }
+    changed hovered => {
+        if !hovered {
+            tooltip-suppressed = false;
+            hide-tooltip();
+        }
+    }
+    Timer {
+        interval: 500ms;
+        running: root.hovered && !root.dragging && !root.tooltip-shown && !root.tooltip-suppressed;
+        triggered => {
+            root.tooltip-shown = true;
+            // measured from `area`, which fills the tab, not from `root`: on a
+            // component root instantiated by a repeater, `absolute-position`
+            // counts the element's own x twice. The context menu does the same.
+            root.tooltip-show(area.absolute-position.x, area.absolute-position.y - Theme.px(6px));
+        }
+    }
+
+    width: Theme.px(tab-width);
+    height: Theme.px(30px);
+    border-radius: Theme.px(8px);
+    // dragging always gets the opaque background, even for an inactive tab
+    // (which is normally transparent) — otherwise whatever's behind it
+    // during the drag shows through
+    background: (active || dragging) ? Theme.bg-elevated : (area.has-hover ? Theme.bg-hover : transparent);
+    border-width: active ? 1px : 0px;
+    border-color: Theme.border-soft;
+    drop-shadow-color: Theme.shadow-color;
+    drop-shadow-blur: dragging ? Theme.shadow-blur : 0px;
+    drop-shadow-offset-y: dragging ? Theme.shadow-offset-y : 0px;
+
+    area := TouchArea {
+        property <length> press-window-x;
+        // becomes true once the pointer has moved far enough from its press
+        // position to count as a drag rather than a click; a plain click
+        // never crosses it, so `clicked()` still fires normally on release.
+        property <bool> past-threshold: false;
+
+        pointer-event(event) => {
+            if event.kind == PointerEventKind.down {
+                root.tooltip-suppressed = true;
+                root.hide-tooltip();
+            }
+            // the right button only ever opens the context menu; it must not
+            // feed the left-button click/drag state machine below (a right
+            // "up" would otherwise count as a click and select the tab)
+            if event.button == PointerEventButton.right {
+                if event.kind == PointerEventKind.down {
+                    context-requested(self.mouse-x + self.absolute-position.x, self.mouse-y + self.absolute-position.y);
+                }
+                return;
+            }
+            if event.button != PointerEventButton.left {
+                return;
+            }
+            if event.kind == PointerEventKind.down {
+                press-window-x = self.mouse-x + self.absolute-position.x;
+                past-threshold = false;
+            } else if event.kind == PointerEventKind.up {
+                if past-threshold {
+                    drag-ended();
+                } else {
+                    clicked();
+                }
+                past-threshold = false;
+            } else if event.kind == PointerEventKind.cancel {
+                if past-threshold {
+                    drag-ended();
+                }
+                past-threshold = false;
+            }
+        }
+
+        moved => {
+            if !self.pressed {
+                return;
+            }
+            let current-window-x = self.mouse-x + self.absolute-position.x;
+            let delta = current-window-x - press-window-x;
+            if !past-threshold {
+                if abs(delta) > Theme.px(4px) {
+                    past-threshold = true;
+                    drag-started();
+                } else {
+                    return;
+                }
+            }
+            drag-moved(delta);
+        }
+    }
+
+    HorizontalLayout {
+        x: Theme.px(12px);
+        y: 0;
+        width: parent.width - Theme.px(12px);
+        height: parent.height;
+        // keeps the close button clear of the tab's rounded right end
+        padding-right: Theme.px(4px);
+        spacing: Theme.px(6px);
+        cross-axis-alignment: center;
+        if keyed: IconKey { size: Theme.icon-sm; tint: active ? Theme.accent-blue : Theme.text-tertiary; }
+        if searching: IconSearch { size: Theme.icon-sm; tint: active ? Theme.accent-red : Theme.text-tertiary; }
+        if querying: IconQuery { size: Theme.icon-sm; tint: active ? Theme.accent-purple : Theme.text-tertiary; }
+        // Shows the end of the key (the part that tells keys apart): natural
+        // width in a clipping box, right-aligned on overflow, no ellipsis —
+        // the full key is on hover (see `tooltip-show`).
+        label-box := Rectangle {
+            horizontal-stretch: 1;
+            min-width: 0px;
+            height: 100%;
+            clip: true;
+
+            label-text := Text {
+                text: label;
+                font-size: Theme.pt(12.5px);
+                color: active ? Theme.text-primary : Theme.text-secondary;
+                vertical-alignment: center;
+                height: 100%;
+                width: self.preferred-width;
+                x: min(0px, label-box.width - self.preferred-width);
+            }
+        }
+        // custom rather than an IconButton: the standard hover gray barely
+        // shows on the active tab's background, so this one hovers red,
+        // inset and rounded more so the highlight nests inside the tab's end.
+        if closable: Rectangle {
+            width: Theme.px(22px);
+            height: Theme.px(22px);
+            border-radius: Theme.px(6px);
+            background: !close-hover.has-hover ? transparent : (active ? Theme.accent-red.with-alpha(0.22) : Theme.bg-hover);
+
+            close-hover := TouchArea { clicked => { closed(); } }
+
+            HorizontalLayout {
+                alignment: center;
+                cross-axis-alignment: center;
+                IconClose { size: Theme.icon-lg; tint: (active && close-hover.has-hover) ? Theme.accent-red : Theme.text-tertiary; }
+            }
+        }
+    }
+}
+
+export component TabBar inherits Rectangle {
+    height: Theme.px(46px);
+    // transparent: the main FloatingCard paints bg-panel with rounded top
+    // corners; an opaque bar here would draw square ones over them
+    background: transparent;
+    in property <[TabData]> tabs: TabStrip.tabs;
+    callback tab-clicked(string);
+    tab-clicked(key) => { TabStrip.selected(key); }
+    callback tab-closed(string);
+    tab-closed(key) => { TabStrip.closed(key); }
+    // fires once, on drop, with the dragged tab's key and its new index
+    // among `tabs`
+    callback tab-reordered(string, int);
+    tab-reordered(key, index) => { TabStrip.reordered(key, index); }
+    // right-click on a tab: its key plus the window-relative pointer position
+    callback tab-context-requested(key: string, x: length, y: length);
+    // hover tooltip with a tab's full key, drawn by the window (see Tab)
+    callback tab-tooltip-show(text: string, x: length, bottom: length);
+    callback tab-tooltip-hide();
+    // index of the active tab (-1 if none); the row scrolls it into view
+    // whenever it changes, so a freshly opened tab is never off-screen
+    in property <int> active-index: TabStrip.active-index;
+    // the sidebar is hidden: a square button at the start of the bar, which doesn't scroll with
+    // the tabs, brings it back
+    in property <bool> sidebar-hidden: false;
+    callback sidebar-show-requested();
+    property <length> lead: sidebar-hidden ? row-h + Theme.px(8px) : 0px;
+
+    property <length> tab-w: Theme.px(190px); // keep in sync with Tab.tab-width
+    property <length> tab-gap: Theme.px(4px);
+    property <length> bar-pad: Theme.px(10px);
+    property <length> row-h: Theme.px(30px);
+    property <length> row-width: tabs.length * tab-w + max(0, tabs.length - 1) * tab-gap;
+
+    // which tab (by its index in `tabs`) is being dragged, and which slot
+    // it's currently hovering over; -1 means no drag in progress
+    property <int> drag-from: -1;
+    property <int> drag-to: -1;
+    // the dragged tab's live x, in the tab row's own local coordinates
+    property <length> drag-x: 0px;
+    property <length> max-drag-x: max(0px, row-width - tab-w);
+
+    function slot-x(slot: int) -> length {
+        slot * (tab-w + tab-gap)
+    }
+
+    // where tab `i` renders during a drag: the dragged tab tracks the mouse
+    // separately, everything between its old and new slot shifts by one to
+    // open/close the gap, everything else stays put.
+    function visual-slot(i: int) -> int {
+        if drag-from < 0 || i == drag-from {
+            i
+        } else if drag-to <= drag-from {
+            i >= drag-to && i < drag-from ? i + 1 : i
+        } else {
+            i > drag-from && i <= drag-to ? i - 1 : i
+        }
+    }
+
+    function scroll-to-slot(i: int) {
+        if i < 0 || i >= tabs.length {
+            return;
+        }
+        let left = slot-x(i);
+        let right = left + tab-w;
+        if left < -tabs-flick.content-x {
+            tabs-flick.content-x = -left;
+        } else if right > -tabs-flick.content-x + tabs-flick.width {
+            tabs-flick.content-x = tabs-flick.width - right;
+        }
+    }
+    changed active-index => { scroll-to-slot(active-index); }
+    changed tabs => {
+        // the tab instances are rebuilt with the model, so one that showed a
+        // tooltip may be gone without ever seeing the pointer leave
+        tab-tooltip-hide();
+        scroll-to-slot(active-index);
+    }
+
+    // The tab row scrolls horizontally once tabs outgrow the bar. This
+    // TouchArea turns a plain vertical wheel into horizontal scrolling
+    // (the Flickable handles horizontal deltas itself); Ctrl+wheel zooms instead.
+    if root.sidebar-hidden: show-button := SquareIconButton {
+        x: bar-pad;
+        y: (parent.height - self.height) / 2;
+        size: row-h;
+        hint: @tr("Show sidebar");
+        tooltip-show(text, x, top) => { root.tab-tooltip-show(text, x, top - self.height - Theme.px(6px)); }
+        tooltip-hide => { root.tab-tooltip-hide(); }
+        clicked => { root.sidebar-show-requested(); }
+        IconSidebar { size: Theme.icon-md; tint: show-button.hovered ? Theme.text-primary : Theme.text-secondary; }
+    }
+
+    tabs-area := TouchArea {
+        x: bar-pad + root.lead;
+        y: (parent.height - row-h) / 2;
+        width: parent.width - bar-pad - root.lead - Theme.px(10px);
+        height: row-h;
+        scroll-event(event) => {
+            // a shown tooltip would be left anchored to where its tab used to be
+            tab-tooltip-hide();
+            if event.modifiers.control || event.delta-y == 0 || tabs-flick.content-width <= tabs-flick.width {
+                return reject;
+            }
+            tabs-flick.content-x = max(tabs-flick.width - tabs-flick.content-width,
+                min(0px, tabs-flick.content-x + event.delta-y));
+            accept
+        }
+
+        tabs-flick := Flickable {
+            width: 100%;
+            height: 100%;
+            // tabs own press-and-drag (reordering); wheel scrolling still
+            // works with `interactive: false`
+            interactive: false;
+            content-width: max(self.width, row-width);
+            content-height: self.height;
+
+        Rectangle {
+            x: 0;
+            y: 0;
+            width: row-width;
+            height: row-h;
+
+            for t[i] in tabs: Tab {
+                label: t.label;
+                active: t.active;
+                closable: true;
+                keyed: !t.search && !t.query;
+                searching: t.search;
+                querying: t.query;
+                // while dragged, this instance stays at its slot, keeping the
+                // TouchArea's mouse grab alive (opacity, unlike `visible`,
+                // still receives events); the overlay below follows the mouse.
+                opacity: drag-from == i ? 0 : 1;
+                x: slot-x(visual-slot(i));
+                y: 0;
+                animate x { duration: drag-from == i ? 0ms : 140ms; easing: ease-out; }
+
+                clicked => { tab-clicked(t.key); }
+                closed => { tab-closed(t.key); }
+                context-requested(x, y) => { tab-context-requested(t.key, x, y); }
+                tooltip-show(x, y) => { tab-tooltip-show(t.label, x, y); }
+                tooltip-hide => { tab-tooltip-hide(); }
+                drag-started => {
+                    drag-from = i;
+                    drag-to = i;
+                    drag-x = slot-x(i);
+                }
+                drag-moved(delta) => {
+                    drag-x = max(0px, min(max-drag-x, slot-x(i) + delta));
+                    drag-to = max(0, min(tabs.length - 1, floor((drag-x + tab-w / 2) / (tab-w + tab-gap) + 0.5)));
+                }
+                drag-ended => {
+                    if drag-to != drag-from {
+                        tab-reordered(t.key, drag-to);
+                    }
+                    drag-from = -1;
+                    drag-to = -1;
+                }
+            }
+
+            // purely visual stand-in for whichever tab is being dragged:
+            // declared after the loop so it always paints on top of every
+            // other tab, regardless of index order
+            if drag-from >= 0 && drag-from < tabs.length: Tab {
+                label: tabs[drag-from].label;
+                active: tabs[drag-from].active;
+                closable: true;
+                keyed: !tabs[drag-from].search && !tabs[drag-from].query;
+                searching: tabs[drag-from].search;
+                querying: tabs[drag-from].query;
+                dragging: true;
+                x: drag-x;
+                y: 0;
+            }
+        }
+        }
+    }
+
+    Rectangle { y: parent.height - 1px; height: 1px; width: parent.width; background: Theme.border; }
+}
+
+component MenuRow inherits Rectangle {
+    in property <string> label;
+    callback clicked <=> area.clicked;
+    height: Theme.px(28px);
+    border-radius: Theme.radius-sm;
+    background: area.has-hover ? Theme.bg-hover-elevated : transparent;
+    area := TouchArea { mouse-cursor: pointer; }
+    HorizontalLayout {
+        padding-left: Theme.px(12px);
+        padding-right: Theme.px(12px);
+        Text {
+            text: label;
+            font-size: Theme.pt(12px);
+            color: Theme.text-primary;
+            vertical-alignment: center;
+        }
+    }
+}
+
+// Right-click menu over a text selection in the key detail panel: a single
+// "Copy selection" entry. Same ownership arrangement as TabContextMenu.
+export component SelectionContextMenu inherits Rectangle {
+    callback copy();
+
+    property <length> row-h: Theme.px(28px);
+    property <length> pad: Theme.px(4px);
+    width: Theme.px(170px);
+    height: row-h + 2 * pad;
+    background: Theme.bg-elevated;
+    border-radius: Theme.radius-md;
+    border-width: 1px;
+    border-color: Theme.border-soft;
+    drop-shadow-color: Theme.shadow-color;
+    drop-shadow-blur: Theme.shadow-blur;
+    drop-shadow-offset-y: Theme.shadow-offset-y;
+
+    TouchArea { }
+
+    VerticalLayout {
+        padding: pad;
+        MenuRow { label: @tr("Copy selection"); clicked => { root.copy(); } }
+    }
+}
+
+// Right-click menu for a tab. Positioned by the caller (main.slint), which
+// owns its open/closed state and the click-catcher that dismisses it. Every
+// dimension is pinned — a free-floating x/y element never auto-sizes.
+export component TabContextMenu inherits Rectangle {
+    callback close-others();
+    callback close-all();
+
+    property <length> row-h: Theme.px(28px);
+    property <length> pad: Theme.px(4px);
+    width: Theme.px(170px);
+    height: 2 * row-h + 2 * pad;
+    background: Theme.bg-elevated;
+    border-radius: Theme.radius-md;
+    border-width: 1px;
+    border-color: Theme.border-soft;
+    drop-shadow-color: Theme.shadow-color;
+    drop-shadow-blur: Theme.shadow-blur;
+    drop-shadow-offset-y: Theme.shadow-offset-y;
+
+    // absorbs clicks on the padding so they don't reach the catcher behind
+    TouchArea { }
+
+    VerticalLayout {
+        padding: pad;
+        MenuRow { label: @tr("Close other tabs"); clicked => { root.close-others(); } }
+        MenuRow { label: @tr("Close all tabs"); clicked => { root.close-all(); } }
+    }
+}
+
+// Right-click menu for a tree row: export just it, or tick it for export (which opens export
+// mode), plus the ticked rows' export when there are any. Same ownership as TabContextMenu.
+export component RowContextMenu inherits Rectangle {
+    in property <int> selection-count: 0;
+    callback export-row();
+    callback select-row();
+    callback export-selection();
+
+    property <length> row-h: Theme.px(28px);
+    property <length> pad: Theme.px(4px);
+    width: Theme.px(200px);
+    height: (selection-count > 0 ? 3 : 2) * row-h + 2 * pad;
+    background: Theme.bg-elevated;
+    border-radius: Theme.radius-md;
+    border-width: 1px;
+    border-color: Theme.border-soft;
+    drop-shadow-color: Theme.shadow-color;
+    drop-shadow-blur: Theme.shadow-blur;
+    drop-shadow-offset-y: Theme.shadow-offset-y;
+
+    TouchArea { }
+
+    VerticalLayout {
+        padding: pad;
+        MenuRow { label: @tr("Export…"); clicked => { root.export-row(); } }
+        MenuRow { label: @tr("Select for export"); clicked => { root.select-row(); } }
+        if root.selection-count > 0: MenuRow { label: @tr("Export {} selected…", root.selection-count); clicked => { root.export-selection(); } }
+    }
+}

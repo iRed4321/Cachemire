@@ -1,0 +1,814 @@
+import { Theme } from "theme.slint";
+import { IconSpinner, IconUndo, IconRedo, IconHistory } from "icons.slint";
+import { CheckBox, IconButton, TextMenuPopup } from "widgets.slint";
+import { SuggestionRow, CompletionEdit } from "key-detail-types.slint";
+import { SuggestionPopup } from "key-detail-widgets.slint";
+import { HistoryRow } from "types.slint";
+import { QueryTab } from "../globals.slint";
+export { HistoryRow }
+
+// A small popup asking for a name to save the query under, opened by the header's
+// Save button. Enter or Save confirms; an empty name is refused. Closes itself
+// either way, like PastePopup (widgets.slint).
+component SaveQueryPopup inherits PopupWindow {
+    in-out property <string> name: "";
+    // save it for every connection, not just the current one
+    in-out property <bool> global: false;
+    callback save(name: string, global: bool);
+    // otherwise the default (any click, even inside the popup) closes it the
+    // moment you click into the name box
+    close-policy: close-on-click-outside;
+
+    property <length> pad: Theme.px(10px);
+    property <length> title-h: Theme.pt(15px);
+    property <length> gap: Theme.px(8px);
+    property <length> field-h: Theme.px(26px);
+    property <length> button-h: Theme.px(24px);
+    property <length> global-h: Theme.px(20px);
+    width: Theme.px(220px);
+    // computed from the rows below so it always fits the Save button
+    height: 2 * pad + title-h + gap + field-h + gap + global-h + gap + button-h;
+
+    Rectangle {
+        background: Theme.bg-elevated;
+        border-radius: Theme.radius-md;
+        border-width: 1px;
+        border-color: Theme.border-soft;
+        drop-shadow-color: Theme.shadow-color;
+        drop-shadow-blur: Theme.shadow-blur;
+        drop-shadow-offset-y: Theme.shadow-offset-y;
+
+        VerticalLayout {
+            padding: pad;
+            spacing: gap;
+            Text {
+                text: @tr("Save query as...");
+                height: title-h;
+                font-size: Theme.pt(11px);
+                font-weight: 600;
+                color: Theme.text-secondary;
+                vertical-alignment: center;
+            }
+            name-box := Rectangle {
+                height: field-h;
+                background: Theme.bg-sunken;
+                border-radius: Theme.radius-sm;
+                border-width: 1px;
+                border-color: name-input.has-focus ? Theme.accent-blue-dim : Theme.border-soft;
+                name-input := TextInput {
+                    x: Theme.px(6px);
+                    width: parent.width - Theme.px(12px);
+                    height: 100%;
+                    text <=> root.name;
+                    single-line: true;
+                    // so the user can start typing a name right away
+                    init => { self.focus(); }
+                    font-size: Theme.pt(11.5px);
+                    color: Theme.text-primary;
+                    selection-background-color: Theme.accent-blue.with-alpha(0.35);
+                    vertical-alignment: center;
+                    key-pressed(event) => {
+                        if event.text == Key.Return && root.name != "" {
+                            root.save(root.name, root.global);
+                            return accept;
+                        }
+                        return reject;
+                    }
+                }
+            }
+            global-row := Rectangle {
+                height: global-h;
+                global-area := TouchArea {
+                    mouse-cursor: pointer;
+                    clicked => { root.global = !root.global; }
+                }
+                HorizontalLayout {
+                    spacing: Theme.px(6px);
+                    alignment: start;
+                    CheckBox {
+                        checked: root.global;
+                        y: (parent.height - self.height) / 2;
+                    }
+                    Text {
+                        text: @tr("Global (all connections)");
+                        font-size: Theme.pt(11px);
+                        color: Theme.text-secondary;
+                        vertical-alignment: center;
+                        overflow: elide;
+                    }
+                }
+            }
+            save-btn := Rectangle {
+                height: button-h;
+                border-radius: Theme.radius-sm;
+                background: root.name == "" ? Theme.text-disabled : (save-area.has-hover ? Theme.accent-blue-dim : Theme.accent-blue);
+                save-area := TouchArea {
+                    mouse-cursor: root.name == "" ? default : pointer;
+                    clicked => {
+                        if root.name != "" {
+                            root.save(root.name, root.global);
+                        }
+                    }
+                }
+                Text {
+                    text: @tr("Save");
+                    color: #ffffff;
+                    font-size: Theme.pt(11.5px);
+                    font-weight: 600;
+                    horizontal-alignment: center;
+                    vertical-alignment: center;
+                    width: 100%;
+                    height: 100%;
+                }
+            }
+        }
+    }
+}
+
+// The list of the queries run before on this connection, under the history button: a click puts
+// one in the box, Ctrl- or Shift-click runs it too. Closes like any popup, on a click.
+component HistoryPopup inherits PopupWindow {
+    in property <[HistoryRow]> rows;
+    callback picked(index: int, run: bool);
+    callback cleared();
+
+    property <length> row-h: Theme.px(28px);
+    property <length> pad: Theme.px(4px);
+    property <length> list-h: min(rows.length, 8) * row-h;
+    width: Theme.px(460px);
+    height: (rows.length == 0 ? Theme.px(36px) : list-h + Theme.px(1px) + row-h) + 2 * pad;
+
+    Rectangle {
+        background: Theme.bg-elevated;
+        border-radius: Theme.radius-md;
+        border-width: 1px;
+        border-color: Theme.border-soft;
+        drop-shadow-color: Theme.shadow-color;
+        drop-shadow-blur: Theme.shadow-blur;
+        drop-shadow-offset-y: Theme.shadow-offset-y;
+
+        VerticalLayout {
+            padding: pad;
+            alignment: start;
+            if root.rows.length == 0: Text {
+                text: @tr("Nothing run on this connection yet");
+                height: Theme.px(28px);
+                font-size: Theme.pt(11.5px);
+                color: Theme.text-tertiary;
+                horizontal-alignment: center;
+                vertical-alignment: center;
+            }
+            if root.rows.length > 0: Rectangle {
+                height: root.list-h;
+                history-flick := Flickable {
+                    width: 100%;
+                    height: 100%;
+                    content-height: root.rows.length * root.row-h;
+                    interactive: true;
+                    VerticalLayout {
+                        for row[i] in root.rows: Rectangle {
+                            height: root.row-h;
+                            border-radius: Theme.radius-sm;
+                            background: row-area.has-hover ? Theme.bg-hover-elevated : transparent;
+                            row-area := TouchArea {
+                                mouse-cursor: pointer;
+                                // on the press, as the popup closes with the click
+                                pointer-event(event) => {
+                                    if event.button == PointerEventButton.left && event.kind == PointerEventKind.down {
+                                        root.picked(i, event.modifiers.control || event.modifiers.shift);
+                                    }
+                                }
+                            }
+                            HorizontalLayout {
+                                padding-left: Theme.px(8px);
+                                padding-right: Theme.px(8px);
+                                spacing: Theme.px(8px);
+                                Text {
+                                    text: row.label;
+                                    font-size: Theme.pt(11px);
+                                    font-family: Theme.font-mono;
+                                    color: row.failed ? Theme.accent-red : Theme.text-primary;
+                                    vertical-alignment: center;
+                                    horizontal-stretch: 1;
+                                    min-width: 0px;
+                                    overflow: elide;
+                                }
+                                Text {
+                                    text: row.detail;
+                                    font-size: Theme.pt(10.5px);
+                                    color: Theme.text-tertiary;
+                                    vertical-alignment: center;
+                                }
+                            }
+                        }
+                    }
+                }
+                // more rows below: the end of the list fades out
+                if history-flick.content-height > history-flick.height && -history-flick.content-y < history-flick.content-height - history-flick.height - Theme.px(2px): Rectangle {
+                    y: parent.height - self.height;
+                    height: Theme.px(26px);
+                    background: @linear-gradient(180deg, Theme.bg-elevated.with-alpha(0) 0%, Theme.bg-elevated 100%);
+                }
+            }
+            if root.rows.length > 0: Rectangle { height: Theme.px(1px); background: Theme.border-soft; }
+            if root.rows.length > 0: Rectangle {
+                height: root.row-h;
+                border-radius: Theme.radius-sm;
+                background: clear-area.has-hover ? Theme.bg-hover-elevated : transparent;
+                clear-area := TouchArea {
+                    mouse-cursor: pointer;
+                    clicked => { root.cleared(); }
+                }
+                Text {
+                    x: Theme.px(8px);
+                    text: @tr("Clear history");
+                    font-size: Theme.pt(11px);
+                    color: Theme.text-secondary;
+                    vertical-alignment: center;
+                    height: parent.height;
+                }
+            }
+        }
+    }
+}
+
+// The box of a query tab: a multi-line Redisql editor with line numbers and completion, and the
+// grip that resizes it. Its buttons are in the results' header (QueryToolbar), which send it
+// `command`s; it paints over what is below it, which its completion list overflows into.
+export component QueryEditor inherits Rectangle {
+    z: 10;
+    background: transparent;
+    in-out property <string> query <=> QueryTab.text;
+    // runs the statement at the caret (or the selection), or with `script` the whole box; `cursor`
+    // and `anchor` are the caret and the other end of the selection (equal when nothing is selected)
+    callback run-requested(query: string, cursor: int, anchor: int, script: bool);
+    run-requested(query, cursor, anchor, script) => { QueryTab.run-requested(query, cursor, anchor, script); }
+    // what the toolbar asks for: 0 undo, 1 redo, 2 run the statement, 3 run the whole script; a new
+    // `command-tick` is a new request
+    in property <int> command-kind: QueryTab.command-kind;
+    in property <int> command-tick: QueryTab.command-tick;
+    changed command-tick => {
+        if root.command-kind == 0 {
+            input.undo();
+            input.focus();
+        } else if root.command-kind == 1 {
+            input.redo();
+            input.focus();
+        } else {
+            root.run-requested(root.query, input.cursor-position-byte-offset, input.anchor-position-byte-offset, root.command-kind == 3);
+        }
+    }
+    // whether the clipboard holds text, for the right-click menu's "Paste"
+    callback clipboard-has-text() -> bool;
+    // Ctrl+Up / Ctrl+Down step through the runs before on this connection
+    callback history-step(direction: int, current: string) -> CompletionEdit;
+    history-step(direction, current) => { return QueryTab.history-step(direction, current); }
+    // colors the box's text as it's typed (see src/redisql_highlight.rs);
+    // `pure` so it can be called straight from the overlay's `text:` binding
+    // below and stay live as `query` changes, with no imperative wiring
+    pure callback highlight-query(text: string) -> styled-text;
+    highlight-query(text) => { return QueryTab.highlight(text, QueryTab.error-start, QueryTab.error-end, QueryTab.error-text); }
+    // strips a pasted `\r` out of `query` right away: TextInput inserts Windows
+    // `\r\n` verbatim, which drifts the overlay's line layout from the real one
+    pure callback sanitize-query(text: string) -> string;
+    sanitize-query(text) => { return QueryTab.sanitize(text); }
+    // the query's lines, to number them
+    pure callback split-lines(text: string) -> [string];
+    split-lines(text) => { return QueryTab.lines(text); }
+    property <[string]> lines: root.split-lines(root.query);
+    // Completion of what is typed: Rust answers `suggest` (the text, the caret's byte offset,
+    // and whether Ctrl+Space forced it) by filling `suggestions`; `complete` writes a chosen row in.
+    in property <[SuggestionRow]> suggestions: QueryTab.suggestions;
+    in-out property <bool> suggest-open <=> QueryTab.suggest-open;
+    callback suggest(text: string, cursor: int, force: bool);
+    suggest(text, cursor, force) => { QueryTab.suggest(text, cursor, force); }
+    callback complete(text: string, cursor: int, index: int) -> CompletionEdit;
+    complete(text, cursor, index) => { return QueryTab.complete(text, cursor, index); }
+    // the caret's place in the window, for the list under it; and where it goes after a completion
+    property <length> caret-x: 0px;
+    property <length> caret-bottom: 0px;
+    property <int> pending-caret: -1;
+    changed query => {
+        root.query = root.sanitize-query(root.query);
+        if root.pending-caret >= 0 {
+            input.set-selection-offsets(root.pending-caret, root.pending-caret);
+            root.pending-caret = -1;
+        }
+    }
+    function accept-suggestion(index: int) {
+        let edit = root.complete(root.query, input.cursor-position-byte-offset, index);
+        if edit.cursor >= 0 {
+            root.pending-caret = edit.cursor;
+            root.query = edit.text;
+            input.focus();
+        }
+        root.suggest-open = false;
+        suggest-popup.selected = -1;
+    }
+
+    // dragged with the grip in the box's corner, kept within sane bounds
+    // starts at 96px and five more rows of text; dragging the grip replaces it
+    property <length> box-height: Theme.px(96px) + 5 * box.input-line-h;
+    property <length> box-height-min: Theme.px(50px);
+    property <length> box-height-max: Theme.px(420px);
+    property <length> header-pad: Theme.px(10px);
+
+    // computed, not guessed, so it can't fall out of sync with the rows
+    height: 2 * header-pad + box-height;
+
+    VerticalLayout {
+        padding: header-pad;
+
+                box := Rectangle {
+                    height: box-height;
+                    background: Theme.bg-sunken;
+                    border-radius: Theme.radius-sm;
+                    border-width: 1px;
+                    border-color: input.has-focus ? Theme.accent-blue-dim : Theme.border-soft;
+
+                    property <length> gutter-w: Theme.px(28px);
+                    property <length> text-x: Theme.px(8px) + gutter-w + Theme.px(6px);
+                    property <length> text-w: self.width - text-x - Theme.px(8px);
+                    property <bool> focused: input.has-focus;
+                    // the list goes away with the box's focus (but not for a click on the list itself)
+                    changed focused => {
+                        if !focused && !suggest-popup.hovered {
+                            root.suggest-open = false;
+                        }
+                    }
+
+                    if root.query == "" && !input.has-focus: Text {
+                        x: box.text-x;
+                        y: Theme.px(6px);
+                        width: box.text-w;
+                        text: @tr("FROM KEY 'my:key' AS x\nSELECT *\nLIMIT 100\n\n(Ctrl+Enter runs the statement, Ctrl+Shift+Enter the whole script)");
+                        font-size: Theme.pt(11.5px);
+                        font-family: Theme.font-mono;
+                        color: Theme.text-tertiary;
+                        wrap: word-wrap;
+                    }
+
+                    // a row of text as it is drawn in the box (the colored read, which the edit box lines up
+                    // with), and as a plain Text measures it: a line's rows are counted with the Text, and
+                    // each is as tall as the drawn one
+                    property <length> text-line-h: text-probe.preferred-height;
+                    property <length> input-line-h: drawn-probe.preferred-height / 10;
+                    text-probe := Text {
+                        text: "x";
+                        font-size: Theme.pt(11.5px);
+                        font-family: Theme.font-mono;
+                        opacity: 0;
+                    }
+                    drawn-probe := StyledText {
+                        width: Theme.px(40px);
+                        text: root.highlight-query("x\nx\nx\nx\nx\nx\nx\nx\nx\nx");
+                        default-font-family: Theme.font-mono;
+                        default-font-size: Theme.pt(11.5px);
+                        opacity: 0;
+                    }
+
+                    // the line numbers, scrolled with the text. Each line is measured with the text's own
+                    // wrapping (an invisible copy), so its number stays level with the line's first row
+                    gutter := Flickable {
+                        x: Theme.px(8px);
+                        y: Theme.px(6px);
+                        width: box.gutter-w;
+                        height: parent.height - Theme.px(12px);
+                        interactive: false;
+                        content-y: query-flick.content-y;
+                        VerticalLayout {
+                            alignment: start;
+                            for line[i] in root.lines: Rectangle {
+                                height: max(1, round(measure.preferred-height / box.text-line-h)) * box.input-line-h;
+                                measure := Text {
+                                    x: 0px;
+                                    y: 0px;
+                                    width: box.text-w;
+                                    text: line == "" ? " " : line;
+                                    wrap: word-wrap;
+                                    font-size: Theme.pt(11.5px);
+                                    font-family: Theme.font-mono;
+                                    opacity: 0;
+                                }
+                                Text {
+                                    x: 0px;
+                                    y: 0px;
+                                    width: box.gutter-w;
+                                    text: i + 1;
+                                    horizontal-alignment: right;
+                                    font-size: Theme.pt(11.5px);
+                                    font-family: Theme.font-mono;
+                                    color: Theme.text-tertiary;
+                                }
+                            }
+                        }
+                    }
+
+                    query-flick := Flickable {
+                        x: box.text-x;
+                        y: Theme.px(6px);
+                        width: box.text-w;
+                        height: parent.height - Theme.px(12px);
+                        content-height: max(self.height, input.preferred-height);
+                        interactive: true;
+
+                        // the colored read of `query`, drawn under the actual (invisible-text) edit box
+                        // since StyledText can't be typed into; x/y are pinned so it isn't centered when
+                        // the box is taller than a short query
+                        StyledText {
+                            x: 0px;
+                            y: 0px;
+                            width: parent.width;
+                            text: root.highlight-query(root.query);
+                            default-color: Theme.text-primary;
+                            default-font-family: Theme.font-mono;
+                            default-font-size: Theme.pt(11.5px);
+                        }
+
+                        // right-click menu: a TouchArea wrapping the input rather than behind it, so the
+                        // input keeps its own mouse handling (cursor placement, drag-to-select)
+                        input-area := TouchArea {
+                            x: 0px;
+                            y: 0px;
+                            width: parent.width;
+                            height: max(parent.height, input.preferred-height);
+                            mouse-cursor: MouseCursor.text;
+                            property <length> click-x;
+                            property <length> click-y;
+                            property <bool> menu-has-selection: false;
+                            property <bool> menu-can-paste: false;
+                            pointer-event(event) => {
+                                if event.button == PointerEventButton.right && event.kind == PointerEventKind.down {
+                                    self.click-x = self.mouse-x;
+                                    self.click-y = self.mouse-y;
+                                    self.menu-has-selection = input.anchor-position-byte-offset != input.cursor-position-byte-offset;
+                                    self.menu-can-paste = root.clipboard-has-text();
+                                    input.focus();
+                                    edit-menu.show();
+                                }
+                            }
+
+                            input := TextInput {
+                                // pinned like StyledText's x/y above, and matching it exactly so the real
+                                // cursor (which places `caret`) lines up with the colored glyphs behind it
+                                x: 0px;
+                                y: 0px;
+                                width: parent.width;
+                                text <=> root.query;
+                                single-line: false;
+                                wrap: word-wrap;
+                                font-size: Theme.pt(11.5px);
+                                font-family: Theme.font-mono;
+                                // near-invisible (StyledText behind shows the glyphs): fully
+                                // transparent would skip drawing the selection too; the caret
+                                // is blanked as well, hence `caret` below
+                                color: #00000001;
+                                selection-foreground-color: transparent;
+                                selection-background-color: Theme.accent-blue.with-alpha(0.35);
+                                key-pressed(event) => {
+                                    if suggest-popup.handle-key(event) {
+                                        return accept;
+                                    }
+                                    if event.text == " " && event.modifiers.control {
+                                        root.suggest(root.query, self.cursor-position-byte-offset, true);
+                                        return accept;
+                                    }
+                                    if (event.text == Key.UpArrow || event.text == Key.DownArrow) && event.modifiers.control {
+                                    let edit = root.history-step(event.text == Key.UpArrow ? -1 : 1, root.query);
+                                    if edit.cursor >= 0 {
+                                        root.pending-caret = edit.cursor;
+                                        root.query = edit.text;
+                                    }
+                                    return accept;
+                                }
+                                if event.text == Key.Return && event.modifiers.control {
+                                        root.run-requested(root.query, self.cursor-position-byte-offset, self.anchor-position-byte-offset, event.modifiers.shift);
+                                        return accept;
+                                    }
+                                    return reject;
+                                }
+                                edited => {
+                                    suggest-popup.selected = -1;
+                                    root.suggest(root.query, self.cursor-position-byte-offset, false);
+                                }
+                                cursor-position-changed(position) => {
+                                    caret.x = position.x;
+                                    caret.y = position.y;
+                                    caret-blink-on = true;
+                                    // keeps the caret in view, and the list under it
+                                    let line-h = self.font-size * 1.3;
+                                    if position.y + query-flick.content-y < 0px {
+                                        query-flick.content-y = -position.y;
+                                    } else if position.y + line-h + query-flick.content-y > query-flick.height {
+                                        query-flick.content-y = -(position.y + line-h - query-flick.height);
+                                    }
+                                    root.caret-x = self.absolute-position.x + position.x;
+                                    root.caret-bottom = self.absolute-position.y + position.y + line-h;
+                                    if root.suggest-open {
+                                        root.suggest(root.query, self.cursor-position-byte-offset, false);
+                                    }
+                                }
+                            }
+
+                            edit-menu := TextMenuPopup {
+                                x: input-area.click-x;
+                                y: input-area.click-y;
+                                has-selection: input-area.menu-has-selection;
+                                can-paste: input-area.menu-can-paste;
+                                cut => { input.cut(); }
+                                copy => { input.copy(); }
+                                paste => { input.paste(); }
+                                select-all => { input.select-all(); }
+                            }
+                        }
+
+                        property <bool> caret-blink-on: true;
+                        Timer {
+                            interval: 530ms;
+                            running: input.has-focus;
+                            triggered => { caret-blink-on = !caret-blink-on; }
+                        }
+                        caret := Rectangle {
+                            // overwritten as soon as the cursor moves once
+                            // (see `input`'s cursor-position-changed);
+                            // pinned so it doesn't start centered
+                            x: 0px;
+                            y: 0px;
+                            width: input.text-cursor-width;
+                            height: input.font-size * 1.3;
+                            background: Theme.text-primary;
+                            visible: input.has-focus
+                                && caret-blink-on
+                                && input.anchor-position-byte-offset == input.cursor-position-byte-offset;
+                        }
+                    }
+                    // the grip in the corner: drag it up or down to resize the box, like a text area
+                    Rectangle {
+                        width: Theme.px(20px);
+                        height: Theme.px(20px);
+                        x: parent.width - self.width - Theme.px(3px);
+                        y: parent.height - self.height - Theme.px(3px);
+                        grip-area := TouchArea {
+                            mouse-cursor: ns-resize;
+                            moved => {
+                                if self.pressed {
+                                    root.box-height = max(root.box-height-min, min(root.box-height-max, root.box-height + (self.mouse-y - self.pressed-y)));
+                                }
+                            }
+                        }
+                        Path {
+                            width: 100%;
+                            height: 100%;
+                            viewbox-width: 20;
+                            viewbox-height: 20;
+                            commands: "M17 7 L7 17 M17 12 L12 17";
+                            fill: transparent;
+                            stroke: (grip-area.has-hover || grip-area.pressed) ? Theme.text-secondary : Theme.text-tertiary;
+                            stroke-width: 1.8px;
+                            stroke-line-cap: round;
+                        }
+                    }
+                }
+    }
+    Rectangle { y: parent.height - 1px; height: 1px; width: parent.width; background: Theme.border; }
+
+    // the completion list, under the caret
+    suggest-popup := SuggestionPopup {
+        rows: root.suggestions;
+        open: root.suggest-open;
+        anchor-x: root.caret-x;
+        anchor-y: root.caret-bottom;
+        origin-x: root.absolute-position.x;
+        origin-y: root.absolute-position.y;
+        host-width: root.width;
+        accepted(index) => { root.accept-suggestion(index); }
+        dismissed => { root.suggest-open = false; }
+    }
+}
+
+// The query tab's buttons, at the start of the results' header: undo and redo, the history, Save,
+// Run all and Run, and what the last run says. They send the box `command`s (see QueryEditor).
+export component QueryToolbar inherits HorizontalLayout {
+    // a run is in flight
+    in property <bool> loading: QueryTab.loading;
+    // what the last run says: how many rows, or an error
+    in property <string> status: QueryTab.status;
+    in property <bool> status-is-error: QueryTab.status-is-error;
+    // 0 undo, 1 redo, 2 run the statement, 3 run the whole script
+    callback command(kind: int);
+    // the runs before on this connection (Rust fills `history` when it is asked for it); a row is
+    // picked to put it in the box, or to run it too
+    in property <[HistoryRow]> history: QueryTab.history;
+    callback history-requested();
+    history-requested => { QueryTab.history-requested(); }
+    callback history-picked(index: int, run: bool);
+    history-picked(index, run) => { QueryTab.history-picked(index, run); }
+    callback history-cleared();
+    history-cleared => { QueryTab.history-cleared(); }
+    // hover hints of the buttons, drawn by the window (see IconButton.hint)
+    callback tooltip-show(text: string, x: length, top: length);
+    callback tooltip-hide();
+    // the query is saved under `name`, in the sidebar's Search/Query list
+    callback save-requested(name: string, global: bool);
+    save-requested(name, global) => { QueryTab.save-requested(name, global); }
+
+    spacing: Theme.px(8px);
+    cross-axis-alignment: center;
+
+                    IconButton {
+                        box-size: Theme.px(26px);
+                        hint: @tr("Undo (Ctrl+Z)");
+                        hint-show(text, x, top) => { root.tooltip-show(text, x, top); }
+                        hint-hide => { root.tooltip-hide(); }
+                        clicked => { root.command(0); }
+                        IconUndo { size: Theme.icon-sm; tint: Theme.text-secondary; }
+                    }
+                    IconButton {
+                        box-size: Theme.px(26px);
+                        hint: @tr("Redo (Ctrl+Y)");
+                        hint-show(text, x, top) => { root.tooltip-show(text, x, top); }
+                        hint-hide => { root.tooltip-hide(); }
+                        clicked => { root.command(1); }
+                        IconRedo { size: Theme.icon-sm; tint: Theme.text-secondary; }
+                    }
+                    IconButton {
+                        box-size: Theme.px(26px);
+                        hint: @tr("History");
+                        hint-show(text, x, top) => { root.tooltip-show(text, x, top); }
+                        hint-hide => { root.tooltip-hide(); }
+                        clicked => {
+                            root.history-requested();
+                            history-popup.show();
+                        }
+                        IconHistory { size: Theme.icon-sm; tint: Theme.text-secondary; }
+                        history-popup := HistoryPopup {
+                            x: 0px;
+                            y: parent.height + Theme.px(4px);
+                            rows: root.history;
+                            picked(index, run) => { root.history-picked(index, run); }
+                            cleared => { root.history-cleared(); }
+                        }
+                    }
+                    save-btn := Rectangle {
+                        width: save-row.preferred-width + Theme.px(20px);
+                        height: Theme.px(26px);
+                        border-radius: Theme.radius-sm;
+                        border-width: 1px;
+                        border-color: Theme.border-soft;
+                        background: save-area.has-hover ? Theme.bg-hover : transparent;
+                        save-area := TouchArea {
+                            mouse-cursor: pointer;
+                            clicked => { save-popup.show(); }
+                        }
+                        save-row := HorizontalLayout {
+                            x: Theme.px(10px);
+                            width: parent.width - Theme.px(20px);
+                            alignment: center;
+                            Text {
+                                text: @tr("Save");
+                                color: Theme.text-secondary;
+                                font-size: Theme.pt(12px);
+                                font-weight: 600;
+                                vertical-alignment: center;
+                            }
+                        }
+                        save-popup := SaveQueryPopup {
+                            x: 0px;
+                            y: save-btn.height + Theme.px(4px);
+                            save(name, global) => {
+                                root.save-requested(name, global);
+                                // close-on-click-outside doesn't catch the Save
+                                // button (it's inside) or Enter in the name box,
+                                // so close explicitly here for both
+                                save-popup.close();
+                            }
+                        }
+                    }
+                    run-all-btn := Rectangle {
+                        width: run-all-label.preferred-width + Theme.px(20px);
+                        height: Theme.px(26px);
+                        border-radius: Theme.radius-sm;
+                        border-width: 1px;
+                        border-color: Theme.border-soft;
+                        background: run-all-area.has-hover ? Theme.bg-hover : transparent;
+                        run-all-area := TouchArea {
+                            mouse-cursor: pointer;
+                            clicked => { root.command(3); }
+                        }
+                        run-all-label := Text {
+                            x: Theme.px(10px);
+                            text: @tr("Run all");
+                            color: Theme.text-secondary;
+                            font-size: Theme.pt(12px);
+                            font-weight: 600;
+                            vertical-alignment: center;
+                            height: parent.height;
+                        }
+                    }
+                    run-btn := Rectangle {
+                        // sized for "Run" alone — loading swaps to a bare
+                        // spinner rather than a longer "Running..." label, so
+                        // the button never resizes between the two states
+                        width: run-label-size.preferred-width + Theme.px(24px);
+                        height: Theme.px(26px);
+                        border-radius: Theme.radius-sm;
+                        background: run-area.has-hover ? Theme.accent-blue-dim : Theme.accent-blue;
+                        run-area := TouchArea {
+                            mouse-cursor: pointer;
+                            clicked => {
+                                root.command(2);
+                                click-flash-tick += 1;
+                                click-flash = true;
+                            }
+                        }
+                        // a white pulse on every click, snapping on then easing out: the loading spinner
+                        // is delayed (see LOADING_DELAY in redisql.rs), so a fast query shows nothing else
+                        property <bool> click-flash: false;
+                        property <int> click-flash-tick: 0;
+                        Rectangle {
+                            width: parent.width;
+                            height: parent.height;
+                            border-radius: parent.border-radius;
+                            background: white.with-alpha(click-flash ? 0.35 : 0);
+                            animate background { duration: click-flash ? 0ms : 220ms; easing: ease-out; }
+                        }
+                        Timer {
+                            // the tick nudges the interval by 1ms so a second click while the flash fades
+                            // restarts the countdown (see main.slint's toast-timer)
+                            interval: 100ms + Math.mod(click-flash-tick, 2) * 1ms;
+                            running: click-flash;
+                            triggered => { click-flash = false; }
+                        }
+                        run-label-size := Text {
+                            text: @tr("Run");
+                            font-size: Theme.pt(12px);
+                            font-weight: 600;
+                            visible: false;
+                        }
+                        run-row := HorizontalLayout {
+                            width: parent.width;
+                            height: parent.height;
+                            alignment: center;
+                            cross-axis-alignment: center;
+                            if root.loading: IconSpinner { size: Theme.icon-sm; tint: #ffffff; }
+                            if !root.loading: Text {
+                                text: @tr("Run");
+                                color: #ffffff;
+                                font-size: Theme.pt(12px);
+                                font-weight: 600;
+                                vertical-alignment: center;
+                            }
+                        }
+                    }
+                    Text {
+                        text: root.status;
+                        font-size: Theme.pt(11px);
+                        color: root.status-is-error ? Theme.accent-red : Theme.text-tertiary;
+                        vertical-alignment: center;
+                        horizontal-stretch: 1;
+                        min-width: 0px;
+                        wrap: word-wrap;
+                    }
+}
+
+// The tabs above a script's results: a tab for each, numbered with its row count.
+export component ResultTabs inherits Rectangle {
+    in property <[string]> results: QueryTab.results;
+    in property <int> active: QueryTab.result-active;
+    callback selected(index: int);
+    selected(index) => { QueryTab.result-selected(index); }
+    height: Theme.px(32px);
+
+    Flickable {
+        content-width: result-row.preferred-width;
+        interactive: true;
+        result-row := HorizontalLayout {
+            padding-left: Theme.px(10px);
+            padding-right: Theme.px(10px);
+            spacing: Theme.px(6px);
+            alignment: start;
+            for label[i] in root.results: Rectangle {
+                y: (parent.height - self.height) / 2;
+                height: Theme.px(22px);
+                width: result-label.preferred-width + Theme.px(20px);
+                border-radius: Theme.radius-sm;
+                border-width: 1px;
+                border-color: i == root.active ? Theme.accent-blue : Theme.border-soft;
+                background: i == root.active ? Theme.bg-selected-soft : (result-area.has-hover ? Theme.bg-hover : transparent);
+                result-area := TouchArea {
+                    mouse-cursor: pointer;
+                    clicked => { root.selected(i); }
+                }
+                result-label := Text {
+                    x: Theme.px(10px);
+                    height: parent.height;
+                    text: label;
+                    color: i == root.active ? Theme.text-primary : Theme.text-secondary;
+                    font-size: Theme.pt(11px);
+                    font-weight: 600;
+                    vertical-alignment: center;
+                }
+            }
+        }
+    }
+}

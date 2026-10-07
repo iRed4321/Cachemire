@@ -1,0 +1,565 @@
+import { Theme } from "theme.slint";
+import { ConnectionStatus } from "types.slint";
+import { IconCloud, IconSpinner, IconChevron, IconMinimize, IconMaximize, IconClose, IconDot, IconCopy, IconSettings } from "icons.slint";
+import { ConnectionState, AwsAccount } from "../globals.slint";
+import { About } from "about.slint";
+
+// The connection's status, at the start of the middle pill: a dot colored
+// by connection health. Clicking it opens the connection picker; hovering
+// drives TitleBar's tooltip. SSH gets its own badge, just to its left (see SshBadge).
+component ConnectionStatusGlyph inherits Rectangle {
+    in property <color> dot-color: Theme.text-tertiary;
+    // a connection attempt is under way: a spinner stands in for the dot
+    in property <bool> connecting: false;
+    out property <bool> hovered: area.has-hover;
+    callback clicked <=> area.clicked;
+
+    // wider than the dot itself, evenly, so there's real breathing room on
+    // both sides of it — before the badge or pill edge on its left, before
+    // the connection name on its right — whether or not the badge is shown
+    width: Theme.px(20px);
+    height: Theme.px(20px);
+
+    area := TouchArea { mouse-cursor: pointer; }
+
+    if !root.connecting: IconDot {
+        x: (parent.width - self.width) / 2;
+        y: (parent.height - self.height) / 2;
+        size: Theme.px(10px);
+        tint: root.dot-color;
+    }
+    if root.connecting: IconSpinner {
+        x: (parent.width - self.width) / 2;
+        y: (parent.height - self.height) / 2;
+        size: Theme.px(14px);
+        tint: Theme.accent-blue;
+    }
+}
+
+// "SSH" pill left of the status dot, shown only for a tunneled connection —
+// colored by the tunnel's own health, not the Redis endpoint's (the dot's
+// job). Self-contained tooltip logic, since it only exists behind an `if`.
+component SshBadge inherits Rectangle {
+    in property <color> tunnel-color: Theme.text-tertiary;
+    in property <string> hint: "";
+    callback clicked <=> area.clicked;
+    callback tooltip-show(text: string, x: length, top: length);
+    callback tooltip-hide();
+
+    height: Theme.px(20px);
+    width: label.preferred-width + Theme.px(16px);
+    border-radius: Theme.radius-sm;
+    background: tunnel-color;
+
+    property <bool> hovered: area.has-hover;
+    property <bool> tooltip-shown: false;
+    function hide-tooltip() {
+        if tooltip-shown {
+            tooltip-shown = false;
+            tooltip-hide();
+        }
+    }
+    changed hovered => { if !hovered { hide-tooltip(); } }
+    changed hint => { hide-tooltip(); }
+    Timer {
+        interval: 500ms;
+        running: root.hovered && root.hint != "" && !root.tooltip-shown;
+        triggered => {
+            root.tooltip-shown = true;
+            root.tooltip-show(root.hint, area.absolute-position.x, area.absolute-position.y + area.height + Theme.px(6px));
+        }
+    }
+
+    area := TouchArea { mouse-cursor: pointer; }
+
+    label := Text {
+        x: (parent.width - self.width) / 2;
+        y: (parent.height - self.height) / 2;
+        text: "SSH";
+        color: white;
+        font-size: Theme.pt(12px);
+        font-weight: 700;
+    }
+}
+
+component WinControlButton inherits Rectangle {
+    in property <bool> danger: false;
+    // exposed so the glyph passed in as a child can react to the hover
+    out property <bool> hovered: area.has-hover;
+    callback clicked <=> area.clicked;
+    width: Theme.px(44px);
+    height: 100%;
+    background: area.has-hover ? (danger ? Theme.accent-red : Theme.bg-hover) : transparent;
+
+    HorizontalLayout {
+        alignment: center;
+        cross-axis-alignment: center;
+        @children
+    }
+
+    area := TouchArea { }
+}
+
+// A press-and-drag handle: `drag-started` fires once the pointer moves a few pixels
+// with the button held, never on a plain click or on the second click of a double
+// click (the OS would take the move request for that double click and run no move).
+component WindowDragArea inherits TouchArea {
+    callback drag-started();
+
+    property <length> press-x;
+    property <length> press-y;
+    property <bool> armed: false;
+    // a click ended less than a double-click time ago, and no drag has run since
+    property <bool> recent-click: false;
+    property <bool> dragged: false;
+
+    Timer {
+        interval: 500ms;
+        running: root.recent-click;
+        triggered => { root.recent-click = false; }
+    }
+
+    pointer-event(event) => {
+        if event.button == PointerEventButton.left && event.kind == PointerEventKind.down {
+            armed = !recent-click;
+            dragged = false;
+            press-x = self.mouse-x;
+            press-y = self.mouse-y;
+        } else if event.kind == PointerEventKind.up || event.kind == PointerEventKind.cancel {
+            armed = false;
+            recent-click = event.kind == PointerEventKind.up && !dragged;
+        }
+    }
+    moved => {
+        if armed && self.pressed
+            && (abs(self.mouse-x - press-x) > Theme.px(4px) || abs(self.mouse-y - press-y) > Theme.px(4px)) {
+            armed = false;
+            dragged = true;
+            drag-started();
+        }
+    }
+}
+
+export component TitleBar inherits Rectangle {
+    in property <bool> is-maximized: false;
+    // both empty until a connection has actually succeeded — no placeholder
+    // data is ever shown in the pill
+    in property <string> connection-name: ConnectionState.view.name;
+    in property <string> connection-address: ConnectionState.view.address;
+    // whether the connection picker dropdown this bar controls is currently
+    // open, purely to flip the chevron — the dropdown itself lives outside
+    // TitleBar (see main.slint) so it can paint above the rest of the app
+    in property <bool> expanded: false;
+    // connection status: the dot at the start of the middle pill (plus an
+    // "SSH" badge left of it, when relevant), color-coded, with the error
+    // reason (or working-tunnel info) as the dot's tooltip
+    in property <bool> connected: ConnectionState.view.connected;
+    // a connection attempt is under way
+    in property <bool> connecting: ConnectionState.view.connecting;
+    in property <ConnectionStatus> status: ConnectionState.view.status;
+    in property <string> status-detail: ConnectionState.view.status-detail;
+    // "user@host" of the SSH server when the connection uses a tunnel —
+    // resolved from the saved connection itself (see main.rs), so it's known
+    // even while erroring, not just once actually connected
+    in property <string> ssh-via: ConnectionState.view.ssh-via;
+    property <bool> has-ssh: root.ssh-via != "";
+    // whether the last failure was the tunnel itself, not the Redis endpoint
+    // past it (see main.rs's ConnectError); meaningless while !has-ssh
+    in property <bool> ssh-failed: ConnectionState.view.ssh-failed;
+    // a touch darker than Theme.accent-green: against the dot's and badge's
+    // small size, the plain accent read as slightly washed out
+    property <color> connected-green: Theme.accent-green.darker(0.15);
+    // the dot: purely the Redis endpoint's own health — green once
+    // connected, red for an error, whatever the tunnel (if any) is doing
+    property <color> dot-color: root.status == ConnectionStatus.connected ? root.connected-green
+        : (root.status == ConnectionStatus.disconnected ? Theme.accent-red : Theme.text-tertiary);
+    // the SSH badge: green once connected, or once disconnected with the
+    // tunnel itself fine (the dot already covers a Redis-side failure); red
+    // while the tunnel is what's actually failing
+    property <color> ssh-color: root.status == ConnectionStatus.disconnected && root.ssh-failed ? Theme.accent-red : root.connected-green;
+    // the cloud account (AWS): shown only when the machine has an .aws folder
+    in property <bool> aws-available: AwsAccount.available;
+    in property <bool> aws-connected: AwsAccount.connected;
+    in property <bool> aws-busy: AwsAccount.busy;
+    in property <string> aws-profile: AwsAccount.profile;
+    // the selected profile's account was reached: its settings can be edited
+    in property <bool> aws-account-known: AwsAccount.account-known;
+    callback aws-settings-clicked();
+    callback aws-clicked();
+    // the profile button; `x` is where its dropdown should start
+    callback aws-profile-clicked(x: length);
+    callback bar-clicked();
+    // the × shown in the pill while a connection is active
+    callback disconnect-requested();
+    disconnect-requested => { ConnectionState.disconnect-requested(); }
+    // the "Settings" button at the left end
+    callback settings-clicked();
+    callback drag-requested();
+    callback maximize-toggle-requested();
+    callback minimize-requested();
+    callback close-requested();
+    // copy pill right of the connection pill
+    callback copy-connection-string();
+    copy-connection-string => { ConnectionState.copy-connection-string(); }
+    // status glyph tooltip, drawn at window level (see main.slint): anchored
+    // by its left edge and its top edge, just below the glyph
+    callback tooltip-show(text: string, x: length, top: length);
+    callback tooltip-hide();
+
+    background: Theme.bg-app;
+    vertical-stretch: 0;
+    // The display's scale (set by Rust). The bordered pills are snapped to whole device
+    // pixels (see `snap`): on a fractional scale their 1px borders would otherwise
+    // straddle two pixel rows and be partly missed by a partial repaint.
+    in property <float> device-scale: 1.0;
+    pure function snap(v: length) -> length {
+        return round(v / 1px * root.device-scale) / root.device-scale * 1px;
+    }
+    property <length> hairline: snap(1px);
+    height: snap(Theme.px(40px));
+
+    // what the status glyph's tooltip says: the failure reason, or, for a
+    // working tunnelled connection, where it goes through
+    property <string> status-hint: root.status-detail != "" ? root.status-detail
+        : (root.connected && root.ssh-via != "" ? @tr("Connected through an SSH tunnel via {}", root.ssh-via) : "");
+    property <bool> status-hovered: status-glyph.hovered;
+    property <bool> status-tooltip-shown: false;
+    function hide-status-tooltip() {
+        if status-tooltip-shown {
+            status-tooltip-shown = false;
+            tooltip-hide();
+        }
+    }
+    changed status-hovered => {
+        if !status-hovered {
+            hide-status-tooltip();
+        }
+    }
+    // the reason changed (e.g. a reconnect succeeded): drop the stale text
+    changed status-hint => { hide-status-tooltip(); }
+    Timer {
+        interval: 500ms;
+        running: root.status-hovered && root.status-hint != "" && !root.status-tooltip-shown;
+        triggered => {
+            root.status-tooltip-shown = true;
+            root.tooltip-show(root.status-hint, status-glyph.absolute-position.x,
+                status-glyph.absolute-position.y + status-glyph.height + Theme.px(6px));
+        }
+    }
+
+    // hover hint on the copy pill; a click means the user knows what it does,
+    // so no hint again until the pointer leaves and comes back
+    property <bool> copy-hovered: copy-area.has-hover;
+    property <bool> copy-pressed: copy-area.pressed;
+    property <bool> copy-tooltip-shown: false;
+    property <bool> copy-tooltip-suppressed: false;
+    function hide-copy-tooltip() {
+        if copy-tooltip-shown {
+            copy-tooltip-shown = false;
+            tooltip-hide();
+        }
+    }
+    changed copy-hovered => {
+        if !copy-hovered {
+            copy-tooltip-suppressed = false;
+            hide-copy-tooltip();
+        }
+    }
+    changed copy-pressed => {
+        if copy-pressed {
+            copy-tooltip-suppressed = true;
+            hide-copy-tooltip();
+        }
+    }
+    Timer {
+        interval: 500ms;
+        running: root.copy-hovered && !root.copy-tooltip-shown && !root.copy-tooltip-suppressed;
+        triggered => {
+            root.copy-tooltip-shown = true;
+            root.tooltip-show(@tr("Copy connection string"), copy-area.absolute-position.x,
+                copy-area.absolute-position.y + copy-area.height + Theme.px(6px));
+        }
+    }
+
+    // hover hint on the settings icon, which has no label; same behavior as the
+    // copy pill's
+    property <bool> settings-hovered: settings-area.has-hover;
+    property <bool> settings-pressed: settings-area.pressed;
+    property <bool> settings-tooltip-shown: false;
+    property <bool> settings-tooltip-suppressed: false;
+    function hide-settings-tooltip() {
+        if settings-tooltip-shown {
+            settings-tooltip-shown = false;
+            tooltip-hide();
+        }
+    }
+    changed settings-hovered => {
+        if !settings-hovered {
+            settings-tooltip-suppressed = false;
+            hide-settings-tooltip();
+        }
+    }
+    changed settings-pressed => {
+        if settings-pressed {
+            settings-tooltip-suppressed = true;
+            hide-settings-tooltip();
+        }
+    }
+    Timer {
+        interval: 500ms;
+        running: root.settings-hovered && !root.settings-tooltip-shown && !root.settings-tooltip-suppressed;
+        triggered => {
+            root.settings-tooltip-shown = true;
+            root.tooltip-show(@tr("Settings"), settings-area.absolute-position.x,
+                settings-area.absolute-position.y + settings-area.height + Theme.px(6px));
+        }
+    }
+
+    // draggable background: sits behind every interactive control below
+    dragArea := WindowDragArea {
+        drag-started => { drag-requested(); }
+        double-clicked => { maximize-toggle-requested(); }
+    }
+
+    // the settings icon, just left of the connection pill, in the same pill shape
+    settings-button := Rectangle {
+        x: snap(pill.x - self.width - Theme.px(6px));
+        y: snap((parent.height - self.height) / 2);
+        width: pill.height;
+        height: pill.height;
+        border-radius: Theme.radius-md;
+        background: settings-area.has-hover ? Theme.bg-hover : Theme.bg-elevated;
+        border-width: hairline;
+        border-color: Theme.chrome-border;
+
+        settings-area := TouchArea {
+            mouse-cursor: pointer;
+            clicked => { root.settings-clicked(); }
+        }
+
+        IconSettings {
+            x: (parent.width - self.width) / 2;
+            y: (parent.height - self.height) / 2;
+            size: Theme.icon-sm;
+            tint: settings-area.has-hover ? Theme.text-primary : Theme.text-secondary;
+        }
+    }
+
+    // the cloud button at the far left: outlined while signed out, an orange
+    // cloud once signed in; then, signed in, the AWS profile button
+    if root.aws-available: HorizontalLayout {
+        x: snap(Theme.px(10px));
+        y: snap((parent.height - Theme.px(30px)) / 2);
+        height: snap(Theme.px(30px));
+        spacing: Theme.px(6px);
+        alignment: start;
+
+        Rectangle {
+            width: snap(cloud-row.preferred-width + Theme.px(20px));
+            border-radius: Theme.radius-md;
+            background: cloud-area.has-hover ? Theme.bg-hover : transparent;
+            cloud-area := TouchArea {
+                mouse-cursor: pointer;
+                clicked => { root.aws-clicked(); }
+            }
+            cloud-row := HorizontalLayout {
+                x: Theme.px(10px);
+                width: parent.width - Theme.px(20px);
+                spacing: Theme.px(6px);
+                cross-axis-alignment: center;
+                if root.aws-busy: IconSpinner { size: Theme.icon-sm; tint: Theme.accent-orange; }
+                if !root.aws-busy: IconCloud {
+                    size: Theme.icon-sm;
+                    filled: root.aws-connected;
+                    tint: root.aws-connected ? Theme.accent-orange : Theme.text-secondary;
+                }
+                Text {
+                    text: @tr("Cloud");
+                    color: Theme.text-primary;
+                    font-size: Theme.pt(12.5px);
+                    font-weight: 600;
+                    vertical-alignment: center;
+                }
+            }
+        }
+
+        if root.aws-connected: profile-pill := Rectangle {
+            width: snap(min(Theme.px(220px), profile-row.preferred-width + Theme.px(20px)));
+            border-radius: Theme.radius-md;
+            background: profile-area.has-hover || gear-area.has-hover ? Theme.bg-hover : transparent;
+            // the gear (account settings) shows while the pill is hovered, once the account is known
+            property <bool> gear-shown: root.aws-profile != "" && root.aws-account-known;
+            profile-area := TouchArea {
+                mouse-cursor: pointer;
+                clicked => { root.aws-profile-clicked(self.absolute-position.x); }
+            }
+            profile-row := HorizontalLayout {
+                x: Theme.px(10px);
+                width: parent.width - Theme.px(20px);
+                spacing: Theme.px(6px);
+                cross-axis-alignment: center;
+                Rectangle {
+                    width: profile-pill.gear-shown ? Theme.icon-sm + Theme.px(4px) : 0px;
+                    height: parent.height;
+                    gear-area := TouchArea {
+                        enabled: profile-pill.gear-shown;
+                        mouse-cursor: pointer;
+                        clicked => { root.aws-settings-clicked(); }
+                    }
+                    IconSettings {
+                        size: Theme.icon-sm;
+                        x: (parent.width - self.width) / 2;
+                        y: (parent.height - self.height) / 2;
+                        visible: profile-pill.gear-shown && (profile-area.has-hover || gear-area.has-hover);
+                        tint: gear-area.has-hover ? Theme.text-primary : Theme.text-secondary;
+                    }
+                }
+                Text {
+                    text: root.aws-profile == "" ? @tr("Select Profile") : root.aws-profile;
+                    color: root.aws-profile == "" ? Theme.text-secondary : Theme.text-primary;
+                    font-size: Theme.pt(12.5px);
+                    font-weight: 600;
+                    vertical-alignment: center;
+                    overflow: elide;
+                    horizontal-stretch: 1;
+                    min-width: 0px;
+                }
+                IconChevron { size: Theme.icon-xs; down: true; tint: Theme.text-tertiary; }
+            }
+        }
+    }
+
+    // connection pill, centered — click opens the connection picker
+    pill := Rectangle {
+        x: snap((parent.width - self.width) / 2);
+        y: snap((parent.height - self.height) / 2);
+        width: snap(Theme.px(420px));
+        height: snap(Theme.px(30px));
+        background: pill-area.has-hover ? Theme.bg-hover : Theme.bg-elevated;
+        border-radius: Theme.radius-md;
+        border-width: hairline;
+        border-color: Theme.chrome-border;
+
+        pill-area := TouchArea {
+            mouse-cursor: pointer;
+            clicked => { root.bar-clicked(); }
+        }
+
+        HorizontalLayout {
+            x: Theme.px(6px);
+            y: 0;
+            width: parent.width - Theme.px(14px);
+            height: parent.height;
+            spacing: Theme.px(4px);
+            cross-axis-alignment: center;
+            if root.has-ssh: SshBadge {
+                tunnel-color: root.ssh-color;
+                hint: root.status-hint;
+                tooltip-show(text, x, top) => { root.tooltip-show(text, x, top); }
+                tooltip-hide => { root.tooltip-hide(); }
+                clicked => { root.bar-clicked(); }
+            }
+            status-glyph := ConnectionStatusGlyph {
+                dot-color: root.dot-color;
+                connecting: root.connecting;
+                clicked => { root.bar-clicked(); }
+            }
+            if connection-name != "": Text {
+                text: connection-name;
+                color: Theme.text-primary;
+                font-size: Theme.pt(12.5px);
+                font-weight: 600;
+                vertical-alignment: center;
+            }
+            // drawn separator rather than a "·" glyph: that codepoint isn't
+            // guaranteed to exist in whichever UI font gets picked
+            if connection-name != "": IconDot { size: Theme.px(3px); tint: Theme.text-tertiary; }
+            Text {
+                text: connection-name == "" ? (root.connecting ? @tr("Connecting...") : @tr("No connection")) : connection-address;
+                color: Theme.text-secondary;
+                font-size: Theme.pt(12.5px);
+                vertical-alignment: center;
+                horizontal-stretch: 1;
+                overflow: elide;
+            }
+            if connection-name == "": IconChevron { size: Theme.icon-xs; down: expanded; tint: Theme.text-tertiary; }
+            if connection-name != "": Rectangle {
+                width: Theme.px(20px);
+                height: Theme.px(20px);
+                border-radius: Theme.radius-sm;
+                background: disconnect-area.has-hover ? Theme.bg-hover : transparent;
+                disconnect-area := TouchArea {
+                    mouse-cursor: pointer;
+                    clicked => { root.disconnect-requested(); }
+                }
+                IconClose {
+                    size: Theme.icon-xs;
+                    tint: disconnect-area.has-hover ? Theme.text-primary : Theme.text-tertiary;
+                    x: (parent.width - self.width) / 2;
+                    y: (parent.height - self.height) / 2;
+                }
+            }
+        }
+    }
+
+    // copy pill, just right of the connection pill with the same shape:
+    // copies the connected instance's connection string; only once connected
+    copy-pill := Rectangle {
+        // `visible` rather than `if`: the hover timer above refers to
+        // `copy-area`, which can't be referenced inside a conditional
+        visible: root.connection-name != "";
+        x: snap(pill.x + pill.width + Theme.px(6px));
+        y: snap((parent.height - self.height) / 2);
+        width: pill.height;
+        height: pill.height;
+        border-radius: pill.border-radius;
+        background: copy-area.has-hover ? Theme.bg-hover : Theme.bg-elevated;
+        border-width: hairline;
+        border-color: Theme.chrome-border;
+
+        copy-area := TouchArea {
+            mouse-cursor: pointer;
+            clicked => { root.copy-connection-string(); }
+        }
+
+        HorizontalLayout {
+            alignment: center;
+            cross-axis-alignment: center;
+            IconCopy { size: Theme.icon-sm; tint: copy-area.has-hover ? Theme.text-secondary : Theme.text-tertiary; }
+        }
+    }
+
+    // window controls, pinned far right
+    Rectangle {
+        x: parent.width - self.width;
+        width: 4 * Theme.px(44px);
+        height: parent.height;
+
+        HorizontalLayout {
+            info-btn := WinControlButton {
+                clicked => { About.open = true; }
+                Text {
+                    text: "i";
+                    font-size: Theme.pt(15px);
+                    font-weight: 600;
+                    color: info-btn.hovered ? Theme.text-primary : Theme.text-secondary;
+                    vertical-alignment: center;
+                }
+            }
+            WinControlButton {
+                clicked => { minimize-requested(); }
+                IconMinimize { size: Theme.icon-sm; }
+            }
+            WinControlButton {
+                clicked => { maximize-toggle-requested(); }
+                IconMaximize { restore: is-maximized; size: Theme.icon-sm; }
+            }
+            close-btn := WinControlButton {
+                danger: true;
+                clicked => { close-requested(); }
+                // white on the red hover background, like the native caption button
+                IconClose { size: Theme.icon-lg; tint: close-btn.hovered ? white : Theme.text-secondary; }
+            }
+        }
+    }
+}

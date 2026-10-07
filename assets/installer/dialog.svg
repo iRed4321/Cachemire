@@ -1,0 +1,33 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="493" height="312" viewBox="0 0 493 312">
+  <title>Cachemire installer side image</title>
+  <defs>
+    <clipPath id="panel"><rect width="164" height="312"/></clipPath>
+    <clipPath id="ball-clip"><circle r="80"/></clipPath>
+  </defs>
+  <rect width="493" height="312" fill="#FFFFFF"/>
+  <g clip-path="url(#panel)">
+    <rect width="164" height="312" fill="#F6EEE1"/>
+    <g transform="translate(82,118) scale(0.85)">
+      <circle r="80" fill="#C2562F"/>
+      <g clip-path="url(#ball-clip)" fill="none" stroke-width="3" stroke-linecap="round">
+        <g transform="rotate(-30)" stroke="#E58B66">
+          <path d="M-100 -45 C-45 -75 45 -75 100 -45"/>
+          <path d="M-100 -10 C-45 -40 45 -40 100 -10"/>
+          <path d="M-100 25 C-45 -5 45 -5 100 25"/>
+          <path d="M-100 60 C-45 30 45 30 100 60"/>
+        </g>
+        <g transform="rotate(50)" stroke="#9E3B1B">
+          <path d="M-100 -10 C-45 -40 45 -40 100 -10"/>
+          <path d="M-100 25 C-45 -5 45 -5 100 25"/>
+          <path d="M-100 60 C-45 30 45 30 100 60"/>
+        </g>
+      </g>
+    </g>
+    <g transform="translate(0,148) scale(0.41)">
+      <path d="M0 255 C80 210 160 300 240 255 S360 220 400 245 L400 400 L0 400 Z" fill="#EBDABF"/>
+      <path d="M0 297 C80 252 160 342 240 297 S360 262 400 287 L400 400 L0 400 Z" fill="#DDC095"/>
+      <path d="M0 339 C80 294 160 384 240 339 S360 304 400 329 L400 400 L0 400 Z" fill="#C49A62"/>
+      <path d="M0 381 C80 336 160 426 240 381 S360 346 400 371 L400 400 L0 400 Z" fill="#8F6440"/>
+    </g>
+  </g>
+</svg>

@@ -1,0 +1,331 @@
+import { Theme } from "theme.slint";
+import { IconButton, VScrollBar, WheelScroller, HResizeHandle } from "widgets.slint";
+import { SearchField } from "key-detail-widgets.slint";
+import { IconPause, IconPlay } from "icons.slint";
+import { SearchRowData } from "types.slint";
+import { SearchTab } from "../globals.slint";
+export { SearchRowData }
+
+// one column of a hit: a single line at its natural width, in a box clipped at the
+// column's edge (with room on both sides), so it never wraps and every row is the
+// same height
+component HitCell inherits Rectangle {
+    callback clicked();
+    in property <styled-text> text;
+    in property <color> tint: Theme.text-primary;
+    clip: true;
+    min-width: 0px;
+    StyledText {
+        x: Theme.px(8px);
+        y: 0;
+        width: max(parent.width - Theme.px(16px), self.preferred-width);
+        height: parent.height;
+        vertical-alignment: center;
+        text: root.text;
+        default-color: root.tint;
+        default-font-family: Theme.font-mono;
+        default-font-size: Theme.pt(12px);
+        // the text takes the presses itself: a click on it doesn't reach the row's area
+        clicked => { root.clicked(); }
+    }
+}
+
+component SearchRow inherits Rectangle {
+    in property <SearchRowData> data;
+    in property <int> index;
+    in property <length> key-w;
+    in property <length> field-w;
+    // a click anywhere on the row
+    callback opened();
+
+    height: Theme.px(28px);
+    background: area.has-hover ? Theme.bg-selected-soft : (mod(index, 2) == 1 ? Theme.bg-hover : transparent);
+
+    // wraps the cells instead of sitting behind them: their StyledText accepts mouse
+    // moves itself, which would leave a TouchArea behind it hovered only where the
+    // text isn't (the gaps between columns)
+    area := TouchArea {
+        mouse-cursor: MouseCursor.pointer;
+        clicked => { root.opened(); }
+        HorizontalLayout {
+            HitCell { width: root.key-w; text: root.data.key; clicked => { root.opened(); } }
+            HitCell { width: root.field-w; text: root.data.field; tint: Theme.text-secondary; clicked => { root.opened(); } }
+            HitCell { horizontal-stretch: 1; text: root.data.value; clicked => { root.opened(); } }
+        }
+    }
+}
+
+// The search tab's content: a header like a key's, with the search box and a progress
+// bar along its bottom while a search runs; then the hits as a table.
+export component SearchPanel inherits Rectangle {
+    background: transparent;
+    in-out property <string> query <=> SearchTab.query;
+    // a search is running
+    in property <bool> loading: SearchTab.loading;
+    // what the search says of itself: how far it is, how many hits
+    in property <string> status: SearchTab.status;
+    // how far the search is, 0 to 1 (it only grows); negative when the number of
+    // keys to go through isn't known, and the bar just shows that it is working
+    in property <float> progress: SearchTab.progress;
+    // the running search is paused (by the button, or because the tab was left): it
+    // asks Redis for nothing until it is resumed
+    in property <bool> paused: SearchTab.paused;
+    // the pause/resume button
+    callback pause-toggled();
+    pause-toggled => { SearchTab.pause-toggled(); }
+    // set once a search was started in this tab (before that, a hint is shown)
+    in property <bool> searched: SearchTab.searched;
+    in property <[SearchRowData]> rows: SearchTab.rows;
+    callback submitted(query: string);
+    submitted(query) => { SearchTab.submitted(query); }
+    // a click on a hit: the key, and the row of its panel that shows the hit
+    callback hit-opened(key: string, field: string);
+    hit-opened(key, field) => { SearchTab.hit-opened(key, field); }
+    // whether the clipboard holds text, for the search box's right-click "Paste"
+    callback clipboard-has-text() -> bool;
+
+    property <length> row-stride: Theme.px(28px);
+    property <length> header-h: Theme.px(30px);
+    // The key and field columns are as wide as their content (`*-auto-w`, from Rust, in
+    // zoom-independent px) unless dragged to another width (`*-override`, 0 = not), and
+    // the value takes the rest.
+    in property <length> key-auto-w: SearchTab.key-auto-w;
+    in property <length> field-auto-w: SearchTab.field-auto-w;
+    in-out property <length> key-override <=> SearchTab.key-override;
+    in-out property <length> field-override <=> SearchTab.field-override;
+    // the panel's width, taken imperatively: read live, the columns' fixed widths would
+    // loop back into the panel's own width
+    property <length> width-snapshot: 0px;
+    init => { width-snapshot = self.width; }
+    changed width => { width-snapshot = self.width; }
+    property <length> content-w: max(0px, root.width-snapshot - Theme.px(10px) * 2);
+    property <length> min-col-w: 40px;
+    property <length> key-w: min(Theme.px(key-override > 0px ? key-override : key-auto-w), content-w * 0.6);
+    property <length> field-w: min(Theme.px(field-override > 0px ? field-override : field-auto-w), content-w * 0.4);
+
+    // windowed like the keyspace tree: only the rows near the view exist
+    property <length> flick-height-snapshot: 0px;
+    property <length> content-y-snapshot: 0px;
+    property <int> paint-buffer: 6;
+    property <int> first-index: max(0, floor(-content-y-snapshot / row-stride) - paint-buffer);
+    property <int> last-index: min(rows.length - 1, ceil((-content-y-snapshot + flick-height-snapshot) / row-stride) + paint-buffer);
+
+    // bumped by Rust when a new search replaces the hits: back to the top
+    in property <int> run: SearchTab.run;
+    property <length> scroll-y: 0px;
+    changed run => { scroll-y = 0px; }
+
+    VerticalLayout {
+        // the header, like a key tab's: a search box across it, a line under it
+        Rectangle {
+            height: Theme.px(45px);
+
+            // the same 6.5px round the 32px box as in a key tab's filter bar
+            HorizontalLayout {
+                padding-left: Theme.px(6.5px);
+                padding-right: Theme.px(6.5px);
+                cross-axis-alignment: center;
+                SearchField {
+                    horizontal-stretch: 1;
+                    height: Theme.px(32px);
+                    font-size: Theme.pt(13px);
+                    icon-size: Theme.icon-md;
+                    auto-focus: true;
+                    clipboard-has-text() => { return root.clipboard-has-text(); }
+                    placeholder: @tr("Search the whole instance: keys, fields and values");
+                    text <=> root.query;
+                    accepted => { root.submitted(root.query); }
+                }
+            }
+
+            Rectangle { y: parent.height - 1px; height: 1px; width: parent.width; background: Theme.border; }
+
+            // progress bar along the bottom of the header: it fills as the keys are gone through
+            if root.loading && root.progress >= 0: Rectangle {
+                y: parent.height - self.height;
+                height: Theme.px(2px);
+                Rectangle {
+                    width: parent.width * min(1, root.progress);
+                    height: 100%;
+                    background: root.paused ? Theme.text-tertiary : Theme.accent-blue;
+                    animate width { duration: 200ms; easing: ease-out; }
+                }
+            }
+            // without a size to measure against: a segment sweeping to and fro
+            if root.loading && !root.paused && root.progress < 0: Rectangle {
+                y: parent.height - self.height;
+                height: Theme.px(2px);
+                clip: true;
+                property <bool> flip: false;
+                Timer {
+                    interval: 900ms;
+                    triggered => { parent.flip = !parent.flip; }
+                }
+                Rectangle {
+                    width: parent.width * 0.3;
+                    x: parent.flip ? parent.width * 0.7 : 0px;
+                    height: 100%;
+                    background: Theme.accent-blue;
+                    animate x { duration: 900ms; easing: ease-in-out; }
+                }
+            }
+        }
+
+        if !root.searched: Rectangle {
+            vertical-stretch: 1;
+            Text {
+                text: @tr("Type a word and press Enter to search every key of the instance.");
+                font-size: Theme.pt(12px);
+                color: Theme.text-tertiary;
+                horizontal-alignment: center;
+                vertical-alignment: center;
+            }
+        }
+
+        if root.searched: VerticalLayout {
+            vertical-stretch: 1;
+            padding: Theme.px(10px);
+            padding-top: Theme.px(8px);
+            spacing: Theme.px(8px);
+
+            // what the search says of itself, and the button that pauses it (or resumes it)
+            HorizontalLayout {
+                spacing: Theme.px(8px);
+                Text {
+                    text: root.paused ? @tr("Paused: {}", root.status) : root.status;
+                    font-size: Theme.pt(11px);
+                    color: root.paused ? Theme.accent-yellow : Theme.text-tertiary;
+                    vertical-alignment: center;
+                    overflow: elide;
+                    horizontal-stretch: 1;
+                    min-width: 0px;
+                }
+                if root.loading: Rectangle {
+                    width: pause-row.preferred-width + Theme.px(20px);
+                    height: Theme.px(22px);
+                    border-radius: Theme.radius-sm;
+                    border-width: 1px;
+                    border-color: Theme.border-soft;
+                    background: pause-area.has-hover ? Theme.bg-hover : transparent;
+                    pause-area := TouchArea {
+                        mouse-cursor: pointer;
+                        clicked => { root.pause-toggled(); }
+                    }
+                    pause-row := HorizontalLayout {
+                        x: Theme.px(10px);
+                        width: parent.width - Theme.px(20px);
+                        spacing: Theme.px(6px);
+                        cross-axis-alignment: center;
+                        if !root.paused: IconPause { size: Theme.px(11px); tint: Theme.text-secondary; }
+                        if root.paused: IconPlay { size: Theme.px(11px); tint: Theme.accent-blue; }
+                        Text {
+                            text: root.paused ? @tr("Resume") : @tr("Pause");
+                            font-size: Theme.pt(11px);
+                            font-weight: 600;
+                            color: root.paused ? Theme.accent-blue : Theme.text-secondary;
+                            vertical-alignment: center;
+                        }
+                    }
+                }
+            }
+
+            // column titles: the key's and the field's right edges drag to resize them
+            Rectangle {
+                height: root.header-h;
+                background: Theme.bg-elevated;
+                border-radius: Theme.radius-sm;
+                HorizontalLayout {
+                    for title[c] in [@tr("Key"), @tr("Field")]: Rectangle {
+                        width: c == 0 ? root.key-w : root.field-w;
+                        Text {
+                            x: Theme.px(8px);
+                            width: parent.width - Theme.px(16px);
+                            height: parent.height;
+                            text: title;
+                            font-size: Theme.pt(10.5px);
+                            font-weight: 700;
+                            color: Theme.text-secondary;
+                            vertical-alignment: center;
+                            overflow: elide;
+                        }
+                        HResizeHandle {
+                            x: parent.width - self.width;
+                            width: Theme.px(8px);
+                            height: parent.height;
+                            dragged(delta) => {
+                                if c == 0 {
+                                    root.key-override = max(root.min-col-w, (root.key-w + delta) / Theme.zoom);
+                                } else {
+                                    root.field-override = max(root.min-col-w, (root.field-w + delta) / Theme.zoom);
+                                }
+                            }
+                        }
+                        Rectangle { x: parent.width - 1px; width: 1px; height: parent.height; background: Theme.border; }
+                    }
+                    Rectangle {
+                        horizontal-stretch: 1;
+                        Text {
+                            x: Theme.px(8px);
+                            height: parent.height;
+                            text: @tr("Value");
+                            font-size: Theme.pt(10.5px);
+                            font-weight: 700;
+                            color: Theme.text-secondary;
+                            vertical-alignment: center;
+                        }
+                    }
+                }
+            }
+
+            HorizontalLayout {
+                vertical-stretch: 1;
+                results-flick := Flickable {
+                    horizontal-stretch: 1;
+                    content-y <=> root.scroll-y;
+                    content-height: root.rows.length * root.row-stride;
+                    init => {
+                        root.flick-height-snapshot = self.height;
+                        root.content-y-snapshot = self.content-y;
+                    }
+                    changed height => { root.flick-height-snapshot = self.height; }
+                    changed content-y => { root.content-y-snapshot = self.content-y; }
+
+                    WheelScroller {
+                        x: 0;
+                        y: -root.content-y-snapshot;
+                        width: root.content-w;
+                        height: root.flick-height-snapshot;
+                        scroll-by(delta) => {
+                            let scroll-range = max(0px, results-flick.content-height - results-flick.height);
+                            results-flick.content-y = max(-scroll-range, min(0px, results-flick.content-y + delta));
+                        }
+                    }
+
+                    Rectangle {
+                        x: 0;
+                        y: 0;
+                        width: root.content-w;
+                        height: root.rows.length * root.row-stride;
+                        for row[i] in root.rows: Rectangle {
+                            y: i * root.row-stride;
+                            width: parent.width;
+                            height: root.row-stride;
+                            if i >= root.first-index && i <= root.last-index: SearchRow {
+                                width: parent.width;
+                                data: row;
+                                index: i;
+                                key-w: root.key-w;
+                                field-w: root.field-w;
+                                opened => { root.hit-opened(row.key-name, row.target-field); }
+                            }
+                        }
+                    }
+                }
+                VScrollBar {
+                    content-height: results-flick.content-height;
+                    content-y <=> results-flick.content-y;
+                }
+            }
+        }
+    }
+}

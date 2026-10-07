@@ -1,0 +1,429 @@
+import { Theme } from "theme.slint";
+import { HDivider, HResizeHandle, VScrollBar, WheelScroller } from "widgets.slint";
+import { KeyScroll, AllValuesRowData } from "key-detail-types.slint";
+import { AllValuesRow, RowHeader } from "key-detail-row.slint";
+import { IconSortTriangle } from "icons.slint";
+import { ScrollTopButton } from "key-detail-widgets.slint";
+
+export component AllValuesTable inherits Rectangle {
+    in property <int> field-chars: 8;
+    in property <[AllValuesRowData]> rows: [];
+    // bumped on Esc: folds the open row under the pointer
+    in property <int> collapse-tick: 0;
+    // the field order can be flipped: the Field header then shows its direction
+    in property <bool> sortable: false;
+    in property <bool> descending: false;
+    callback sort-toggled();
+    callback context-requested(x: length, y: length, selected: string);
+    // a row opened or folded — see AllValuesRow.expanded-changed
+    callback field-expanded-changed(field: string, expanded: bool);
+    // scrolled within `near-end-margin` rows of the end of what's loaded (not
+    // necessarily of the whole key — Rust decides whether there's more to
+    // fetch); harmless to fire again while already there, or with nothing left
+    callback near-end();
+    property <int> near-end-margin: 50;
+    // scrolled (or tried to scroll) within `near-end-margin` rows of the first row;
+    // Rust decides whether anything earlier can be fetched
+    callback near-start();
+    function check-near-start() {
+        let above = floor(-content-y-snapshot / collapsed-row-stride);
+        if above < near-end-margin && !KeyScroll.reveal-pending && !KeyScroll.restore-all-pending {
+            root.near-start();
+        }
+    }
+    function check-near-end() {
+        let remaining = rows.length - floor((-content-y-snapshot + flick-height-snapshot) / collapsed-row-stride);
+        if remaining < near-end-margin {
+            root.near-end();
+        }
+    }
+
+    vertical-stretch: 1;
+    horizontal-stretch: 1;
+    max-width: 100000px;
+
+    // field column: derived from the longest field name unless the user has
+    // dragged the header's resize handle, which then sticks
+    property <length> field-col-override: 0px;
+    // auto width = longest field name + 30px of slack, so the name pill, the
+    // header's magnifier and the text never sit hard against the value column
+    property <length> field-col-width: field-col-override > 0px ? field-col-override : Theme.pt(12px) * 0.62 * field-chars + Theme.px(30px);
+    property <length> resize-handle-w: Theme.px(10px);
+
+    // row a drag-selection last started in — see AllValuesRow.selection-owner
+    property <string> selection-owner: "";
+
+    // edge-of-view auto-scroll while drag-selecting; -1/0/1 = top/none/bottom
+    property <length> selection-edge-threshold: Theme.px(28px);
+    property <length> selection-scroll-step: Theme.px(14px);
+    property <int> selection-scroll-dir: 0;
+    property <bool> selection-dragging: false;
+
+    // Slint has no list virtualization, and instantiating every row at once
+    // lags with hundreds of fields, so rows reveal in batches as the user
+    // scrolls near the edge; a spacer stands in for the rest.
+
+    // one text line + the row's top/bottom padding
+    property <length> collapsed-row-stride: Theme.pt(12px) * 1.4 + Theme.px(10px);
+    property <int> batch-size: 50;
+    property <int> rendered-count: min(rows.length, batch-size);
+
+    // Snapshots of the Flickable's height/content-y, taken imperatively
+    // instead of read live: a binding that affects its own content loops —
+    // `.height` at compile time, `.content-y` panics "Recursion detected".
+    property <length> flick-height-snapshot: 0px;
+    property <length> content-y-snapshot: 0px;
+
+    // Which rows get painted is decided per row against this window (see
+    // AllValuesRow.in-paint-window), so expanded rows of any height stay
+    // right without height bookkeeping here (`visible: false` keeps layout space).
+    property <int> paint-buffer: 10;
+    property <length> view-top: -content-y-snapshot;
+
+    // The header of the open row scrolled under the top of the view is drawn here,
+    // outside the scrolling area, so it never moves with the scroll. That row
+    // (`stuck-index`) says what it shows and gets back its find text and `command`s.
+    property <int> stuck-index: -1;
+    property <string> stuck-field: "";
+    property <string> stuck-find-query: "";
+    property <bool> stuck-escaped: false;
+    property <string> stuck-find-label: "";
+    property <int> stuck-find-count: 0;
+    property <length> stuck-limit: 0px;
+    property <int> command-kind: 0;
+    property <int> command-tick: 0;
+    property <int> overlay-focus-tick: 0;
+    property <bool> overlay-focused: false;
+    function command(kind: int) {
+        command-kind = kind;
+        command-tick += 1;
+    }
+    property <length> view-height: flick-height-snapshot;
+    property <length> paint-buffer-px: paint-buffer * collapsed-row-stride;
+
+    // how many rows must exist for the view, scrolled to `y` (0 or negative), to
+    // be fully populated
+    function rows-needed(y: length) -> int {
+        let scrolled-rows = floor(-y / collapsed-row-stride);
+        let visible-rows = ceil(flick-height-snapshot / collapsed-row-stride);
+        return min(rows.length, scrolled-rows + visible-rows + batch-size);
+    }
+
+    function grow-to(y: length) {
+        let needed = rows-needed(y);
+        if needed > rendered-count {
+            // round up to a whole batch so growth happens in chunks, not
+            // one row at a time as the user scrolls
+            rendered-count = min(rows.length, ceil(needed / batch-size) * batch-size);
+        }
+    }
+
+    // rows up to the one a search hit asked for, so it exists to be scrolled to
+    function grow-for-reveal() {
+        if KeyScroll.reveal-pending && KeyScroll.reveal-index >= 0 {
+            rendered-count = min(rows.length, max(rendered-count, ceil((KeyScroll.reveal-index + 1) / batch-size) * batch-size));
+        }
+    }
+
+    function grow-if-needed() {
+        grow-to(content-y-snapshot);
+    }
+
+    // scrolls, only if needed, so a window-absolute y lands in view — used to
+    // bring a find match's line on screen
+    function reveal(abs-y: length) {
+        let local = abs-y - all-values-flick.absolute-position.y;
+        let margin = Theme.px(40px);
+        if local < margin || local > all-values-flick.height - margin {
+            let scroll-range = max(0px, all-values-flick.content-height - all-values-flick.height);
+            all-values-flick.content-y = max(-scroll-range, min(0px,
+                all-values-flick.content-y - (local - all-values-flick.height / 3)));
+        }
+    }
+
+    // jumps to the scroll position Rust armed (see KeyScroll) once content
+    // is tall enough to reach it. Waits for rows around the target to exist
+    // first — growing after the jump would momentarily shrink the content.
+    function apply-restore() {
+        if KeyScroll.restore-all-pending {
+            if rows-needed(KeyScroll.restore-all-y) > rendered-count {
+                grow-to(KeyScroll.restore-all-y);
+            } else if -KeyScroll.restore-all-y <= max(0px, all-values-flick.content-height - all-values-flick.height) {
+                KeyScroll.restore-all-pending = false;
+                all-values-flick.content-y = KeyScroll.restore-all-y;
+            }
+        }
+    }
+    // a row asked for that never came (it was filtered out, say): forget the request
+    Timer {
+        interval: 5s;
+        running: KeyScroll.reveal-pending;
+        triggered => { KeyScroll.reveal-pending = false; }
+    }
+    // the content never got tall enough: go as far as it allows
+    Timer {
+        interval: 300ms;
+        running: KeyScroll.restore-all-pending;
+        triggered => {
+            KeyScroll.restore-all-pending = false;
+            let range = max(0px, all-values-flick.content-height - all-values-flick.height);
+            all-values-flick.content-y = max(-range, KeyScroll.restore-all-y);
+        }
+    }
+
+    changed rows => {
+        // a new key was loaded into this same component instance: start over
+        // from the first batch
+        stuck-index = -1;
+        rendered-count = min(rows.length, batch-size);
+        if KeyScroll.prepended > 0 {
+            KeyScroll.restore-all-y = content-y-snapshot - KeyScroll.prepended * collapsed-row-stride;
+            KeyScroll.restore-all-pending = true;
+            KeyScroll.prepended = 0;
+        }
+        grow-for-reveal();
+        grow-if-needed();
+        apply-restore();
+        check-near-end();
+    }
+    // rows added to the same model (a hash's next page): the view fills up to them,
+    // and asks for more if it still reaches the end
+    property <int> row-count: rows.length;
+    changed row-count => {
+        grow-for-reveal();
+        grow-if-needed();
+        check-near-end();
+    }
+
+    HorizontalLayout {
+        Rectangle {
+            horizontal-stretch: 1;
+            // the fixed header riding up with the end of its row is cut at the top of the
+            // view, not drawn over the filter bar above
+            clip: true;
+
+            all-values-flick := Flickable {
+                width: 100%;
+                height: 100%;
+                // rows hold selectable StyledText, so drag always selects, never
+                // pans; wheel scroll still works regardless of `interactive`
+                interactive: false;
+                // never wider than the view: long values wrap instead of scrolling sideways
+                content-width: self.width;
+                init => {
+                    root.flick-height-snapshot = self.height;
+                    root.content-y-snapshot = self.content-y;
+                    KeyScroll.all-y = self.content-y;
+                    root.apply-restore();
+                    root.grow-if-needed();
+                    root.grow-for-reveal();
+                    root.check-near-end();
+                }
+                changed height => {
+                    root.flick-height-snapshot = self.height;
+                    root.grow-if-needed();
+                    root.check-near-end();
+                }
+                changed content-y => {
+                    root.content-y-snapshot = self.content-y;
+                    KeyScroll.all-y = self.content-y;
+                    root.grow-if-needed();
+                    root.check-near-end();
+                    root.check-near-start();
+                }
+                changed content-height => { root.apply-restore(); }
+                // inertial wheel scrolling, behind the rows (see WheelScroller).
+                // Kept under the visible frame via the snapshots — a "100%"
+                // child would only cover the frame's top, once scrolled.
+                WheelScroller {
+                    x: 0;
+                    y: -root.content-y-snapshot;
+                    width: 100%;
+                    height: root.flick-height-snapshot;
+                    scroll-by(delta) => {
+                        if delta > 0px {
+                            root.check-near-start();
+                        }
+                        let scroll-range = max(0px, all-values-flick.content-height - all-values-flick.height);
+                        all-values-flick.content-y = max(-scroll-range, min(0px, all-values-flick.content-y + delta));
+                    }
+                }
+                VerticalLayout {
+                    // the view's width, not the widest unwrapped line's: the text wraps
+                    width: parent.width;
+                    alignment: start;
+                    padding: Theme.px(10px);
+                    // rows are flush (see AllValuesRow's padding); the header
+                    // keeps its breathing room via its own padding
+                    spacing: 0px;
+
+                    Rectangle {
+                        background: Theme.bg-elevated;
+                        border-radius: Theme.radius-sm;
+                        // column titles (the search bar above the filter bar does the
+                        // filtering now — see KeyDetail.filter-badges)
+                        HorizontalLayout {
+                            padding-top: Theme.px(4px);
+                            padding-bottom: Theme.px(4px);
+                            padding-left: Theme.px(4px);
+                            padding-right: Theme.px(4px);
+                            spacing: 0px;
+                            Rectangle {
+                                width: field-col-width;
+                                HorizontalLayout {
+                                    alignment: start;
+                                    spacing: Theme.px(2px);
+                                    Text {
+                                        text: @tr("Field");
+                                        font-size: Theme.pt(10.5px);
+                                        font-weight: 700;
+                                        color: Theme.text-secondary;
+                                        vertical-alignment: center;
+                                        overflow: elide;
+                                    }
+                                    if root.sortable: Rectangle {
+                                        width: Theme.px(20px);
+                                        IconSortTriangle {
+                                            x: (parent.width - self.width) / 2;
+                                            y: (parent.height - self.height) / 2;
+                                            size: Theme.icon-xs;
+                                            up: !root.descending;
+                                            tint: sort-area.has-hover ? Theme.text-primary : Theme.text-tertiary;
+                                        }
+                                        sort-area := TouchArea {
+                                            mouse-cursor: pointer;
+                                            clicked => { root.sort-toggled(); }
+                                        }
+                                    }
+                                }
+                            }
+                            HResizeHandle {
+                                width: resize-handle-w;
+                                dragged(delta) => {
+                                    field-col-override = max(Theme.px(40px), min(root.width - Theme.px(160px), field-col-width + delta));
+                                }
+                            }
+                            Text {
+                                text: @tr("Value");
+                                horizontal-stretch: 1;
+                                font-size: Theme.pt(10.5px);
+                                font-weight: 700;
+                                color: Theme.text-secondary;
+                                vertical-alignment: center;
+                                overflow: elide;
+                            }
+                        }
+                    }
+                    HDivider { }
+                    // a VerticalLayout wrapper because a Rectangle wouldn't
+                    // auto-size to a conditional child
+                    for row[i] in rows: VerticalLayout {
+                        if i < rendered-count: AllValuesRow {
+                            index: i;
+                            field: row.field;
+                            value-compact: row.value-compact;
+                            value-compact-escaped: row.value-compact-escaped;
+                            initial-expanded: row.initial-expanded;
+                            field-col-width: root.field-col-width;
+                            row-y: parent.y;
+                            row-height: parent.height;
+                            // paint only rows near the viewport (see AllValuesRow.in-paint-window)
+                            visible: self.in-paint-window;
+                            view-top: root.view-top;
+                            stuck-find-query: root.stuck-find-query;
+                            stuck-escaped: root.stuck-escaped;
+                            command-index: root.stuck-index;
+                            command-kind: root.command-kind;
+                            command-tick: root.command-tick;
+                            overlay-focused: root.overlay-focused;
+                            stuck-changed(active, field, query, label, count, limit, escaped) => {
+                                if active {
+                                    root.stuck-index = i;
+                                    root.stuck-field = field;
+                                    root.stuck-find-query = query;
+                                    root.stuck-escaped = escaped;
+                                    root.stuck-find-label = label;
+                                    root.stuck-find-count = count;
+                                    root.stuck-limit = limit;
+                                } else if root.stuck-index == i {
+                                    root.stuck-index = -1;
+                                    root.overlay-focused = false;
+                                }
+                            }
+                            focus-overlay => { root.overlay-focus-tick += 1; }
+                            view-height: root.view-height;
+                            paint-buffer: root.paint-buffer-px;
+                            selection-owner: root.selection-owner;
+                            collapse-tick: root.collapse-tick;
+                            context-requested(x, y, selected) => { root.context-requested(x, y, selected); }
+                            expanded-changed(field, expanded) => { root.field-expanded-changed(field, expanded); }
+                            reveal(abs-y) => { root.reveal(abs-y); }
+                            // a row near the end of the list can't reach the top of
+                            // the viewport once the content is shorter: it lands at
+                            // the lowest position still in range
+                            scroll-to-top(y, shrink) => {
+                                let new-range = max(0px, all-values-flick.content-height - shrink - all-values-flick.height);
+                                all-values-flick.content-y = -min(y, new-range);
+                            }
+                            selection-drag-check(abs-y) => {
+                                selection-owner = row.field;
+                                selection-dragging = true;
+                                if abs-y < all-values-flick.absolute-position.y + selection-edge-threshold {
+                                    selection-scroll-dir = -1;
+                                } else if abs-y > all-values-flick.absolute-position.y + all-values-flick.height - selection-edge-threshold {
+                                    selection-scroll-dir = 1;
+                                } else {
+                                    selection-scroll-dir = 0;
+                                }
+                            }
+                            selection-drag-ended => {
+                                selection-dragging = false;
+                                selection-scroll-dir = 0;
+                            }
+                        }
+                    }
+                    Rectangle { height: max(0px, (rows.length - rendered-count) * collapsed-row-stride); }
+                    HDivider { }
+                }
+            }
+
+            // the fixed header of the stuck row (see `stuck-index`), over the rows: at
+            // the top of the view, or riding up with the end of its row
+            if root.stuck-index >= 0: RowHeader {
+                x: Theme.px(14px);
+                y: min(0px, root.stuck-limit - root.view-top);
+                width: parent.width - Theme.px(28px);
+                hairline: true;
+                field: root.stuck-field;
+                find-query <=> root.stuck-find-query;
+                escaped <=> root.stuck-escaped;
+                find-label: root.stuck-find-label;
+                find-count: root.stuck-find-count;
+                focus-tick: root.overlay-focus-tick;
+                collapse => { root.command(3); }
+                find-accepted => { root.command(0); }
+                find-step(step) => { root.command(step < 0 ? 1 : 2); }
+                find-focus-changed(focused) => { root.overlay-focused = focused; }
+            }
+            // once scrolled down a little: back to the first row
+            if root.view-top > Theme.px(120px): ScrollTopButton {
+                x: parent.width - self.width - Theme.px(18px);
+                y: parent.height - self.height - Theme.px(16px);
+                clicked => { all-values-flick.content-y = 0px; }
+            }
+        }
+        VScrollBar {
+            content-height: all-values-flick.content-height;
+            content-y <=> all-values-flick.content-y;
+        }
+        Timer {
+            interval: 16ms;
+            running: selection-dragging && selection-scroll-dir != 0;
+            triggered => {
+                let scroll-range = max(0px, all-values-flick.content-height - all-values-flick.height);
+                all-values-flick.content-y = max(-scroll-range, min(0px,
+                    all-values-flick.content-y - selection-scroll-dir * selection-scroll-step));
+            }
+        }
+    }
+}

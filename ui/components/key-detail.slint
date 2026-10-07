@@ -1,0 +1,529 @@
+import { Theme } from "theme.slint";
+import { ExportFormat, ExportTarget, KeyView, SearchScope } from "types.slint";
+import { IconButton } from "widgets.slint";
+import { IconCopy, IconRefresh, IconChevron, IconHash } from "icons.slint";
+import { ExportGroup, ExportButton, SearchField, ViewSwitcher, ViewOption, ScopeSwitch, SearchBadge, SuggestionPopup } from "key-detail-widgets.slint";
+import { KeyScroll, ExportPrefs, AllValuesRowData, TableRowData, FindResult, SelectionRange, SuggestionRow, CompletionEdit, BadgeData } from "key-detail-types.slint";
+import { AllValuesTable } from "key-detail-values.slint";
+import { TableView } from "key-detail-table.slint";
+import { TabStrip, KeyPanel, KeyTree } from "../globals.slint";
+
+// re-exported so main.slint (and anything else importing "key-detail.slint",
+// the historical entry point) keeps seeing these here, though they now live
+// in key-detail-types.slint alongside the row/table components that share them
+export { KeyScroll, ExportPrefs, AllValuesRowData, FindResult, SelectionRange, TableRowData, SuggestionRow, CompletionEdit, BadgeData }
+
+export component KeyDetail inherits Rectangle {
+    // transparent: sits inside the main FloatingCard, which already paints
+    // bg-panel with rounded corners (an opaque root here would square them)
+    background: transparent;
+    in property <string> badge: KeyPanel.badge;
+    // the panel shows a query tab's result rows instead of a key: no key name, and what is put
+    // in the panel (the query's buttons) takes the name's place. `empty-hint` is said while
+    // nothing is shown yet.
+    in property <bool> query-mode: TabStrip.active-is-query;
+    in property <string> empty-hint: "";
+    // a key is loaded and shown
+    in property <bool> loaded: KeyPanel.loaded;
+    // switching the header's format sets every open row's too
+    property <bool> header-escaped: ExportPrefs.header-escaped;
+    changed header-escaped => {
+        ExportPrefs.escaped = ExportPrefs.header-escaped;
+        ExportPrefs.rows-tick += 1;
+    }
+    // the part of the key name selected in the header ("" if none), for the right-click menu
+    property <string> name-selection: "";
+    in property <string> key-name: KeyPanel.name;
+    in property <string> meta: KeyPanel.meta;
+    in property <int> all-values-field-chars: KeyPanel.all-values-field-chars;
+    in property <[AllValuesRowData]> all-values-rows: KeyPanel.all-values-rows;
+    // The area below the filter bar shows the key, as the filter leaves it, in one of
+    // two views: field/value rows (AllValuesTable) or a table (TableView). The switcher
+    // picks one; Rust fills it (see `view-changed`) and keeps it per tab.
+    in-out property <KeyView> view <=> KeyPanel.view;
+    callback view-changed();
+    view-changed => { KeyPanel.view-changed(); }
+    property <[ViewOption]> views: [
+        { view: KeyView.fields, label: @tr("Fields") },
+        { view: KeyView.table, label: @tr("Table") },
+    ];
+    // "More": reveals the search/filter section below the header. Purely a UI
+    // fold, not kept per tab — every tab starts with it closed.
+    property <bool> more-open: false;
+    // Ctrl+F on a closed section opens it, and the search box created then takes the focus
+    property <bool> search-autofocus: false;
+    changed search-focus-tick => {
+        if !more-open {
+            search-autofocus = true;
+            more-open = true;
+        }
+    }
+    changed more-open => {
+        if !more-open {
+            search-autofocus = false;
+        }
+    }
+    in property <[string]> table-columns: KeyPanel.table-columns;
+    in-out property <[length]> table-col-widths <=> KeyPanel.table-col-widths;
+    in-out property <length> table-total-w <=> KeyPanel.table-total-w;
+    in property <[length]> table-col-wants: KeyPanel.table-col-wants;
+    in property <length> table-total-want: KeyPanel.table-total-want;
+    in property <[TableRowData]> table-rows: KeyPanel.table-rows;
+    // said in the filter bar while the table view shows only part of its rows
+    in property <string> table-note: KeyPanel.table-note;
+    // The filter bar: a path like `records.*.label` applied to every field's
+    // value, on Enter. `json-filter-status` says what it matched;
+    // `json-filter-error` is why it didn't apply.
+    in-out property <string> json-filter <=> KeyPanel.json-filter;
+    in property <string> json-filter-status: KeyPanel.json-filter-status;
+    // the filter matched no field at all (the table then says so)
+    in property <bool> json-filter-no-match: KeyPanel.json-filter-no-match;
+    in property <string> json-filter-error: KeyPanel.json-filter-error;
+    callback json-filter-submitted();
+    json-filter-submitted => { KeyPanel.json-filter-submitted(); }
+
+    // Completion of the filter's path: Rust answers `suggest` (filter text and caret
+    // byte offset) and fills `suggestions`. Typing opens the list, arrows choose, Enter/Tab
+    // write the choice (`complete-suggestion`; Tab alone takes the first), Esc closes.
+    in property <[SuggestionRow]> suggestions: KeyPanel.suggestions;
+    callback suggest(text: string, cursor: int) -> bool;
+    suggest(text, cursor) => { return KeyPanel.suggest(text, cursor); }
+    callback complete-suggestion(text: string, cursor: int, index: int) -> CompletionEdit;
+    complete-suggestion(text, cursor, index) => { return KeyPanel.complete-suggestion(text, cursor, index); }
+    property <bool> suggest-open: false;
+    property <length> suggest-x: 0px;
+    property <length> suggest-y: 0px;
+    // the filter box's caret and focus, reached from outside its `if loaded`
+    property <int> filter-cursor: 0;
+    property <int> filter-place-at: 0;
+    property <int> filter-place-tick: 0;
+
+    function close-suggestions() {
+        suggest-open = false;
+        suggest-popup.selected = -1;
+    }
+    function accept-suggestion(index: int) {
+        let edit = root.complete-suggestion(root.json-filter, root.filter-cursor, index);
+        if edit.cursor >= 0 {
+            root.json-filter = edit.text;
+            root.filter-place-at = edit.cursor;
+            root.filter-place-tick += 1;
+        }
+        close-suggestions();
+    }
+    changed key-name => { close-suggestions(); }
+    // what the filter bar says beside the box: why the filter didn't apply, or
+    // (in the table) that it shows only part of the rows. Not how much it
+    // matched — that would grow/shrink this line as you type.
+    property <string> bar-text: json-filter-error != "" ? json-filter-error
+        : (view == KeyView.table ? table-note : "");
+    // saves the table the filter leaves as a CSV file
+    callback export-table-csv();
+    export-table-csv => { KeyPanel.export-table-csv(); }
+    // the table's ticked rows (see TableView.selected); the header offers them
+    // as one JSON array: `format` is "json" or "escaped", `action` "open",
+    // "download" or "copy"
+    in-out property <[bool]> table-selected <=> KeyPanel.table-selected;
+    in-out property <int> table-selected-count <=> KeyPanel.table-selected-count;
+    callback table-clear-selection();
+    table-clear-selection => { KeyPanel.table-clear-selection(); }
+    callback table-select-range(from: int, to: int);
+    table-select-range(from, to) => { KeyPanel.table-select-range(from, to); }
+    callback export-selection(format: ExportFormat, target: ExportTarget);
+    export-selection(format, target) => { KeyPanel.export-selection(format, target); }
+    // bumped by the window on Esc (see AllValuesTable.collapse-tick)
+    in property <int> collapse-tick: 0;
+    // the order of a hash's fields, flipped by the value list's Field header (Rust reloads the key)
+    in property <bool> sort-descending: KeyPanel.sort-descending;
+    callback sort-toggled();
+    sort-toggled => { KeyPanel.sort-toggled(); }
+
+    // The field/value search bar: a 3-way scope switch, a case toggle and the box.
+    // Enter turns the text into badges (a quoted run is one, else each word) shown in the
+    // header; all must match (AND) in their own scope, with one case setting for all.
+    in-out property <[BadgeData]> filter-badges: KeyPanel.filter-badges;
+    in-out property <SearchScope> filter-scope <=> KeyPanel.filter-scope;
+    in-out property <bool> filter-case-sensitive <=> KeyPanel.filter-case-sensitive;
+    in-out property <string> filter-query <=> KeyPanel.filter-query;
+    // set by Rust instead of adding a badge, once there are already 5; cleared
+    // locally as soon as the box is edited again
+    in-out property <string> filter-limit-message <=> KeyPanel.filter-limit-message;
+    callback filter-query-submitted();
+    filter-query-submitted => { KeyPanel.filter-query-submitted(); }
+    callback filter-badge-removed(text: string, scope: SearchScope);
+    filter-badge-removed(text, scope) => { KeyPanel.filter-badge-removed(text, scope); }
+    callback filter-case-sensitivity-changed();
+    filter-case-sensitivity-changed => { KeyPanel.filter-case-sensitivity-changed(); }
+
+    callback export-all-fields(format: ExportFormat, target: ExportTarget);
+    export-all-fields(format, target) => { KeyPanel.export-all-fields(format, target); }
+    // the header's copy button next to the key name: copies the full key
+    callback copy-key-name();
+    copy-key-name => { KeyPanel.copy-key-name(); }
+    // the refresh button beside it: fetches the key again (the panel otherwise
+    // only shows what was fetched when the tab was first opened)
+    callback refresh-key();
+    refresh-key => { KeyPanel.refresh-key(); }
+    // hover hint of the buttons of the header, drawn by the window (see IconButton.hint)
+    callback tooltip-show(text: string, x: length, top: length);
+    callback tooltip-hide();
+    // right-click on selectable text in this panel (see AllValuesRow)
+    callback context-requested(x: length, y: length, selected: string);
+    // a value-list row opened or folded — see AllValuesRow.expanded-changed
+    callback field-expanded-changed(field: string, expanded: bool);
+    field-expanded-changed(field, expanded) => { KeyPanel.field-expanded-changed(field, expanded); }
+    // forwarded from whichever view is shown — see AllValuesTable.near-end
+    callback near-end();
+    near-end => { KeyPanel.near-end(); }
+    callback near-start();
+    near-start => { KeyPanel.near-start(); }
+    // bumped to give the field/value search box the focus (Ctrl+F)
+    in property <int> search-focus-tick: 0;
+    // whether the clipboard holds text, for the search/filter boxes' right-click
+    // "Paste" — see SearchField.clipboard-has-text
+    callback clipboard-has-text() -> bool;
+
+    VerticalLayout {
+        Rectangle {
+            VerticalLayout {
+                padding-left: Theme.px(12px);
+                padding-right: Theme.px(10px);
+                padding-top: Theme.px(5px);
+                padding-bottom: Theme.px(5px);
+
+                HorizontalLayout {
+                    spacing: Theme.px(6px);
+                    cross-axis-alignment: center;
+                    // as tall as its buttons (the export, the views and the chevron are 32px), so the
+                    // header doesn't grow when they appear
+                    min-height: Theme.px(32px);
+                    // key name, copy button, field count/ttl, packed left.
+                    // No max-width on the text (binding the layout's width
+                    // loops) — `min-width: 0` + `overflow: elide` shrink it instead.
+                    HorizontalLayout {
+                        horizontal-stretch: 1;
+                        min-width: 0px;
+                        alignment: start;
+                        spacing: Theme.px(4px);
+                        cross-axis-alignment: center;
+                        // the query's buttons, in a query tab
+                        @children
+                        // brings this key's row into view in the tree
+                        if loaded && !root.query-mode: IconButton {
+                            box-size: Theme.btn-sm;
+                            hint: @tr("Show active tab's key");
+                            hint-show(text, x, top) => { root.tooltip-show(text, x, top); }
+                            hint-hide => { root.tooltip-hide(); }
+                            clicked => { KeyTree.reveal-active-tab(); }
+                            IconHash { size: Theme.icon-sm; tint: Theme.text-tertiary; }
+                        }
+                        // Selectable, copied with Ctrl+C or right-click (StyledText
+                        // leaves that to the TouchArea behind it). `\{}`-interpolated
+                        // into the markdown, which escapes it — shown exactly as spelled.
+                        if !root.query-mode: Rectangle {
+                            min-width: 0px;
+                            // wraps the text instead of sitting behind it, so its hover
+                            // (and I-beam cursor) reaches the StyledText, which accepts
+                            // mouse moves itself (same reason as AllValuesRow's row-area)
+                            TouchArea {
+                                mouse-cursor: text;
+                                pointer-event(event) => {
+                                    if event.button == PointerEventButton.right && event.kind == PointerEventKind.down {
+                                        root.context-requested(self.mouse-x + self.absolute-position.x, self.mouse-y + self.absolute-position.y, root.name-selection);
+                                    }
+                                }
+                                HorizontalLayout {
+                                    name-text := StyledText {
+                                        property <string> shown: root.key-name == "" ? @tr("Select a key") : root.key-name;
+                                        text: @markdown("**\{shown}**");
+                                        default-color: Theme.text-primary;
+                                        default-font-family: Theme.font-mono;
+                                        default-font-size: Theme.pt(12.5px);
+                                        selection-background-color: Theme.accent-blue.with-alpha(0.35);
+                                        vertical-alignment: center;
+                                        min-width: 0px;
+                                        // one line, cut with an ellipsis when the key is longer
+                                        max-lines: 1;
+                                        overflow: elide;
+                                        changed selected-text => { root.name-selection = self.selected-text; }
+                                        // another key: nothing of the old text is selected
+                                        property <string> watched: root.key-name;
+                                        changed watched => {
+                                            self.anchor-position-byte-offset = 0;
+                                            self.cursor-position-byte-offset = 0;
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                        if loaded && !root.query-mode: IconButton {
+                            box-size: Theme.btn-sm;
+                            clicked => { root.copy-key-name(); }
+                            IconCopy { size: Theme.icon-sm; tint: Theme.text-tertiary; }
+                        }
+                        if key-name != "" && !root.query-mode: IconButton {
+                            box-size: Theme.btn-sm;
+                            hint: @tr("Refresh value");
+                            hint-show(text, x, top) => { root.tooltip-show(text, x, top); }
+                            hint-hide => { root.tooltip-hide(); }
+                            clicked => { root.refresh-key(); }
+                            IconRefresh { size: Theme.icon-sm; tint: Theme.text-tertiary; }
+                        }
+                        // ("6 fields · no ttl"): it keeps its width, the key name is
+                        // what gives way
+                        if meta != "": Text {
+                            text: meta;
+                            font-size: Theme.pt(10.5px);
+                            color: Theme.text-tertiary;
+                            vertical-alignment: center;
+                        }
+                        // the active search badges, right after the TTL
+                        for badge in root.filter-badges: SearchBadge {
+                            data: badge;
+                            removed => { root.filter-badge-removed(badge.text, badge.scope); }
+                        }
+                    }
+                    // The table's ticked rows, once there are any: how many, and the
+                    // export pill, working on them as one JSON array. In this row, at
+                    // the pills' own height, so ticking a row moves nothing below it.
+                    if root.view == KeyView.table && root.table-selected-count > 0: Rectangle {
+                        horizontal-stretch: 0;
+                        height: Theme.px(32px);
+                        HorizontalLayout {
+                            padding-left: Theme.px(8px);
+                            spacing: Theme.px(6px);
+                            cross-axis-alignment: center;
+                            Text {
+                                text: @tr("{} selected", root.table-selected-count);
+                                font-size: Theme.pt(11px);
+                                font-weight: 600;
+                                color: Theme.text-primary;
+                                vertical-alignment: center;
+                            }
+                            ExportGroup {
+                                format-toggle: true;
+                                escaped <=> ExportPrefs.header-escaped;
+                                outline: Theme.accent-blue;
+                                open => { root.export-selection(ExportPrefs.header-escaped ? ExportFormat.escaped : ExportFormat.json, ExportTarget.open); }
+                                download => { root.export-selection(ExportPrefs.header-escaped ? ExportFormat.escaped : ExportFormat.json, ExportTarget.download); }
+                                copy => { root.export-selection(ExportPrefs.header-escaped ? ExportFormat.escaped : ExportFormat.json, ExportTarget.copy); }
+                            }
+                        }
+                    }
+                    // every field, unless ticked rows have their own pill above
+                    if loaded && !(root.view == KeyView.table && root.table-selected-count > 0): ExportGroup {
+                        format-toggle: true;
+                        escaped <=> ExportPrefs.header-escaped;
+                        open => { root.export-all-fields(ExportPrefs.header-escaped ? ExportFormat.escaped : ExportFormat.json, ExportTarget.open); }
+                        download => { root.export-all-fields(ExportPrefs.header-escaped ? ExportFormat.escaped : ExportFormat.json, ExportTarget.download); }
+                        copy => { root.export-all-fields(ExportPrefs.header-escaped ? ExportFormat.escaped : ExportFormat.json, ExportTarget.copy); }
+                    }
+                    // at the extreme right of the header
+                    if loaded: ViewSwitcher {
+                        options: root.views;
+                        current: root.view;
+                        selected(view) => {
+                            root.view = view;
+                            root.view-changed();
+                        }
+                    }
+                    if loaded: IconButton {
+                        box-size: Theme.px(32px);
+                        active: root.more-open;
+                        hint: @tr("More options");
+                        hint-show(text, x, top) => { root.tooltip-show(text, x, top); }
+                        hint-hide => { root.tooltip-hide(); }
+                        clicked => { root.more-open = !root.more-open; }
+                        IconChevron { size: Theme.icon-sm; down: root.more-open; tint: root.more-open ? Theme.accent-blue : Theme.text-tertiary; }
+                    }
+                }
+            }
+            Rectangle { y: parent.height - 1px; height: 1px; width: parent.width; background: Theme.border; }
+        }
+
+        // "More" reveals this: search (badges, scope, case) at the left, the
+        // JSON path filter at the right, split by a hairline.
+        if loaded && root.more-open: Rectangle {
+            HorizontalLayout {
+                padding-left: Theme.px(10px);
+                padding-right: Theme.px(10px);
+                padding-top: Theme.px(6.5px);
+                padding-bottom: Theme.px(6.5px);
+                spacing: Theme.px(12px);
+
+                // search: scope, case sensitivity, the box (its active badges
+                // show above the header, not here — see filter-badges below)
+                HorizontalLayout {
+                    horizontal-stretch: 1;
+                    spacing: Theme.px(6.5px);
+                    cross-axis-alignment: center;
+                    ScopeSwitch {
+                        current: root.filter-scope;
+                        selected(scope) => { root.filter-scope = scope; }
+                    }
+                    case-toggle := IconButton {
+                        box-size: Theme.px(32px);
+                        active: root.filter-case-sensitive;
+                        hint: @tr("Match case");
+                        hint-show(text, x, top) => { root.tooltip-show(text, x, top); }
+                        hint-hide => { root.tooltip-hide(); }
+                        clicked => {
+                            root.filter-case-sensitive = !root.filter-case-sensitive;
+                            root.filter-case-sensitivity-changed();
+                        }
+                        Text {
+                            text: "Aa";
+                            font-size: Theme.pt(12px);
+                            font-weight: 700;
+                            color: root.filter-case-sensitive ? Theme.accent-blue : Theme.text-tertiary;
+                        }
+                    }
+                    SearchField {
+                        horizontal-stretch: 1;
+                        min-width: Theme.px(120px);
+                        height: Theme.px(32px);
+                        font-size: Theme.pt(13px);
+                        icon-size: Theme.icon-md;
+                        clearable: true;
+                        focus-tick: root.search-focus-tick;
+                        auto-focus: root.search-autofocus;
+                        clipboard-has-text() => { return root.clipboard-has-text(); }
+                        placeholder: root.filter-scope == SearchScope.fields ? @tr("Search field names...")
+                            : (root.filter-scope == SearchScope.value ? @tr("Search values...") : @tr("Search fields and values..."));
+                        text <=> root.filter-query;
+                        accepted => { root.filter-query-submitted(); }
+                        edited => { root.filter-limit-message = ""; }
+                        cleared => { root.filter-limit-message = ""; }
+                    }
+                    if root.filter-limit-message != "": Text {
+                        text: root.filter-limit-message;
+                        font-size: Theme.pt(10.5px);
+                        color: Theme.accent-red;
+                        vertical-alignment: center;
+                        min-width: 0px;
+                        overflow: elide;
+                    }
+                }
+
+                Rectangle { width: 1px; background: Theme.border; }
+
+                // the JSON path filter, applied to whichever view is shown
+                VerticalLayout {
+                    horizontal-stretch: 1;
+                    alignment: start;
+                    HorizontalLayout {
+                        spacing: Theme.px(6.5px);
+                        cross-axis-alignment: center;
+                        // Enter applies it; an empty box (or the ×) shows everything again
+                        SearchField {
+                            horizontal-stretch: 1;
+                            min-width: Theme.px(120px);
+                            height: Theme.px(32px);
+                            funnel: true;
+                            font-size: Theme.pt(13px);
+                            icon-size: Theme.icon-md;
+                            clearable: true;
+                            clipboard-has-text() => { return root.clipboard-has-text(); }
+                            placeholder: @tr("Filter the JSON, e.g. records.*.label");
+                            text <=> root.json-filter;
+                            place-at: root.filter-place-at;
+                            place-tick: root.filter-place-tick;
+                            accepted => {
+                                root.close-suggestions();
+                                root.json-filter-submitted();
+                            }
+                            cleared => { root.json-filter-submitted(); }
+                            key-intercept(event) => { return suggest-popup.handle-key(event); }
+                            edited => {
+                                root.filter-cursor = self.cursor-byte;
+                                root.suggest-x = self.caret-x;
+                                root.suggest-y = self.caret-bottom;
+                                suggest-popup.selected = -1;
+                                root.suggest-open = root.suggest(root.json-filter, root.filter-cursor);
+                            }
+                            caret-moved => {
+                                root.filter-cursor = self.cursor-byte;
+                                root.suggest-x = self.caret-x;
+                                root.suggest-y = self.caret-bottom;
+                                if root.suggest-open {
+                                    root.suggest-open = root.suggest(root.json-filter, root.filter-cursor);
+                                }
+                            }
+                            // clicking a suggestion takes the focus from the box first
+                            focus-changed(focused) => {
+                                if !focused && !suggest-popup.hovered {
+                                    root.close-suggestions();
+                                }
+                            }
+                        }
+                        // at the end of the bar, in either view
+                        ExportButton {
+                            // the ticked rows only, when there are any
+                            label: @tr("Export CSV");
+                            clicked => { root.export-table-csv(); }
+                        }
+                    }
+                    // only while it has something to say
+                    if bar-text != "": Text {
+                        text: bar-text;
+                        font-size: Theme.pt(10.5px);
+                        color: root.json-filter-error != "" ? Theme.accent-red : Theme.text-tertiary;
+                        overflow: elide;
+                    }
+                }
+            }
+            Rectangle { y: parent.height - 1px; height: 1px; width: parent.width; background: Theme.border; }
+        }
+
+        if root.query-mode && !root.loaded: Rectangle {
+            vertical-stretch: 1;
+            Text {
+                text: root.empty-hint;
+                font-size: Theme.pt(12px);
+                color: Theme.text-tertiary;
+                horizontal-alignment: center;
+                vertical-alignment: center;
+            }
+        }
+        if root.loaded && root.view == KeyView.table: TableView {
+            empty-message: root.json-filter-no-match ? @tr("No field matches this filter") : @tr("Nothing to show as a table: no rows, or the rows share no top-level keys");
+            columns: root.table-columns;
+            col-widths <=> root.table-col-widths;
+            total-w <=> root.table-total-w;
+            col-wants: root.table-col-wants;
+            total-want: root.table-total-want;
+            rows: root.table-rows;
+            selected <=> root.table-selected;
+            selected-count <=> root.table-selected-count;
+            clear-selection => { root.table-clear-selection(); }
+            select-range(from, to) => { root.table-select-range(from, to); }
+            context-requested(x, y, selected) => { root.context-requested(x, y, selected); }
+            near-end => { root.near-end(); }
+        }
+        if root.loaded && root.view == KeyView.fields: AllValuesTable {
+            collapse-tick: root.collapse-tick;
+            sortable: root.badge == "HASH";
+            descending: root.sort-descending;
+            sort-toggled => { root.sort-toggled(); }
+            context-requested(x, y, selected) => { root.context-requested(x, y, selected); }
+            near-end => { root.near-end(); }
+            near-start => { root.near-start(); }
+            field-expanded-changed(field, expanded) => { root.field-expanded-changed(field, expanded); }
+            field-chars: root.all-values-field-chars;
+            rows: root.all-values-rows;
+        }
+    }
+    // the completion list, under the filter box's caret; last, so it paints over
+    // the view below the bar
+    suggest-popup := SuggestionPopup {
+        rows: root.suggestions;
+        open: root.suggest-open;
+        anchor-x: root.suggest-x;
+        anchor-y: root.suggest-y;
+        origin-x: root.absolute-position.x;
+        origin-y: root.absolute-position.y;
+        host-width: root.width;
+        accepted(index) => { root.accept-suggestion(index); }
+        dismissed => { root.close-suggestions(); }
+    }
+}

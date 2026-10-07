@@ -1,0 +1,53 @@
+import { Theme } from "theme.slint";
+
+// The "i" button's window: who made the app and which version this is (set by Rust).
+export global About {
+    in-out property <bool> open: false;
+    in property <string> version: "";
+}
+
+export component AboutModal inherits Rectangle {
+    background: #000000aa;
+
+    TouchArea {
+        clicked => { About.open = false; }
+    }
+
+    VerticalLayout {
+        alignment: center;
+        cross-axis-alignment: center;
+
+        Rectangle {
+            width: Theme.px(320px);
+            background: Theme.bg-elevated;
+            border-radius: Theme.radius-lg;
+            border-width: 1px;
+            border-color: Theme.border-soft;
+            drop-shadow-color: Theme.shadow-color;
+            drop-shadow-blur: Theme.shadow-blur;
+            drop-shadow-offset-y: Theme.shadow-offset-y;
+
+            // swallow clicks so they don't bubble to the backdrop's close
+            TouchArea { }
+
+            VerticalLayout {
+                padding: Theme.px(24px);
+                spacing: Theme.px(6px);
+
+                Text {
+                    text: "Cachemire by Léo Parent";
+                    font-size: Theme.pt(14px);
+                    font-weight: 700;
+                    color: Theme.text-primary;
+                    horizontal-alignment: center;
+                }
+                Text {
+                    text: About.version;
+                    font-size: Theme.pt(12.5px);
+                    color: Theme.text-secondary;
+                    horizontal-alignment: center;
+                }
+            }
+        }
+    }
+}

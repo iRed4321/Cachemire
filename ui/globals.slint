@@ -1,0 +1,350 @@
+// What Rust reads and writes, grouped by feature: each global is one feature's
+// state and the callbacks Rust answers. `main.slint` binds the components to them.
+import { ConnectionStatus, LanguageSetting, ProfileTint, KeyView, SearchScope, ExportFormat, ExportTarget } from "components/types.slint";
+import { ConnectionRowData, ConnProfileRowData, ConnectionForm, SshProfileRowData, SshProfileForm, ConnProfileForm, KeyspaceRowData, SavedQueryRowData, TabData, SearchRowData, HistoryRow } from "components/types.slint";
+import { AllValuesRowData, FindResult, SelectionRange, TableRowData, SuggestionRow, CompletionEdit, BadgeData } from "components/key-detail-types.slint";
+
+// The connection in use, as the title bar shows it; Rust sets it whole.
+export struct ConnectionView {
+    // a connection was reached (nothing auto-connects at startup)
+    connected: bool,
+    // an attempt is under way (the title bar shows a spinner)
+    connecting: bool,
+    status: ConnectionStatus,
+    // why the last attempt failed ("" if it didn't)
+    status-detail: string,
+    // saved-connection id of the connected instance ("" when not connected)
+    connection-id: string,
+    address: string,
+    // "user@ssh-host" while the connection uses an SSH tunnel, known even on failure
+    ssh-via: string,
+    // the last failure was setting up that tunnel, not the Redis endpoint past it
+    ssh-failed: bool,
+    name: string,
+}
+
+// The connection in use, and the saved and cloud connections to pick from.
+export global ConnectionState {
+    in-out property <ConnectionView> view: { status: ConnectionStatus.none };
+    in-out property <[ConnectionRowData]> connections: [];
+    in-out property <[ConnectionRowData]> cloud-connections: [];
+    // memory used by the connected server, refreshed periodically (see server_stats.rs)
+    in-out property <string> memory: "";
+    callback copy-connection-string();
+    callback selected(id: string);
+    // raised from Rust once a connection picked in the dropdown has connected
+    callback established();
+    callback disconnect-requested();
+    // the connection in use changed (or was lost): the tabs shown are those of the new one
+    callback switched();
+}
+
+// The form that creates or edits a saved connection.
+export global ConnectionEditor {
+    in-out property <bool> open: false;
+    in-out property <string> error: "";
+    // "Test connection": running, and what it found
+    in-out property <bool> testing: false;
+    in-out property <string> test-status: "";
+    in-out property <bool> test-ok: false;
+    in-out property <string> id: "";
+    in-out property <string> name: "";
+    in-out property <string> connection-url: "";
+    in-out property <string> username: "";
+    in-out property <string> password: "";
+    in-out property <bool> ssh-enabled: false;
+    in-out property <string> ssh-host: "";
+    in-out property <string> ssh-port: "22";
+    in-out property <string> ssh-username: "";
+    in-out property <string> ssh-password: "";
+    in-out property <string> ssh-key: "";
+    in-out property <string> ssh-passphrase: "";
+    in-out property <bool> profile-enabled: false;
+    in-out property <string> profile-id: "";
+    // "Browse…" for the SSH private key: Rust picks the file and fills `ssh-key`
+    callback browse-key();
+    callback saved(ConnectionForm);
+    callback test-requested(ConnectionForm);
+    callback deleted(id: string);
+
+    // what the form holds, to save or to test
+    public pure function form() -> ConnectionForm {
+        return {
+            id: id,
+            name: name,
+            connection-url: connection-url,
+            username: username,
+            password: password,
+            ssh-enabled: ssh-enabled,
+            ssh-host: ssh-host,
+            ssh-port: ssh-port,
+            ssh-username: ssh-username,
+            ssh-password: ssh-password,
+            ssh-key: ssh-key,
+            ssh-passphrase: ssh-passphrase,
+            profile-id: profile-enabled ? profile-id : "",
+        };
+    }
+}
+
+// The cloud account (AWS): whether the machine has an .aws folder, whether it is
+// signed in, a sign-in or listing under way, the local profiles and the chosen one.
+export global AwsAccount {
+    in-out property <bool> available: false;
+    in-out property <bool> connected: false;
+    in-out property <bool> busy: false;
+    in-out property <[string]> profiles: [];
+    in-out property <string> profile: "";
+    // the selected profile's account was reached (its connections are listed)
+    in-out property <bool> account-known: false;
+    // why the account could not be used ("" if it can), shown where the hints are
+    in-out property <string> error: "";
+    callback clicked();
+    callback profile-selected(name: string);
+}
+
+// The settings window: preferences, SSH profiles (never their passwords) and
+// connection profiles (a name and a tint), with the forms that edit them.
+export global Preferences {
+    in-out property <bool> open: false;
+    in-out property <string> error: "";
+    in-out property <LanguageSetting> language: LanguageSetting.automatic;
+    callback language-selected(setting: LanguageSetting);
+    // the export buttons' default format: escaped JSON, or plain JSON
+    in-out property <bool> export-escaped: false;
+    callback export-escaped-selected(escaped: bool);
+    // experimental: the global search lets Redis filter with a script
+    in-out property <bool> server-search: false;
+    callback server-search-toggled(enabled: bool);
+    // how many entries of a key the global search reads
+    in-out property <int> search-depth: 1000;
+    callback search-depth-selected(depth: int);
+    in-out property <[SshProfileRowData]> ssh-profiles: [];
+    in-out property <bool> ssh-profile-editing: false;
+    in-out property <string> ssh-profile-id: "";
+    in-out property <string> ssh-profile-name: "";
+    in-out property <string> ssh-profile-username: "";
+    in-out property <string> ssh-profile-password: "";
+    callback ssh-profile-activated(id: string);
+    callback ssh-profile-saved(SshProfileForm);
+    callback ssh-profile-deleted(id: string);
+    in-out property <[ConnProfileRowData]> conn-profiles: [];
+    in-out property <bool> conn-profile-editing: false;
+    in-out property <string> conn-profile-id: "";
+    in-out property <string> conn-profile-name: "";
+    in-out property <ProfileTint> conn-profile-tint: ProfileTint.red;
+    callback conn-profile-saved(ConnProfileForm);
+    callback conn-profile-deleted(id: string);
+}
+
+// The keyspace tree: a flat, indent-annotated list Rust updates as folders open
+// and close, its search box and its footer.
+export global KeyTree {
+    in-out property <[KeyspaceRowData]> rows: [];
+    in-out property <string> selected: "";
+    in-out property <string> footer: "";
+    // the key whose data is in flight, for a spinner on its leaf
+    in-out property <string> loading-key: "";
+    // a row to bring into view; `scroll-tick` bumps so the same row twice still scrolls
+    in-out property <int> scroll-row: -1;
+    in-out property <int> scroll-tick: 0;
+    // the search box's text (cleared from Rust on connect)
+    in-out property <string> search-text: "";
+    callback row-clicked(name: string);
+    callback refresh-requested();
+    callback search-submitted(text: string);
+    // the "show active tab's key" button, and Rust's answer selecting that row
+    callback reveal-active-tab();
+    callback focus-key(name: string);
+    // Export mode: every row gets a box, and a bar under the tree exports what is ticked
+    // (`export-count` keys) as files in a folder; `export-ready` once the keyspace is listed.
+    in-out property <bool> export-mode: false;
+    in property <int> export-count: 0;
+    in property <bool> export-ready: false;
+    in property <bool> export-busy: false;
+    in property <string> export-progress: "";
+    in-out property <bool> export-group: false;
+    callback export-mode-toggled();
+    callback export-row-toggled(name: string);
+    // Shift-click on a row's box: the rows from `from` to `to` take the state of `from`
+    callback export-range-toggled(from: string, to: string);
+    callback export-select-all();
+    callback export-clear();
+    callback export-start();
+    callback export-cancel();
+    // the row menu's entries: export just this row, or tick it (which opens the mode)
+    callback export-row(name: string);
+    callback export-select-row(name: string);
+}
+
+// The left panel's saved queries (Rust filters them on `filter`).
+export global SavedQueries {
+    // the connection's own saved queries, and those saved for every connection
+    in-out property <[SavedQueryRowData]> saved-queries: [];
+    in-out property <[SavedQueryRowData]> global-queries: [];
+    in-out property <bool> has-saved-queries: false;
+    in-out property <string> filter: "";
+    in-out property <string> selected: "";
+    callback filter-changed(text: string);
+    callback clicked(id: string);
+    callback deleted(id: string);
+}
+
+// The open tabs, which one is active and what kind it is.
+export global TabStrip {
+    in-out property <[TabData]> tabs: [];
+    // index of the active tab (-1 if none), so the bar can scroll it into view
+    in-out property <int> active-index: -1;
+    in-out property <bool> active-is-search: false;
+    in-out property <bool> active-is-query: false;
+    callback selected(key: string);
+    callback closed(key: string);
+    callback reordered(key: string, index: int);
+    callback close-others(key: string);
+    callback close-all();
+    // Ctrl+W
+    callback close-active();
+    callback new-search-clicked();
+    callback new-query-clicked();
+}
+
+// The search tab shown: its box, its hits and how far it is. Rust fills it from
+// the search of the tab that is active.
+export global SearchTab {
+    in-out property <string> query: "";
+    in-out property <bool> loading: false;
+    in-out property <bool> searched: false;
+    in-out property <int> run: 0;
+    // the key and field columns: as wide as their content, or as dragged (0 = not dragged)
+    in-out property <length> key-auto-w: 80px;
+    in-out property <length> field-auto-w: 60px;
+    in-out property <length> key-override: 0px;
+    in-out property <length> field-override: 0px;
+    in-out property <string> status: "";
+    // how far the running search is (0 to 1), -1 when it can't tell
+    in-out property <float> progress: 0;
+    in-out property <bool> paused: false;
+    in-out property <[SearchRowData]> rows: [];
+    callback pause-toggled();
+    callback submitted(query: string);
+    // a click on a hit: opens its key, at the field of the hit
+    callback hit-opened(key: string, field: string);
+}
+
+// The query tab shown: its box, its run and its results. Rust fills it from the
+// tab that is active.
+export global QueryTab {
+    in-out property <string> text: "";
+    in-out property <bool> loading: false;
+    in-out property <bool> ran: false;
+    in-out property <string> status: "";
+    in-out property <bool> status-is-error: false;
+    // what the results' toolbar asks the box for (see QueryEditor.command-kind)
+    in-out property <int> command-kind: 0;
+    in-out property <int> command-tick: 0;
+    // the results of the last run when it gave several, and which is shown
+    in-out property <[string]> results: [];
+    in-out property <int> result-active: 0;
+    in-out property <[HistoryRow]> history: [];
+    in-out property <[SuggestionRow]> suggestions: [];
+    in-out property <bool> suggest-open: false;
+    // where in the box the last run's error is (byte offsets, -1 for nowhere), and the
+    // text it was run on: the spot is marked only while the box still holds that text
+    in-out property <int> error-start: -1;
+    in-out property <int> error-end: -1;
+    in-out property <string> error-text: "";
+    // the text, the caret, the selection's other end, and whether to run the whole script
+    callback run-requested(query: string, cursor: int, anchor: int, script: bool);
+    callback result-selected(index: int);
+    callback history-requested();
+    callback history-picked(index: int, run: bool);
+    callback history-cleared();
+    callback history-step(direction: int, current: string) -> CompletionEdit;
+    callback suggest(text: string, cursor: int, force: bool);
+    callback complete(text: string, cursor: int, index: int) -> CompletionEdit;
+    callback save-requested(name: string, global: bool);
+    pure callback lines(text: string) -> [string];
+    // colors the box's text, recomputed on every edit, and marks the error's spot
+    // (see src/redisql_highlight.rs)
+    pure callback highlight(text: string, error-start: int, error-end: int, error-text: string) -> styled-text;
+    // strips a pasted `\r` out of the box's text
+    pure callback sanitize(text: string) -> string;
+}
+
+// The key panel: the key's header, its fields as a list or a table, the filter
+// bar and the search bar. Rust rebuilds it when a key loads or a filter changes.
+export global KeyPanel {
+    // the shown key's id (see src/backend/key_name.rs), what Rust fetches it by;
+    // `name` is how it reads
+    in-out property <string> key-id: "";
+    in-out property <string> badge: "";
+    // a key is loaded and shown (the badge is only its type's text)
+    in-out property <bool> loaded: false;
+    // hash fields are listed in descending natural order rather than ascending
+    in-out property <bool> sort-descending: false;
+    in-out property <string> name: "";
+    in-out property <string> meta: "";
+    in-out property <int> all-values-field-chars: 8;
+    in-out property <[AllValuesRowData]> all-values-rows: [];
+    in-out property <KeyView> view: KeyView.fields;
+    // completion of the filter bar (see KeyDetail.suggestions)
+    in-out property <[SuggestionRow]> suggestions: [];
+    in-out property <[string]> table-columns: [];
+    in-out property <[length]> table-col-widths: [];
+    in-out property <length> table-total-w: 0px;
+    // how much wider each column would like to be, and their sum (see TableView.col-wants)
+    in-out property <[length]> table-col-wants: [];
+    in-out property <length> table-total-want: 0px;
+    in-out property <[TableRowData]> table-rows: [];
+    in-out property <string> table-note: "";
+    in-out property <[bool]> table-selected: [];
+    in-out property <int> table-selected-count: 0;
+    in-out property <string> json-filter: "";
+    in-out property <string> json-filter-status: "";
+    in-out property <bool> json-filter-no-match: false;
+    in-out property <string> json-filter-error: "";
+    // the field/value search bar (see KeyDetail.filter-badges)
+    in-out property <[BadgeData]> filter-badges: [];
+    in-out property <SearchScope> filter-scope: SearchScope.everywhere;
+    in-out property <bool> filter-case-sensitive: false;
+    in-out property <string> filter-query: "";
+    in-out property <string> filter-limit-message: "";
+    // "some field's pretty text is cached, go check" pulse (see AllValuesRow.pretty-ready-tick)
+    in-out property <int> pretty-ready-tick: 0;
+    callback view-changed();
+    // the Field header's arrow was clicked: Rust flips `sort-descending` and loads the key again
+    callback sort-toggled();
+    callback suggest(text: string, cursor: int) -> bool;
+    callback complete-suggestion(text: string, cursor: int, index: int) -> CompletionEdit;
+    callback json-filter-submitted();
+    callback export-table-csv();
+    callback table-clear-selection();
+    // Shift-click in the table: the rows from `from` to `to` take the state of `from`
+    callback table-select-range(from: int, to: int);
+    callback export-selection(ExportFormat, ExportTarget);
+    callback filter-query-submitted();
+    callback filter-badge-removed(text: string, scope: SearchScope);
+    callback filter-case-sensitivity-changed();
+    // An open row's pretty text, find matches highlighted, from Rust's cache: valid once
+    // `request-pretty-value-async` answered. Each takes whether the value shows escaped.
+    callback request-pretty-value(field: string, query: string, current: int, escaped: bool) -> styled-text;
+    callback request-pretty-value-async(field: string, escaped: bool);
+    callback find-in-value(field: string, query: string, current: int, escaped: bool) -> FindResult;
+    // what a double click (the word at the byte offset) or a triple click (`whole`) selects
+    callback value-selection(field: string, offset: int, whole: bool, escaped: bool) -> SelectionRange;
+    callback pretty-is-ready(field: string, escaped: bool) -> bool;
+    // one row's field as pretty JSON, or as an escaped JSON string
+    callback open-value(field: string, escaped: bool);
+    callback download-value(field: string, escaped: bool);
+    callback copy-value(field: string, escaped: bool);
+    callback export-all-fields(format: ExportFormat, target: ExportTarget);
+    callback copy-key-name();
+    callback refresh-key();
+    // a value-list row opened or folded: Rust keeps KeyScroll.all-values-expanded in step
+    callback field-expanded-changed(field: string, expanded: bool);
+    // the panel scrolled near the end or the start of what's loaded (see AllValuesTable.near-end)
+    callback near-end();
+    callback near-start();
+    // right-click "Copy selection" over selectable text
+    callback copy-selection(string);
+}

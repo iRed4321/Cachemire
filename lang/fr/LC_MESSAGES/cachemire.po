@@ -1,0 +1,684 @@
+#
+msgid ""
+msgstr ""
+"Project-Id-Version: cachemire\n"
+"POT-Creation-Date: 2026-09-21 20:38+0000\n"
+"PO-Revision-Date: 2026-09-21 00:00+0000\n"
+"Last-Translator: Cachemire\n"
+"Language-Team: French\n"
+"Language: fr\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"Plural-Forms: nplurals=2; plural=(n > 1);\n"
+
+#: ui/main.slint:320 ui/components/content-header.slint:274
+msgid "Show sidebar"
+msgstr "Afficher le panneau latéral"
+
+#: ui/main.slint:337
+msgid "Couldn't use the AWS account"
+msgstr "Impossible d'utiliser le compte AWS"
+
+#: ui/main.slint:338
+msgid "Select a key to open it"
+msgstr "Sélectionnez une clé pour l'ouvrir"
+
+#: ui/main.slint:339
+msgid "Couldn't connect"
+msgstr "Connexion impossible"
+
+#: ui/main.slint:340
+msgid "Pick a connection to get started"
+msgstr "Choisissez une connexion pour commencer"
+
+#: ui/main.slint:348
+msgid "Browse the keyspace on the left and click a key."
+msgstr "Parcourez l'espace de clés à gauche et cliquez sur une clé."
+
+#: ui/main.slint:349
+msgid ""
+"Hover the connection status in the top bar to see why, or pick another "
+"connection."
+msgstr ""
+"Survolez l'indicateur d'état dans la barre du haut pour en connaître la "
+"raison, ou choisissez une autre connexion."
+
+#: ui/main.slint:350
+msgid "Use the connection selector in the top bar."
+msgstr "Utilisez le sélecteur de connexion dans la barre du haut."
+
+#: ui/main.slint:402
+msgid "Write a Redisql query above (FROM/JOIN/WHERE/SELECT/LIMIT), then Run."
+msgstr ""
+"Écrivez une requête Redisql ci-dessus (FROM/JOIN/WHERE/SELECT/LIMIT), puis "
+"Exécuter."
+
+#: ui/components/cloud-picker.slint:36
+msgid "No AWS profiles found"
+msgstr "Aucun profil AWS trouvé"
+
+#. inherit (an endpoint only), none, or a value of its own
+#: ui/components/cloud-settings.slint:39
+msgid "Inherit"
+msgstr "Hériter"
+
+#. inherit (an endpoint only), none, or a value of its own
+#: ui/components/cloud-settings.slint:39
+msgid "None"
+msgstr "Aucun"
+
+#. inherit (an endpoint only), none, or a value of its own
+#: ui/components/cloud-settings.slint:39
+msgid "Custom"
+msgstr "Personnalisé"
+
+#: ui/components/cloud-settings.slint:69
+msgid "AWS account settings"
+msgstr "Paramètres du compte AWS"
+
+#: ui/components/cloud-settings.slint:69
+msgid "Cloud connection settings"
+msgstr "Paramètres de la connexion cloud"
+
+#: ui/components/cloud-settings.slint:90
+msgid "Connection profile"
+msgstr "Profil de connexion"
+
+#: ui/components/cloud-settings.slint:112
+#: ui/components/cloud-settings.slint:112
+msgid "From the account: {}"
+msgstr "Du compte : {}"
+
+#: ui/components/cloud-settings.slint:122
+#: ui/components/cloud-settings.slint:122
+msgid "No connection profiles yet: create one in Settings."
+msgstr ""
+"Aucun profil de connexion pour l'instant : créez-en un dans les Paramètres."
+
+#: ui/components/cloud-settings.slint:132
+msgid "SSH tunnel"
+msgstr "Tunnel SSH"
+
+#: ui/components/cloud-settings.slint:178
+#: ui/components/cloud-settings.slint:178
+#: ui/components/cloud-settings.slint:178 ui/components/settings.slint:606
+#: ui/components/cloud-settings.slint:178 ui/components/settings.slint:606 ui/components/settings.slint:606
+msgid "Cancel"
+msgstr "Annuler"
+
+#: ui/components/cloud-settings.slint:179
+#: ui/components/cloud-settings.slint:179
+#: ui/components/cloud-settings.slint:179 ui/components/query-panel.slint:668
+#: ui/components/cloud-settings.slint:179 ui/components/query-panel.slint:668 ui/components/query-panel.slint:668
+#: ui/components/cloud-settings.slint:179 ui/components/query-panel.slint:668 ui/components/query-panel.slint:668
+msgid "Save"
+msgstr "Enregistrer"
+
+#: ui/components/connection-picker.slint:191
+msgid "New connection..."
+msgstr "Nouvelle connexion..."
+
+#: ui/components/connection-picker.slint:209
+msgid "Import / Export"
+msgstr "Importer / Exporter"
+
+#: ui/components/connection-picker.slint:220
+msgid "No saved connections yet"
+msgstr "Aucune connexion enregistrée"
+
+#: ui/components/connection-picker.slint:261
+msgid "Cloud connections"
+msgstr "Connexions cloud"
+
+#: ui/components/connection-picker.slint:493
+msgid "SSH host"
+msgstr "Hôte SSH"
+
+#: ui/components/connection-picker.slint:500
+msgid "SSH port"
+msgstr "Port SSH"
+
+#: ui/components/connection-picker.slint:510 ui/components/settings.slint:570
+msgid "SSH username"
+msgstr "Utilisateur SSH"
+
+#: ui/components/connection-picker.slint:511
+msgid "Active SSH profile"
+msgstr "Profil SSH actif"
+
+#: ui/components/connection-picker.slint:516 ui/components/settings.slint:573
+msgid "SSH password"
+msgstr "Mot de passe SSH"
+
+#: ui/components/connection-picker.slint:517
+#: ui/components/connection-picker.slint:517
+#: ui/components/connection-picker.slint:517 ui/components/settings.slint:574
+msgid "Leave blank to keep current"
+msgstr "Laisser vide pour conserver l'actuel"
+
+#: ui/components/connection-picker.slint:526
+msgid "Private key file (optional)"
+msgstr "Fichier de clé privée (facultatif)"
+
+#: ui/components/connection-picker.slint:542
+msgid "Browse…"
+msgstr "Parcourir…"
+
+#: ui/components/connection-picker.slint:555
+msgid "Key passphrase (if the key has one)"
+msgstr "Phrase secrète de la clé (si elle en a une)"
+
+#: ui/components/connection-picker.slint:561
+msgid ""
+"Log in with a password, a private key, or both (the key is tried first). "
+"Leave the username empty to log in with the active SSH profile from Settings."
+msgstr ""
+"Connexion par mot de passe, par clé privée, ou les deux (la clé est "
+"essayée en premier). Laissez l'utilisateur vide pour utiliser le profil SSH "
+"actif des Paramètres."
+
+#: ui/components/connection-picker.slint:642
+msgid "Edit connection"
+msgstr "Modifier la connexion"
+
+#: ui/components/connection-picker.slint:642
+msgid "New connection"
+msgstr "Nouvelle connexion"
+
+#: ui/components/connection-picker.slint:651 ui/components/settings.slint:568
+#: ui/components/connection-picker.slint:651 ui/components/settings.slint:568 ui/components/settings.slint:568
+msgid "Name"
+msgstr "Nom"
+
+#: ui/components/connection-picker.slint:654
+msgid "Connection URL"
+msgstr "URL de connexion"
+
+#: ui/components/connection-picker.slint:661
+msgid "Username (optional)"
+msgstr "Nom d'utilisateur (facultatif)"
+
+#: ui/components/connection-picker.slint:664
+msgid "Password"
+msgstr "Mot de passe"
+
+#: ui/components/connection-picker.slint:673
+msgid "Enable SSH Tunnel"
+msgstr "Activer le tunnel SSH"
+
+#: ui/components/connection-picker.slint:692
+msgid "Add a connection profile"
+msgstr "Ajouter un profil de connexion"
+
+#: ui/components/connection-picker.slint:739 ui/components/settings.slint:594
+#: ui/components/connection-picker.slint:739 ui/components/settings.slint:594 ui/components/settings.slint:594
+msgid "Click again to delete"
+msgstr "Cliquez à nouveau pour supprimer"
+
+#: ui/components/connection-picker.slint:739 ui/components/settings.slint:594
+#: ui/components/connection-picker.slint:739 ui/components/settings.slint:594 ui/components/settings.slint:594
+msgid "Delete"
+msgstr "Supprimer"
+
+#: ui/components/connection-picker.slint:752
+msgid "Testing…"
+msgstr "Test en cours…"
+
+#: ui/components/connection-picker.slint:752
+msgid "Test connection"
+msgstr "Tester la connexion"
+
+#: ui/components/connection-transfer.slint:159
+msgid "Import / Export connections"
+msgstr "Importer / Exporter des connexions"
+
+#: ui/components/connection-transfer.slint:167
+msgid "Import"
+msgstr "Importer"
+
+#: ui/components/connection-transfer.slint:167
+#: ui/components/connection-transfer.slint:167
+msgid "Export"
+msgstr "Exporter"
+
+#: ui/components/connection-transfer.slint:189
+msgid "Choose a file…"
+msgstr "Choisir un fichier…"
+
+#: ui/components/connection-transfer.slint:191
+msgid "A file exported by Cachemire"
+msgstr "Un fichier exporté par Cachemire"
+
+#: ui/components/connection-transfer.slint:213
+msgid "Include the passwords"
+msgstr "Inclure les mots de passe"
+
+#: ui/components/connection-transfer.slint:218
+msgid "The passwords are written in clear text in the file."
+msgstr "Les mots de passe sont écrits en clair dans le fichier."
+
+#: ui/components/connection-transfer.slint:239
+#: ui/components/connection-transfer.slint:239 ui/components/widgets.slint:202
+msgid "Select all"
+msgstr "Tout sélectionner"
+
+#: ui/components/connection-transfer.slint:240
+msgid "Unselect all"
+msgstr "Tout désélectionner"
+
+#: ui/components/connection-transfer.slint:242
+#: ui/components/connection-transfer.slint:242
+msgid "Close"
+msgstr "Fermer"
+
+#: ui/components/connection-transfer.slint:244
+msgid "Import ({})"
+msgstr "Importer ({})"
+
+#: ui/components/connection-transfer.slint:249
+msgid "Export ({})"
+msgstr "Exporter ({})"
+
+#: ui/components/content-header.slint:411
+msgid "Copy selection"
+msgstr "Copier"
+
+#: ui/components/content-header.slint:439
+msgid "Close other tabs"
+msgstr "Fermer les autres onglets"
+
+#: ui/components/content-header.slint:440
+msgid "Close all tabs"
+msgstr "Fermer tous les onglets"
+
+#: ui/components/content-header.slint:468
+msgid "Export…"
+msgstr "Exporter…"
+
+#: ui/components/content-header.slint:469
+msgid "Select for export"
+msgstr "Sélectionner pour l'export"
+
+#: ui/components/content-header.slint:470
+msgid "Export {} selected…"
+msgstr "Exporter {} sélectionné(s)…"
+
+#: ui/components/key-detail-row.slint:71
+msgid "Find in value..."
+msgstr "Rechercher dans la valeur..."
+
+#: ui/components/key-detail-row.slint:495
+msgid "Formatting..."
+msgstr "Mise en forme..."
+
+#. Redisql query's row number, say)
+#: ui/components/key-detail-table.slint:184
+#: ui/components/key-detail-table.slint:184
+#: ui/components/key-detail-table.slint:184
+msgid "Field"
+msgstr "Champ"
+
+#: ui/components/key-detail-values.slint:307
+#: ui/components/key-detail-values.slint:307
+#: ui/components/key-detail-values.slint:307
+msgid "Value"
+msgstr "Valeur"
+
+#: ui/components/key-detail-widgets.slint:75 ui/components/settings.slint:368
+msgid "JSON"
+msgstr "JSON"
+
+#: ui/components/key-detail-widgets.slint:75
+msgid "Escaped"
+msgstr "Échappé"
+
+#: ui/components/key-detail-widgets.slint:266
+msgid "Everywhere"
+msgstr "Partout"
+
+#: ui/components/key-detail-widgets.slint:267
+#: ui/components/key-detail-widgets.slint:267
+msgid "Fields"
+msgstr "Champs"
+
+#: ui/components/key-detail.slint:48
+msgid "Table"
+msgstr "Tableau"
+
+#: ui/components/key-detail.slint:214
+msgid "Show active tab's key"
+msgstr "Afficher la clé de l'onglet actif"
+
+#: ui/components/key-detail.slint:237
+msgid "Select a key"
+msgstr "Sélectionnez une clé"
+
+#: ui/components/key-detail.slint:266
+msgid "Refresh value"
+msgstr "Actualiser la valeur"
+
+#: ui/components/key-detail.slint:297 ui/components/keyspace-panel.slint:193
+msgid "{} selected"
+msgstr "{} sélectionné(s)"
+
+#: ui/components/key-detail.slint:333
+msgid "More options"
+msgstr "Plus d'options"
+
+#: ui/components/key-detail.slint:367
+msgid "Match case"
+msgstr "Respecter la casse"
+
+#: ui/components/key-detail.slint:391
+msgid "Search field names..."
+msgstr "Rechercher dans les noms de champs..."
+
+#: ui/components/key-detail.slint:392
+msgid "Search values..."
+msgstr "Rechercher dans les valeurs..."
+
+#: ui/components/key-detail.slint:392
+msgid "Search fields and values..."
+msgstr "Rechercher dans les champs et les valeurs..."
+
+#: ui/components/key-detail.slint:427
+msgid "Filter the JSON, e.g. records.*.label"
+msgstr "Filtrer le JSON, p. ex. records.*.label"
+
+#. the ticked rows only, when there are any
+#: ui/components/key-detail.slint:462
+msgid "Export CSV"
+msgstr "Exporter en CSV"
+
+#: ui/components/key-detail.slint:489
+msgid "No field matches this filter"
+msgstr "Aucun champ ne correspond à ce filtre"
+
+#: ui/components/key-detail.slint:489
+msgid "Nothing to show as a table: no rows, or the rows share no top-level keys"
+msgstr ""
+"Rien à afficher en tableau : aucune ligne, ou les lignes n'ont aucune clé "
+"de premier niveau en commun"
+
+#: ui/components/keyspace-panel.slint:203
+msgid "Clear"
+msgstr "Effacer"
+
+#: ui/components/keyspace-panel.slint:214
+msgid "Group by folder"
+msgstr "Grouper par dossier"
+
+#: ui/components/keyspace-panel.slint:506
+msgid "Keyspace"
+msgstr "Espace de clés"
+
+#: ui/components/keyspace-panel.slint:511
+msgid "Query"
+msgstr "Requête"
+
+#: ui/components/keyspace-panel.slint:548
+msgid "Search everything: keys, fields and values (Ctrl+F)"
+msgstr "Tout rechercher : clés, champs et valeurs (Ctrl+F)"
+
+#: ui/components/keyspace-panel.slint:566
+msgid "Hide sidebar"
+msgstr "Masquer le panneau latéral"
+
+#: ui/components/keyspace-panel.slint:608
+msgid "Search keys, e.g. user:*"
+msgstr "Rechercher, p. ex. user:*"
+
+#: ui/components/keyspace-panel.slint:672
+msgid "Export keys"
+msgstr "Exporter des clés"
+
+#: ui/components/keyspace-panel.slint:680
+msgid "Refresh"
+msgstr "Actualiser"
+
+#: ui/components/keyspace-panel.slint:784
+msgid "{} used"
+msgstr "{} utilisés"
+
+#: ui/components/keyspace-panel.slint:810
+msgid "New query"
+msgstr "Nouvelle requête"
+
+#: ui/components/keyspace-panel.slint:841
+msgid "Filter saved queries"
+msgstr "Filtrer les requêtes enregistrées"
+
+#: ui/components/keyspace-panel.slint:936
+msgid "Saved queries"
+msgstr "Requêtes enregistrées"
+
+#: ui/components/keyspace-panel.slint:954
+msgid "Global queries"
+msgstr "Requêtes globales"
+
+#: ui/components/query-panel.slint:45
+msgid "Save query as..."
+msgstr "Enregistrer la requête sous..."
+
+#: ui/components/query-panel.slint:93
+msgid "Global (all connections)"
+msgstr "Globale (toutes les connexions)"
+
+#: ui/components/query-panel.slint:154
+msgid "Nothing run on this connection yet"
+msgstr "Rien d'exécuté sur cette connexion pour l'instant"
+
+#: ui/components/query-panel.slint:224
+msgid "Clear history"
+msgstr "Effacer l'historique"
+
+#: ui/components/query-panel.slint:344
+msgid ""
+"FROM KEY 'my:key' AS x\nSELECT *\nLIMIT 100\n\n(Ctrl+Enter runs the "
+"statement, Ctrl+Shift+Enter the whole script)"
+msgstr ""
+"FROM KEY 'ma:cle' AS x\nSELECT *\nLIMIT 100\n\n(Ctrl+Entrée exécute "
+"l'instruction, Ctrl+Maj+Entrée tout le script)"
+
+#: ui/components/query-panel.slint:620
+msgid "Undo (Ctrl+Z)"
+msgstr "Annuler (Ctrl+Z)"
+
+#: ui/components/query-panel.slint:628
+msgid "Redo (Ctrl+Y)"
+msgstr "Rétablir (Ctrl+Y)"
+
+#: ui/components/query-panel.slint:636
+msgid "History"
+msgstr "Historique"
+
+#: ui/components/query-panel.slint:700
+msgid "Run all"
+msgstr "Tout exécuter"
+
+#: ui/components/query-panel.slint:743 ui/components/query-panel.slint:755
+msgid "Run"
+msgstr "Exécuter"
+
+#: ui/components/search-panel.slint:135
+msgid "Search the whole instance: keys, fields and values"
+msgstr "Rechercher dans toute l'instance : clés, champs et valeurs"
+
+#: ui/components/search-panel.slint:177
+msgid "Type a word and press Enter to search every key of the instance."
+msgstr ""
+"Tapez un mot et appuyez sur Entrée pour chercher dans toutes les clés de "
+"l'instance."
+
+#: ui/components/search-panel.slint:195
+msgid "Paused: {}"
+msgstr "En pause : {}"
+
+#: ui/components/search-panel.slint:222
+msgid "Resume"
+msgstr "Reprendre"
+
+#: ui/components/search-panel.slint:222
+msgid "Pause"
+msgstr "Pause"
+
+#: ui/components/search-panel.slint:238
+msgid "Key"
+msgstr "Clé"
+
+#: ui/components/settings.slint:99
+msgid "Active"
+msgstr "Actif"
+
+#: ui/components/settings.slint:324
+msgid "New connection profile"
+msgstr "Nouveau profil de connexion"
+
+#: ui/components/settings.slint:324
+msgid "Edit connection profile"
+msgstr "Modifier le profil de connexion"
+
+#: ui/components/settings.slint:325 ui/components/title-bar.slint:313
+msgid "Settings"
+msgstr "Paramètres"
+
+#: ui/components/settings.slint:325
+msgid "New SSH profile"
+msgstr "Nouveau profil SSH"
+
+#: ui/components/settings.slint:325
+msgid "Edit SSH profile"
+msgstr "Modifier le profil SSH"
+
+#: ui/components/settings.slint:340
+msgid "Language"
+msgstr "Langue"
+
+#: ui/components/settings.slint:350
+msgid "Automatic"
+msgstr "Automatique"
+
+#: ui/components/settings.slint:359
+msgid "Export format"
+msgstr "Format d'export"
+
+#: ui/components/settings.slint:369
+msgid "Escaped JSON"
+msgstr "JSON échappé"
+
+#: ui/components/settings.slint:376
+msgid "Search depth"
+msgstr "Profondeur de recherche"
+
+#: ui/components/settings.slint:389
+msgid ""
+"How many entries of each key (hash fields, list items, set members...) the "
+"global search reads. Fewer is faster, but a match deeper inside a big key is "
+"missed."
+msgstr ""
+"Combien d'entrées de chaque clé (champs d'un hash, éléments d'une liste, "
+"membres d'un set...) la recherche globale lit. Moins, c'est plus rapide, "
+"mais une correspondance plus profonde dans une grosse clé est manquée."
+
+#: ui/components/settings.slint:400
+msgid "Experimental"
+msgstr "Expérimental"
+
+#: ui/components/settings.slint:406
+msgid "Search on the server (Lua script)"
+msgstr "Recherche sur le serveur (script Lua)"
+
+#: ui/components/settings.slint:411
+msgid ""
+"The global search lets Redis filter the data itself, so far less of it "
+"travels. It uses the server's CPU while it runs, needs permission to run "
+"scripts, and goes back to the normal search if the server refuses."
+msgstr ""
+"La recherche globale laisse Redis filtrer lui-même les données, ce qui en "
+"fait circuler bien moins. Elle utilise le processeur du serveur pendant son "
+"exécution, demande l'autorisation d'exécuter des scripts, et revient à la "
+"recherche normale si le serveur refuse."
+
+#: ui/components/settings.slint:424
+msgid "SSH profiles"
+msgstr "Profils SSH"
+
+#: ui/components/settings.slint:431 ui/components/settings.slint:497
+msgid "Add profile"
+msgstr "Ajouter un profil"
+
+#: ui/components/settings.slint:434
+msgid ""
+"The active profile logs in to the SSH tunnels that have no username of their "
+"own. A connection that fills in its own username and password uses those "
+"instead."
+msgstr ""
+"Le profil actif sert à se connecter aux tunnels SSH qui n'ont pas "
+"d'utilisateur propre. Une connexion qui renseigne son propre utilisateur et "
+"mot de passe utilise ceux-ci à la place."
+
+#: ui/components/settings.slint:452
+msgid "No SSH profiles yet"
+msgstr "Aucun profil SSH pour l'instant"
+
+#: ui/components/settings.slint:490
+msgid "Connection profiles"
+msgstr "Profils de connexion"
+
+#: ui/components/settings.slint:500
+msgid ""
+"A connection that has one of these profiles tints the app's background while "
+"you are connected to it, to tell environments apart."
+msgstr ""
+"Une connexion qui a l'un de ces profils teinte l'arrière-plan de "
+"l'application tant que vous y êtes connecté, pour distinguer les "
+"environnements."
+
+#: ui/components/settings.slint:516
+msgid "No connection profiles yet"
+msgstr "Aucun profil de connexion pour l'instant"
+
+#: ui/components/settings.slint:568
+msgid "Work bastion"
+msgstr "Bastion de travail"
+
+#: ui/components/settings.slint:620
+msgid "Color"
+msgstr "Couleur"
+
+#: ui/components/title-bar.slint:224
+msgid "Connected through an SSH tunnel via {}"
+msgstr "Connecté par un tunnel SSH via {}"
+
+#: ui/components/title-bar.slint:279
+msgid "Copy connection string"
+msgstr "Copier la chaîne de connexion"
+
+#: ui/components/title-bar.slint:377
+msgid "Cloud"
+msgstr "Cloud"
+
+#: ui/components/title-bar.slint:418
+msgid "Select Profile"
+msgstr "Choisir un profil"
+
+#: ui/components/title-bar.slint:478
+msgid "Connecting..."
+msgstr "Connexion..."
+
+#: ui/components/title-bar.slint:478
+msgid "No connection"
+msgstr "Aucune connexion"
+
+#: ui/components/widgets.slint:145 ui/components/widgets.slint:201
+msgid "Paste"
+msgstr "Coller"
+
+#: ui/components/widgets.slint:199
+msgid "Cut"
+msgstr "Couper"
+
+#: ui/components/widgets.slint:200
+msgid "Copy"
+msgstr "Copier"

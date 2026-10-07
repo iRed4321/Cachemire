@@ -1,0 +1,584 @@
+import { Theme } from "theme.slint";
+import { IconButton } from "widgets.slint";
+import { IconChevron, IconSpinner } from "icons.slint";
+import { ExportGroup, SearchField } from "key-detail-widgets.slint";
+import { KeyScroll, ExportPrefs } from "key-detail-types.slint";
+import { KeyPanel } from "../globals.slint";
+
+// The header of an open row: fold chevron and name, the find box with its match
+// count and up/down buttons, and the export pills. The table draws one more, fixed
+// at the top, for the row scrolled under it.
+export component RowHeader inherits Rectangle {
+    in property <string> field;
+    in-out property <string> find-query;
+    in property <string> find-label;
+    in property <int> find-count;
+    // bumped to give the find box the focus
+    in property <int> focus-tick: 0;
+    // a line under it, for the copy held over scrolled text
+    in property <bool> hairline: false;
+    callback collapse();
+    callback find-accepted();
+    callback find-step(step: int);
+    callback find-focus-changed(focused: bool);
+
+    // whether the pills act on escaped JSON (and, for a row, its text shows so)
+    in-out property <bool> escaped: false;
+
+    height: Theme.px(38px);
+    background: header-area.has-hover ? Theme.bg-hover : Theme.bg-sunken;
+    border-radius: Theme.radius-sm;
+
+    header-area := TouchArea {
+        mouse-cursor: pointer;
+        clicked => { root.collapse(); }
+    }
+
+    HorizontalLayout {
+        padding-left: Theme.px(10px);
+        padding-right: Theme.px(8px);
+        spacing: Theme.px(8px);
+        cross-axis-alignment: center;
+
+        IconChevron { size: Theme.icon-xs; down: true; tint: Theme.text-tertiary; }
+        Rectangle {
+            height: Theme.px(28px);
+            background: Theme.bg-elevated;
+            border-width: 1px;
+            border-color: Theme.border-soft;
+            border-radius: Theme.radius-sm;
+            HorizontalLayout {
+                padding-left: Theme.px(10px);
+                padding-right: Theme.px(10px);
+                Text {
+                    text: root.field;
+                    min-width: Theme.px(24px);
+                    font-size: Theme.pt(12px);
+                    font-family: Theme.font-mono;
+                    font-weight: 600;
+                    color: Theme.text-primary;
+                    vertical-alignment: center;
+                    overflow: elide;
+                }
+            }
+        }
+        SearchField {
+            width: Theme.px(240px);
+            height: Theme.px(28px);
+            font-size: Theme.pt(12px);
+            icon-size: Theme.icon-sm;
+            underline: true;
+            placeholder: @tr("Find in value...");
+            text <=> root.find-query;
+            focus-tick: root.focus-tick;
+            accepted => { root.find-accepted(); }
+            focus-changed(focused) => { root.find-focus-changed(focused); }
+        }
+        Text {
+            text: root.find-label;
+            font-size: Theme.pt(11.5px);
+            font-family: Theme.font-mono;
+            color: Theme.text-tertiary;
+            vertical-alignment: center;
+        }
+        // only once the search has found something to step through
+        if root.find-count > 0: IconButton {
+            box-size: Theme.px(26px);
+            clicked => { root.find-step(-1); }
+            IconChevron { size: Theme.icon-sm; up: true; tint: Theme.text-tertiary; }
+        }
+        if root.find-count > 0: IconButton {
+            box-size: Theme.px(26px);
+            clicked => { root.find-step(1); }
+            IconChevron { size: Theme.icon-sm; down: true; tint: Theme.text-tertiary; }
+        }
+        Rectangle { horizontal-stretch: 1; }
+        // acts on plain or escaped JSON as this row's choice says
+        ExportGroup {
+            format-toggle: true;
+            escaped <=> root.escaped;
+            open => { KeyPanel.open-value(root.field, root.escaped); }
+            download => { KeyPanel.download-value(root.field, root.escaped); }
+            copy => { KeyPanel.copy-value(root.field, root.escaped); }
+        }
+    }
+
+    // hairline under it, as it sits over scrolled text
+    Rectangle {
+        y: parent.height - 1px;
+        width: parent.width;
+        height: 1px;
+        background: Theme.border;
+        visible: root.hairline;
+    }
+}
+
+export component AllValuesRow inherits Rectangle {
+    in property <string> field;
+    in property <styled-text> value-compact;
+    in property <styled-text> value-compact-escaped;
+    in property <int> index;
+    in property <length> field-col-width;
+    // this row's slot in the content, the viewport window the table shows (both
+    // in content coordinates) and how far past that window rows still get
+    // painted — together they decide `in-paint-window` below
+    in property <length> row-y;
+    in property <length> row-height;
+    in property <length> view-top;
+    // The table's fixed header speaks for the row stuck at the top: this row says when
+    // it is that row (`stuck-changed`) and hears back its find box text, the pressed
+    // button (`command-*`) and whether its box has focus.
+    in property <string> stuck-find-query;
+    in property <bool> stuck-escaped;
+    in property <int> command-index;
+    in property <int> command-kind;
+    in property <int> command-tick;
+    in property <bool> overlay-focused;
+    callback stuck-changed(active: bool, field: string, query: string, label: string, count: int, limit: length, escaped: bool);
+    callback focus-overlay();
+    in property <length> view-height;
+    in property <length> paint-buffer;
+    // Rust bumps this whenever a pretty rendering lands in its cache; each row then
+    // asks pretty-is-ready for its own field, immune to write-ordering races
+    property <int> pretty-ready-tick: KeyPanel.pretty-ready-tick;
+    // field of the row the user last pressed in (click or drag-selection): every
+    // other row drops its own selection when this changes, since StyledText
+    // never clears one
+    in property <string> selection-owner;
+    // Esc: every row hears the tick, and the open one under the pointer folds
+    // back — the pointer, not "last clicked", so Esc in another box (the
+    // keyspace search, say) never closes a value by surprise
+    in property <int> collapse-tick;
+    // opens this row right away — see AllValuesRowData.initial-expanded
+    in property <bool> initial-expanded: false;
+    // fires whenever this row opens or folds, so Rust can keep
+    // KeyScroll.all-values-expanded in step (see its doc comment)
+    callback expanded-changed(field: string, expanded: bool);
+
+    // forwarded from whichever StyledText is dragging a selection, in
+    // window-absolute y so the table can compare it against the viewport
+    callback selection-drag-check(abs-y: length);
+    callback selection-drag-ended();
+    // right-click somewhere on this row: its position plus the row's
+    // currently-selected text (if any), for "Copy selection". Reaches
+    // `row-area` since StyledText leaves non-left clicks to its ancestors.
+    callback context-requested(x: length, y: length, selected: string);
+    // mirror of the live value text's `selected-text` (the text itself sits
+    // inside a conditional, so it can't be read from here directly)
+    property <string> current-selection: "";
+    // asks the table to scroll so this window-absolute y is in view
+    callback reveal(abs-y: length);
+    // asks the table to scroll so this y (in its content coordinates, like
+    // `row-y`) is at the top of the viewport, given that the content is about
+    // to get `shrink` shorter (so the target can be kept within the new range)
+    callback scroll-to-top(y: length, shrink: length);
+
+    // bound to `initial-expanded` (not flipped in `init`) so a restored row
+    // is *born* open: a plain assignment inside `init` isn't part of that
+    // construction's first paint, and would flash collapsed-then-expanded.
+    property <bool> expanded: initial-expanded;
+    // this row's own JSON/Escaped choice: it starts as the header's and follows it when that changes
+    property <bool> escaped: ExportPrefs.escaped;
+    property <int> prefs-tick: ExportPrefs.rows-tick;
+    changed prefs-tick => { root.escaped = ExportPrefs.escaped; }
+    // the text shown changes with it: the open one is asked for again
+    changed escaped => {
+        if is-stuck {
+            push-stuck();
+        }
+        pretty-loaded = false;
+        prefetch-requested = false;
+        if expanded {
+            load-pretty();
+        }
+    }
+    property <bool> pretty-loaded: false;
+    property <bool> prefetch-requested: false;
+    property <styled-text> pretty-cache;
+    property <string> find-query: "";
+    property <string> find-last-query: "";
+    property <int> find-current: 0;
+    property <int> find-count: 0;
+    property <string> find-label: "";
+    property <bool> find-focused: false;
+    property <int> header-focus-tick: 0;
+    property <color> selection-bg: Theme.accent-blue.with-alpha(0.35);
+    property <length> collapsed-height: Theme.pt(12px) * 1.4;
+    property <length> line-height: Theme.pt(12px) * 1.4;
+    // An open row is one column: a header (name, find, export, fold) above
+    // the text, which is only for reading and selecting. The header floats, so
+    // the row's top padding leaves room for it.
+    property <length> header-h: Theme.px(38px);
+    property <length> body-gap: Theme.px(4px);
+
+    // The row is open, its header's natural place is above the view and the row still
+    // reaches into it: the table then holds the header at the top. `stuck-limit` is
+    // where (in content coordinates) it starts riding up again.
+    property <bool> is-stuck: expanded && row-y + Theme.px(5px) < view-top && row-y + row-height - Theme.px(5px) > view-top;
+    property <length> stuck-limit: row-y + row-height - header-h - Theme.px(5px);
+    function push-stuck() {
+        root.stuck-changed(is-stuck, field, find-query, find-label, find-count, stuck-limit, escaped);
+    }
+    changed is-stuck => {
+        // read before the table hears of it: it clears the focus mirror with the header
+        let overlay-had-focus = overlay-focused;
+        push-stuck();
+        if is-stuck && find-focused {
+            root.focus-overlay();
+        } else if !is-stuck && overlay-had-focus {
+            header-focus-tick += 1;
+        }
+    }
+    changed find-label => { if is-stuck { push-stuck(); } }
+    changed find-count => { if is-stuck { push-stuck(); } }
+    changed stuck-limit => { if is-stuck { push-stuck(); } }
+    changed stuck-escaped => {
+        if is-stuck && escaped != stuck-escaped {
+            escaped = stuck-escaped;
+        }
+    }
+    changed stuck-find-query => {
+        if is-stuck && find-query != stuck-find-query {
+            find-query = stuck-find-query;
+        }
+    }
+    // Enter on a new query starts at its first match; Enter again steps to the next one
+    function submit-find() {
+        // what was typed in the fixed header may not have reached `find-query` yet
+        if is-stuck {
+            find-query = stuck-find-query;
+        }
+        if find-query != find-last-query {
+            find-last-query = find-query;
+            find-current = 0;
+            run-find(0);
+        } else {
+            run-find(1);
+        }
+    }
+    changed command-tick => {
+        if command-index == index && is-stuck {
+            if command-kind == 0 {
+                submit-find();
+            } else if command-kind == 1 {
+                run-find(-1);
+            } else if command-kind == 2 {
+                run-find(1);
+            } else {
+                collapse();
+            }
+        }
+    }
+
+    // Slint ignores `visible` on a component's root element, so the table sets
+    // it at the instantiation site from this predicate.
+    out property <bool> in-paint-window: row-y + row-height >= view-top - paint-buffer && row-y <= view-top + view-height + paint-buffer;
+
+    // Folds the row. If its top is scrolled out of view, it's brought back
+    // to the top of the viewport first — folding shrinks the content, which
+    // would otherwise leave the viewport stranded below the closed row.
+    function collapse() {
+        if row-y < view-top {
+            scroll-to-top(row-y, row-height - collapsed-height - Theme.px(10px));
+        }
+        expanded = false;
+    }
+
+    function refresh-pretty() {
+        pretty-cache = KeyPanel.request-pretty-value(field, find-query, find-current, escaped);
+    }
+
+    // kicks off (or reuses) the background rendering of this field.
+    // `changed pretty-ready-tick` usually picks up the result, but a
+    // same-construction cache hit never fires it, so this checks directly too.
+    function load-pretty() {
+        pretty-loaded = false;
+        prefetch-requested = true;
+        KeyPanel.request-pretty-value-async(field, escaped);
+        if KeyPanel.pretty-is-ready(field, escaped) {
+            pretty-loaded = true;
+            prefetch-requested = false;
+            run-find(0);
+        }
+    }
+
+    // moves the current match by `step` (0 = re-evaluate in place), updates
+    // the highlighted text and scrolls the match's line into view
+    function run-find(step: int) {
+        if !pretty-loaded {
+            return;
+        }
+        if find-query == "" {
+            find-count = 0;
+            find-current = 0;
+            find-label = "";
+            refresh-pretty();
+            return;
+        }
+        let res = KeyPanel.find-in-value(field, find-query, find-current + step, escaped);
+        find-count = res.count;
+        find-current = res.index;
+        find-label = res.label;
+        refresh-pretty();
+        if res.count > 0 {
+            reveal(value-cell.absolute-position.y + res.line * line-height);
+        }
+    }
+
+    // shared by `changed expanded` and `init`: a property's starting value
+    // is never itself a "change", so it never fires `changed` — a row born
+    // open needs this called directly from `init` instead.
+    function on-expanded-changed() {
+        // the value text is swapped for another element: no selection yet
+        current-selection = "";
+        // a hover prefetch may already be in flight; its arrival loads the row
+        if expanded && !pretty-loaded && !prefetch-requested {
+            load-pretty();
+        }
+        root.expanded-changed(field, expanded);
+    }
+    changed expanded => {
+        KeyScroll.refocus-tick += 1;
+        on-expanded-changed();
+    }
+    // announces a row that started open (see `expanded`'s binding) and kicks
+    // off its pretty text — `on-expanded-changed` isn't reached any other way
+    // for it, since starting open isn't a "change" (see that function's note)
+    init => {
+        if root.initial-expanded {
+            on-expanded-changed();
+        }
+        if KeyScroll.reveal-pending && KeyScroll.reveal-field == field {
+            reveal-armed = true;
+        }
+    }
+    // this is the row to bring into view (KeyScroll.reveal-*): once its place in the
+    // list has settled, the list is scrolled to put it at the top
+    property <bool> reveal-armed: false;
+    Timer {
+        interval: 150ms;
+        running: reveal-armed;
+        triggered => {
+            reveal-armed = false;
+            if KeyScroll.reveal-pending {
+                KeyScroll.reveal-pending = false;
+                root.scroll-to-top(max(0px, row-y - Theme.px(6px)), 0px);
+            }
+        }
+    }
+    changed collapse-tick => {
+        if expanded && row-area.has-hover {
+            collapse();
+        }
+    }
+    changed pretty-ready-tick => {
+        if !pretty-loaded && KeyPanel.pretty-is-ready(field, escaped) {
+            pretty-loaded = true;
+            prefetch-requested = false;
+            run-find(0);
+        }
+    }
+
+    // An open row is a sunken block with an accent bar rather than a hover
+    // wash: the text in it is for selecting, and a blue hover behind a blue
+    // selection made both hard to read.
+    background: expanded ? Theme.bg-sunken : (row-area.has-hover ? Theme.bg-selected-soft : (mod(index, 2) == 1 ? Theme.bg-hover : transparent));
+    border-radius: expanded ? Theme.radius-sm : 0px;
+
+    // Prefetch while hovering. The timer resets when hover ends, so only
+    // lingering on a row triggers it, not passing over it.
+    Timer {
+        interval: 350ms;
+        running: row-area.has-hover && !expanded && !pretty-loaded && !prefetch-requested;
+        triggered => {
+            prefetch-requested = true;
+            KeyPanel.request-pretty-value-async(field, escaped);
+        }
+    }
+
+    // wraps the row's content instead of sitting behind it, so hover
+    // tracking reaches it even though the StyledText cells accept mouse
+    // moves themselves (which would starve a sibling TouchArea of them)
+    row-area := TouchArea {
+        // hand on a collapsed row (click opens it); an open one is text to
+        // select, and its header brings its own hand
+        mouse-cursor: !expanded ? MouseCursor.pointer : (pretty-loaded ? MouseCursor.text : MouseCursor.default);
+        // a click on a collapsed row's padding or empty space opens it; an
+        // open row is only folded from its header or name pill, so a stray
+        // click while selecting text never closes it
+        clicked => {
+            if !expanded {
+                expanded = true;
+            }
+        }
+        pointer-event(event) => {
+            if event.button == PointerEventButton.right && event.kind == PointerEventKind.down {
+                root.context-requested(self.mouse-x + self.absolute-position.x, self.mouse-y + self.absolute-position.y, current-selection);
+            }
+        }
+
+        HorizontalLayout {
+            // rows sit flush against each other so the hover/zebra background
+            // runs edge to edge; the vertical gap between them is this padding
+            padding-top: Theme.px(5px) + (expanded ? header-h + body-gap : 0px);
+            padding-bottom: Theme.px(5px);
+            padding-left: expanded ? Theme.px(10px) : Theme.px(4px);
+            padding-right: expanded ? Theme.px(10px) : Theme.px(4px);
+            spacing: Theme.px(10px);
+
+            // the name column, only while the row is closed: an open row is one
+            // column and shows its name in its header instead
+            if !expanded: field-area := TouchArea {
+                width: field-col-width;
+                mouse-cursor: pointer;
+                clicked => { expanded = true; }
+                Text {
+                    text: field;
+                    font-size: Theme.pt(12px);
+                    font-family: Theme.font-mono;
+                    color: Theme.text-primary;
+                    vertical-alignment: center;
+                    width: 100%;
+                    height: 100%;
+                    overflow: elide;
+                }
+            }
+
+            // a VerticalLayout, not a Rectangle, so the cell's height follows
+            // whichever child is instantiated below
+            value-cell := VerticalLayout {
+                horizontal-stretch: 1;
+
+                // Collapsed preview: one line laid out at its full natural
+                // width inside a clipping box, so StyledText's word wrapping
+                // never kicks in. Cheaper than eliding a wrapped layout.
+                if !expanded: Rectangle {
+                    height: collapsed-height;
+                    clip: true;
+
+                    compact-text := StyledText {
+                        x: 0;
+                        y: 0;
+                        width: max(parent.width, self.preferred-width);
+                        height: parent.height;
+                        // the box is 1.4 line-heights tall, so centre the line
+                        // rather than leaving it at the top
+                        vertical-alignment: center;
+                        text: escaped ? value-compact-escaped : value-compact;
+                        default-color: Theme.text-primary;
+                        default-font-family: Theme.font-mono;
+                        default-font-size: Theme.pt(12px);
+                        selection-background-color: selection-bg;
+                        property <string> owner: root.selection-owner;
+                        changed owner => {
+                            if owner != field {
+                                self.anchor-position-byte-offset = 0;
+                                self.cursor-position-byte-offset = 0;
+                            }
+                        }
+                        clicked => { expanded = !expanded; }
+                        selection-drag-moved(position) => {
+                            root.selection-drag-check(self.absolute-position.y + position.y);
+                        }
+                        selection-drag-ended => { root.selection-drag-ended(); }
+                        changed selected-text => { root.current-selection = self.selected-text; }
+                    }
+                    // a long preview is just clipped at the cell's edge, with
+                    // no overflow cue
+                }
+                if expanded && !pretty-loaded: HorizontalLayout {
+                    height: collapsed-height;
+                    spacing: Theme.px(6px);
+                    alignment: start;
+                    IconSpinner { size: Theme.icon-xs; y: (parent.height - self.height) / 2; }
+                    Text {
+                        text: @tr("Formatting...");
+                        font-size: Theme.pt(12px);
+                        font-family: Theme.font-mono;
+                        color: Theme.text-tertiary;
+                        vertical-alignment: center;
+                    }
+                }
+                // The text wraps to the cell's width. A plain Rectangle holds it: the
+                // text's minimum width (its longest word) must not reach the layout, and
+                // the Rectangle takes the wrapped text's height.
+                if expanded && pretty-loaded: Rectangle {
+                    horizontal-stretch: 1;
+                    min-width: 0px;
+                    height: pretty-text.preferred-height;
+                    pretty-text := StyledText {
+                        text: pretty-cache;
+                        default-color: Theme.text-primary;
+                        default-font-family: Theme.font-mono;
+                        default-font-size: Theme.pt(12px);
+                        selection-background-color: selection-bg;
+                        width: parent.width;
+                        property <string> owner: root.selection-owner;
+                        changed owner => {
+                            if owner != field {
+                                self.anchor-position-byte-offset = 0;
+                                self.cursor-position-byte-offset = 0;
+                            }
+                        }
+                        selection-drag-moved(position) => {
+                            root.selection-drag-check(self.absolute-position.y + position.y);
+                        }
+                        selection-drag-ended => { root.selection-drag-ended(); }
+                        changed selected-text => { root.current-selection = self.selected-text; }
+                        // Plain clicks are counted while they follow one another closely: the
+                        // second selects the word under the pointer, the third (and on) the value.
+                        property <int> clicks: 0;
+                        property <int> click-tick: 0;
+                        Timer {
+                            interval: 400ms + Math.mod(pretty-text.click-tick, 2) * 1ms;
+                            running: pretty-text.clicks > 0;
+                            triggered => { pretty-text.clicks = 0; }
+                        }
+                        clicked => {
+                            self.clicks += 1;
+                            self.click-tick += 1;
+                            if self.clicks >= 2 {
+                                let range = KeyPanel.value-selection(root.field, self.cursor-position-byte-offset, self.clicks >= 3, root.escaped);
+                                if range.start >= 0 {
+                                    self.anchor-position-byte-offset = range.start;
+                                    self.cursor-position-byte-offset = range.end;
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    // Header of an open row: chevron/name, find, and export pills; a click elsewhere on
+    // it folds the row. While the row's top is scrolled out of view the table shows it
+    // fixed above the scrolling area instead (see AllValuesTable's overlay).
+    if expanded: RowHeader {
+        x: Theme.px(4px);
+        y: Theme.px(5px);
+        width: parent.width - Theme.px(8px);
+        visible: !is-stuck;
+        field: root.field;
+        find-query <=> root.find-query;
+        escaped <=> root.escaped;
+        find-label: root.find-label;
+        find-count: root.find-count;
+        focus-tick: root.header-focus-tick;
+        collapse => { root.collapse(); }
+        find-accepted => { root.submit-find(); }
+        find-step(step) => { root.run-find(step); }
+        find-focus-changed(focused) => { root.find-focused = focused; }
+    }
+
+    // accent bar down the left edge of an open row, so it reads as open without
+    // a colour wash over its text; drawn last, over the row, and takes no input
+    if expanded: Rectangle {
+        x: 0;
+        y: Theme.px(4px);
+        width: Theme.px(2px);
+        height: parent.height - Theme.px(8px);
+        border-radius: Theme.px(1px);
+        background: Theme.accent-blue;
+    }
+}

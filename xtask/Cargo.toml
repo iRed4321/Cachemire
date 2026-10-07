@@ -1,0 +1,12 @@
+[package]
+name = "xtask"
+version = "0.0.0"
+edition = "2024"
+publish = false
+description = "Development tasks: translations, version bumps and the Windows/Linux release build (`cargo xtask`)"
+
+[dependencies]
+semver = "1"
+clap = { version = "4", features = ["derive"] }
+rspolib = "0.1"
+zip = { version = "8", default-features = false, features = ["deflate"] }

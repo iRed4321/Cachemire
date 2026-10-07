@@ -1,0 +1,184 @@
+import { Theme } from "theme.slint";
+import { ModalButton, SegmentedToggle } from "widgets.slint";
+import { SshTunnelFields, ProfileChoiceList, ConnProfileRowData } from "connection-picker.slint";
+
+// What the cloud settings form shows and edits; Rust fills it before opening it
+// and reads it back on save. `*-mode` is 0 to inherit, 1 for none, 2 for a value.
+export global CloudSettings {
+    in-out property <bool> open: false;
+    // 0: an AWS account's settings, 1: one endpoint's
+    in-out property <int> scope-kind: 0;
+    in-out property <string> scope-name: "";
+    in-out property <string> scope-detail: "";
+    in-out property <string> error: "";
+    // what an endpoint inherits from its account, said next to "Inherit"
+    in-out property <string> inherit-profile-hint: "";
+    in-out property <string> inherit-ssh-hint: "";
+    in-out property <[ConnProfileRowData]> profiles: [];
+    in-out property <int> profile-mode: 1;
+    in-out property <string> profile-id: "";
+    in-out property <int> ssh-mode: 1;
+    in-out property <string> ssh-host: "";
+    in-out property <string> ssh-port: "";
+    in-out property <string> ssh-username: "";
+    in-out property <string> ssh-password: "";
+    in-out property <string> ssh-key: "";
+    in-out property <string> ssh-passphrase: "";
+    callback open-requested(kind: int, id: string);
+    callback save();
+    callback browse-key();
+}
+
+// The connection profile and SSH tunnel set for an AWS account (all its endpoints) or one
+// endpoint, which overrides the account's. The endpoints themselves are never saved.
+export component CloudSettingsModal inherits Rectangle {
+    // whether the clipboard holds text, for each field's right-click "Paste"
+    callback clipboard-has-text() -> bool;
+    property <bool> can-inherit: CloudSettings.scope-kind == 1;
+    // inherit (an endpoint only), none, or a value of its own
+    property <[string]> mode-options: [@tr("Inherit"), @tr("None"), @tr("Custom")];
+
+    background: #000000aa;
+
+    TouchArea {
+        clicked => { CloudSettings.open = false; }
+    }
+
+    VerticalLayout {
+        alignment: center;
+        cross-axis-alignment: center;
+
+        card := Rectangle {
+            width: Theme.px(440px);
+            background: Theme.bg-elevated;
+            border-radius: Theme.radius-lg;
+            border-width: 1px;
+            border-color: Theme.border-soft;
+            drop-shadow-color: Theme.shadow-color;
+            drop-shadow-blur: Theme.shadow-blur;
+            drop-shadow-offset-y: Theme.shadow-offset-y;
+
+            // swallow clicks so they don't bubble to the backdrop's close
+            TouchArea { }
+
+            VerticalLayout {
+                padding: Theme.px(16px);
+                spacing: Theme.px(10px);
+
+                Text {
+                    text: CloudSettings.scope-kind == 0 ? @tr("AWS account settings") : @tr("Cloud connection settings");
+                    height: Theme.pt(18px);
+                    font-size: Theme.pt(14px);
+                    font-weight: 700;
+                    color: Theme.text-primary;
+                    vertical-alignment: center;
+                }
+                Text {
+                    text: CloudSettings.scope-name + (CloudSettings.scope-detail == "" ? "" : " - " + CloudSettings.scope-detail);
+                    height: Theme.pt(14px);
+                    font-size: Theme.pt(11px);
+                    font-italic: true;
+                    color: Theme.text-secondary;
+                    vertical-alignment: center;
+                    overflow: elide;
+                }
+
+                // ---- the connection profile
+                HorizontalLayout {
+                    spacing: Theme.px(8px);
+                    Text {
+                        text: @tr("Connection profile");
+                        font-size: Theme.pt(12px);
+                        font-weight: 600;
+                        color: Theme.text-primary;
+                        vertical-alignment: center;
+                        horizontal-stretch: 1;
+                    }
+                    SegmentedToggle {
+                        options: root.mode-options;
+                        first: root.can-inherit ? 0 : 1;
+                        segment-width: Theme.px(78px);
+                        current: CloudSettings.profile-mode;
+                        picked(index) => {
+                            CloudSettings.profile-mode = index;
+                            // choosing "Custom" picks the first profile, so it is never on with nothing chosen
+                            if index == 2 && CloudSettings.profile-id == "" && CloudSettings.profiles.length > 0 {
+                                CloudSettings.profile-id = CloudSettings.profiles[0].id;
+                            }
+                        }
+                    }
+                }
+                if CloudSettings.profile-mode == 0: Text {
+                    text: @tr("From the account: {}", CloudSettings.inherit-profile-hint);
+                    font-size: Theme.pt(10.5px);
+                    color: Theme.text-tertiary;
+                    wrap: word-wrap;
+                }
+                if CloudSettings.profile-mode == 2 && CloudSettings.profiles.length > 0: ProfileChoiceList {
+                    profiles: CloudSettings.profiles;
+                    selected <=> CloudSettings.profile-id;
+                }
+                if CloudSettings.profile-mode == 2 && CloudSettings.profiles.length == 0: Text {
+                    text: @tr("No connection profiles yet: create one in Settings.");
+                    font-size: Theme.pt(10.5px);
+                    color: Theme.text-tertiary;
+                    wrap: word-wrap;
+                }
+
+                // ---- the SSH tunnel
+                HorizontalLayout {
+                    spacing: Theme.px(8px);
+                    Text {
+                        text: @tr("SSH tunnel");
+                        font-size: Theme.pt(12px);
+                        font-weight: 600;
+                        color: Theme.text-primary;
+                        vertical-alignment: center;
+                        horizontal-stretch: 1;
+                    }
+                    SegmentedToggle {
+                        options: root.mode-options;
+                        first: root.can-inherit ? 0 : 1;
+                        segment-width: Theme.px(78px);
+                        current: CloudSettings.ssh-mode;
+                        picked(index) => { CloudSettings.ssh-mode = index; }
+                    }
+                }
+                if CloudSettings.ssh-mode == 0: Text {
+                    text: @tr("From the account: {}", CloudSettings.inherit-ssh-hint);
+                    font-size: Theme.pt(10.5px);
+                    color: Theme.text-tertiary;
+                    wrap: word-wrap;
+                }
+                if CloudSettings.ssh-mode == 2: SshTunnelFields {
+                    clipboard-has-text() => { return root.clipboard-has-text(); }
+                    keep-secrets: true;
+                    host <=> CloudSettings.ssh-host;
+                    port <=> CloudSettings.ssh-port;
+                    username <=> CloudSettings.ssh-username;
+                    password <=> CloudSettings.ssh-password;
+                    key <=> CloudSettings.ssh-key;
+                    passphrase <=> CloudSettings.ssh-passphrase;
+                    browse-key => { CloudSettings.browse-key(); }
+                }
+
+                if CloudSettings.error != "": Text {
+                    text: CloudSettings.error;
+                    height: Theme.pt(14px);
+                    color: Theme.accent-red;
+                    font-size: Theme.pt(11px);
+                    vertical-alignment: center;
+                    overflow: elide;
+                }
+
+                HorizontalLayout {
+                    height: Theme.px(28px);
+                    spacing: Theme.px(8px);
+                    Rectangle { horizontal-stretch: 1; }
+                    ModalButton { text: @tr("Cancel"); clicked => { CloudSettings.open = false; } }
+                    ModalButton { text: @tr("Save"); primary: true; clicked => { CloudSettings.save(); } }
+                }
+            }
+        }
+    }
+}

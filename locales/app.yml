@@ -1,0 +1,338 @@
+# Messages built in Rust (`t!("...")`), compiled into the executable by rust-i18n.
+# The key is the English text, which is also what is shown for a language that
+# has no entry. The messages in the .slint files are in lang/*/LC_MESSAGES/cachemire.po.
+_version: 2
+
+"Copied":
+  fr: "Copié"
+"Refreshed":
+  fr: "Actualisé"
+# the key tree's export
+"Choose a folder...":
+  fr: "Choisissez un dossier..."
+"Exporting %{done} of %{total}...":
+  fr: "Export de %{done} sur %{total}..."
+"Exported %{count} keys":
+  fr: "%{count} clés exportées"
+"Export cancelled":
+  fr: "Export annulé"
+"Export failed: %{error}":
+  fr: "Échec de l'export : %{error}"
+"No saved connection":
+  fr: "Aucune connexion enregistrée"
+"Select the SSH private key":
+  fr: "Sélectionnez la clé privée SSH"
+"SSH port must be a number between 1 and 65535.":
+  fr: "Le port SSH doit être un nombre entre 1 et 65535."
+
+# the key tree's footer
+"scan failed: %{error}":
+  fr: "échec de l'analyse : %{error}"
+"%{count} keys scanned":
+  fr: "%{count} clés analysées"
+"scanning... %{count} keys":
+  fr: "analyse... %{count} clés"
+"scanning... %{count} of %{total} keys":
+  fr: "analyse... %{count} clés sur %{total}"
+"stopped after %{count} keys: the keyspace is too large to list whole, search it instead":
+  fr: "arrêté après %{count} clés : l'espace de clés est trop grand pour être listé en entier, cherchez-y plutôt"
+"scanning...":
+  fr: "analyse..."
+"searching...":
+  fr: "recherche..."
+"Remove a badge first (5 max)":
+  fr: "Retirez un badge d'abord (5 max)"
+"search failed: %{error}":
+  fr: "échec de la recherche : %{error}"
+"searching... %{count} matches":
+  fr: "recherche... %{count} résultats"
+"No keys match":
+  fr: "Aucune clé ne correspond"
+"1 matching key":
+  fr: "1 clé correspondante"
+"%{count} matching keys":
+  fr: "%{count} clés correspondantes"
+
+# the key panel
+"(value)":
+  fr: "(valeur)"
+"No match":
+  fr: "Aucun résultat"
+"1 match in 1 field":
+  fr: "1 correspondance dans 1 champ"
+"1 match in %{fields} fields":
+  fr: "1 correspondance dans %{fields} champs"
+"%{matches} matches in 1 field":
+  fr: "%{matches} correspondances dans 1 champ"
+"%{matches} matches in %{fields} fields":
+  fr: "%{matches} correspondances dans %{fields} champs"
+"no ttl":
+  fr: "sans TTL"
+"ttl %{ttl}s":
+  fr: "TTL %{ttl} s"
+"%{count}%{suffix} fields":
+  fr: "%{count}%{suffix} champs"
+"%{count}%{suffix} items":
+  fr: "%{count}%{suffix} éléments"
+"%{count}%{suffix} entries":
+  fr: "%{count}%{suffix} entrées"
+"%{count} fields · %{loaded} loaded, sorted among themselves":
+  fr: "%{count} champs · %{loaded} chargés, triés entre eux"
+"value cut at %{size}":
+  fr: "valeur coupée à %{size}"
+"Field":
+  fr: "Champ"
+"first %{shown} of %{total} rows":
+  fr: "%{shown} premières lignes sur %{total}"
+"failed to load: %{error}":
+  fr: "échec du chargement : %{error}"
+
+# the JSON filter's syntax errors
+"'%{c}' at position %{position}":
+  fr: "« %{c} » à la position %{position}"
+"the end of the filter":
+  fr: "la fin du filtre"
+"expected a key, found %{found}":
+  fr: "clé attendue, trouvé %{found}"
+"a quoted key is missing its closing quote":
+  fr: "il manque le guillemet fermant d'une clé entre guillemets"
+"'%{digits}' is too big an index":
+  fr: "« %{digits} » est un indice trop grand"
+"expected *, an index or a quoted key after '[', found %{found}":
+  fr: "attendu : *, un indice ou une clé entre guillemets après « [ », trouvé %{found}"
+"expected ']', found %{found}":
+  fr: "attendu : « ] », trouvé %{found}"
+"expected '.' or '[', found %{found}":
+  fr: "attendu : « . » ou « [ », trouvé %{found}"
+
+# connections and settings
+"Connection name is required.":
+  fr: "Le nom de la connexion est obligatoire."
+"Connection URL is required.":
+  fr: "L'URL de connexion est obligatoire."
+"Couldn't understand the connection URL.":
+  fr: "L'URL de connexion n'est pas valide."
+"The connection URL has no host.":
+  fr: "L'URL de connexion n'a pas d'hôte."
+"SSH host is required.":
+  fr: "L'hôte SSH est obligatoire."
+"Provide an SSH password or a private key.":
+  fr: "Indiquez un mot de passe SSH ou une clé privée."
+"Couldn't read the saved passwords from the system keyring: %{error}":
+  fr: "Impossible de lire les mots de passe enregistrés dans le trousseau du système : %{error}"
+"No active connection.":
+  fr: "Aucune connexion active."
+"Connection not found.":
+  fr: "Connexion introuvable."
+"Requested connection not found.":
+  fr: "La connexion demandée est introuvable."
+"The profile needs a name.":
+  fr: "Le profil doit avoir un nom."
+"The profile needs an SSH username.":
+  fr: "Le profil doit avoir un utilisateur SSH."
+"The profile needs an SSH password.":
+  fr: "Le profil doit avoir un mot de passe SSH."
+"That search depth isn't one of the choices.":
+  fr: "Cette profondeur de recherche ne fait pas partie des choix."
+"Connection profile not found.":
+  fr: "Profil de connexion introuvable."
+"This profile is still used by: %{connections}. Remove it from those connections first.":
+  fr: "Ce profil est encore utilisé par : %{connections}. Retirez-le de ces connexions d'abord."
+"SSH profile not found.":
+  fr: "Profil SSH introuvable."
+"Couldn't read the SSH profile's password from the system keyring: %{error}":
+  fr: "Impossible de lire le mot de passe du profil SSH dans le trousseau du système : %{error}"
+"Couldn't read the SSH tunnel's secrets from the system keyring: %{error}":
+  fr: "Impossible de lire les secrets du tunnel SSH dans le trousseau du système : %{error}"
+"This SSH connection has no username or password: fill them in, or make an SSH profile active in Settings.":
+  fr: "Cette connexion SSH n'a ni utilisateur ni mot de passe : renseignez-les, ou activez un profil SSH dans les Paramètres."
+
+# reading keys
+"[unsupported type: %{kind}]":
+  fr: "[type non pris en charge : %{kind}]"
+"The key parameter is required.":
+  fr: "Le paramètre de clé est obligatoire."
+"Key not found.":
+  fr: "Clé introuvable."
+
+# SSH tunnels
+"couldn't remember the SSH server's host key in %{file}: %{error}":
+  fr: "impossible de mémoriser la clé d'hôte du serveur SSH dans %{file} : %{error}"
+"the SSH server's host key has changed since it was first seen (recorded on line %{line} of %{file}). If the server was reinstalled, delete that line; otherwise someone may be impersonating it.":
+  fr: "la clé d'hôte du serveur SSH a changé depuis sa première utilisation (enregistrée à la ligne %{line} de %{file}). Si le serveur a été réinstallé, supprimez cette ligne ; sinon, quelqu'un se fait peut-être passer pour lui."
+"couldn't check the SSH server's host key: %{error}":
+  fr: "impossible de vérifier la clé d'hôte du serveur SSH : %{error}"
+"couldn't decrypt the SSH private key %{file}: wrong or missing passphrase?":
+  fr: "impossible de déchiffrer la clé privée SSH %{file} : phrase secrète erronée ou manquante ?"
+"couldn't read the SSH private key %{file}: %{error}":
+  fr: "impossible de lire la clé privée SSH %{file} : %{error}"
+"private key":
+  fr: "clé privée"
+"password":
+  fr: "mot de passe"
+"and":
+  fr: "et"
+"no SSH password or private key to log in with":
+  fr: "aucun mot de passe SSH ni clé privée pour se connecter"
+"the SSH server refused the login for %{user} (%{tried})":
+  fr: "le serveur SSH a refusé la connexion de %{user} (%{tried})"
+"couldn't connect to the SSH server %{host}:%{port}: %{error}":
+  fr: "impossible de se connecter au serveur SSH %{host}:%{port} : %{error}"
+"timed out connecting to the SSH server %{host}:%{port}":
+  fr: "délai dépassé pour la connexion au serveur SSH %{host}:%{port}"
+"the SSH server couldn't reach %{host}:%{port}: %{error}":
+  fr: "le serveur SSH n'a pas pu joindre %{host}:%{port} : %{error}"
+"couldn't open a local port for the SSH tunnel: %{error}":
+  fr: "impossible d'ouvrir un port local pour le tunnel SSH : %{error}"
+
+# search tabs
+"Search":
+  fr: "Recherche"
+"searching... %{scanned} of %{total} keys scanned, %{hits} matches":
+  fr: "recherche... %{scanned} clés analysées sur %{total}, %{hits} résultats"
+"searching... %{scanned} keys scanned, %{hits} matches":
+  fr: "recherche... %{scanned} clés analysées, %{hits} résultats"
+"no match for “%{query}” in %{scanned} keys":
+  fr: "aucun résultat pour « %{query} » dans %{scanned} clés"
+"first %{hits} matches, in %{keys} keys (search stopped)":
+  fr: "%{hits} premiers résultats, dans %{keys} clés (recherche arrêtée)"
+"%{hits} matches in %{keys} keys, of %{scanned} scanned":
+  fr: "%{hits} résultats dans %{keys} clés, sur %{scanned} analysées"
+
+# Redisql (query tabs)
+"Invalid variable declaration. Example: var companyId = 255;":
+  fr: "Déclaration de variable invalide. Exemple : var companyId = 255;"
+"Unknown variable: &%{name}":
+  fr: "Variable inconnue : &%{name}"
+"running...":
+  fr: "exécution..."
+"The query needs a name.":
+  fr: "La requête doit avoir un nom."
+"The query needs some text to save.":
+  fr: "La requête doit avoir du texte pour être enregistrée."
+"Saved query not found.":
+  fr: "Requête enregistrée introuvable."
+"a source key was too large to read fully; some matches may be missing":
+  fr: "une clé source était trop grande pour être lue en entier ; des correspondances manquent peut-être"
+"Query":
+  fr: "Requête"
+"%{count} rows":
+  fr: "%{count} lignes"
+"%{shown} rows shown (more matched; raise LIMIT to see them)":
+  fr: "%{shown} lignes affichées (davantage correspondaient ; augmentez LIMIT pour les voir)"
+"The query is empty.":
+  fr: "La requête est vide."
+"Expected a quoted value (single or double quotes).":
+  fr: "Une valeur entre guillemets était attendue (simples ou doubles)."
+"Unterminated quote: %{text}":
+  fr: "Guillemet non refermé : %{text}"
+"Expected a name here: %{text}":
+  fr: "Un nom était attendu ici : %{text}"
+"Unexpected text: %{text}":
+  fr: "Texte inattendu : %{text}"
+"IN needs a list in [] or (): %{text}":
+  fr: "IN a besoin d'une liste entre [] ou () : %{text}"
+"IN's list is empty.":
+  fr: "La liste de IN est vide."
+"Invalid FROM clause. Example: FROM KEY 'my:key' AS src":
+  fr: "Clause FROM invalide. Exemple : FROM KEY 'ma:cle' AS src"
+"FROM can only appear once.":
+  fr: "FROM ne peut apparaître qu'une seule fois."
+"Invalid JOIN clause. Example: JOIN KEY 'my:key' AS b ON a.id = b.refId":
+  fr: "Clause JOIN invalide. Exemple : JOIN KEY 'ma:cle' AS b ON a.id = b.refId"
+"A JOIN's ON must link two different aliases.":
+  fr: "Le ON d'un JOIN doit relier deux alias différents."
+"The ON clause must name the JOIN's own alias (%{alias}).":
+  fr: "La clause ON doit nommer l'alias du JOIN lui-même (%{alias})."
+"Invalid WHERE clause.":
+  fr: "Clause WHERE invalide."
+"Invalid WHERE condition: %{condition}":
+  fr: "Condition WHERE invalide : %{condition}"
+"Invalid SELECT clause.":
+  fr: "Clause SELECT invalide."
+"Invalid LIMIT clause.":
+  fr: "Clause LIMIT invalide."
+"LIMIT must be a whole number.":
+  fr: "LIMIT doit être un nombre entier."
+"Missing FROM clause.":
+  fr: "Clause FROM manquante."
+"Unrecognized clause: %{clause}":
+  fr: "Clause non reconnue : %{clause}"
+"Duplicate alias: %{alias}":
+  fr: "Alias en double : %{alias}"
+"JOIN %{alias} references an unknown alias: %{other}":
+  fr: "Le JOIN %{alias} référence un alias inconnu : %{other}"
+"Unknown alias in WHERE: %{alias}":
+  fr: "Alias inconnu dans WHERE : %{alias}"
+"Unknown alias in SELECT: %{alias}":
+  fr: "Alias inconnu dans SELECT : %{alias}"
+"Key not found: %{key}":
+  fr: "Clé introuvable : %{key}"
+"A non-object value was found in %{key} (field %{field}): %{kind}":
+  fr: "Une valeur non-objet a été trouvée dans %{key} (champ %{field}) : %{kind}"
+"Invalid JSON in %{key} (field %{field}): %{error}":
+  fr: "JSON invalide dans %{key} (champ %{field}) : %{error}"
+"%{key} holds JSON, but not an object or an array of objects: %{kind}":
+  fr: "%{key} contient du JSON, mais pas un objet ni un tableau d'objets : %{kind}"
+"Invalid JSON in %{key}: %{error}":
+  fr: "JSON invalide dans %{key} : %{error}"
+"%{key} is a %{kind}: only a hash of JSON objects, or a string holding one, can be queried.":
+  fr: "%{key} est un(e) %{kind} : seul un hash de valeurs JSON, ou une chaîne en contenant une, peut être interrogé."
+
+# Cloud account (AWS)
+"Couldn't open the browser: %{error}":
+  fr: "Impossible d'ouvrir le navigateur : %{error}"
+"The sign-in in the browser took too long.":
+  fr: "La connexion dans le navigateur a pris trop de temps."
+"No credentials.":
+  fr: "Aucun identifiant."
+"No usable credentials for the profile %{name}: %{error}":
+  fr: "Aucun identifiant utilisable pour le profil %{name} : %{error}"
+"No AWS profile found in the .aws folder.":
+  fr: "Aucun profil AWS trouvé dans le dossier .aws."
+"AWS profile not found: %{name}":
+  fr: "Profil AWS introuvable : %{name}"
+"The profile %{name} has no region.":
+  fr: "Le profil %{name} n'a pas de région."
+"Incomplete answer from AWS.":
+  fr: "Réponse incomplète d'AWS."
+"Connection timed out after %{seconds} seconds.":
+  fr: "La connexion a expiré après %{seconds} secondes."
+"This server runs in cluster mode, which Cachemire doesn't support yet. Connect to a server or endpoint with cluster mode disabled.":
+  fr: "Ce serveur fonctionne en mode cluster, que Cachemire ne prend pas encore en charge. Connectez-vous à un serveur ou un point de terminaison sans mode cluster."
+"A background task failed: %{error}":
+  fr: "Une tâche en arrière-plan a échoué : %{error}"
+"Pick a connection profile.":
+  fr: "Choisissez un profil de connexion."
+"none":
+  fr: "aucun"
+"Connection successful.":
+  fr: "Connexion réussie."
+"This file has no connections.":
+  fr: "Ce fichier ne contient aucune connexion."
+"Couldn't read the file: %{error}":
+  fr: "Impossible de lire le fichier : %{error}"
+"Select a connections file":
+  fr: "Choisir un fichier de connexions"
+"Export the connections":
+  fr: "Exporter les connexions"
+"added as a copy":
+  fr: "ajoutée en copie"
+"Imported %{count} connection(s).":
+  fr: "%{count} connexion(s) importée(s)."
+"Exported %{count} connection(s) to %{file}.":
+  fr: "%{count} connexion(s) exportée(s) vers %{file}."
+"%{address} via SSH %{host}":
+  fr: "%{address} via SSH %{host}"
+"Nothing to show: only variables were declared.":
+  fr: "Rien à afficher : seules des variables ont été déclarées."
+"just now":
+  fr: "à l'instant"
+"%{n} min ago":
+  fr: "il y a %{n} min"
+"%{n} h ago":
+  fr: "il y a %{n} h"
+"%{n} d ago":
+  fr: "il y a %{n} j"
+"%{ago} · %{ms} ms":
+  fr: "%{ago} · %{ms} ms"

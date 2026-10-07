@@ -1,0 +1,76 @@
+import { Theme } from "theme.slint";
+import { VScrollBar } from "widgets.slint";
+import { AwsAccount } from "../globals.slint";
+
+// Floating list under the title bar's profile button: the AWS profiles found
+// locally, the selected one marked. Positioned and dismissed by main.slint.
+export component AwsProfileDropdown inherits Rectangle {
+    in property <[string]> profiles: AwsAccount.profiles;
+    in property <string> selected: AwsAccount.profile;
+    callback picked(name: string);
+
+    width: Theme.px(240px);
+    background: Theme.bg-elevated;
+    border-radius: Theme.radius-md;
+    border-width: 1px;
+    border-color: Theme.border-soft;
+    drop-shadow-color: Theme.shadow-color;
+    drop-shadow-blur: Theme.shadow-blur;
+    drop-shadow-offset-y: Theme.shadow-offset-y;
+    property <length> row-stride: Theme.px(30px);
+    property <length> list-max-height: Theme.px(280px);
+    property <length> pad: Theme.px(4px);
+    property <bool> needs-scrollbar: profiles.length * row-stride > list-max-height;
+    // sized to its rows (an unset height would stretch to the window's)
+    height: 2 * pad + (profiles.length == 0 ? Theme.px(40px) : min(list-max-height, profiles.length * row-stride));
+
+    // absorbs clicks on blank space so they don't close the dropdown
+    TouchArea { }
+
+    VerticalLayout {
+        padding-top: pad;
+        padding-bottom: pad;
+        alignment: start;
+
+        if profiles.length == 0: Text {
+            text: @tr("No AWS profiles found");
+            color: Theme.text-tertiary;
+            font-size: Theme.pt(12px);
+            horizontal-alignment: center;
+            height: Theme.px(40px);
+            vertical-alignment: center;
+        }
+        if profiles.length > 0: HorizontalLayout {
+            height: min(list-max-height, profiles.length * row-stride);
+            list-flick := Flickable {
+                horizontal-stretch: 1;
+                content := VerticalLayout {
+                    width: root.width;
+                    alignment: start;
+                    for name in profiles: Rectangle {
+                        height: row-stride;
+                        background: name == root.selected ? Theme.bg-selected-soft : (row-area.has-hover ? Theme.bg-hover-elevated : transparent);
+                        row-area := TouchArea {
+                            mouse-cursor: pointer;
+                            clicked => { root.picked(name); }
+                        }
+                        Text {
+                            x: Theme.px(10px);
+                            width: parent.width - Theme.px(20px);
+                            text: name;
+                            font-size: Theme.pt(12px);
+                            font-weight: name == root.selected ? 700 : 500;
+                            color: Theme.text-primary;
+                            vertical-alignment: center;
+                            overflow: elide;
+                        }
+                    }
+                }
+            }
+            if needs-scrollbar: VScrollBar {
+                content-height: list-flick.content-height;
+                content-y <=> list-flick.content-y;
+            }
+        }
+    }
+}

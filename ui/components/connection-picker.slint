@@ -1,0 +1,761 @@
+import { Theme } from "theme.slint";
+import { HDivider, VScrollBar, IconButton, CheckRow, ModalButton } from "widgets.slint";
+import { IconPlus, IconPencil, IconCloud } from "icons.slint";
+import { PastePopup } from "widgets.slint";
+import { ProfileTint, ConnProfileRowData, ConnectionRowData, ConnectionForm } from "types.slint";
+import { ConnectionState, ConnectionEditor, Preferences } from "../globals.slint";
+export { ConnProfileRowData, ConnectionRowData, ConnectionForm }
+
+// the round swatch of a profile's tint
+export component TintDot inherits Rectangle {
+    in property <ProfileTint> tint;
+    in property <length> size: Theme.px(12px);
+    width: size;
+    height: size;
+    border-radius: size / 2;
+    background: Theme.profile-color(tint);
+}
+
+// A small filled label at the end of a connection row: its profile, or the SSH tunnel.
+component RowBadge inherits Rectangle {
+    in property <string> text;
+    in property <color> tint;
+    in property <color> text-color: white;
+
+    height: Theme.px(20px);
+    width: min(label.preferred-width, Theme.px(110px)) + Theme.px(16px);
+    border-radius: Theme.radius-sm;
+    background: tint;
+
+    label := Text {
+        x: Theme.px(8px);
+        width: parent.width - Theme.px(16px);
+        height: parent.height;
+        text: root.text;
+        color: text-color;
+        font-size: Theme.pt(11px);
+        font-weight: 700;
+        vertical-alignment: center;
+        horizontal-alignment: center;
+        overflow: elide;
+    }
+}
+
+component ConnectionRow inherits Rectangle {
+    in property <string> name;
+    in property <string> address;
+    in property <bool> active;
+    // the connection is kept in the background: shown as a green ring
+    in property <bool> kept;
+    // the connection goes through an SSH tunnel: shown as a small lock badge
+    in property <bool> ssh;
+    // a cloud account's connection: it has no edit form
+    in property <bool> editable: true;
+    // the connection profile's name and tint, for its badge ("" for no badge)
+    in property <string> profile-name: "";
+    in property <ProfileTint> profile-tint: ProfileTint.red;
+    // set by the caller to the Flickable's own width: inside a layout,
+    // `width: 100%` doesn't resolve to the panel's width like it would for
+    // a free-positioned element, so without this the row stops short of it.
+    in property <length> row-width;
+    callback connect-clicked();
+    callback modify-clicked();
+
+    width: row-width;
+    height: Theme.px(30px);
+    background: active ? Theme.bg-selected-soft : (row-area.has-hover ? Theme.bg-hover-elevated : transparent);
+
+    row-area := TouchArea {
+        mouse-cursor: pointer;
+        clicked => { root.connect-clicked(); }
+
+        HorizontalLayout {
+            padding-left: Theme.px(10px);
+            padding-right: Theme.px(6px);
+            spacing: Theme.px(6px);
+            cross-axis-alignment: center;
+
+            Rectangle {
+                width: Theme.px(10px);
+                height: Theme.px(10px);
+                if root.kept: Rectangle {
+                    border-radius: self.width / 2;
+                    border-width: Theme.px(1.5px);
+                    border-color: Theme.accent-green;
+                }
+            }
+            Text {
+                text: name;
+                font-size: Theme.pt(12px);
+                font-weight: 600;
+                color: Theme.text-primary;
+                vertical-alignment: center;
+                overflow: elide;
+                max-width: Theme.px(140px);
+            }
+            Text {
+                text: "-";
+                color: Theme.text-tertiary;
+                font-size: Theme.pt(12px);
+                vertical-alignment: center;
+            }
+            Text {
+                text: address;
+                font-italic: true;
+                color: Theme.text-secondary;
+                font-size: Theme.pt(12px);
+                vertical-alignment: center;
+                horizontal-stretch: 1;
+                min-width: 0px;
+                overflow: elide;
+            }
+            if root.profile-name != "": RowBadge {
+                text: root.profile-name;
+                tint: Theme.profile-color(root.profile-tint);
+                text-color: root.profile-tint == ProfileTint.yellow ? #1c1c1e : white;
+            }
+            if root.ssh: RowBadge {
+                text: "SSH";
+                tint: Theme.accent-green;
+            }
+            if root.editable: IconButton {
+                box-size: Theme.px(24px);
+                clicked => { root.modify-clicked(); }
+                IconPencil { size: Theme.icon-sm; tint: Theme.text-tertiary; }
+            }
+        }
+    }
+}
+
+// Floating panel under the title bar's connection pill: a "New
+// connection…" row, then every saved connection as "name - address", each
+// with a modify icon. Positioned and owned (open state, outside-click) by main.slint.
+export component ConnectionDropdown inherits Rectangle {
+    in property <[ConnectionRowData]> connections: ConnectionState.connections;
+    // the connections of the cloud account, listed under their own heading
+    in property <[ConnectionRowData]> cloud-connections: ConnectionState.cloud-connections;
+    callback new-connection-clicked();
+    // the import / export window
+    callback transfer-clicked();
+    callback connection-clicked(id: string);
+    callback modify-clicked(row: ConnectionRowData);
+    // the pencil of a cloud connection, which edits only what is set for it
+    callback cloud-modify-clicked(id: string);
+
+    width: Theme.px(490px);
+    background: Theme.bg-elevated;
+    border-radius: Theme.radius-md;
+    border-width: 1px;
+    border-color: Theme.border-soft;
+    drop-shadow-color: Theme.shadow-color;
+    drop-shadow-blur: Theme.shadow-blur;
+    drop-shadow-offset-y: Theme.shadow-offset-y;
+    // No `clip: true` on purpose: with the border-radius it'd render this
+    // whole panel offscreen and blit it at a fractional position, blurring
+    // every row's text. Corners stay round via matching radii + padding instead.
+    property <length> row-stride: Theme.px(30px);
+    property <length> list-max-height: Theme.px(280px);
+    // scrolling only kicks in once the list is actually taller than the
+    // panel's max height — roughly 9-10 connections at the current row height
+    property <length> list-height: (connections.length + cloud-connections.length) * row-stride
+        + (cloud-connections.length > 0 ? cloud-head-height : 0px);
+    property <length> cloud-head-height: Theme.px(31px);
+    property <bool> needs-scrollbar: list-height > list-max-height;
+
+    // absorbs clicks on blank space (padding, divider) inside the panel so
+    // they don't fall through to the full-window catcher behind it and
+    // close the dropdown — same fix as ExportGroup's label area.
+    TouchArea { }
+
+    VerticalLayout {
+        alignment: start;
+
+        new-row := HorizontalLayout {
+            width: root.width;
+            height: Theme.px(32px);
+            // the new-connection button, then the one for importing and exporting
+            Rectangle {
+                width: (root.width - Theme.px(1px)) / 2;
+                border-top-left-radius: root.border-radius;
+                background: new-area.has-hover ? Theme.bg-hover-elevated : transparent;
+                new-area := TouchArea {
+                    mouse-cursor: pointer;
+                    clicked => { root.new-connection-clicked(); }
+                }
+                HorizontalLayout {
+                    alignment: center;
+                    spacing: Theme.px(6px);
+                    cross-axis-alignment: center;
+                    IconPlus { size: Theme.icon-sm; tint: Theme.accent-blue; }
+                    Text {
+                        text: @tr("New connection...");
+                        color: Theme.accent-blue;
+                        font-size: Theme.pt(12px);
+                        font-weight: 600;
+                        vertical-alignment: center;
+                    }
+                }
+            }
+            Rectangle { width: Theme.px(1px); background: Theme.border-soft; }
+            Rectangle {
+                width: (root.width - Theme.px(1px)) / 2;
+                border-top-right-radius: root.border-radius;
+                background: transfer-area.has-hover ? Theme.bg-hover-elevated : transparent;
+                transfer-area := TouchArea {
+                    mouse-cursor: pointer;
+                    clicked => { root.transfer-clicked(); }
+                }
+                Text {
+                    text: @tr("Import / Export");
+                    color: Theme.text-secondary;
+                    font-size: Theme.pt(12px);
+                    font-weight: 600;
+                    horizontal-alignment: center;
+                    vertical-alignment: center;
+                }
+            }
+        }
+        HDivider { }
+        if connections.length == 0 && cloud-connections.length == 0: Text {
+            text: @tr("No saved connections yet");
+            color: Theme.text-tertiary;
+            font-size: Theme.pt(12px);
+            horizontal-alignment: center;
+            height: Theme.px(40px);
+            vertical-alignment: center;
+        }
+        if connections.length > 0 || cloud-connections.length > 0: HorizontalLayout {
+            height: min(list-max-height, list-height);
+            list-flick := Flickable {
+                horizontal-stretch: 1;
+                interactive: true;
+                // A Flickable's content sizes to itself, not its frame, so
+                // this layout is pinned to the panel's known width instead
+                // (not list-flick.width, which would be circular here).
+                content := VerticalLayout {
+                    width: root.width;
+                    alignment: start;
+                    for c in connections: ConnectionRow {
+                        row-width: content.width;
+                        name: c.name;
+                        address: c.address;
+                        active: c.active;
+                        kept: c.in-background;
+                        ssh: c.ssh-enabled;
+                        profile-name: c.profile-name;
+                        profile-tint: c.profile-tint;
+                        connect-clicked => { root.connection-clicked(c.id); }
+                        modify-clicked => { root.modify-clicked(c); }
+                    }
+                    if cloud-connections.length > 0: Rectangle {
+                        height: cloud-head-height;
+                        VerticalLayout {
+                            Rectangle { height: Theme.px(8px); }
+                            HDivider { }
+                            HorizontalLayout {
+                                padding-left: Theme.px(10px);
+                                spacing: Theme.px(6px);
+                                alignment: start;
+                                IconCloud { size: Theme.px(13px); tint: Theme.text-primary; y: (parent.height - self.height) / 2; }
+                                Text {
+                                    text: @tr("Cloud connections");
+                                    color: Theme.text-tertiary;
+                                    font-size: Theme.pt(11px);
+                                    font-weight: 700;
+                                    vertical-alignment: center;
+                                }
+                            }
+                        }
+                    }
+                    for c in cloud-connections: ConnectionRow {
+                        row-width: content.width;
+                        name: c.name;
+                        address: c.address;
+                        active: c.active;
+                        kept: c.in-background;
+                        ssh: c.ssh-enabled;
+                        profile-name: c.profile-name;
+                        profile-tint: c.profile-tint;
+                        connect-clicked => { root.connection-clicked(c.id); }
+                        modify-clicked => { root.cloud-modify-clicked(c.id); }
+                    }
+                }
+            }
+            // conditional, not just `visible: false`, which would still
+            // reserve layout space and leave a gap for a short list
+            if needs-scrollbar: VScrollBar {
+                content-height: list-flick.content-height;
+                content-y <=> list-flick.content-y;
+            }
+        }
+        // keeps the last row's square hover background clear of the panel's
+        // rounded bottom corners (see the clip note above)
+        Rectangle { height: root.border-radius; }
+    }
+}
+
+// Rectangle, not a VerticalLayout auto-sizing label+box: an unset height
+// defaults to `vertical-stretch: 0`, and Slint stretches all-zero siblings
+// anyway — the label would silently absorb leftover space. Pin heights instead.
+export component ConnectionModalField inherits Rectangle {
+    in property <string> label;
+    in property <string> placeholder: "";
+    in-out property <string> text: "";
+    in property <bool> is-password: false;
+    in property <bool> is-number: false;
+    // whether the clipboard holds text, for the box's right-click "Paste"
+    callback clipboard-has-text() -> bool;
+
+    property <length> label-height: Theme.pt(15px);
+    property <length> box-height: Theme.px(28px);
+    property <length> row-spacing: Theme.px(4px);
+    height: label-height + row-spacing + box-height;
+
+    VerticalLayout {
+        spacing: row-spacing;
+
+        Text {
+            text: label;
+            height: label-height;
+            font-size: Theme.pt(10.5px);
+            font-weight: 600;
+            color: Theme.text-secondary;
+            vertical-alignment: center;
+        }
+        Rectangle {
+            height: box-height;
+            background: Theme.bg-sunken;
+            border-radius: Theme.radius-sm;
+            border-width: 1px;
+            border-color: input.has-focus ? Theme.accent-blue-dim : Theme.border-soft;
+
+            if root.text == "" && !input.has-focus: Text {
+                text: root.placeholder;
+                font-size: Theme.pt(11.5px);
+                font-family: Theme.font-mono;
+                color: Theme.text-tertiary;
+                x: Theme.px(8px);
+                width: parent.width - Theme.px(16px);
+                height: 100%;
+                vertical-alignment: center;
+                overflow: elide;
+            }
+            // A bare TextInput never scrolls on its own — same fix as
+            // Slint's LineEdit: it's as wide as its text, sliding inside a
+            // clipping viewport so the cursor always stays in view.
+            Rectangle {
+                x: Theme.px(8px);
+                width: parent.width - Theme.px(16px);
+                height: 100%;
+                clip: true;
+
+                // right-click "Paste": see SearchField's own copy of this pattern
+                // (key-detail-widgets.slint) for why the input sits inside the area
+                input-area := TouchArea {
+                    width: 100%;
+                    height: 100%;
+                    mouse-cursor: MouseCursor.text;
+                    property <length> click-x;
+                    property <length> click-y;
+                    pointer-event(event) => {
+                        if event.button == PointerEventButton.right && event.kind == PointerEventKind.down && root.clipboard-has-text() {
+                            self.click-x = self.mouse-x;
+                            self.click-y = self.mouse-y;
+                            paste-popup.show();
+                        }
+                    }
+
+                    input := TextInput {
+                        property <length> computed-x;
+                        x: min(0px, max(parent.width - self.width, self.computed-x));
+                        width: max(parent.width, self.preferred-width);
+                        height: 100%;
+                        text <=> root.text;
+                        font-size: Theme.pt(11.5px);
+                        font-family: Theme.font-mono;
+                        color: Theme.text-primary;
+                        selection-background-color: Theme.accent-blue.with-alpha(0.35);
+                        vertical-alignment: center;
+                        input-type: is-password ? InputType.password : (is-number ? InputType.number : InputType.text);
+                        cursor-position-changed(cursor-position) => {
+                            if cursor-position.x + self.computed-x < 0px {
+                                self.computed-x = -cursor-position.x;
+                            } else if cursor-position.x + self.computed-x > parent.width - self.text-cursor-width {
+                                self.computed-x = parent.width - cursor-position.x - self.text-cursor-width;
+                            }
+                        }
+                    }
+                    paste-popup := PastePopup {
+                        x: input-area.click-x;
+                        y: input-area.click-y;
+                        paste => { input.paste(); }
+                    }
+                }
+            }
+        }
+    }
+}
+
+// The connection profiles to pick one from, in the connection form: a radio
+// row per profile in a box that scrolls past three and a half of them.
+export component ProfileChoiceList inherits Rectangle {
+    in property <[ConnProfileRowData]> profiles: [];
+    in-out property <string> selected: "";
+
+    property <length> row-height: Theme.px(28px);
+    property <length> list-max-height: row-height * 3.5;
+    property <bool> needs-scrollbar: profiles.length * row-height > list-max-height;
+
+    height: min(profiles.length * row-height, list-max-height) + Theme.px(2px);
+    background: Theme.bg-sunken;
+    border-radius: Theme.radius-md;
+    border-width: 1px;
+    border-color: Theme.border-soft;
+
+    HorizontalLayout {
+        padding: Theme.px(1px);
+        choice-flick := Flickable {
+            horizontal-stretch: 1;
+            interactive: true;
+            choice-content := VerticalLayout {
+                width: root.width - Theme.px(2px);
+                alignment: start;
+                for p in root.profiles: Rectangle {
+                    width: choice-content.width;
+                    height: root.row-height;
+                    background: choice-area.has-hover ? Theme.bg-hover-elevated : transparent;
+                    choice-area := TouchArea {
+                        mouse-cursor: pointer;
+                        clicked => { root.selected = p.id; }
+                    }
+                    HorizontalLayout {
+                        padding-left: Theme.px(10px);
+                        padding-right: Theme.px(8px);
+                        spacing: Theme.px(8px);
+                        cross-axis-alignment: center;
+                        Rectangle {
+                            width: Theme.px(14px);
+                            height: Theme.px(14px);
+                            border-radius: self.width / 2;
+                            border-width: 1.5px;
+                            border-color: root.selected == p.id ? Theme.accent-blue : Theme.text-tertiary;
+                            if root.selected == p.id: Rectangle {
+                                x: (parent.width - self.width) / 2;
+                                y: (parent.height - self.height) / 2;
+                                width: Theme.px(6px);
+                                height: Theme.px(6px);
+                                border-radius: self.width / 2;
+                                background: Theme.accent-blue;
+                            }
+                        }
+                        TintDot { tint: p.tint; }
+                        Text {
+                            text: p.name;
+                            font-size: Theme.pt(12px);
+                            color: Theme.text-primary;
+                            vertical-alignment: center;
+                            horizontal-stretch: 1;
+                            overflow: elide;
+                        }
+                    }
+                }
+            }
+        }
+        if root.needs-scrollbar: VScrollBar {
+            content-height: choice-flick.content-height;
+            content-y <=> choice-flick.content-y;
+        }
+    }
+}
+
+// The SSH tunnel's fields (host, port, login, key file), shared by the connection form and the
+// cloud settings form; the caller shows it while the tunnel is on and handles `browse-key`.
+export component SshTunnelFields inherits VerticalLayout {
+    in-out property <string> host: "";
+    in-out property <string> port: "";
+    in-out property <string> username: "";
+    in-out property <string> password: "";
+    in-out property <string> key: "";
+    in-out property <string> passphrase: "";
+    // an existing tunnel: a blank password or passphrase keeps the stored one
+    in property <bool> keep-secrets: false;
+    // whether the clipboard holds text, for each field's right-click "Paste"
+    callback clipboard-has-text() -> bool;
+    // opens a file dialog for the private key; the caller fills `key`
+    callback browse-key();
+
+    spacing: Theme.px(10px);
+
+    HorizontalLayout {
+        spacing: Theme.px(10px);
+        ConnectionModalField {
+            clipboard-has-text() => { return root.clipboard-has-text(); }
+            label: @tr("SSH host");
+            placeholder: "bastion.example.com";
+            text <=> root.host;
+        }
+        ConnectionModalField {
+            clipboard-has-text() => { return root.clipboard-has-text(); }
+            width: Theme.px(84px);
+            label: @tr("SSH port");
+            placeholder: "22";
+            text <=> root.port;
+            is-number: true;
+        }
+    }
+    HorizontalLayout {
+        spacing: Theme.px(10px);
+        ConnectionModalField {
+            clipboard-has-text() => { return root.clipboard-has-text(); }
+            label: @tr("SSH username");
+            placeholder: @tr("Active SSH profile");
+            text <=> root.username;
+        }
+        ConnectionModalField {
+            clipboard-has-text() => { return root.clipboard-has-text(); }
+            label: @tr("SSH password");
+            placeholder: root.keep-secrets ? @tr("Leave blank to keep current") : "";
+            text <=> root.password;
+            is-password: true;
+        }
+    }
+    HorizontalLayout {
+        spacing: Theme.px(8px);
+        ConnectionModalField {
+            clipboard-has-text() => { return root.clipboard-has-text(); }
+            label: @tr("Private key file (optional)");
+            placeholder: "~/.ssh/id_ed25519";
+            text <=> root.key;
+        }
+        // level with the input box, under the label
+        VerticalLayout {
+            alignment: end;
+            Rectangle {
+                width: Theme.px(72px);
+                height: Theme.px(28px);
+                border-radius: Theme.radius-sm;
+                border-width: 1px;
+                border-color: Theme.border-soft;
+                background: browse-area.has-hover ? Theme.bg-hover : transparent;
+                browse-area := TouchArea { mouse-cursor: pointer; clicked => { root.browse-key(); } }
+                Text {
+                    text: @tr("Browse…");
+                    color: Theme.text-secondary;
+                    font-size: Theme.pt(12px);
+                    horizontal-alignment: center;
+                    vertical-alignment: center;
+                    width: 100%;
+                    height: 100%;
+                }
+            }
+        }
+    }
+    ConnectionModalField {
+        clipboard-has-text() => { return root.clipboard-has-text(); }
+        label: @tr("Key passphrase (if the key has one)");
+        placeholder: root.keep-secrets ? @tr("Leave blank to keep current") : "";
+        text <=> root.passphrase;
+        is-password: true;
+    }
+    Text {
+        text: @tr("Log in with a password, a private key, or both (the key is tried first). Leave the username empty to log in with the active SSH profile from Settings.");
+        font-size: Theme.pt(10.5px);
+        color: Theme.text-tertiary;
+        wrap: word-wrap;
+    }
+}
+
+// Full-window dimmed backdrop + centered card, for both "New connection…"
+// (field-id empty) and modify (pre-filled by the caller). Password boxes
+// start blank in edit mode — leaving one blank on save keeps it as stored.
+export component ConnectionModal inherits Rectangle {
+    in property <bool> is-edit: false;
+    in property <string> error: ConnectionEditor.error;
+    // whether the clipboard holds text, for each field's right-click "Paste"
+    callback clipboard-has-text() -> bool;
+    // the connection profiles to choose from (from Settings)
+    in property <[ConnProfileRowData]> profiles: Preferences.conn-profiles;
+    in-out property <string> field-id <=> ConnectionEditor.id;
+    in-out property <string> field-name <=> ConnectionEditor.name;
+    in-out property <string> field-connection-url <=> ConnectionEditor.connection-url;
+    in-out property <string> field-username <=> ConnectionEditor.username;
+    in-out property <string> field-password <=> ConnectionEditor.password;
+    in-out property <bool> field-ssh-enabled <=> ConnectionEditor.ssh-enabled;
+    in-out property <string> field-ssh-host <=> ConnectionEditor.ssh-host;
+    in-out property <string> field-ssh-port <=> ConnectionEditor.ssh-port;
+    in-out property <string> field-ssh-username <=> ConnectionEditor.ssh-username;
+    in-out property <string> field-ssh-password <=> ConnectionEditor.ssh-password;
+    in-out property <string> field-ssh-key <=> ConnectionEditor.ssh-key;
+    in-out property <string> field-ssh-passphrase <=> ConnectionEditor.ssh-passphrase;
+    // "Add a connection profile" is ticked, and the one chosen
+    in-out property <bool> field-profile-enabled <=> ConnectionEditor.profile-enabled;
+    in-out property <string> field-profile-id <=> ConnectionEditor.profile-id;
+    callback save();
+    save => { ConnectionEditor.saved(ConnectionEditor.form()); }
+    callback cancel();
+    cancel => { ConnectionEditor.open = false; }
+    // checks that the form's connection can be reached; Rust fills the three below
+    callback test();
+    test => { ConnectionEditor.test-requested(ConnectionEditor.form()); }
+    in property <bool> testing: ConnectionEditor.testing;
+    in property <string> test-status: ConnectionEditor.test-status;
+    in property <bool> test-ok: ConnectionEditor.test-ok;
+    // asks for the connection being edited to be removed (edit mode only)
+    callback delete();
+    delete => { ConnectionEditor.deleted(ConnectionEditor.id); }
+    // opens a file dialog for the private key; Rust fills `field-ssh-key`
+    callback browse-key();
+    browse-key => { ConnectionEditor.browse-key(); }
+    property <bool> confirming-delete: false;
+
+    background: #000000aa;
+
+    TouchArea {
+        clicked => { root.cancel(); }
+    }
+
+    // Centers `card` via a real layout, not manual x/y: a free-floating
+    // Rectangle never auto-sizes to content, so it'd silently fill its
+    // parent instead. Layout-managed, it sizes to content like elsewhere.
+    VerticalLayout {
+        alignment: center;
+        cross-axis-alignment: center;
+
+        card := Rectangle {
+            width: Theme.px(440px);
+            background: Theme.bg-elevated;
+            border-radius: Theme.radius-lg;
+            border-width: 1px;
+            border-color: Theme.border-soft;
+            drop-shadow-color: Theme.shadow-color;
+            drop-shadow-blur: Theme.shadow-blur;
+            drop-shadow-offset-y: Theme.shadow-offset-y;
+
+            // swallow clicks so they don't bubble to the backdrop's cancel
+            TouchArea { }
+
+            VerticalLayout {
+                padding: Theme.px(16px);
+                spacing: Theme.px(10px);
+
+                Text {
+                    text: is-edit ? @tr("Edit connection") : @tr("New connection");
+                    height: Theme.pt(18px);
+                    font-size: Theme.pt(14px);
+                    font-weight: 700;
+                    color: Theme.text-primary;
+                    vertical-alignment: center;
+                }
+
+                ConnectionModalField {
+                        clipboard-has-text() => { return root.clipboard-has-text(); } label: @tr("Name"); placeholder: "prod-cache-01"; text <=> root.field-name; }
+                ConnectionModalField {
+                        clipboard-has-text() => { return root.clipboard-has-text(); }
+                    label: @tr("Connection URL");
+                    placeholder: "redis://user:pass@host:6379/0";
+                    text <=> root.field-connection-url;
+                }
+                HorizontalLayout {
+                    spacing: Theme.px(10px);
+                    ConnectionModalField {
+                        clipboard-has-text() => { return root.clipboard-has-text(); } label: @tr("Username (optional)"); text <=> root.field-username; }
+                    ConnectionModalField {
+                        clipboard-has-text() => { return root.clipboard-has-text(); }
+                        label: @tr("Password");
+                        placeholder: is-edit ? @tr("Leave blank to keep current") : "";
+                        text <=> root.field-password;
+                        is-password: true;
+                    }
+                }
+
+                // the fields below only exist while the tunnel is on
+                CheckRow {
+                    text: @tr("Enable SSH Tunnel");
+                    bold: true;
+                    checked: root.field-ssh-enabled;
+                    toggled => { root.field-ssh-enabled = !root.field-ssh-enabled; }
+                }
+                if root.field-ssh-enabled: SshTunnelFields {
+                    clipboard-has-text() => { return root.clipboard-has-text(); }
+                    keep-secrets: root.is-edit;
+                    host <=> root.field-ssh-host;
+                    port <=> root.field-ssh-port;
+                    username <=> root.field-ssh-username;
+                    password <=> root.field-ssh-password;
+                    key <=> root.field-ssh-key;
+                    passphrase <=> root.field-ssh-passphrase;
+                    browse-key => { root.browse-key(); }
+                }
+
+                // the list only exists while the profile is on
+                CheckRow {
+                    text: @tr("Add a connection profile");
+                    bold: true;
+                    checked: root.field-profile-enabled;
+                    toggled => {
+                        root.field-profile-enabled = !root.field-profile-enabled;
+                        // ticking it picks the first one, so it is never on with nothing chosen
+                        if root.field-profile-enabled && root.field-profile-id == "" && root.profiles.length > 0 {
+                            root.field-profile-id = root.profiles[0].id;
+                        }
+                    }
+                }
+                if root.field-profile-enabled && root.profiles.length > 0: ProfileChoiceList {
+                    profiles: root.profiles;
+                    selected <=> root.field-profile-id;
+                }
+                if root.field-profile-enabled && root.profiles.length == 0: Text {
+                    text: @tr("No connection profiles yet: create one in Settings.");
+                    font-size: Theme.pt(10.5px);
+                    color: Theme.text-tertiary;
+                    wrap: word-wrap;
+                }
+
+                if error != "": Text {
+                    text: error;
+                    height: Theme.pt(14px);
+                    color: Theme.accent-red;
+                    font-size: Theme.pt(11px);
+                    vertical-alignment: center;
+                    overflow: elide;
+                }
+
+                // room for two lines, so a test result doesn't change the form's height
+                Text {
+                    text: root.test-status;
+                    height: Theme.pt(30px);
+                    color: root.test-ok ? Theme.accent-green : Theme.accent-red;
+                    font-size: Theme.pt(11px);
+                    wrap: word-wrap;
+                    overflow: elide;
+                }
+
+                HorizontalLayout {
+                    height: Theme.px(28px);
+                    spacing: Theme.px(8px);
+                    // removing is one click to arm, a second to do it: the
+                    // button stays armed until the form is closed
+                    if root.is-edit: ModalButton {
+                        text: root.confirming-delete ? @tr("Click again to delete") : @tr("Delete");
+                        danger: true;
+                        armed: root.confirming-delete;
+                        clicked => {
+                            if root.confirming-delete {
+                                root.delete();
+                            } else {
+                                root.confirming-delete = true;
+                            }
+                        }
+                    }
+                    Rectangle { horizontal-stretch: 1; }
+                    ModalButton {
+                        text: root.testing ? @tr("Testing…") : @tr("Test connection");
+                        clicked => { if !root.testing { root.test(); } }
+                    }
+                    ModalButton { text: @tr("Cancel"); clicked => { root.cancel(); } }
+                    ModalButton { text: @tr("Save"); primary: true; clicked => { root.save(); } }
+                }
+            }
+        }
+    }
+}

@@ -1,0 +1,979 @@
+import { Theme } from "theme.slint";
+import { TreeRowKind, SidebarView, KeyspaceRowData, SavedQueryRowData } from "types.slint";
+import { IconButton, HDivider, FloatingCard, VScrollBar, WheelScroller, PastePopup, SquareIconButton } from "widgets.slint";
+import { IconSearch, IconFilter, IconRefresh, IconDownload, IconChevron, IconFolder, IconKey, IconSpinner, IconClose, IconPlus, IconQuery, IconSidebar } from "icons.slint";
+import { KeyTree, SavedQueries, TabStrip } from "../globals.slint";
+export { KeyspaceRowData, SavedQueryRowData }
+
+// one saved query, drawn like a key of the tree
+component SavedQueryRow inherits Rectangle {
+    in property <string> name;
+    in property <string> detail: "";
+    in property <bool> selected: false;
+    callback clicked <=> area.clicked;
+    // the row's own × — asks to remove this saved query, one click, no confirm
+    // (unlike a connection or a profile, it costs nothing to write again)
+    callback deleted();
+
+    height: Theme.px(27px);
+    background: selected ? Theme.bg-selected : (area.has-hover ? Theme.bg-hover : transparent);
+    border-radius: Theme.px(5px);
+
+    area := TouchArea { }
+
+    HorizontalLayout {
+        padding-left: Theme.px(8px);
+        padding-right: Theme.px(6px);
+        spacing: Theme.px(6px);
+
+        Rectangle {
+            width: Theme.icon-md;
+            IconQuery {
+                size: Theme.icon-md;
+                tint: selected ? Theme.accent-blue : Theme.text-tertiary;
+                y: (parent.height - self.height) / 2;
+            }
+        }
+        Text {
+            text: name;
+            font-size: Theme.pt(12.5px);
+            color: selected ? Theme.text-primary : Theme.text-secondary;
+            vertical-alignment: center;
+            horizontal-stretch: 1;
+            min-width: 0px;
+            overflow: elide;
+        }
+        if detail != "": Text {
+            text: detail;
+            font-size: Theme.pt(11px);
+            font-family: Theme.font-mono;
+            color: selected ? Theme.text-primary : Theme.text-tertiary;
+            vertical-alignment: center;
+            horizontal-alignment: right;
+            max-width: Theme.px(90px);
+            overflow: elide;
+        }
+        // no explicit height: it stretches to the row's own (like the icon at
+        // the row's other end), so the 20px hover square below can center
+        // itself in it instead of sitting top-aligned in the row
+        Rectangle {
+            width: Theme.px(20px);
+            delete-area := Rectangle {
+                width: Theme.px(20px);
+                height: Theme.px(20px);
+                y: (parent.height - self.height) / 2;
+                border-radius: Theme.radius-sm;
+                background: delete-touch.has-hover ? Theme.bg-hover-elevated : transparent;
+                IconClose {
+                    size: Theme.px(10px);
+                    tint: delete-touch.has-hover ? Theme.accent-red : Theme.text-tertiary;
+                    x: (parent.width - self.width) / 2;
+                    y: (parent.height - self.height) / 2;
+                }
+                delete-touch := TouchArea {
+                    mouse-cursor: pointer;
+                    clicked => { root.deleted(); }
+                }
+            }
+        }
+    }
+}
+
+// a tab of the panel's header: its title, with a line under it while it is the one shown
+component PanelTab inherits Rectangle {
+    in property <string> text;
+    in property <bool> active: false;
+    callback clicked <=> area.clicked;
+
+    width: label.preferred-width;
+    height: Theme.px(25px);
+
+    area := TouchArea { mouse-cursor: pointer; }
+    label := Text {
+        text: root.text;
+        font-size: Theme.pt(13px);
+        font-weight: 600;
+        color: root.active ? Theme.text-primary : (area.has-hover ? Theme.text-secondary : Theme.text-tertiary);
+        vertical-alignment: center;
+        height: parent.height;
+    }
+    Rectangle {
+        y: parent.height - self.height;
+        height: 2px;
+        border-radius: 1px;
+        background: root.active ? Theme.accent-blue : transparent;
+    }
+}
+
+// export mode's box on a row: empty, ticked, or dashed when only some of what is under it is ticked
+component ExportCheck inherits Rectangle {
+    in property <int> state: 0;
+    // the click, and whether Shift was held when it was pressed
+    callback clicked(shift: bool);
+    property <bool> shift-down: false;
+    width: Theme.px(16px);
+    height: Theme.px(16px);
+    border-radius: Theme.px(4px);
+    border-width: 1.5px;
+    border-color: state == 0 ? (area.has-hover ? Theme.text-secondary : Theme.text-tertiary) : Theme.accent-blue;
+    background: state == 0 ? transparent : Theme.accent-blue;
+
+    if state != 0: Path {
+        width: 100%;
+        height: 100%;
+        viewbox-width: 24;
+        viewbox-height: 24;
+        commands: state == 1 ? "M6 12.5 L10.5 17 L18 8" : "M7 12 L17 12";
+        fill: transparent;
+        stroke: #ffffff;
+        stroke-width: 2.4px;
+        stroke-line-cap: round;
+        stroke-line-join: round;
+    }
+    area := TouchArea {
+        mouse-cursor: pointer;
+        pointer-event(event) => {
+            if event.kind == PointerEventKind.down {
+                root.shift-down = event.modifiers.shift;
+            }
+        }
+        clicked => { root.clicked(root.shift-down); }
+    }
+}
+
+// a small text button of the export bar
+component BarButton inherits Rectangle {
+    in property <string> text;
+    in property <bool> primary: false;
+    in property <bool> enabled: true;
+    callback clicked();
+    height: Theme.px(24px);
+    width: label.preferred-width + Theme.px(20px);
+    border-radius: Theme.radius-sm;
+    border-width: primary ? 0px : 1px;
+    border-color: Theme.border-soft;
+    background: !enabled ? Theme.bg-hover : (primary ? (area.has-hover ? Theme.accent-blue-dim : Theme.accent-blue) : (area.has-hover ? Theme.bg-hover-elevated : Theme.bg-elevated));
+    area := TouchArea {
+        enabled: root.enabled;
+        mouse-cursor: pointer;
+        clicked => { root.clicked(); }
+    }
+    label := Text {
+        x: (parent.width - self.width) / 2;
+        y: (parent.height - self.height) / 2;
+        text: root.text;
+        font-size: Theme.pt(11.5px);
+        font-weight: 600;
+        color: !enabled ? Theme.text-tertiary : (primary ? #ffffff : Theme.text-primary);
+    }
+}
+
+// the bar under the tree in export mode: how many keys are ticked, what to do with them
+component ExportBar inherits Rectangle {
+    in property <int> count: 0;
+    in property <bool> ready: false;
+    in property <bool> busy: false;
+    in property <string> progress: "";
+    in-out property <bool> group: false;
+    callback select-all();
+    callback clear();
+    callback start();
+    callback cancel();
+
+    height: Theme.px(76px);
+    background: Theme.bg-sunken;
+    border-radius: Theme.radius-sm;
+
+    VerticalLayout {
+        padding: Theme.px(8px);
+        spacing: Theme.px(8px);
+        HorizontalLayout {
+            spacing: Theme.px(6px);
+            Text {
+                text: @tr("{} selected", root.count);
+                font-size: Theme.pt(12px);
+                font-weight: 600;
+                color: Theme.text-primary;
+                vertical-alignment: center;
+                horizontal-stretch: 1;
+                min-width: 0px;
+                overflow: elide;
+            }
+            BarButton { text: @tr("Select all"); enabled: !root.busy; clicked => { root.select-all(); } }
+            BarButton { text: @tr("Clear"); enabled: !root.busy && root.count > 0; clicked => { root.clear(); } }
+        }
+        HorizontalLayout {
+            spacing: Theme.px(8px);
+            if !root.busy: Rectangle {
+                horizontal-stretch: 1;
+                min-width: 0px;
+                HorizontalLayout {
+                    spacing: Theme.px(6px);
+                    ExportCheck { state: root.group ? 1 : 0; y: (parent.height - self.height) / 2; clicked => { root.group = !root.group; } }
+                    Text {
+                        text: @tr("Group by folder");
+                        font-size: Theme.pt(11.5px);
+                        color: Theme.text-secondary;
+                        vertical-alignment: center;
+                        overflow: elide;
+                    }
+                }
+                TouchArea {
+                    x: Theme.px(22px);
+                    width: parent.width - Theme.px(22px);
+                    mouse-cursor: pointer;
+                    clicked => { root.group = !root.group; }
+                }
+            }
+            if root.busy: Text {
+                text: root.progress;
+                font-size: Theme.pt(11.5px);
+                color: Theme.text-secondary;
+                vertical-alignment: center;
+                horizontal-stretch: 1;
+                min-width: 0px;
+                overflow: elide;
+            }
+            if !root.busy: BarButton {
+                text: @tr("Export");
+                primary: true;
+                enabled: root.ready && root.count > 0;
+                clicked => { root.start(); }
+            }
+            if root.busy: BarButton { text: @tr("Cancel"); clicked => { root.cancel(); } }
+        }
+    }
+}
+
+component TreeRow inherits Rectangle {
+    in property <int> indent: 0;
+    in property <TreeRowKind> kind: TreeRowKind.folder-open;
+    in property <string> name;
+    in property <string> count: "";
+    in property <bool> selected: false;
+    in property <bool> loading: false;
+    // export mode: a box before the row, ticked by `checked` (see KeyspaceRowData.checked)
+    in property <bool> export-mode: false;
+    in property <int> checked: 0;
+    property <bool> is-folder: kind == TreeRowKind.folder-open || kind == TreeRowKind.folder-closed;
+    callback clicked <=> area.clicked;
+    callback toggled(shift: bool);
+    // right-click, at the pointer's window position
+    callback context-requested(x: length, y: length);
+
+    // What actually drives the spinner: appears only after `spin-delay` (a
+    // fast load never flashes it), then stays at least `min-spin` so it
+    // reads as a spin, not a blink.
+    property <duration> spin-delay: 200ms;
+    property <duration> min-spin: 400ms;
+    property <bool> spinning: false;
+    property <bool> min-spin-elapsed: true;
+    // also covers a row created while already loading, e.g. scrolled into view
+    // mid-scan: the timer starts counting from the row's creation
+    Timer {
+        interval: root.spin-delay;
+        running: root.loading && !root.spinning;
+        triggered => {
+            root.spinning = true;
+            root.min-spin-elapsed = false;
+        }
+    }
+    changed loading => {
+        if !loading && min-spin-elapsed {
+            spinning = false;
+        }
+    }
+    Timer {
+        interval: root.min-spin;
+        running: !root.min-spin-elapsed;
+        triggered => {
+            root.min-spin-elapsed = true;
+            if !root.loading {
+                root.spinning = false;
+            }
+        }
+    }
+
+    height: Theme.px(27px);
+    background: selected ? Theme.bg-selected : (area.has-hover ? Theme.bg-hover : transparent);
+    border-radius: Theme.px(5px);
+
+    area := TouchArea {
+        pointer-event(event) => {
+            if event.button == PointerEventButton.right && event.kind == PointerEventKind.down {
+                root.context-requested(self.mouse-x + self.absolute-position.x, self.mouse-y + self.absolute-position.y);
+            }
+        }
+    }
+
+    HorizontalLayout {
+        padding-left: Theme.px(8px) + indent * Theme.px(16px) + (export-mode ? Theme.px(22px) : 0px);
+        padding-right: Theme.px(8px);
+        spacing: Theme.px(6px);
+
+        // the expand chevron becomes a spinner while this folder's SCAN is
+        // in flight, then flips to the open chevron once the children land
+        // chevron and spinner are the same size, so swapping them is stable
+        if is-folder && !spinning: IconChevron {
+            size: Theme.icon-xs;
+            down: kind == TreeRowKind.folder-open;
+            tint: Theme.text-tertiary;
+            y: (parent.height - self.height) / 2;
+        }
+        if is-folder && spinning: IconSpinner {
+            size: Theme.icon-xs;
+            tint: Theme.accent-blue;
+            y: (parent.height - self.height) / 2;
+        }
+        if is-folder: IconFolder {
+            size: Theme.icon-md;
+            tint: Theme.accent-blue.mix(Theme.text-secondary, 0.35);
+            y: (parent.height - self.height) / 2;
+        }
+        // A leaf's type glyph, replaced by a spinner while fetching (see
+        // KeyspacePanel.loading-key). All sit centered in one fixed-width
+        // slot, as wide as the widest glyph, so neither shifts the label.
+        if !is-folder: Rectangle {
+            width: Theme.icon-md;
+
+            if spinning: IconSpinner {
+                size: Theme.icon-sm;
+                tint: Theme.accent-blue;
+                x: (parent.width - self.width) / 2;
+                y: (parent.height - self.height) / 2;
+            }
+            if kind == TreeRowKind.hash && !spinning: Text {
+                text: "#";
+                font-size: Theme.pt(13px);
+                font-family: Theme.font-mono;
+                color: selected ? Theme.accent-blue : Theme.text-tertiary;
+                width: parent.width;
+                height: parent.height;
+                horizontal-alignment: center;
+                vertical-alignment: center;
+            }
+            if kind == TreeRowKind.list && !spinning: IconFilter {
+                size: Theme.icon-sm;
+                tint: Theme.text-tertiary;
+                x: (parent.width - self.width) / 2;
+                y: (parent.height - self.height) / 2;
+            }
+            if kind == TreeRowKind.other && !spinning: IconKey {
+                size: Theme.icon-md;
+                tint: Theme.text-tertiary;
+                x: (parent.width - self.width) / 2;
+                y: (parent.height - self.height) / 2;
+            }
+        }
+
+        Text {
+            text: name;
+            font-size: Theme.pt(12.5px);
+            color: selected ? Theme.text-primary : (is-folder ? Theme.text-primary : Theme.text-secondary);
+            font-weight: is-folder ? 500 : 400;
+            vertical-alignment: center;
+            horizontal-stretch: 1;
+            overflow: elide;
+        }
+
+        if count != "": Text {
+            text: count;
+            font-size: Theme.pt(11px);
+            // tertiary gray vanishes against the blue selected background
+            color: selected ? Theme.text-primary : Theme.text-tertiary;
+            vertical-alignment: center;
+            horizontal-alignment: right;
+        }
+    }
+    if export-mode: ExportCheck {
+        x: Theme.px(8px);
+        y: (parent.height - self.height) / 2;
+        state: root.checked;
+        clicked(shift) => { root.toggled(shift); }
+    }
+}
+
+export component KeyspacePanel inherits FloatingCard {
+    width: 260px;
+    background: Theme.bg-panel;
+    // the export box last ticked, where a Shift-click's range starts ("": none)
+    property <string> export-anchor: "";
+    in property <bool> ctrl-held: false;
+    // whether the clipboard holds text, for the search/filter boxes' right-click "Paste"
+    callback clipboard-has-text() -> bool;
+    // which of the two views is shown; kept by the window, since this panel is
+    // recreated with the connection
+    in-out property <SidebarView> view: SidebarView.keyspace;
+    // the Search/Query view: the saved queries shown (already filtered, by Rust,
+    // on `queries-filter`), the one picked, and the box that filters them
+    in property <[SavedQueryRowData]> queries: SavedQueries.saved-queries;
+    in property <[SavedQueryRowData]> global-queries: SavedQueries.global-queries;
+    // whether any query is saved at all (whatever the filter shows)
+    in property <bool> has-saved-queries: SavedQueries.has-saved-queries;
+    // the list's rows: each non-empty section is a heading and its queries
+    property <int> own-head: root.queries.length > 0 ? 1 : 0;
+    property <int> global-head: root.global-queries.length > 0 ? 1 : 0;
+    property <int> query-rows-count: own-head + root.queries.length + global-head + root.global-queries.length;
+    in-out property <string> queries-filter <=> SavedQueries.filter;
+    in-out property <string> selected-query <=> SavedQueries.selected;
+    callback queries-filter-changed(text: string);
+    queries-filter-changed(text) => { SavedQueries.filter-changed(text); }
+    callback new-query-clicked();
+    new-query-clicked => { TabStrip.new-query-clicked(); }
+    callback new-search-clicked();
+    new-search-clicked => { TabStrip.new-search-clicked(); }
+    // the icon beside it hides the sidebar (the window shows it again from the tab bar)
+    callback hide-sidebar-clicked();
+    callback query-clicked(id: string);
+    query-clicked(id) => { SavedQueries.clicked(id); }
+    // the row's own × — one click, no confirm (see SavedQueryRow.deleted)
+    callback query-deleted(id: string);
+    query-deleted(id) => { SavedQueries.deleted(id); }
+    in property <[KeyspaceRowData]> rows: KeyTree.rows;
+    in property <string> selected: KeyTree.selected;
+    in property <string> footer: KeyTree.footer;
+    // memory used by the connected server ("" hides it), shown at the right
+    // of the footer
+    in property <string> memory: "";
+    // full name of the key currently loading ("" when none): that leaf's row
+    // shows a spinner in place of its glyph
+    in property <string> loading-key: KeyTree.loading-key;
+    // row to bring into view (-1 for none), revealed whenever `scroll-tick`
+    // changes so the same row can be requested twice
+    in property <int> scroll-row: KeyTree.scroll-row;
+    in property <int> scroll-tick: KeyTree.scroll-tick;
+    callback row-clicked(string);
+    row-clicked(name) => { KeyTree.row-clicked(name); }
+    callback refresh-requested();
+    refresh-requested => { KeyTree.refresh-requested(); }
+    // right-click on a tree row, at the pointer's window position
+    callback row-context-requested(name: string, x: length, y: length);
+    // header button hints, drawn by the window (see main.slint)
+    callback tooltip-show(text: string, x: length, top: length);
+    callback tooltip-hide();
+    // the search box's text, and Enter / clear in it ("" = back to browsing)
+    in-out property <string> search-text <=> KeyTree.search-text;
+    callback search-submitted(text: string);
+    search-submitted(text) => { KeyTree.search-submitted(text); }
+
+    // row geometry + windowing state for the tree below
+    property <length> row-stride: Theme.px(27px) + Theme.px(1px);
+    // panel width minus its padding; derived from root.width rather than
+    // the Flickable's own width, which would be circular
+    property <length> tree-content-width: root.width - 2 * Theme.px(10px);
+    property <length> flick-height-snapshot: 0px;
+    property <length> content-y-snapshot: 0px;
+    // same for the saved queries' list
+    property <length> queries-height-snapshot: 0px;
+    property <length> queries-y-snapshot: 0px;
+    property <int> batch-size: 100;
+    property <int> paint-buffer: 10;
+    // rows beyond this index aren't instantiated; grows in whole batches on
+    // scroll. Declarative (unlike AllValuesTable's) is safe here since it
+    // only reads the snapshots and rows.length, keeping up as a scan streams in.
+    property <int> rendered-count: min(rows.length,
+        ceil((floor(-content-y-snapshot / row-stride) + ceil(flick-height-snapshot / row-stride) + batch-size) / batch-size) * batch-size);
+    property <int> first-visible-index: max(0, floor(-content-y-snapshot / row-stride) - paint-buffer);
+    property <int> last-visible-index: min(rows.length - 1,
+        ceil((-content-y-snapshot + flick-height-snapshot) / row-stride) + paint-buffer);
+
+    // scrolls only when the row is off-screen, so a tab switch to a key that's
+    // already visible leaves the tree where it is
+    changed scroll-tick => {
+        if scroll-row >= 0 && scroll-row < rows.length && flick-height-snapshot > 0px {
+            let top = scroll-row * row-stride;
+            let bottom = top + row-stride;
+            let view-top = -content-y-snapshot;
+            let scroll-range = max(0px, tree-flick.content-height - tree-flick.height);
+            if top < view-top {
+                tree-flick.content-y = max(-scroll-range, -top);
+            } else if bottom > view-top + flick-height-snapshot {
+                tree-flick.content-y = max(-scroll-range, -(bottom - flick-height-snapshot));
+            }
+        }
+    }
+
+    VerticalLayout {
+        padding: Theme.px(10px);
+        spacing: Theme.px(8px);
+
+        // header: the tabs of the two views
+        HorizontalLayout {
+            height: Theme.px(25px);
+            spacing: Theme.px(16px);
+            cross-axis-alignment: center;
+            PanelTab {
+                text: @tr("Keyspace");
+                active: root.view == SidebarView.keyspace;
+                clicked => { root.view = SidebarView.keyspace; }
+            }
+            PanelTab {
+                text: @tr("Query");
+                active: root.view == SidebarView.queries;
+                clicked => { root.view = SidebarView.queries; }
+            }
+            Rectangle { horizontal-stretch: 1; }
+            // the two icons at the end of the header: a new search tab (leaving the panel on its
+            // current view), and hiding the sidebar
+            HorizontalLayout {
+                spacing: Theme.px(6px);
+                // opens a new search tab, leaving the panel on its current view
+                Rectangle {
+                    width: Theme.px(25px);
+                    height: Theme.px(25px);
+                    border-radius: Theme.radius-md;
+                    background: search-new-area.has-hover ? Theme.bg-hover : Theme.bg-elevated;
+                    border-width: 1px;
+                    border-color: Theme.border-soft;
+                    IconSearch {
+                        size: Theme.icon-sm;
+                        tint: search-new-area.has-hover ? Theme.text-primary : Theme.text-secondary;
+                        x: (parent.width - self.width) / 2;
+                        y: (parent.height - self.height) / 2;
+                    }
+                    // hover hint, like the title bar's: says what the search covers
+                    property <bool> hovered: search-new-area.has-hover;
+                    property <bool> hint-shown: false;
+                    changed hovered => {
+                        if !hovered && hint-shown {
+                            hint-shown = false;
+                            root.tooltip-hide();
+                        }
+                    }
+                    Timer {
+                        interval: 500ms;
+                        running: search-new-area.has-hover && !search-new-area.pressed && !hint-shown;
+                        triggered => {
+                            hint-shown = true;
+                            root.tooltip-show(@tr("Search everything: keys, fields and values (Ctrl+F)"), search-new-area.absolute-position.x,
+                                search-new-area.absolute-position.y + search-new-area.height + Theme.px(6px));
+                        }
+                    }
+                    search-new-area := TouchArea {
+                        width: parent.width;
+                        height: parent.height;
+                        mouse-cursor: pointer;
+                        clicked => {
+                            if hint-shown {
+                                hint-shown = false;
+                                root.tooltip-hide();
+                            }
+                            root.new-search-clicked();
+                        }
+                    }
+                }
+                hide-button := SquareIconButton {
+                    hint: @tr("Hide sidebar");
+                    tooltip-show(text, x, top) => { root.tooltip-show(text, x, top); }
+                    tooltip-hide => { root.tooltip-hide(); }
+                    clicked => { root.hide-sidebar-clicked(); }
+                    IconSidebar { size: Theme.icon-md; tint: hide-button.hovered ? Theme.text-primary : Theme.text-secondary; }
+                }
+            }
+        }
+
+        // Both views are laid out in one slot, the other hidden: the tree's
+        // elements are reached by name from the properties above, which a
+        // conditional would put out of reach.
+        Rectangle {
+            vertical-stretch: 1;
+
+            VerticalLayout {
+                visible: root.view == SidebarView.keyspace;
+                spacing: Theme.px(8px);
+
+                // search box: Enter searches all keys (plain text = contains, or a Redis glob); the
+                // × or Enter on an empty box goes back to browsing. The tree's buttons (show the
+                // open tab's key, refresh) sit at its right
+                HorizontalLayout {
+                    spacing: Theme.px(2px);
+                    Rectangle {
+                        height: Theme.px(26px);
+                        background: Theme.bg-sunken;
+                        border-radius: Theme.radius-sm;
+                        border-width: 1px;
+                        border-color: search-input.has-focus ? Theme.accent-blue-dim : Theme.border;
+                        HorizontalLayout {
+                            padding-left: Theme.px(8px);
+                            padding-right: Theme.px(3px);
+                            spacing: Theme.px(6px);
+                            IconSearch { size: Theme.icon-sm; tint: Theme.text-tertiary; y: (parent.height - self.height) / 2; }
+                            // text scrolls to keep the cursor visible, like the other inputs
+                            Rectangle {
+                                horizontal-stretch: 1;
+                                min-width: 0px;
+                                clip: true;
+
+                                if root.search-text == "" && !search-input.has-focus: Text {
+                                    text: @tr("Search keys, e.g. user:*");
+                                    font-size: Theme.pt(12px);
+                                    font-family: Theme.font-mono;
+                                    color: Theme.text-tertiary;
+                                    vertical-alignment: center;
+                                    width: 100%;
+                                    height: 100%;
+                                    overflow: elide;
+                                }
+                                search-touch := TouchArea {
+                                    width: 100%;
+                                    height: 100%;
+                                    mouse-cursor: MouseCursor.text;
+                                    property <length> click-x;
+                                    property <length> click-y;
+                                    pointer-event(event) => {
+                                        if event.button == PointerEventButton.right && event.kind == PointerEventKind.down && root.clipboard-has-text() {
+                                            self.click-x = self.mouse-x;
+                                            self.click-y = self.mouse-y;
+                                            search-paste-popup.show();
+                                        }
+                                    }
+                                    search-input := TextInput {
+                                        property <length> computed-x;
+                                        x: min(0px, max(parent.width - self.width, self.computed-x));
+                                        width: max(parent.width, self.preferred-width);
+                                        height: 100%;
+                                        text <=> root.search-text;
+                                        single-line: true;
+                                        font-size: Theme.pt(12px);
+                                        font-family: Theme.font-mono;
+                                        color: Theme.text-primary;
+                                        selection-background-color: Theme.accent-blue.with-alpha(0.35);
+                                        vertical-alignment: center;
+                                        accepted => { root.search-submitted(self.text); }
+                                        cursor-position-changed(cursor-position) => {
+                                            if cursor-position.x + self.computed-x < 0px {
+                                                self.computed-x = -cursor-position.x;
+                                            } else if cursor-position.x + self.computed-x > parent.width - self.text-cursor-width {
+                                                self.computed-x = parent.width - cursor-position.x - self.text-cursor-width;
+                                            }
+                                        }
+                                    }
+                                    search-paste-popup := PastePopup {
+                                        x: search-touch.click-x;
+                                        y: search-touch.click-y;
+                                        paste => { search-input.paste(); }
+                                    }
+                                }
+                            }
+                            if root.search-text != "": IconButton {
+                                box-size: Theme.px(20px);
+                                y: (parent.height - self.height) / 2;
+                                clicked => {
+                                    root.search-text = "";
+                                    root.search-submitted("");
+                                }
+                                IconClose { size: Theme.icon-md; tint: Theme.text-tertiary; }
+                            }
+                        }
+                    }
+                    IconButton {
+                        box-size: Theme.btn-md;
+                        active: KeyTree.export-mode;
+                        hint: @tr("Export keys");
+                        hint-show(text, x, top) => { root.tooltip-show(text, x, top); }
+                        hint-hide => { root.tooltip-hide(); }
+                        clicked => { KeyTree.export-mode-toggled(); }
+                        IconDownload { size: Theme.icon-md; }
+                    }
+                    IconButton {
+                        box-size: Theme.btn-md;
+                        hint: @tr("Refresh");
+                        hint-show(text, x, top) => { root.tooltip-show(text, x, top); }
+                        hint-hide => { root.tooltip-hide(); }
+                        clicked => { refresh-requested(); }
+                        IconRefresh { size: Theme.icon-md; }
+                    }
+                }
+
+                // Tree: windowed, not one live element per row. Rows sit absolutely
+                // positioned at a fixed stride, so thousands never cost a layout
+                // pass; only `rendered-count` rows near the viewport exist and paint.
+                HorizontalLayout {
+                    vertical-stretch: 1;
+                    tree-flick := Flickable {
+                        horizontal-stretch: 1;
+                        interactive: !ctrl-held;
+                        content-height: rows.length * row-stride;
+                        init => {
+                            root.flick-height-snapshot = self.height;
+                            root.content-y-snapshot = self.content-y;
+                        }
+                        changed height => { root.flick-height-snapshot = self.height; }
+                        changed content-y => { root.content-y-snapshot = self.content-y; }
+
+                        // inertial wheel scrolling, pinned under the visible frame via
+                        // the snapshots — same arrangement as the value table
+                        WheelScroller {
+                            x: 0;
+                            y: -root.content-y-snapshot;
+                            width: root.tree-content-width;
+                            height: root.flick-height-snapshot;
+                            scroll-by(delta) => {
+                                let scroll-range = max(0px, tree-flick.content-height - tree-flick.height);
+                                tree-flick.content-y = max(-scroll-range, min(0px, tree-flick.content-y + delta));
+                            }
+                        }
+
+                        Rectangle {
+                            x: 0;
+                            y: 0;
+                            width: root.tree-content-width;
+                            height: rows.length * row-stride;
+
+                            for row[i] in rows: Rectangle {
+                                x: 0;
+                                y: i * row-stride;
+                                width: parent.width;
+                                height: row-stride;
+                                if i < rendered-count: TreeRow {
+                                    width: parent.width;
+                                    visible: i >= first-visible-index && i <= last-visible-index;
+                                    kind: row.kind;
+                                    name: row.name;
+                                    count: row.count;
+                                    indent: row.indent;
+                                    loading: row.loading || (row.full-name != "" && row.full-name == root.loading-key);
+                                    selected: row.full-name == root.selected;
+                                    export-mode: KeyTree.export-mode;
+                                    checked: row.checked;
+                                    clicked => { row-clicked(row.full-name); }
+                                    toggled(shift) => {
+                                        if shift && root.export-anchor != "" && root.export-anchor != row.full-name {
+                                            KeyTree.export-range-toggled(root.export-anchor, row.full-name);
+                                        } else {
+                                            KeyTree.export-row-toggled(row.full-name);
+                                        }
+                                        root.export-anchor = row.full-name;
+                                    }
+                                    context-requested(x, y) => { root.row-context-requested(row.full-name, x, y); }
+                                }
+                            }
+                        }
+                    }
+                    VScrollBar {
+                        content-height: tree-flick.content-height;
+                        content-y <=> tree-flick.content-y;
+                    }
+                }
+
+                if KeyTree.export-mode: ExportBar {
+                    count: KeyTree.export-count;
+                    ready: KeyTree.export-ready;
+                    busy: KeyTree.export-busy;
+                    progress: KeyTree.export-progress;
+                    group <=> KeyTree.export-group;
+                    select-all => { KeyTree.export-select-all(); }
+                    clear => { KeyTree.export-clear(); }
+                    start => { KeyTree.export-start(); }
+                    cancel => { KeyTree.export-cancel(); }
+                }
+
+                HDivider { }
+
+                HorizontalLayout {
+                    spacing: Theme.px(8px);
+                    Text {
+                        text: footer;
+                        font-size: Theme.pt(11px);
+                        color: Theme.text-tertiary;
+                        horizontal-stretch: 1;
+                        min-width: 0px;
+                        overflow: elide;
+                    }
+                    if memory != "": Text {
+                        text: @tr("{} used", memory);
+                        font-size: Theme.pt(11px);
+                        color: Theme.text-tertiary;
+                    }
+                }
+            }
+
+            // ---- the Search/Query view ----
+            VerticalLayout {
+                visible: root.view == SidebarView.queries;
+                spacing: Theme.px(8px);
+
+                // start a new query (nothing behind it yet)
+                Rectangle {
+                    height: Theme.px(30px);
+                    border-radius: Theme.radius-sm;
+                    background: new-area.has-hover ? Theme.accent-blue-dim : Theme.accent-blue;
+                    new-area := TouchArea {
+                        mouse-cursor: pointer;
+                        clicked => { root.new-query-clicked(); }
+                    }
+                    HorizontalLayout {
+                        alignment: center;
+                        spacing: Theme.px(6px);
+                        IconPlus { size: Theme.icon-sm; tint: #ffffff; y: (parent.height - self.height) / 2; }
+                        Text {
+                            text: @tr("New query");
+                            color: #ffffff;
+                            font-size: Theme.pt(12px);
+                            font-weight: 600;
+                            vertical-alignment: center;
+                            overflow: elide;
+                        }
+                    }
+                }
+
+                if root.has-saved-queries: HDivider { }
+
+                // filters the saved queries as you type; hidden while none is saved
+                Rectangle {
+                    visible: root.has-saved-queries;
+                    height: root.has-saved-queries ? Theme.px(26px) : 0px;
+                    background: Theme.bg-sunken;
+                    border-radius: Theme.radius-sm;
+                    border-width: 1px;
+                    border-color: queries-input.has-focus ? Theme.accent-blue-dim : Theme.border;
+                    HorizontalLayout {
+                        padding-left: Theme.px(8px);
+                        padding-right: Theme.px(3px);
+                        spacing: Theme.px(6px);
+                        IconSearch { size: Theme.icon-sm; tint: Theme.text-tertiary; y: (parent.height - self.height) / 2; }
+                        Rectangle {
+                            horizontal-stretch: 1;
+                            min-width: 0px;
+                            clip: true;
+
+                            if root.queries-filter == "" && !queries-input.has-focus: Text {
+                                text: @tr("Filter saved queries");
+                                font-size: Theme.pt(12px);
+                                font-family: Theme.font-mono;
+                                color: Theme.text-tertiary;
+                                vertical-alignment: center;
+                                width: 100%;
+                                height: 100%;
+                                overflow: elide;
+                            }
+                            queries-touch := TouchArea {
+                                width: 100%;
+                                height: 100%;
+                                mouse-cursor: MouseCursor.text;
+                                property <length> click-x;
+                                property <length> click-y;
+                                pointer-event(event) => {
+                                    if event.button == PointerEventButton.right && event.kind == PointerEventKind.down && root.clipboard-has-text() {
+                                        self.click-x = self.mouse-x;
+                                        self.click-y = self.mouse-y;
+                                        queries-paste-popup.show();
+                                    }
+                                }
+                                queries-input := TextInput {
+                                    property <length> computed-x;
+                                    x: min(0px, max(parent.width - self.width, self.computed-x));
+                                    width: max(parent.width, self.preferred-width);
+                                    height: 100%;
+                                    text <=> root.queries-filter;
+                                    single-line: true;
+                                    font-size: Theme.pt(12px);
+                                    font-family: Theme.font-mono;
+                                    color: Theme.text-primary;
+                                    selection-background-color: Theme.accent-blue.with-alpha(0.35);
+                                    vertical-alignment: center;
+                                    edited => { root.queries-filter-changed(self.text); }
+                                    cursor-position-changed(cursor-position) => {
+                                        if cursor-position.x + self.computed-x < 0px {
+                                            self.computed-x = -cursor-position.x;
+                                        } else if cursor-position.x + self.computed-x > parent.width - self.text-cursor-width {
+                                            self.computed-x = parent.width - cursor-position.x - self.text-cursor-width;
+                                        }
+                                    }
+                                }
+                                queries-paste-popup := PastePopup {
+                                    x: queries-touch.click-x;
+                                    y: queries-touch.click-y;
+                                    paste => { queries-input.paste(); }
+                                }
+                            }
+                        }
+                        if root.queries-filter != "": IconButton {
+                            box-size: Theme.px(20px);
+                            y: (parent.height - self.height) / 2;
+                            clicked => {
+                                root.queries-filter = "";
+                                root.queries-filter-changed("");
+                            }
+                            IconClose { size: Theme.icon-md; tint: Theme.text-tertiary; }
+                        }
+                    }
+                }
+
+                HorizontalLayout {
+                    vertical-stretch: 1;
+                    queries-flick := Flickable {
+                        horizontal-stretch: 1;
+                        interactive: !ctrl-held;
+                        content-height: root.query-rows-count * root.row-stride;
+                        init => {
+                            root.queries-height-snapshot = self.height;
+                            root.queries-y-snapshot = self.content-y;
+                        }
+                        changed height => { root.queries-height-snapshot = self.height; }
+                        changed content-y => { root.queries-y-snapshot = self.content-y; }
+
+                        WheelScroller {
+                            x: 0;
+                            y: -root.queries-y-snapshot;
+                            width: root.tree-content-width;
+                            height: root.queries-height-snapshot;
+                            scroll-by(delta) => {
+                                let scroll-range = max(0px, queries-flick.content-height - queries-flick.height);
+                                queries-flick.content-y = max(-scroll-range, min(0px, queries-flick.content-y + delta));
+                            }
+                        }
+
+                        Rectangle {
+                            x: 0;
+                            y: 0;
+                            width: root.tree-content-width;
+                            height: root.query-rows-count * root.row-stride;
+
+                            if root.queries.length > 0: Text {
+                                y: 0px;
+                                height: root.row-stride;
+                                text: @tr("Saved queries");
+                                font-size: Theme.pt(11px);
+                                font-weight: 700;
+                                color: Theme.text-secondary;
+                                vertical-alignment: center;
+                            }
+                            for query[i] in root.queries: SavedQueryRow {
+                                y: (root.own-head + i) * root.row-stride;
+                                width: parent.width;
+                                name: query.name;
+                                detail: query.detail;
+                                selected: query.id == root.selected-query;
+                                clicked => { root.query-clicked(query.id); }
+                                deleted => { root.query-deleted(query.id); }
+                            }
+                            if root.global-queries.length > 0: Text {
+                                y: (root.own-head + root.queries.length) * root.row-stride;
+                                height: root.row-stride;
+                                text: @tr("Global queries");
+                                font-size: Theme.pt(11px);
+                                font-weight: 700;
+                                color: Theme.text-secondary;
+                                vertical-alignment: center;
+                            }
+                            for query[i] in root.global-queries: SavedQueryRow {
+                                y: (root.own-head + root.queries.length + root.global-head + i) * root.row-stride;
+                                width: parent.width;
+                                name: query.name;
+                                detail: query.detail;
+                                selected: query.id == root.selected-query;
+                                clicked => { root.query-clicked(query.id); }
+                                deleted => { root.query-deleted(query.id); }
+                            }
+                        }
+                    }
+                    VScrollBar {
+                        content-height: queries-flick.content-height;
+                        content-y <=> queries-flick.content-y;
+                    }
+                }
+            }
+        }
+    }
+}

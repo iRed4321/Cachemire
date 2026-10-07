@@ -1,0 +1,607 @@
+import { Theme } from "theme.slint";
+
+export component IconDot inherits Rectangle {
+    in property <color> tint: Theme.text-secondary;
+    in property <length> size: 8px;
+    width: size;
+    height: size;
+    border-radius: size / 2;
+    background: tint;
+}
+
+export component IconSearch inherits Rectangle {
+    in property <color> tint: Theme.text-secondary;
+    in property <length> size: 14px;
+    width: size;
+    height: size;
+
+    Path {
+        width: 100%;
+        height: 100%;
+        viewbox-width: 24;
+        viewbox-height: 24;
+        // lens centered at (11,11) r=8, handle from the lens edge at 45° to
+        // the corner, so the two visibly join instead of leaving a gap
+        commands: "M11 3 a8 8 0 1 0 0 16 a8 8 0 1 0 0 -16 M16.65 16.65 L21 21";
+        fill: transparent;
+        stroke: tint;
+        stroke-width: 1.7px;
+        stroke-line-cap: round;
+    }
+}
+
+// Every icon below is Rectangles or a Path, never a text glyph — a glyph
+// like "▸" renders as a placeholder box without that font installed. Path
+// data uses a 24x24 viewbox, stroke width in absolute px.
+
+export component IconChevron inherits Rectangle {
+    in property <color> tint: Theme.text-secondary;
+    in property <length> size: 10px;
+    in property <bool> down: false;
+    in property <bool> up: false; // takes precedence over `down`
+    width: size;
+    height: size;
+
+    Path {
+        width: 100%;
+        height: 100%;
+        viewbox-width: 24;
+        viewbox-height: 24;
+        commands: up ? "M6 15 L12 9 L18 15" : (down ? "M6 9 L12 15 L18 9" : "M9 6 L15 12 L9 18");
+        fill: transparent;
+        stroke: tint;
+        stroke-width: 1.8px;
+        stroke-line-cap: round;
+        stroke-line-join: round;
+    }
+}
+
+// Three-quarter arc spinning forever. Instantiate only while loading (e.g.
+// `if loading:`) so destroying it stops the animation. Moves the arc's
+// endpoints, not a rotation — Slint's software renderer ignores `transform-rotation`.
+export component IconSpinner inherits Rectangle {
+    in property <color> tint: Theme.accent-blue;
+    in property <length> size: 12px;
+    width: size;
+    height: size;
+
+    property <angle> spin: 0deg;
+    animate spin { duration: 700ms; iteration-count: -1; easing: linear; }
+    init => { spin = 360deg; }
+
+    // 270° clockwise arc of radius 9 around the 24x24 viewbox center,
+    // starting at `spin`
+    property <float> start-x: 12 + 9 * Math.cos(spin);
+    property <float> start-y: 12 + 9 * Math.sin(spin);
+    property <float> end-x: 12 + 9 * Math.cos(spin + 270deg);
+    property <float> end-y: 12 + 9 * Math.sin(spin + 270deg);
+
+    Path {
+        width: 100%;
+        height: 100%;
+        viewbox-width: 24;
+        viewbox-height: 24;
+        // Rounded to whole units: a `float` concatenated into a string uses
+        // the locale's decimal separator (a comma in French), breaking SVG
+        // syntax. `int` never does, and whole pixels are fine at this size.
+        commands: "M " + start-x.round() + " " + start-y.round() + " A 9 9 0 1 1 " + end-x.round() + " " + end-y.round();
+        fill: transparent;
+        stroke: tint;
+        stroke-width: 1.8px;
+        stroke-line-cap: round;
+    }
+}
+
+export component IconFolder inherits Rectangle {
+    in property <color> tint: Theme.text-secondary;
+    in property <length> size: 14px;
+    width: size;
+    height: size * 0.8;
+    y: size * 0.1;
+
+    Rectangle {
+        x: 0;
+        y: 0;
+        width: parent.width * 0.45;
+        height: parent.height * 0.28;
+        border-top-left-radius: 1.5px;
+        border-top-right-radius: 1.5px;
+        background: tint;
+    }
+    Rectangle {
+        x: 0;
+        y: parent.height * 0.22;
+        width: parent.width;
+        height: parent.height * 0.78;
+        border-radius: 1.5px;
+        background: tint;
+    }
+}
+
+// a square in front at the top right, and the corner of the one behind it
+export component IconCopy inherits Rectangle {
+    in property <color> tint: Theme.text-secondary;
+    in property <length> size: 14px;
+    width: size;
+    height: size;
+
+    Path {
+        width: 100%;
+        height: 100%;
+        viewbox-y: 0.5;
+        viewbox-width: 24;
+        viewbox-height: 24;
+        commands: "M11 3 h9 a2 2 0 0 1 2 2 v9 a2 2 0 0 1 -2 2 h-9 a2 2 0 0 1 -2 -2 v-9 a2 2 0 0 1 2 -2 z M7 9 H4 a2 2 0 0 0 -2 2 v9 a2 2 0 0 0 2 2 h9 a2 2 0 0 0 2 -2 v-2";
+        fill: transparent;
+        stroke: tint;
+        stroke-width: 1.5px;
+        stroke-line-cap: round;
+        stroke-line-join: round;
+    }
+}
+
+// a command prompt: `>` and its cursor
+export component IconQuery inherits Rectangle {
+    in property <color> tint: Theme.text-secondary;
+    in property <length> size: 14px;
+    width: size;
+    height: size;
+
+    Path {
+        width: 100%;
+        height: 100%;
+        viewbox-width: 24;
+        viewbox-height: 24;
+        commands: "M5 7 L11 12 L5 17 M13 18 H20";
+        fill: transparent;
+        stroke: tint;
+        stroke-width: 1.8px;
+        stroke-line-cap: round;
+        stroke-line-join: round;
+    }
+}
+
+export component IconPlus inherits Rectangle {
+    in property <color> tint: Theme.text-secondary;
+    in property <length> size: 14px;
+    width: size;
+    height: size;
+    Rectangle {
+        width: parent.size * 0.78;
+        height: 1.4px;
+        background: tint;
+    }
+    Rectangle {
+        width: 1.4px;
+        height: parent.size * 0.78;
+        background: tint;
+    }
+}
+
+export component IconMinimize inherits Rectangle {
+    in property <color> tint: Theme.text-secondary;
+    in property <length> size: 12px;
+    width: size;
+    height: size;
+    Rectangle {
+        y: parent.height * 0.5;
+        width: parent.size * 0.82;
+        height: 1.2px;
+        background: tint;
+    }
+}
+
+export component IconMaximize inherits Rectangle {
+    in property <color> tint: Theme.text-secondary;
+    in property <length> size: 12px;
+    in property <bool> restore: false;
+    width: size;
+    height: size;
+
+    // Modeled on Windows 11's Fluent caption glyphs: a rounded square for
+    // maximize; for restore, a second square's top/right edges peek out
+    // behind it — one open path, not a filled box, to read as an outline.
+    if !restore: Path {
+        width: 100%;
+        height: 100%;
+        viewbox-width: 24;
+        viewbox-height: 24;
+        commands: "M6 3 H18 a3 3 0 0 1 3 3 V18 a3 3 0 0 1 -3 3 H6 a3 3 0 0 1 -3 -3 V6 a3 3 0 0 1 3 -3 z";
+        fill: transparent;
+        stroke: tint;
+        stroke-width: 1.2px;
+        stroke-line-join: round;
+    }
+    if restore: Path {
+        width: 100%;
+        height: 100%;
+        viewbox-width: 24;
+        viewbox-height: 24;
+        commands: "M6 7 H14 a3 3 0 0 1 3 3 V18 a3 3 0 0 1 -3 3 H6 a3 3 0 0 1 -3 -3 V10 a3 3 0 0 1 3 -3 z M7 7 V6 a3 3 0 0 1 3 -3 H18 a3 3 0 0 1 3 3 V14 a3 3 0 0 1 -3 3 H17";
+        fill: transparent;
+        stroke: tint;
+        stroke-width: 1.2px;
+        stroke-line-cap: round;
+        stroke-line-join: round;
+    }
+}
+
+// The cross only spans the middle ~40% of the box so it reads at the same
+// visual weight as the "×" glyph it replaces at the same `size`.
+export component IconClose inherits Rectangle {
+    in property <color> tint: Theme.text-secondary;
+    in property <length> size: 12px;
+    width: size;
+    height: size;
+
+    Path {
+        width: 100%;
+        height: 100%;
+        viewbox-width: 24;
+        viewbox-height: 24;
+        commands: "M7 7 L17 17 M17 7 L7 17";
+        fill: transparent;
+        stroke: tint;
+        stroke-width: 1.6px;
+        stroke-line-cap: round;
+    }
+}
+
+export component IconPencil inherits Rectangle {
+    in property <color> tint: Theme.text-secondary;
+    in property <length> size: 12px;
+    width: size;
+    height: size;
+
+    Path {
+        width: 100%;
+        height: 100%;
+        viewbox-width: 24;
+        viewbox-height: 24;
+        commands: "M21.174 6.812 a1 1 0 0 0 -3.986 -3.987 L3.842 16.174 a2 2 0 0 0 -0.5 0.83 l-1.321 4.352 a0.5 0.5 0 0 0 0.623 0.622 l4.353 -1.32 a2 2 0 0 0 0.83 -0.497 z M15 5 l4 4";
+        fill: transparent;
+        stroke: tint;
+        stroke-width: 1.6px;
+        stroke-line-cap: round;
+        stroke-line-join: round;
+    }
+}
+
+export component IconRefresh inherits Rectangle {
+    in property <color> tint: Theme.text-secondary;
+    in property <length> size: 13px;
+    width: size;
+    height: size;
+
+    Path {
+        width: 100%;
+        height: 100%;
+        viewbox-width: 24;
+        viewbox-height: 24;
+        commands: "M3 12 a9 9 0 0 1 9 -9 a9.75 9.75 0 0 1 6.74 2.74 L21 8 M21 3 v5 h-5 M21 12 a9 9 0 0 1 -9 9 a9.75 9.75 0 0 1 -6.74 -2.74 L3 16 M8 16 H3 v5";
+        fill: transparent;
+        stroke: tint;
+        stroke-width: 1.6px;
+        stroke-line-cap: round;
+        stroke-line-join: round;
+    }
+}
+
+// a hash sign
+export component IconHash inherits Rectangle {
+    in property <color> tint: Theme.text-secondary;
+    in property <length> size: 13px;
+    width: size;
+    height: size;
+
+    Path {
+        width: 100%;
+        height: 100%;
+        viewbox-width: 24;
+        viewbox-height: 24;
+        commands: "M9.5 4 L7.5 20 M16.5 4 L14.5 20 M4 9 H20 M4 15 H20";
+        fill: transparent;
+        stroke: tint;
+        stroke-width: 1.6px;
+        stroke-line-cap: round;
+    }
+}
+
+// a funnel: for boxes that filter what's shown
+export component IconFunnel inherits Rectangle {
+    in property <color> tint: Theme.text-secondary;
+    in property <length> size: 14px;
+    width: size;
+    height: size;
+
+    Path {
+        width: 100%;
+        height: 100%;
+        viewbox-width: 24;
+        viewbox-height: 24;
+        commands: "M3 4.5 H21 L14 12.5 V19 L10 21 V12.5 Z";
+        fill: transparent;
+        stroke: tint;
+        stroke-width: 1.7px;
+        stroke-line-cap: round;
+        stroke-line-join: round;
+    }
+}
+
+export component IconFilter inherits Rectangle {
+    in property <color> tint: Theme.text-secondary;
+    in property <length> size: 14px;
+    width: size;
+    height: size;
+    VerticalLayout {
+        alignment: center;
+        spacing: 3px;
+        padding-left: 1px;
+        padding-right: 1px;
+        Rectangle { height: 1.3px; width: parent.width; background: tint; }
+        Rectangle { height: 1.3px; width: parent.width * 0.66; background: tint; }
+        Rectangle { height: 1.3px; width: parent.width * 0.33; background: tint; }
+    }
+}
+
+export component IconKey inherits Rectangle {
+    in property <color> tint: Theme.text-secondary;
+    in property <length> size: 14px;
+    width: size;
+    height: size * 0.6;
+    y: size * 0.2;
+
+    Rectangle {
+        x: 0;
+        y: (parent.height - self.height) / 2;
+        width: parent.height * 0.85;
+        height: parent.height * 0.85;
+        border-radius: self.width / 2;
+        border-width: 1.3px;
+        border-color: tint;
+        background: transparent;
+    }
+    Rectangle {
+        x: parent.height * 0.75;
+        y: (parent.height - 1.2px) / 2;
+        width: parent.width - parent.height * 0.75;
+        height: 1.2px;
+        background: tint;
+    }
+    Rectangle {
+        x: parent.width - parent.height * 0.22;
+        y: parent.height * 0.5;
+        width: 1.2px;
+        height: parent.height * 0.4;
+        background: tint;
+    }
+}
+
+// an arrow down into a tray
+export component IconDownload inherits Rectangle {
+    in property <color> tint: Theme.text-secondary;
+    in property <length> size: 14px;
+    width: size;
+    height: size;
+
+    Path {
+        width: 100%;
+        height: 100%;
+        viewbox-width: 24;
+        viewbox-height: 24;
+        commands: "M12 3 v12 M7 10 L12 15 L17 10 M4 15 v2 a3 3 0 0 0 3 3 h10 a3 3 0 0 0 3 -3 v-2";
+        fill: transparent;
+        stroke: tint;
+        stroke-width: 1.5px;
+        stroke-line-cap: round;
+        stroke-line-join: round;
+    }
+}
+
+// an arrow leaving a box through its top right corner
+export component IconExternalLink inherits Rectangle {
+    in property <color> tint: Theme.text-secondary;
+    in property <length> size: 14px;
+    width: size;
+    height: size;
+
+    Path {
+        width: 100%;
+        height: 100%;
+        viewbox-width: 24;
+        viewbox-height: 24;
+        commands: "M14 3 h7 v7 M21 3 L11 13 M18 14 v3 a3 3 0 0 1 -3 3 H7 a3 3 0 0 1 -3 -3 V9 a3 3 0 0 1 3 -3 h3";
+        fill: transparent;
+        stroke: tint;
+        stroke-width: 1.5px;
+        stroke-line-cap: round;
+        stroke-line-join: round;
+    }
+}
+
+export component IconSettings inherits Rectangle {
+    in property <color> tint: Theme.text-secondary;
+    in property <length> size: 14px;
+    width: size;
+    height: size;
+
+    Path {
+        width: 100%;
+        height: 100%;
+        viewbox-width: 24;
+        viewbox-height: 24;
+        commands: "M 12.22 2 h -0.44 a 2 2 0 0 0 -2 2 v 0.18 a 2 2 0 0 1 -1 1.73 l -0.43 0.25 a 2 2 0 0 1 -2 0 l -0.15 -0.08 a 2 2 0 0 0 -2.73 0.73 l -0.22 0.38 a 2 2 0 0 0 0.73 2.73 l 0.15 0.1 a 2 2 0 0 1 1 1.72 v 0.51 a 2 2 0 0 1 -1 1.74 l -0.15 0.09 a 2 2 0 0 0 -0.73 2.73 l 0.22 0.38 a 2 2 0 0 0 2.73 0.73 l 0.15 -0.08 a 2 2 0 0 1 2 0 l 0.43 0.25 a 2 2 0 0 1 1 1.73 V 20 a 2 2 0 0 0 2 2 h 0.44 a 2 2 0 0 0 2 -2 v -0.18 a 2 2 0 0 1 1 -1.73 l 0.43 -0.25 a 2 2 0 0 1 2 0 l 0.15 0.08 a 2 2 0 0 0 2.73 -0.73 l 0.22 -0.39 a 2 2 0 0 0 -0.73 -2.73 l -0.15 -0.08 a 2 2 0 0 1 -1 -1.74 v -0.5 a 2 2 0 0 1 1 -1.74 l 0.15 -0.09 a 2 2 0 0 0 0.73 -2.73 l -0.22 -0.38 a 2 2 0 0 0 -2.73 -0.73 l -0.15 0.08 a 2 2 0 0 1 -2 0 l -0.43 -0.25 a 2 2 0 0 1 -1 -1.73 V 4 a 2 2 0 0 0 -2 -2 z M 15 12 a 3 3 0 1 1 -6 0 a 3 3 0 0 1 6 0 z";
+        fill: transparent;
+        stroke: tint;
+        stroke-width: 1.6px;
+        stroke-line-cap: round;
+        stroke-line-join: round;
+    }
+}
+
+// two bars: pause
+export component IconPause inherits Rectangle {
+    in property <color> tint: Theme.text-secondary;
+    in property <length> size: 12px;
+    width: size;
+    height: size;
+
+    Path {
+        width: 100%;
+        height: 100%;
+        viewbox-width: 24;
+        viewbox-height: 24;
+        commands: "M8 5 L8 19 M16 5 L16 19";
+        fill: transparent;
+        stroke: tint;
+        stroke-width: 2.6px;
+        stroke-line-cap: round;
+    }
+}
+
+// a triangle pointing right: play, resume
+export component IconPlay inherits Rectangle {
+    in property <color> tint: Theme.text-secondary;
+    in property <length> size: 12px;
+    width: size;
+    height: size;
+
+    Path {
+        width: 100%;
+        height: 100%;
+        viewbox-width: 24;
+        viewbox-height: 24;
+        commands: "M7 4.5 L19 12 L7 19.5 Z";
+        fill: tint;
+        stroke: tint;
+        stroke-width: 1.4px;
+        stroke-line-join: round;
+    }
+}
+
+// a cloud: outlined, or filled with its tint
+export component IconCloud inherits Rectangle {
+    in property <color> tint: Theme.text-secondary;
+    in property <length> size: 14px;
+    in property <bool> filled: false;
+    width: size;
+    height: size;
+
+    Path {
+        width: 100%;
+        height: 100%;
+        viewbox-width: 24;
+        viewbox-height: 24;
+        commands: "M18 10 h -1.26 A 8 8 0 1 0 9 20 h 9 a 5 5 0 0 0 0 -10 z";
+        fill: root.filled ? tint : transparent;
+        stroke: tint;
+        stroke-width: 1.7px;
+        stroke-line-cap: round;
+        stroke-line-join: round;
+    }
+}
+
+// an arrow turning back: undo, and its mirror image, redo
+export component IconUndo inherits Rectangle {
+    in property <color> tint: Theme.text-secondary;
+    in property <length> size: 13px;
+    width: size;
+    height: size;
+
+    Path {
+        width: 100%;
+        height: 100%;
+        viewbox-width: 24;
+        viewbox-height: 24;
+        commands: "M9 14 L4 9 L9 4 M4 9 H15 a5 5 0 0 1 0 10 H11";
+        fill: transparent;
+        stroke: tint;
+        stroke-width: 1.8px;
+        stroke-line-cap: round;
+        stroke-line-join: round;
+    }
+}
+
+export component IconRedo inherits Rectangle {
+    in property <color> tint: Theme.text-secondary;
+    in property <length> size: 13px;
+    width: size;
+    height: size;
+
+    Path {
+        width: 100%;
+        height: 100%;
+        viewbox-width: 24;
+        viewbox-height: 24;
+        commands: "M15 14 L20 9 L15 4 M20 9 H9 a5 5 0 0 0 0 10 H13";
+        fill: transparent;
+        stroke: tint;
+        stroke-width: 1.8px;
+        stroke-line-cap: round;
+        stroke-line-join: round;
+    }
+}
+
+// a clock with an arrow turning back: the history
+export component IconHistory inherits Rectangle {
+    in property <color> tint: Theme.text-secondary;
+    in property <length> size: 13px;
+    width: size;
+    height: size;
+
+    Path {
+        width: 100%;
+        height: 100%;
+        viewbox-width: 24;
+        viewbox-height: 24;
+        commands: "M3 12 a9 9 0 1 0 2.6 -6.4 M3 4.5 V9 H7.5 M12 7.5 V12 L15 14";
+        fill: transparent;
+        stroke: tint;
+        stroke-width: 1.8px;
+        stroke-line-cap: round;
+        stroke-line-join: round;
+    }
+}
+
+// a window with its left pane marked: the sidebar
+export component IconSidebar inherits Rectangle {
+    in property <color> tint: Theme.text-secondary;
+    in property <length> size: 13px;
+    width: size;
+    height: size;
+
+    Path {
+        width: 100%;
+        height: 100%;
+        viewbox-width: 24;
+        viewbox-height: 24;
+        commands: "M4 5 H20 V19 H4 Z M9 5 V19";
+        fill: transparent;
+        stroke: tint;
+        stroke-width: 1.8px;
+        stroke-line-cap: round;
+        stroke-line-join: round;
+    }
+}
+
+// Small filled triangle, pointing up or down: the sort direction of a column.
+// Two paths rather than a rotation (the software renderer ignores `transform-rotation`).
+export component IconSortTriangle inherits Rectangle {
+    in property <color> tint: Theme.text-secondary;
+    in property <length> size: 10px;
+    in property <bool> up: true;
+    width: size;
+    height: size;
+
+    Path {
+        width: 100%;
+        height: 100%;
+        viewbox-width: 24;
+        viewbox-height: 24;
+        commands: up ? "M12 6 L21 18 L3 18 Z" : "M3 6 L21 6 L12 18 Z";
+        fill: tint;
+        stroke: tint;
+        stroke-width: 1.5px;
+        stroke-line-join: round;
+    }
+}

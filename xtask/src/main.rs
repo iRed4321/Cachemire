@@ -1,0 +1,92 @@
+//! Development tasks, run as `cargo xtask <task>` (see `cargo xtask --help`): the
+//! translation files, releases and the Windows and Linux packages. Pure Rust, so
+//! they run the same on every platform; the external tools they need are installed on demand.
+
+mod appimage;
+mod deb;
+mod i18n;
+mod install;
+mod tools;
+mod version;
+mod windows;
+
+use clap::{Parser, Subcommand};
+
+#[derive(Parser)]
+#[command(bin_name = "cargo xtask", about = "Development tasks for Cachemire")]
+struct Cli {
+    #[command(subcommand)]
+    task: Task,
+}
+
+#[derive(Subcommand)]
+enum Task {
+    /// Extract the UI texts and merge them into each language's .po
+    I18n,
+    /// Release the next version after the latest tag (commit and tag), then restore the 0.0.0-dev placeholder
+    Bump {
+        /// major, minor or fix start the next version as -beta.1; beta (the default) raises the beta number; stable drops the suffix
+        #[arg(default_value = "beta")]
+        part: version::Part,
+        /// With major, minor or fix: release the new version directly, with no beta
+        #[arg(long)]
+        stable: bool,
+        /// Only edit Cargo.toml and Cargo.lock: no commit, no tag
+        #[arg(long)]
+        no_tag: bool,
+    },
+    /// Release exe, MSI installer (and its zip) and portable zip
+    BuildWindows {
+        /// Use the `fast` profile (no LTO, quicker link) and build the working tree, not a release; output in target/windows-fast
+        #[arg(long)]
+        fast: bool,
+        /// Build the latest stable release instead of the latest one
+        #[arg(long)]
+        stable: bool,
+        /// Run `cargo clean` first
+        #[arg(long)]
+        clean: bool,
+        /// Skip the MSI installer
+        #[arg(long)]
+        skip_installer: bool,
+    },
+    /// Release build packed as a single-file AppImage in target/appimage
+    BuildAppimage {
+        /// Use the `fast` profile (no LTO, quicker link) and build the working tree, not a release; output in target/appimage-fast
+        #[arg(long)]
+        fast: bool,
+        /// Build the latest stable release instead of the latest one
+        #[arg(long)]
+        stable: bool,
+    },
+    /// Release build packaged as a .deb in target/debian (needs cargo-deb)
+    BuildDeb {
+        /// Use the `fast` profile (no LTO, quicker link) and build the working tree, not a release
+        #[arg(long)]
+        fast: bool,
+        /// Build the latest stable release instead of the latest one
+        #[arg(long)]
+        stable: bool,
+    },
+    /// Cargo install plus the desktop entry and icons (Linux) or the Start menu shortcut (Windows)
+    Install {
+        /// Linux only: install just the desktop entry and icons
+        #[arg(long)]
+        skip_binary: bool,
+    },
+}
+
+fn main() {
+    let result = match Cli::parse().task {
+        Task::I18n => i18n::run_task(),
+        Task::Bump { part, stable, no_tag } => version::run_task(part, stable, no_tag),
+        Task::BuildWindows { fast, stable, clean, skip_installer } => windows::run_task(fast, stable, clean, skip_installer),
+        Task::BuildAppimage { fast, stable } => appimage::run_task(fast, stable),
+        Task::BuildDeb { fast, stable } => deb::run_task(fast, stable),
+        Task::Install { skip_binary } => install::run_task(skip_binary),
+    };
+    if let Err(e) = result {
+        eprintln!("error: {e}");
+        std::process::exit(1);
+    }
+}

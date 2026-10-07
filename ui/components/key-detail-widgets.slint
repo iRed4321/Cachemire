@@ -1,0 +1,585 @@
+import { Theme } from "theme.slint";
+import { IconButton, PastePopup, SegmentedToggle } from "widgets.slint";
+import { KeyView, SearchScope } from "types.slint";
+import { IconCopy, IconDownload, IconExternalLink, IconSearch, IconFunnel, IconClose, IconChevron } from "icons.slint";
+import { BadgeData, ExportPrefs, SuggestionRow } from "key-detail-types.slint";
+
+// The round button floating over a scrolled view's bottom right corner: it takes the view back to its start.
+export component ScrollTopButton inherits Rectangle {
+    callback clicked <=> area.clicked;
+    width: Theme.px(36px);
+    height: Theme.px(36px);
+    border-radius: self.width / 2;
+    border-width: 1px;
+    border-color: Theme.border-soft;
+    background: area.has-hover ? Theme.bg-hover-elevated : Theme.bg-elevated;
+    drop-shadow-color: Theme.shadow-color;
+    drop-shadow-blur: Theme.shadow-blur;
+    drop-shadow-offset-y: Theme.shadow-offset-y;
+    IconChevron {
+        size: Theme.icon-lg;
+        up: true;
+        tint: area.has-hover ? Theme.text-primary : Theme.text-secondary;
+        x: (parent.width - self.width) / 2;
+        y: (parent.height - self.height) / 2;
+    }
+    area := TouchArea { mouse-cursor: pointer; }
+}
+
+// the color of each scope the field/value search bar can look in: the 3-way
+// switch's selected segment and the badge a search produces both use this
+export global ScopeColor {
+    pure public function of(scope: SearchScope) -> color {
+        if scope == SearchScope.fields {
+            return Theme.accent-green;
+        }
+        if scope == SearchScope.value {
+            return Theme.accent-purple;
+        }
+        return Theme.accent-blue;
+    }
+}
+
+// open/download/copy icon trio in a bordered pill. With `format-toggle` set, a
+// JSON / Escaped choice comes first, kept in `escaped` (bound to one of the ExportPrefs) for the
+// caller to honor.
+export component ExportGroup inherits Rectangle {
+    in property <bool> format-toggle: false;
+    in-out property <bool> escaped: false;
+    in property <color> outline: Theme.border-soft;
+    callback open();
+    callback download();
+    callback copy();
+
+    // the 26px buttons sit 3px from every edge (the 1px border included), so the
+    // hover square has the same room right, top and bottom
+    width: format-toggle ? Theme.px(212px) : Theme.px(88px);
+    height: Theme.px(32px);
+    border-radius: Theme.radius-sm;
+    border-width: 1px;
+    border-color: root.outline;
+
+    // Absorbs hover over the padding, the one part of the pill with no TouchArea
+    // of its own, so the row underneath doesn't light up as hovered. Declared
+    // before the icon row (lower z) so it only catches what the icons don't.
+    TouchArea { }
+
+    HorizontalLayout {
+        padding-left: Theme.px(3px);
+        padding-right: Theme.px(3px);
+        padding-top: Theme.px(3px);
+        padding-bottom: Theme.px(3px);
+        spacing: Theme.px(2px);
+        cross-axis-alignment: center;
+        if format-toggle: SegmentedToggle {
+            options: [@tr("JSON"), @tr("Escaped")];
+            segment-width: Theme.px(57px);
+            current: root.escaped ? 1 : 0;
+            picked(index) => { root.escaped = index == 1; }
+        }
+        if format-toggle: Rectangle { horizontal-stretch: 1; }
+        IconButton { box-size: Theme.px(26px); clicked => { open(); } IconExternalLink { size: Theme.icon-lg; tint: Theme.text-secondary; } }
+        IconButton { box-size: Theme.px(26px); clicked => { download(); } IconDownload { size: Theme.icon-lg; tint: Theme.text-secondary; } }
+        IconButton { box-size: Theme.px(26px); clicked => { copy(); } IconCopy { size: Theme.icon-lg; tint: Theme.text-secondary; } }
+    }
+}
+
+// Compact search box: types into `text`, fires `accepted` on Enter. Filtering
+// only happens on Enter (not live-as-you-type), so this just holds the typed
+// text and lets a host component decide when to act on it.
+export component SearchField inherits Rectangle {
+    in property <string> placeholder: "";
+    in-out property <string> text: "";
+    // grab keyboard focus as soon as the field is created (for boxes that
+    // appear in response to a click, so the user can type right away)
+    in property <bool> auto-focus: false;
+    // a funnel instead of the magnifier, for a box that filters what's shown
+    in property <bool> funnel: false;
+    // the size of the text (typed and placeholder) and of the icon before it
+    in property <length> font-size: Theme.pt(11px);
+    in property <length> icon-size: Theme.icon-xs;
+    // no box: just a line under the text, as some search fields are drawn
+    in property <bool> underline: false;
+    // an × inside the box, at its end, once there's text — reserves its width
+    // from the start (just hidden), so typing the first character shrinks the
+    // text area instead of a button beside the box pushing everything over
+    in property <bool> clearable: false;
+    callback accepted();
+    // the × was clicked: `text` is already "" by the time this fires
+    callback cleared();
+    // whether the clipboard holds text: the right-click "Paste" row shows only
+    // then. Forwarded up to Rust by whoever hosts this field.
+    callback clipboard-has-text() -> bool;
+
+    // For a host offering completions (see KeyDetail): `edited` fires on text edits and
+    // caret moves, `key-intercept` sees each key first and answers true to take it,
+    // `caret-x`/`caret-bottom` place the list, `place-at` + `place-tick` move the caret.
+    callback edited();
+    callback caret-moved();
+    callback focus-changed(focused: bool);
+    callback key-intercept(event: KeyEvent) -> bool;
+    out property <length> caret-x;
+    out property <length> caret-bottom: root.absolute-position.y + root.height;
+    out property <int> cursor-byte: input.cursor-position-byte-offset;
+    in property <int> place-at: 0;
+    in property <int> place-tick: 0;
+    // bumped by the host to give the box the focus, leaving the caret where it is
+    in property <int> focus-tick: 0;
+    changed focus-tick => { input.focus(); }
+    changed place-tick => {
+        input.focus();
+        input.set-selection-offsets(place-at, place-at);
+    }
+
+    init => {
+        if auto-focus {
+            input.focus();
+        }
+    }
+
+    height: Theme.px(20px);
+    background: underline ? transparent : Theme.bg-sunken;
+    border-radius: underline ? 0px : Theme.radius-sm;
+    border-width: underline ? 0px : 1px;
+    border-color: input.has-focus ? Theme.accent-blue-dim : Theme.border-soft;
+
+    if underline: Rectangle {
+        y: parent.height - self.height;
+        height: input.has-focus ? 2px : 1px;
+        background: input.has-focus ? Theme.accent-blue-dim : Theme.border;
+    }
+
+    HorizontalLayout {
+        padding-left: Theme.px(6px);
+        padding-right: Theme.px(6px);
+        spacing: Theme.px(4px);
+
+        if !funnel: IconSearch { size: root.icon-size; tint: Theme.text-tertiary; y: (parent.height - self.height) / 2; }
+        if funnel: IconFunnel { size: root.icon-size; tint: Theme.text-tertiary; y: (parent.height - self.height) / 2; }
+
+        input-clip := Rectangle {
+            horizontal-stretch: 1;
+            min-width: 0px;
+            clip: true;
+
+            if root.text == "" && !input.has-focus: Text {
+                text: root.placeholder;
+                font-size: root.font-size;
+                font-family: Theme.font-mono;
+                color: Theme.text-tertiary;
+                vertical-alignment: center;
+                width: 100%;
+                overflow: elide;
+            }
+            // right-click "Paste": a TouchArea wrapping the input rather than behind it, so
+            // the input keeps its own mouse handling (cursor placement, drag-to-select)
+            input-area := TouchArea {
+                width: 100%;
+                height: 100%;
+                mouse-cursor: MouseCursor.text;
+                property <length> click-x;
+                property <length> click-y;
+                pointer-event(event) => {
+                    if event.button == PointerEventButton.right && event.kind == PointerEventKind.down && root.clipboard-has-text() {
+                        self.click-x = self.mouse-x;
+                        self.click-y = self.mouse-y;
+                        paste-popup.show();
+                    }
+                }
+
+                // scrolls to keep the cursor visible on long filters — see the
+                // same pattern in ConnectionModalField (connection-picker.slint)
+                input := TextInput {
+                    property <length> computed-x;
+                    x: min(0px, max(parent.width - self.width, self.computed-x));
+                    width: max(parent.width, self.preferred-width);
+                    height: 100%;
+                    text <=> root.text;
+                    font-size: root.font-size;
+                    font-family: Theme.font-mono;
+                    color: Theme.text-primary;
+                    selection-background-color: Theme.accent-blue.with-alpha(0.35);
+                    vertical-alignment: center;
+                    accepted => { root.accepted(); }
+                    edited => { root.edited(); }
+                    changed has-focus => { root.focus-changed(self.has-focus); }
+                    key-pressed(event) => {
+                        if root.key-intercept(event) {
+                            return accept;
+                        }
+                        return reject;
+                    }
+                    cursor-position-changed(cursor-position) => {
+                        if cursor-position.x + self.computed-x < 0px {
+                            self.computed-x = -cursor-position.x;
+                        } else if cursor-position.x + self.computed-x > parent.width - self.text-cursor-width {
+                            self.computed-x = parent.width - cursor-position.x - self.text-cursor-width;
+                        }
+                        root.caret-x = input-clip.absolute-position.x + self.x + cursor-position.x;
+                        root.caret-moved();
+                    }
+                }
+                paste-popup := PastePopup {
+                    x: input-area.click-x;
+                    y: input-area.click-y;
+                    paste => { input.paste(); }
+                }
+            }
+        }
+        if root.clearable: TouchArea {
+            width: Theme.px(16px);
+            visible: root.text != "";
+            mouse-cursor: pointer;
+            clicked => {
+                root.text = "";
+                root.cleared();
+                input.focus();
+            }
+            IconClose {
+                size: Theme.icon-xs;
+                tint: Theme.text-tertiary;
+                x: (parent.width - self.width) / 2;
+                y: (parent.height - self.height) / 2;
+            }
+        }
+    }
+}
+
+export struct ViewOption {
+    view: KeyView,
+    label: string,
+}
+
+// A segmented control choosing among the key panel's views: one segment per
+// entry of `options`, the `current` one lit.
+struct ScopeOption {
+    scope: SearchScope,
+    label: string,
+}
+
+// The field/value search bar's 3-way switch: Everywhere, Fields, Value, each
+// with its own color (see ScopeColor) instead of a single "active" one.
+export component ScopeSwitch inherits Rectangle {
+    in property <SearchScope> current;
+    callback selected(scope: SearchScope);
+    property <[ScopeOption]> options: [
+        { scope: SearchScope.everywhere, label: @tr("Everywhere") },
+        { scope: SearchScope.fields, label: @tr("Fields") },
+        { scope: SearchScope.value, label: @tr("Value") },
+    ];
+
+    horizontal-stretch: 0;
+    height: Theme.px(32px);
+    border-radius: Theme.radius-sm;
+    border-width: 1px;
+    border-color: Theme.border-soft;
+    background: Theme.bg-sunken;
+
+    HorizontalLayout {
+        padding: Theme.px(2px);
+        spacing: Theme.px(2px);
+        for option in options: Rectangle {
+            property <bool> active: option.scope == root.current;
+            property <color> tint: ScopeColor.of(option.scope);
+            border-radius: Theme.radius-sm;
+            background: active ? tint.with-alpha(0.2) : (area.has-hover ? Theme.bg-hover : transparent);
+            border-width: active ? 1px : 0px;
+            border-color: tint.with-alpha(0.55);
+            HorizontalLayout {
+                padding-left: Theme.px(10px);
+                padding-right: Theme.px(10px);
+                Rectangle {
+                    // as wide as the label's bold rendering, so a segment doesn't
+                    // resize when it becomes/stops being active (see ViewSwitcher)
+                    width: bold-measure.preferred-width;
+                    bold-measure := Text {
+                        text: option.label;
+                        font-size: Theme.pt(12px);
+                        font-weight: 600;
+                        visible: false;
+                    }
+                    Text {
+                        text: option.label;
+                        font-size: Theme.pt(12px);
+                        font-weight: active ? 600 : 400;
+                        color: active ? tint : Theme.text-secondary;
+                        horizontal-alignment: center;
+                        vertical-alignment: center;
+                        width: 100%;
+                        height: 100%;
+                    }
+                }
+            }
+            area := TouchArea {
+                mouse-cursor: pointer;
+                clicked => {
+                    if !active {
+                        root.selected(option.scope);
+                    }
+                }
+            }
+        }
+    }
+}
+
+// One active badge of the field/value search bar: its text, tinted by its
+// scope (see ScopeColor), with a small × to remove it.
+export component SearchBadge inherits Rectangle {
+    in property <BadgeData> data;
+    callback removed();
+    property <color> tint: ScopeColor.of(data.scope);
+
+    height: Theme.px(22px);
+    border-radius: self.height / 2;
+    background: tint.with-alpha(0.16);
+    border-width: 1px;
+    border-color: tint.with-alpha(0.45);
+
+    HorizontalLayout {
+        padding-left: Theme.px(9px);
+        padding-right: Theme.px(5px);
+        spacing: Theme.px(4px);
+        cross-axis-alignment: center;
+        Text {
+            text: root.data.text;
+            font-size: Theme.pt(10.5px);
+            font-weight: 600;
+            font-family: Theme.font-mono;
+            color: root.tint;
+            vertical-alignment: center;
+            max-width: Theme.px(140px);
+            overflow: elide;
+        }
+        close-area := TouchArea {
+            width: Theme.px(14px);
+            height: Theme.px(14px);
+            mouse-cursor: pointer;
+            clicked => { root.removed(); }
+            IconClose {
+                size: Theme.px(10px);
+                tint: root.tint;
+                x: (parent.width - self.width) / 2;
+                y: (parent.height - self.height) / 2;
+            }
+        }
+    }
+}
+
+export component ViewSwitcher inherits Rectangle {
+    in property <[ViewOption]> options;
+    in property <KeyView> current;
+    callback selected(view: KeyView);
+
+    horizontal-stretch: 0;
+    height: Theme.px(32px);
+    border-radius: Theme.radius-sm;
+    border-width: 1px;
+    border-color: Theme.border-soft;
+    background: Theme.bg-sunken;
+
+    HorizontalLayout {
+        padding: Theme.px(2px);
+        spacing: Theme.px(2px);
+        for option in options: Rectangle {
+            property <bool> active: option.view == root.current;
+            border-radius: Theme.radius-sm;
+            background: active ? Theme.bg-selected-soft : (area.has-hover ? Theme.bg-hover : transparent);
+            HorizontalLayout {
+                padding-left: Theme.px(12px);
+                padding-right: Theme.px(12px);
+                Rectangle {
+                    // always as wide as the label's bold rendering (the active segment's
+                    // weight), so a segment doesn't resize when it becomes/stops being
+                    // active — bold-measure never shows, it only sizes this box
+                    width: bold-measure.preferred-width;
+                    bold-measure := Text {
+                        text: option.label;
+                        font-size: Theme.pt(12px);
+                        font-weight: 600;
+                        visible: false;
+                    }
+                    Text {
+                        text: option.label;
+                        font-size: Theme.pt(12px);
+                        font-weight: active ? 600 : 400;
+                        color: active ? Theme.text-primary : Theme.text-secondary;
+                        horizontal-alignment: center;
+                        vertical-alignment: center;
+                        width: 100%;
+                        height: 100%;
+                    }
+                }
+            }
+            area := TouchArea {
+                mouse-cursor: pointer;
+                clicked => {
+                    if !active {
+                        root.selected(option.view);
+                    }
+                }
+            }
+        }
+    }
+}
+
+// A small bordered button with a download icon and a label, for the filter bar.
+export component ExportButton inherits Rectangle {
+    in property <string> label;
+    callback clicked <=> area.clicked;
+
+    horizontal-stretch: 0;
+    height: Theme.px(32px);
+    border-radius: Theme.radius-sm;
+    border-width: 1px;
+    border-color: Theme.border-soft;
+    background: area.has-hover ? Theme.bg-hover : transparent;
+
+    HorizontalLayout {
+        padding-left: Theme.px(8px);
+        padding-right: Theme.px(9px);
+        spacing: Theme.px(6px);
+        cross-axis-alignment: center;
+        IconDownload { size: Theme.icon-sm; tint: Theme.text-secondary; }
+        Text {
+            text: label;
+            font-size: Theme.pt(11px);
+            font-weight: 600;
+            color: Theme.text-secondary;
+            vertical-alignment: center;
+        }
+    }
+
+    area := TouchArea { mouse-cursor: pointer; }
+}
+
+// The completion list under a text box's caret: `rows` to choose from, the chosen one marked.
+// The host owns `open`, forwards the box's keys to `handle-key` and acts on `accepted`; it
+// is placed last in the host so it paints over what is below, `origin-*` being the host's own place.
+export component SuggestionPopup inherits Rectangle {
+    in property <[SuggestionRow]> rows;
+    in property <bool> open: false;
+    in-out property <int> selected: -1;
+    // the caret's bottom-left in the window, the host's place in it and its width
+    in property <length> anchor-x;
+    in property <length> anchor-y;
+    in property <length> origin-x;
+    in property <length> origin-y;
+    in property <length> host-width;
+    // a row was chosen (clicked, or Enter / Tab on it); the list was dismissed (Esc, or Enter on no row)
+    callback accepted(index: int);
+    callback dismissed();
+    // whether the pointer is on the list, for a box that loses its focus to a click on it
+    out property <bool> hovered: area.has-hover;
+
+    property <length> row-h: Theme.px(24px);
+    property <length> pad: Theme.px(4px);
+    property <int> max-rows: 8;
+
+    visible: root.open && root.rows.length > 0;
+    width: Theme.px(280px);
+    height: min(root.rows.length, root.max-rows) * root.row-h + 2 * root.pad;
+    x: max(Theme.px(4px), min(root.anchor-x - root.origin-x, root.host-width - self.width - Theme.px(4px)));
+    y: root.anchor-y - root.origin-y + Theme.px(4px);
+    background: Theme.bg-elevated;
+    border-radius: Theme.radius-md;
+    border-width: 1px;
+    border-color: Theme.border-soft;
+    drop-shadow-color: Theme.shadow-color;
+    drop-shadow-blur: Theme.shadow-blur;
+    drop-shadow-offset-y: Theme.shadow-offset-y;
+
+    // keeps the chosen row in the list's view
+    function reveal(index: int) {
+        let top = index * root.row-h;
+        if top < -list.content-y {
+            list.content-y = -top;
+        } else if top + root.row-h > -list.content-y + list.height {
+            list.content-y = -(top + root.row-h - list.height);
+        }
+    }
+
+    // a key the list takes (arrows, Esc, Tab, Enter on a chosen row); true keeps the box from acting on it
+    public function handle-key(event: KeyEvent) -> bool {
+        if !root.open || root.rows.length == 0 {
+            return false;
+        }
+        if event.text == Key.DownArrow {
+            root.selected = root.selected + 1 >= root.rows.length ? 0 : root.selected + 1;
+            root.reveal(root.selected);
+            return true;
+        }
+        if event.text == Key.UpArrow {
+            root.selected = root.selected <= 0 ? root.rows.length - 1 : root.selected - 1;
+            root.reveal(root.selected);
+            return true;
+        }
+        if event.text == Key.Escape {
+            root.dismissed();
+            return true;
+        }
+        if event.text == Key.Tab || (event.text == Key.Return && root.selected >= 0) {
+            root.accepted(max(root.selected, 0));
+            return true;
+        }
+        // Enter with nothing chosen is left to the box
+        if event.text == Key.Return {
+            root.dismissed();
+        }
+        return false;
+    }
+
+    // absorbs hover and clicks on the padding, and says the pointer is on the list
+    area := TouchArea { }
+
+    list := Flickable {
+        x: root.pad;
+        y: root.pad;
+        width: parent.width - 2 * root.pad;
+        height: parent.height - 2 * root.pad;
+        interactive: false;
+        content-height: root.rows.length * root.row-h;
+        VerticalLayout {
+            for row[i] in root.rows: Rectangle {
+                height: root.row-h;
+                border-radius: Theme.radius-sm;
+                background: i == root.selected ? Theme.bg-selected : (row-area.has-hover ? Theme.bg-hover-elevated : transparent);
+                HorizontalLayout {
+                    padding-left: Theme.px(8px);
+                    padding-right: Theme.px(8px);
+                    alignment: start;
+                    Text {
+                        text: row.before;
+                        font-size: Theme.pt(11px);
+                        font-family: Theme.font-mono;
+                        color: Theme.text-primary;
+                        vertical-alignment: center;
+                    }
+                    Text {
+                        text: row.matched;
+                        font-size: Theme.pt(11px);
+                        font-family: Theme.font-mono;
+                        font-weight: 700;
+                        color: Theme.accent-blue;
+                        vertical-alignment: center;
+                    }
+                    Text {
+                        text: row.after;
+                        font-size: Theme.pt(11px);
+                        font-family: Theme.font-mono;
+                        color: Theme.text-primary;
+                        vertical-alignment: center;
+                    }
+                }
+                row-area := TouchArea {
+                    mouse-cursor: pointer;
+                    // on the press: the box has lost the focus by the release
+                    pointer-event(event) => {
+                        if event.button == PointerEventButton.left && event.kind == PointerEventKind.down {
+                            root.accepted(i);
+                        }
+                    }
+                }
+            }
+        }
+    }
+}

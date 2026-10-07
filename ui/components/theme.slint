@@ -1,0 +1,131 @@
+// Bundled fonts (assets/fonts, SIL Open Font License texts alongside).
+// Importing registers each with the renderer at window creation; build.rs
+// embeds the files. Roboto has no 600 weight, so 600 renders as its Bold.
+import "../../assets/fonts/Roboto-Regular.ttf";
+import "../../assets/fonts/Roboto-Italic.ttf";
+import "../../assets/fonts/Roboto-Medium.ttf";
+import "../../assets/fonts/Roboto-Bold.ttf";
+import "../../assets/fonts/JetBrainsMono-Regular.ttf";
+import "../../assets/fonts/JetBrainsMono-SemiBold.ttf";
+import "../../assets/fonts/JetBrainsMono-Bold.ttf";
+
+import { ProfileTint } from "types.slint";
+
+export global Theme {
+    // backgrounds: the app's own background (behind the panels and title bar) is
+    // `bg-app-base` with some of the tint of the connection profile in use mixed in
+    // (set from Rust)
+    out property <color> bg-app-base: #151517;
+    in-out property <bool> env-tinted: false;
+    in-out property <ProfileTint> env-tint: ProfileTint.red;
+    // how much of the tint is mixed into the background: enough to tell the
+    // environments apart at a glance, not enough to tire the eye
+    out property <float> env-tint-strength: 0.25;
+    // (`mix` weighs the color it is called on by the factor)
+    out property <color> bg-app: env-tinted ? profile-color(env-tint).mix(bg-app-base, env-tint-strength) : bg-app-base;
+    // the border of the app's own chrome (keyspace panel, key panel, title bar pills):
+    // plain `border-soft` untinted, well into the profile's color when one is in use
+    out property <float> env-border-strength: 0.5;
+    out property <color> chrome-border: env-tinted ? profile-color(env-tint).mix(border-soft, env-border-strength) : border-soft;
+    out property <color> bg-panel: #19191c;
+    out property <color> bg-sunken: #111113;
+    out property <color> bg-elevated: #222226;
+    out property <color> bg-hover: #232327;
+    // hover for rows sitting on bg-elevated (dropdowns, context menus): the
+    // plain bg-hover is only a hair lighter than bg-elevated and reads as no
+    // hover at all there
+    out property <color> bg-hover-elevated: #34343b;
+    out property <color> bg-selected: #2a4a76;
+    out property <color> bg-selected-soft: #22344d;
+
+    // borders
+    out property <color> border: #2d2d30;
+    out property <color> border-soft: #333336;
+
+    // text
+    out property <color> text-primary: #e7e7ea;
+    out property <color> text-secondary: #b4b4b9;
+    out property <color> text-tertiary: #909096;
+    out property <color> text-disabled: #6e6e73;
+
+    // accents
+    out property <color> accent-blue: #5b9dff;
+    out property <color> accent-blue-dim: #3d6fc4;
+    out property <color> accent-red: #ff5f56;
+    out property <color> accent-yellow: #ffbd2e;
+    out property <color> accent-green: #29c46f;
+    out property <color> accent-orange: #ff9f45;
+    out property <color> accent-purple: #b389f9;
+    out property <color> accent-cyan: #6fd1e0;
+
+    // the full color of each profile tint (its swatch)
+    pure public function profile-color(tint: ProfileTint) -> color {
+        if (tint == ProfileTint.red) { return accent-red; }
+        if (tint == ProfileTint.orange) { return accent-orange; }
+        if (tint == ProfileTint.yellow) { return accent-yellow; }
+        if (tint == ProfileTint.green) { return accent-green; }
+        if (tint == ProfileTint.cyan) { return accent-cyan; }
+        if (tint == ProfileTint.purple) { return accent-purple; }
+        if (tint == ProfileTint.pink) { return #ff7eb9; }
+        return accent-blue;
+    }
+
+    // json syntax
+    out property <color> json-key: #7ec9ff;
+    out property <color> json-string: #9ee6a8;
+    out property <color> json-bool: #ffb454;
+    out property <color> json-number: #c9a0ff;
+    out property <color> json-punct: #8e8e94;
+    out property <color> json-escape: #ffffff;
+
+    // Redisql query box: `$variables` (its other colors are the json ones above)
+    out property <color> query-variable: #ff8fb8;
+    // background of find-in-value matches (the filter's and the current one's
+    // are accent-yellow and accent-orange)
+    out property <color> highlight-find: #ffe066;
+
+    // fonts — both families are bundled with the app (see the imports at the
+    // top of this file), so the interface looks the same on every machine
+    // whatever happens to be installed
+    out property <string> font-ui: "Roboto";
+    out property <string> font-mono: "JetBrains Mono";
+
+    // UI zoom: 1.0 = 100%. Multiply any base pixel value through `Theme.px()`
+    // (or `Theme.pt()` for font sizes) so it scales with Ctrl+/Ctrl-/Ctrl+scroll.
+    in-out property <float> zoom: 1.0;
+    out property <float> zoom-min: 0.6;
+    out property <float> zoom-max: 2.0;
+
+    pure public function px(base: length) -> length {
+        return base * zoom;
+    }
+    pure public function pt(base: length) -> length {
+        return base * zoom;
+    }
+
+    // metrics
+    out property <length> radius-sm: px(4px);
+    out property <length> radius-md: px(6px);
+    out property <length> radius-lg: px(14px);
+    out property <length> gap: px(10px);
+    // thickness of a scrollbar's track: the strip that wakes the bar when the
+    // pointer comes near it (the thumb inside is thinner)
+    out property <length> scrollbar-size: px(14px);
+
+    // icon glyph sizes — the size passed to an Icon* component's `size` property
+    out property <length> icon-xs: px(12px);  // chevrons, tiny accents
+    out property <length> icon-sm: px(14px);  // compact/copy icons
+    out property <length> icon-md: px(16px);  // standard toolbar icons
+    out property <length> icon-lg: px(18px);  // close crosses, prominent/rail icons
+
+    // icon button hit-area sizes — the `box-size` of an IconButton
+    out property <length> btn-sm: px(22px);   // compact copy buttons
+    out property <length> btn-md: px(26px);   // standard toolbar buttons
+    out property <length> btn-lg: px(29px);   // prominent action buttons
+    out property <length> btn-rail: px(40px); // icon rail buttons
+
+    // shared floating-card shadow
+    out property <color> shadow-color: #00000055;
+    out property <length> shadow-blur: px(7px);
+    out property <length> shadow-offset-y: px(2px);
+}

@@ -1,0 +1,88 @@
+import { SearchScope } from "types.slint";
+
+// Whether the export buttons act on escaped JSON rather than plain JSON. `header-escaped` is the
+// shown tab's choice (tabs.rs keeps one per tab); it sets `escaped`, what a row starts with, and,
+// by bumping `rows-tick`, every open row's.
+export global ExportPrefs {
+    in-out property <bool> escaped: false;
+    in-out property <bool> header-escaped: false;
+    in-out property <int> rows-tick: 0;
+}
+
+// Where the key panel's two views are scrolled to, kept current by the views and
+// read by Rust on tab-leave; on load it arms `restore-*`. `all-values-expanded`
+// does the same for open rows, so `AllValuesRowData.initial-expanded` opens them.
+export global KeyScroll {
+    in-out property <length> all-y: 0px;
+    in-out property <length> table-x: 0px;
+    in-out property <length> table-y: 0px;
+    in-out property <length> restore-all-y: 0px;
+    in-out property <bool> restore-all-pending: false;
+    in-out property <length> restore-table-x: 0px;
+    in-out property <length> restore-table-y: 0px;
+    in-out property <bool> restore-table-pending: false;
+    in-out property <[string]> all-values-expanded: [];
+    // rows just added above the first one (set by Rust with the rows): the list
+    // scrolls down by their height so what was in sight stays put
+    in-out property <int> prepended: 0;
+    // bumped when a row opens or folds, which can destroy the focused item: the
+    // window gives its key handler the focus back (keys are dropped with none)
+    in-out property <int> refocus-tick: 0;
+    // A row to bring into view once the value list has it (a click on a search
+    // hit): its name, and its index among the rows so the table builds up to it.
+    // Cleared by the row once scrolled there, or by the table after a while.
+    in-out property <string> reveal-field: "";
+    in-out property <int> reveal-index: -1;
+    in-out property <bool> reveal-pending: false;
+}
+
+// one row of the table view: the field's name, then its cell for each key
+// column (already coloured; a nested object or array arrives pretty-printed)
+export struct TableRowData {
+    field: string,
+    cells: [styled-text],
+}
+
+export struct AllValuesRowData {
+    field: string,
+    value-compact: styled-text, // single line, colored, no indentation
+    value-compact-escaped: styled-text, // the same, escaped into a JSON string
+    // whether this row should open right away — Rust sets this from the tab's
+    // saved set of expanded fields (see KeyScroll.all-values-expanded) when it
+    // builds the rows, so a tab switched back to reopens what was open
+    initial-expanded: bool,
+}
+
+// one suggestion of the filter bar's completion list, split around the part
+// that matches what was typed (the middle one is shown highlighted)
+export struct SuggestionRow {
+    before: string,
+    matched: string,
+    after: string,
+}
+
+// the filter text after accepting a suggestion, and where the caret goes in it
+// (a negative caret: nothing was accepted)
+export struct CompletionEdit {
+    text: string,
+    cursor: int,
+}
+
+// a range of a value's text to select, in bytes (a negative start: nothing)
+export struct SelectionRange {
+    start: int,
+    end: int,
+}
+
+export struct FindResult {
+    count: int,
+    index: int,
+    line: int,
+    label: string,
+}
+
+// one active badge of the field/value search bar: text to look for, and where
+export struct BadgeData {
+    text: string,
+    scope: SearchScope,
+}

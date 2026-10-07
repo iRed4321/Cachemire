@@ -1,0 +1,478 @@
+import { Theme } from "theme.slint";
+import { HDivider, HResizeHandle, VScrollBar, HScrollBar, WheelScroller, CheckBox } from "widgets.slint";
+import { KeyScroll, TableRowData } from "key-detail-types.slint";
+import { ScrollTopButton } from "key-detail-widgets.slint";
+
+// One row of the table view. Every cell has an explicit width (from the
+// table's column widths), and holds a single elided line — a nested object is
+// compact, colored JSON — so all rows are the same height.
+component TableRow inherits Rectangle {
+    in property <TableRowData> data;
+    in property <int> index;
+    in property <[length]> col-widths;
+    // how much of each column's `col-wants` is drawn, and how much wider than that
+    // every column is, when the table would otherwise not fill the view (see TableView)
+    in property <[length]> col-wants;
+    in property <float> grow: 0;
+    in property <float> fill: 1;
+    // the selection column: its width, whether this row is selected, and the
+    // click that toggles it
+    in property <length> sel-w;
+    in property <bool> selected: false;
+    callback toggled(shift: bool);
+    // a cell's selected text changed ("" when it was cleared): the table keeps
+    // the latest, for the right-click "Copy selection" (only one cell at a time
+    // holds a selection, the others collapse when they lose the focus)
+    callback selection-changed(text: string);
+    // right-click anywhere on the row, with the pointer's window-relative position
+    callback context-requested(x: length, y: length);
+    // position in the table's content and the viewport window, deciding
+    // `in-paint-window` like AllValuesRow's
+    in property <length> row-y;
+    in property <length> row-height;
+    in property <length> view-top;
+    in property <length> view-height;
+    in property <length> paint-buffer;
+    out property <bool> in-paint-window: row-y + row-height >= view-top - paint-buffer && row-y <= view-top + view-height + paint-buffer;
+
+    property <length> line-height: Theme.pt(12px) * 1.4;
+
+    background: selected || row-area.has-hover ? Theme.bg-selected-soft : (mod(index, 2) == 1 ? Theme.bg-hover : transparent);
+
+    // wraps the row's content instead of sitting behind it, so hover tracking
+    // reaches it even though the StyledText cells accept mouse moves themselves
+    // (which would starve a sibling TouchArea of them); same as AllValuesRow's
+    row-area := TouchArea {
+        pointer-event(event) => {
+            if event.button == PointerEventButton.right && event.kind == PointerEventKind.down {
+                root.context-requested(self.mouse-x + self.absolute-position.x, self.mouse-y + self.absolute-position.y);
+            }
+        }
+        HorizontalLayout {
+            padding-top: Theme.px(5px);
+            padding-bottom: Theme.px(5px);
+
+            // the selection column: a checkbox by the first line, the whole cell
+            // is what's clicked
+            Rectangle {
+                width: sel-w;
+                CheckBox {
+                    x: (parent.width - self.width) / 2;
+                    y: Theme.px(2px);
+                    checked: selected;
+                }
+                TouchArea {
+                    mouse-cursor: pointer;
+                    // Shift is read on the press: a click carries no modifiers
+                    property <bool> shift-down: false;
+                    pointer-event(event) => {
+                        if event.kind == PointerEventKind.down {
+                            self.shift-down = event.modifiers.shift;
+                        }
+                    }
+                    clicked => { toggled(self.shift-down); }
+                }
+            }
+            // the name column is a layout too: its one line of text is what keeps a
+            // row from collapsing when every cell of it is empty
+            VerticalLayout {
+                width: Theme.px(col-widths[0] + col-wants[0] * grow) * fill;
+                padding-left: Theme.px(8px);
+                padding-right: Theme.px(8px);
+                Text {
+                    text: data.field;
+                    font-size: Theme.pt(12px);
+                    font-family: Theme.font-mono;
+                    color: Theme.text-primary;
+                    overflow: elide;
+                }
+            }
+            // Every cell is one line, elided at the column's edge, so every row is
+            // the same height (same arrangement as the collapsed value rows).
+            for cell[j] in data.cells: Rectangle {
+                width: Theme.px(col-widths[j + 1] + col-wants[j + 1] * grow) * fill;
+                height: line-height;
+                clip: true;
+                // a second plain click within this time of the first is a double click
+                property <bool> click-pending: false;
+                Timer {
+                    interval: 400ms;
+                    running: click-pending;
+                    triggered => { click-pending = false; }
+                }
+                StyledText {
+                    x: Theme.px(8px);
+                    y: 0;
+                    // laid out at its full width so it never wraps: the cell clips it at
+                    // its edge, showing as much as fits
+                    width: max(parent.width - Theme.px(16px), self.preferred-width);
+                    // room for exactly one line (a little over, for rounding): the
+                    // cell clips the rest, and the first line stays at the top
+                    height: parent.height + Theme.px(4px);
+                    vertical-alignment: top;
+                    text: cell;
+                    default-color: Theme.text-primary;
+                    default-font-family: Theme.font-mono;
+                    default-font-size: Theme.pt(12px);
+                    selection-background-color: Theme.accent-blue.with-alpha(0.35);
+                    changed selected-text => { root.selection-changed(self.selected-text); }
+                    // double click: the whole cell (the cursor is clamped to the text's end)
+                    clicked => {
+                        if click-pending {
+                            click-pending = false;
+                            self.anchor-position-byte-offset = 0;
+                            self.cursor-position-byte-offset = 2147483647;
+                        } else {
+                            click-pending = true;
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+// The fields as a table: one row per field, one column per top-level key the
+// sampled values share (chosen in Rust). Scrolls both ways; columns resize
+// by dragging their title's edge.
+export component TableView inherits Rectangle {
+    // "Field" first, then the key columns
+    in property <[string]> columns: [];
+    // per-column widths in zoom-independent px, index-aligned with `columns`,
+    // and their sum (kept in step while dragging, since Slint can't sum a model)
+    in-out property <[length]> col-widths: [];
+    in-out property <length> total-w: 0px;
+    // Columns start as wide as their typical content (set by Rust), which also says how much
+    // wider each would like to be (`col-wants`, `total-want` their sum). Room left in the view
+    // goes to those wants first (`grow` of them, 1 when all are met), then every column is
+    // drawn `fill` times wider. Once a column is dragged both freeze, so only its border moves.
+    in property <[length]> col-wants: [];
+    in property <length> total-want: 0px;
+    property <float> frozen-fill: 0;
+    property <float> frozen-grow: 0;
+    property <length> avail-w: flick-width-snapshot - sel-w - pad;
+    property <float> grow: frozen-fill > 0 ? frozen-grow
+        : (total-want > 0px ? max(0, min(1, (avail-w - Theme.px(total-w)) / Theme.px(total-want))) : 0);
+    property <float> fill: frozen-fill > 0 ? frozen-fill
+        : (total-w > 0px ? max(1, avail-w / Theme.px(total-w + total-want * grow)) : 1);
+    // the width the columns take, stretched or not
+    property <length> columns-w: Theme.px(total-w + total-want * grow) * fill;
+    in property <[TableRowData]> rows: [];
+    // which rows are ticked (index-aligned with `rows`, set by Rust, toggled
+    // here) and how many; the header's clear-all control asks Rust to reset both
+    in-out property <[bool]> selected: [];
+    in-out property <int> selected-count: 0;
+    callback clear-selection();
+    // Shift-click: every row from `from` to `to` takes the state of `from`
+    callback select-range(from: int, to: int);
+    // the row last ticked or unticked, where a Shift-click's range starts (-1: none)
+    property <int> select-anchor: -1;
+    // right-click in the table: window-relative position plus the text selected
+    // in a cell ("" if none), so the window can offer "Copy selection"
+    callback context-requested(x: length, y: length, selected: string);
+    // scrolled within `near-end-margin` rows of the end of what's loaded — see
+    // AllValuesTable.near-end, same idea, same caveat (Rust decides if there's
+    // really more to fetch)
+    callback near-end();
+    property <int> near-end-margin: 50;
+    property <string> current-selection: "";
+    // shown instead of the table when there's nothing to tabulate
+    in property <string> empty-message: "";
+    // the leftmost column's own header — "Field" for a hash's fields (the key
+    // panel's own use), something else for a table of another shape (a
+    // Redisql query's row number, say)
+    in property <string> row-column-title: @tr("Field");
+
+    vertical-stretch: 1;
+    horizontal-stretch: 1;
+    max-width: 100000px;
+
+    property <length> header-h: Theme.px(30px);
+    property <length> min-col-w: 40px;
+    // the same inset the value view has around its table: the scrolling
+    // content is padded, and the scrollbars stay at the panel's edge
+    property <length> pad: Theme.px(10px);
+    // the checkbox column in front of the data columns (not one of `col-widths`)
+    property <length> sel-w: Theme.px(34px);
+
+    // Rows are created in batches as the user scrolls, and only those near
+    // the viewport are painted — same scheme, same reasons, as AllValuesTable.
+    property <length> row-stride: Theme.pt(12px) * 1.4 + Theme.px(10px);
+    property <int> batch-size: 50;
+    property <int> rendered-count: min(rows.length, batch-size);
+    property <length> flick-width-snapshot: 0px;
+    property <length> flick-height-snapshot: 0px;
+    property <length> content-x-snapshot: 0px;
+    property <length> content-y-snapshot: 0px;
+    property <int> paint-buffer: 10;
+    property <length> view-top: -content-y-snapshot;
+    property <length> view-height: flick-height-snapshot;
+    property <length> paint-buffer-px: paint-buffer * row-stride;
+
+    // as in AllValuesTable: what the view scrolled to `y` needs, and growing to it
+    function rows-needed(y: length) -> int {
+        let scrolled-rows = floor(-y / row-stride);
+        let visible-rows = ceil(flick-height-snapshot / row-stride);
+        return min(rows.length, scrolled-rows + visible-rows + batch-size);
+    }
+
+    function grow-to(y: length) {
+        let needed = rows-needed(y);
+        if needed > rendered-count {
+            rendered-count = min(rows.length, ceil(needed / batch-size) * batch-size);
+        }
+    }
+
+    function grow-if-needed() {
+        grow-to(content-y-snapshot);
+    }
+
+    function check-near-end() {
+        let remaining = rows.length - floor((-content-y-snapshot + flick-height-snapshot) / row-stride);
+        if remaining < near-end-margin {
+            root.near-end();
+        }
+    }
+
+    // a new table brings its own widths: back to the automatic stretch
+    changed columns => { frozen-fill = 0; }
+
+    changed rows => {
+        select-anchor = -1;
+        rendered-count = min(rows.length, batch-size);
+        grow-if-needed();
+        check-near-end();
+        // the cells that held a selection are gone with the old rows
+        current-selection = "";
+    }
+
+    // widening a column by `delta` (already in zoom-independent px)
+    function resize-column(index: int, delta: length) {
+        if frozen-fill == 0 {
+            frozen-grow = grow;
+            frozen-fill = fill;
+        }
+        let old = col-widths[index];
+        let next = max(min-col-w, old + delta);
+        col-widths[index] = next;
+        total-w += next - old;
+    }
+
+    if columns.length <= 1: Text {
+        text: empty-message;
+        font-size: Theme.pt(12px);
+        color: Theme.text-tertiary;
+        horizontal-alignment: center;
+        vertical-alignment: center;
+    }
+
+    if columns.length > 1: VerticalLayout {
+        HorizontalLayout {
+            vertical-stretch: 1;
+            Rectangle {
+                horizontal-stretch: 1;
+
+                table-flick := Flickable {
+                    // the left inset is outside the Flickable, not padding in
+                    // its content: scrolled sideways, the columns then slide
+                    // under a fixed margin instead of up to the panel's edge
+                    x: pad;
+                    width: parent.width - pad;
+                    height: 100%;
+                    // the cells hold selectable text, so a drag selects rather
+                    // than pans; the wheel below and the scrollbars do the moving
+                    interactive: false;
+                    content-width: sel-w + root.columns-w + pad;
+
+                    // jumps to the scroll position Rust armed (see KeyScroll,
+                    // AllValuesTable.apply-restore) once content is big enough;
+                    // here, not on `root`, since this only exists with columns
+                    function apply-restore() {
+                        if KeyScroll.restore-table-pending {
+                            // the rows around the target exist before the jump, see AllValuesTable
+                            if root.rows-needed(KeyScroll.restore-table-y) > root.rendered-count {
+                                root.grow-to(KeyScroll.restore-table-y);
+                            } else if -KeyScroll.restore-table-x <= max(0px, self.content-width - self.width)
+                                && -KeyScroll.restore-table-y <= max(0px, self.content-height - self.height) {
+                                KeyScroll.restore-table-pending = false;
+                                self.content-x = KeyScroll.restore-table-x;
+                                self.content-y = KeyScroll.restore-table-y;
+                            }
+                        }
+                    }
+                    // the content never got big enough: go as far as it allows
+                    Timer {
+                        interval: 300ms;
+                        running: KeyScroll.restore-table-pending;
+                        triggered => {
+                            KeyScroll.restore-table-pending = false;
+                            table-flick.content-x = max(-max(0px, table-flick.content-width - table-flick.width), KeyScroll.restore-table-x);
+                            table-flick.content-y = max(-max(0px, table-flick.content-height - table-flick.height), KeyScroll.restore-table-y);
+                        }
+                    }
+                    property <[TableRowData]> watched-rows: root.rows;
+                    changed watched-rows => { apply-restore(); }
+                    changed content-width => { apply-restore(); }
+                    changed content-height => { apply-restore(); }
+
+                    init => {
+                        root.flick-width-snapshot = self.width;
+                        root.flick-height-snapshot = self.height;
+                        root.content-x-snapshot = self.content-x;
+                        root.content-y-snapshot = self.content-y;
+                        KeyScroll.table-x = self.content-x;
+                        KeyScroll.table-y = self.content-y;
+                        apply-restore();
+                        root.grow-if-needed();
+                        root.check-near-end();
+                    }
+                    changed width => { root.flick-width-snapshot = self.width; }
+                    changed height => {
+                        root.flick-height-snapshot = self.height;
+                        root.grow-if-needed();
+                        root.check-near-end();
+                    }
+                    changed content-x => {
+                        root.content-x-snapshot = self.content-x;
+                        KeyScroll.table-x = self.content-x;
+                    }
+                    changed content-y => {
+                        root.content-y-snapshot = self.content-y;
+                        KeyScroll.table-y = self.content-y;
+                        root.grow-if-needed();
+                        root.check-near-end();
+                    }
+
+                    // wheel behind the rows, pinned under the visible frame (see
+                    // AllValuesTable); Shift+wheel and horizontal gestures go sideways
+                    WheelScroller {
+                        sideways: true;
+                        x: -root.content-x-snapshot;
+                        y: -root.content-y-snapshot;
+                        width: root.flick-width-snapshot;
+                        height: root.flick-height-snapshot;
+                        scroll-by(delta) => {
+                            let scroll-range = max(0px, table-flick.content-height - table-flick.height);
+                            table-flick.content-y = max(-scroll-range, min(0px, table-flick.content-y + delta));
+                        }
+                        scroll-by-x(delta) => {
+                            let scroll-range = max(0px, table-flick.content-width - table-flick.width);
+                            table-flick.content-x = max(-scroll-range, min(0px, table-flick.content-x + delta));
+                        }
+                        // the cells' text leaves right-clicks to what is behind it,
+                        // which is this
+                        context-requested(x, y) => { root.context-requested(x, y, root.current-selection); }
+                    }
+
+                    VerticalLayout {
+                        width: sel-w + root.columns-w + pad;
+                        alignment: start;
+                        padding: pad;
+                        padding-left: 0px;
+
+                        // room for the sticky header drawn below
+                        Rectangle { height: header-h; }
+                        for row[i] in rows: VerticalLayout {
+                            if i < rendered-count: TableRow {
+                                index: i;
+                                data: row;
+                                col-widths: root.col-widths;
+                                col-wants: root.col-wants;
+                                grow: root.grow;
+                                fill: root.fill;
+                                sel-w: root.sel-w;
+                                selected: root.selected[i];
+                                toggled(shift) => {
+                                    if shift && root.select-anchor >= 0 && root.select-anchor != i {
+                                        root.select-range(root.select-anchor, i);
+                                    } else {
+                                        root.selected[i] = !root.selected[i];
+                                        root.selected-count += root.selected[i] ? 1 : -1;
+                                    }
+                                    root.select-anchor = i;
+                                }
+                                selection-changed(text) => { root.current-selection = text; }
+                                context-requested(x, y) => { root.context-requested(x, y, root.current-selection); }
+                                row-y: parent.y;
+                                row-height: parent.height;
+                                visible: self.in-paint-window;
+                                view-top: root.view-top;
+                                view-height: root.view-height;
+                                paint-buffer: root.paint-buffer-px;
+                            }
+                        }
+                        Rectangle { height: max(0px, (rows.length - rendered-count) * row-stride); }
+                    }
+
+                    // Column titles. Sticky vertically (`view-top`), but scroll
+                    // horizontally with the columns since they share the same
+                    // content. The right edge of each title is its resize handle.
+                    Rectangle {
+                        x: 0px;
+                        // in place under the top padding, then stuck to the top
+                        // of the viewport once scrolling has passed it
+                        y: max(pad, root.view-top);
+                        width: sel-w + root.columns-w;
+                        height: header-h;
+                        background: Theme.bg-elevated;
+                        border-radius: Theme.radius-sm;
+
+                        HorizontalLayout {
+                            // no select-all here: once something is ticked, this
+                            // becomes the control that unticks everything
+                            Rectangle {
+                                width: sel-w;
+                                if selected-count > 0: CheckBox {
+                                    x: (parent.width - self.width) / 2;
+                                    y: (parent.height - self.height) / 2;
+                                    mixed: true;
+                                }
+                                if selected-count > 0: TouchArea {
+                                    mouse-cursor: pointer;
+                                    clicked => { root.clear-selection(); }
+                                }
+                            }
+                            for name[j] in columns: Rectangle {
+                                width: Theme.px(col-widths[j] + col-wants[j] * root.grow) * root.fill;
+                                Text {
+                                    x: Theme.px(8px);
+                                    width: parent.width - Theme.px(16px) - Theme.px(4px);
+                                    height: parent.height;
+                                    text: j == 0 ? root.row-column-title : name;
+                                    font-size: Theme.pt(10.5px);
+                                    font-weight: 700;
+                                    font-family: j == 0 ? Theme.font-ui : Theme.font-mono;
+                                    color: Theme.text-secondary;
+                                    vertical-alignment: center;
+                                    overflow: elide;
+                                }
+                                HResizeHandle {
+                                    x: parent.width - self.width;
+                                    width: Theme.px(8px);
+                                    height: parent.height;
+                                    dragged(delta) => { root.resize-column(j, delta / Theme.zoom / root.fill); }
+                                }
+                                Rectangle { x: parent.width - 1px; width: 1px; height: parent.height; background: Theme.border; }
+                            }
+                        }
+                        Rectangle { y: parent.height - 1px; width: parent.width; height: 1px; background: Theme.border; }
+                    }
+                }
+                // once scrolled down a little: back to the first row
+                if root.view-top > Theme.px(120px): ScrollTopButton {
+                    x: parent.width - self.width - Theme.px(18px);
+                    y: parent.height - self.height - Theme.px(16px);
+                    clicked => { table-flick.content-y = 0px; }
+                }
+            }
+            VScrollBar {
+                content-height: table-flick.content-height;
+                content-y <=> table-flick.content-y;
+            }
+        }
+        HScrollBar {
+            content-width: table-flick.content-width;
+            content-x <=> table-flick.content-x;
+        }
+    }
+}

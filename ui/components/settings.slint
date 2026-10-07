@@ -1,0 +1,661 @@
+import { Theme } from "theme.slint";
+import { LanguageSetting, ProfileTint, SshProfileRowData, SshProfileForm, ConnProfileForm } from "types.slint";
+import { VScrollBar, ModalButton, CheckRow } from "widgets.slint";
+import { IconPlus, IconPencil } from "icons.slint";
+import { ConnectionModalField, ConnProfileRowData, TintDot } from "connection-picker.slint";
+import { Preferences } from "../globals.slint";
+export { SshProfileRowData, SshProfileForm, ConnProfileForm }
+
+// one choice of a row of exclusive options (the language)
+component SegmentButton inherits Rectangle {
+    in property <string> text;
+    in property <bool> selected: false;
+    callback clicked <=> area.clicked;
+
+    width: label.preferred-width + Theme.px(28px);
+    height: Theme.px(28px);
+    border-radius: Theme.radius-sm;
+    border-width: 1px;
+    border-color: selected ? Theme.accent-blue : Theme.border-soft;
+    background: selected ? Theme.accent-blue.with-alpha(0.18) : (area.has-hover ? Theme.bg-hover : transparent);
+
+    area := TouchArea { mouse-cursor: pointer; }
+    label := Text {
+        text: root.text;
+        color: selected ? Theme.accent-blue : Theme.text-secondary;
+        font-weight: selected ? 600 : 400;
+        font-size: Theme.pt(12px);
+        horizontal-alignment: center;
+        vertical-alignment: center;
+        width: 100%;
+        height: 100%;
+    }
+}
+
+component ProfileRow inherits Rectangle {
+    in property <string> name;
+    in property <string> username;
+    in property <bool> active;
+    // set by the list to its own width, like ConnectionRow's `row-width`
+    in property <length> row-width;
+    callback activate();
+    callback edit();
+
+    width: row-width;
+    height: Theme.px(46px);
+    background: row-area.has-hover ? Theme.bg-hover-elevated : transparent;
+
+    row-area := TouchArea {
+        mouse-cursor: pointer;
+        clicked => { root.activate(); }
+
+        HorizontalLayout {
+            padding-left: Theme.px(12px);
+            padding-right: Theme.px(8px);
+            spacing: Theme.px(10px);
+            cross-axis-alignment: center;
+
+            // radio: the profile the SSH connections without a login use
+            Rectangle {
+                width: Theme.px(16px);
+                height: Theme.px(16px);
+                border-radius: self.width / 2;
+                border-width: 1.5px;
+                border-color: root.active ? Theme.accent-blue : Theme.text-tertiary;
+                if root.active: Rectangle {
+                    x: (parent.width - self.width) / 2;
+                    y: (parent.height - self.height) / 2;
+                    width: Theme.px(8px);
+                    height: Theme.px(8px);
+                    border-radius: self.width / 2;
+                    background: Theme.accent-blue;
+                }
+            }
+            VerticalLayout {
+                horizontal-stretch: 1;
+                alignment: center;
+                spacing: Theme.px(1px);
+                Text {
+                    text: root.name;
+                    font-size: Theme.pt(12px);
+                    font-weight: 600;
+                    color: Theme.text-primary;
+                    overflow: elide;
+                }
+                Text {
+                    text: root.username;
+                    font-size: Theme.pt(11px);
+                    font-family: Theme.font-mono;
+                    color: Theme.text-tertiary;
+                    overflow: elide;
+                }
+            }
+            if root.active: Rectangle {
+                width: active-label.preferred-width + Theme.px(14px);
+                height: Theme.px(18px);
+                border-radius: self.height / 2;
+                background: Theme.accent-blue.with-alpha(0.18);
+                active-label := Text {
+                    text: @tr("Active");
+                    font-size: Theme.pt(10.5px);
+                    font-weight: 600;
+                    color: Theme.accent-blue;
+                    horizontal-alignment: center;
+                    vertical-alignment: center;
+                    width: 100%;
+                    height: 100%;
+                }
+            }
+            edit-area := Rectangle {
+                width: Theme.px(24px);
+                height: Theme.px(24px);
+                border-radius: Theme.radius-sm;
+                background: edit-touch.has-hover ? Theme.bg-hover : transparent;
+                IconPencil {
+                    x: (parent.width - self.width) / 2;
+                    y: (parent.height - self.height) / 2;
+                    size: Theme.icon-sm;
+                    tint: Theme.text-tertiary;
+                }
+                edit-touch := TouchArea {
+                    mouse-cursor: pointer;
+                    clicked => { root.edit(); }
+                }
+            }
+        }
+    }
+}
+
+// "+ Add ..." at the right of a section's title
+component AddLink inherits Rectangle {
+    in property <string> text;
+    callback clicked <=> add-area.clicked;
+
+    width: add-row.preferred-width + Theme.px(20px);
+    height: Theme.px(24px);
+    border-radius: Theme.radius-sm;
+    background: add-area.has-hover ? Theme.bg-hover : transparent;
+    add-area := TouchArea { mouse-cursor: pointer; }
+    add-row := HorizontalLayout {
+        x: Theme.px(10px);
+        width: parent.width - Theme.px(20px);
+        spacing: Theme.px(6px);
+        cross-axis-alignment: center;
+        IconPlus { size: Theme.icon-sm; tint: Theme.accent-blue; }
+        Text {
+            text: root.text;
+            color: Theme.accent-blue;
+            font-size: Theme.pt(12px);
+            font-weight: 600;
+            vertical-alignment: center;
+        }
+    }
+}
+
+// one connection profile in the settings list: click to edit it
+component ConnProfileRow inherits Rectangle {
+    in property <string> name;
+    in property <ProfileTint> tint;
+    in property <length> row-width;
+    callback edit();
+
+    width: row-width;
+    height: Theme.px(34px);
+    background: row-area.has-hover ? Theme.bg-hover-elevated : transparent;
+
+    row-area := TouchArea {
+        mouse-cursor: pointer;
+        clicked => { root.edit(); }
+
+        HorizontalLayout {
+            padding-left: Theme.px(12px);
+            padding-right: Theme.px(8px);
+            spacing: Theme.px(10px);
+            cross-axis-alignment: center;
+            TintDot { tint: root.tint; size: Theme.px(14px); }
+            Text {
+                text: root.name;
+                font-size: Theme.pt(12px);
+                font-weight: 600;
+                color: Theme.text-primary;
+                vertical-alignment: center;
+                horizontal-stretch: 1;
+                overflow: elide;
+            }
+            IconPencil { size: Theme.icon-sm; tint: Theme.text-tertiary; }
+        }
+    }
+}
+
+// the eight tints to choose from, the chosen one ringed
+component TintSwatches inherits HorizontalLayout {
+    in-out property <ProfileTint> tint: ProfileTint.red;
+    property <[ProfileTint]> tints: [
+        ProfileTint.red, ProfileTint.orange, ProfileTint.yellow, ProfileTint.green,
+        ProfileTint.cyan, ProfileTint.blue, ProfileTint.purple, ProfileTint.pink,
+    ];
+
+    alignment: start;
+    spacing: Theme.px(8px);
+    for t in root.tints: Rectangle {
+        width: Theme.px(26px);
+        height: Theme.px(26px);
+        border-radius: self.width / 2;
+        border-width: 2px;
+        border-color: root.tint == t ? Theme.text-primary : (swatch-area.has-hover ? Theme.text-tertiary : transparent);
+        TintDot {
+            x: (parent.width - self.width) / 2;
+            y: (parent.height - self.height) / 2;
+            tint: t;
+            size: Theme.px(16px);
+        }
+        swatch-area := TouchArea {
+            mouse-cursor: pointer;
+            clicked => { root.tint = t; }
+        }
+    }
+}
+
+// The settings window, styled like the connection form: the lists (language, SSH
+// profiles, connection profiles) and the add/edit forms of an SSH or connection
+// profile. Passwords are never shown; blank keeps the stored one.
+export component SettingsModal inherits Rectangle {
+    in property <[SshProfileRowData]> profiles: Preferences.ssh-profiles;
+    // whether the clipboard holds text, for each field's right-click "Paste"
+    callback clipboard-has-text() -> bool;
+    in property <[ConnProfileRowData]> conn-profiles: Preferences.conn-profiles;
+    in property <string> error: Preferences.error;
+    // the interface language
+    in property <LanguageSetting> language: Preferences.language;
+    callback language-selected(setting: LanguageSetting);
+    language-selected(setting) => { Preferences.language-selected(setting); }
+    // whether the export buttons start on escaped JSON rather than plain JSON
+    in property <bool> export-escaped: Preferences.export-escaped;
+    callback export-escaped-selected(escaped: bool);
+    export-escaped-selected(escaped) => { Preferences.export-escaped-selected(escaped); }
+    // how many entries of a key the global search reads
+    in property <int> search-depth: Preferences.search-depth;
+    callback search-depth-selected(depth: int);
+    search-depth-selected(depth) => { Preferences.search-depth-selected(depth); }
+    // experimental: the global search lets Redis filter with a script
+    in property <bool> server-search: Preferences.server-search;
+    callback server-search-toggled(enabled: bool);
+    server-search-toggled(enabled) => { Preferences.server-search-toggled(enabled); }
+    // the form is showing instead of the list
+    in-out property <bool> editing <=> Preferences.ssh-profile-editing;
+    in-out property <string> field-id <=> Preferences.ssh-profile-id;
+    in-out property <string> field-name <=> Preferences.ssh-profile-name;
+    in-out property <string> field-username <=> Preferences.ssh-profile-username;
+    in-out property <string> field-password <=> Preferences.ssh-profile-password;
+    callback activate(id: string);
+    activate(id) => { Preferences.ssh-profile-activated(id); }
+    callback save();
+    save => { Preferences.ssh-profile-saved({ id: field-id, name: field-name, username: field-username, password: field-password }); }
+    callback delete();
+    delete => { Preferences.ssh-profile-deleted(field-id); }
+    callback close();
+    close => { Preferences.open = false; }
+    // the connection profile form is showing instead of the list
+    in-out property <bool> editing-conn-profile <=> Preferences.conn-profile-editing;
+    in-out property <string> conn-field-id <=> Preferences.conn-profile-id;
+    in-out property <string> conn-field-name <=> Preferences.conn-profile-name;
+    in-out property <ProfileTint> conn-field-tint <=> Preferences.conn-profile-tint;
+    callback conn-save();
+    conn-save => { Preferences.conn-profile-saved({ id: conn-field-id, name: conn-field-name, tint: conn-field-tint }); }
+    callback conn-delete();
+    conn-delete => { Preferences.conn-profile-deleted(conn-field-id); }
+
+    property <bool> confirming-delete: false;
+    property <length> row-height: Theme.px(46px);
+    property <length> list-max-height: row-height * 4.5;
+    property <length> list-height: min(profiles.length * row-height, list-max-height);
+    property <bool> needs-scrollbar: profiles.length * row-height > list-max-height;
+    property <length> conn-row-height: Theme.px(34px);
+    property <length> conn-list-max-height: conn-row-height * 3.5;
+    property <length> conn-list-height: min(conn-profiles.length * conn-row-height, conn-list-max-height);
+    property <bool> conn-needs-scrollbar: conn-profiles.length * conn-row-height > conn-list-max-height;
+
+    function show-form(id: string, name: string, username: string) {
+        root.field-id = id;
+        root.field-name = name;
+        root.field-username = username;
+        root.field-password = "";
+        root.confirming-delete = false;
+        root.editing = true;
+    }
+
+    function show-conn-form(id: string, name: string, tint: ProfileTint) {
+        root.conn-field-id = id;
+        root.conn-field-name = name;
+        root.conn-field-tint = tint;
+        root.confirming-delete = false;
+        root.editing-conn-profile = true;
+    }
+
+    background: #000000aa;
+
+    TouchArea {
+        clicked => { root.close(); }
+    }
+
+    // centered by a layout, for the reason given in ConnectionModal
+    VerticalLayout {
+        alignment: center;
+        cross-axis-alignment: center;
+
+        card := Rectangle {
+            width: Theme.px(460px);
+            background: Theme.bg-elevated;
+            border-radius: Theme.radius-lg;
+            border-width: 1px;
+            border-color: Theme.border-soft;
+            drop-shadow-color: Theme.shadow-color;
+            drop-shadow-blur: Theme.shadow-blur;
+            drop-shadow-offset-y: Theme.shadow-offset-y;
+
+            // swallow clicks so they don't bubble to the backdrop's close
+            TouchArea { }
+
+            VerticalLayout {
+                padding: Theme.px(16px);
+                spacing: Theme.px(10px);
+
+                Text {
+                    text: root.editing-conn-profile ? (root.conn-field-id == "" ? @tr("New connection profile") : @tr("Edit connection profile"))
+                        : (!root.editing ? @tr("Settings") : (root.field-id == "" ? @tr("New SSH profile") : @tr("Edit SSH profile")));
+                    height: Theme.pt(18px);
+                    font-size: Theme.pt(14px);
+                    font-weight: 700;
+                    color: Theme.text-primary;
+                    vertical-alignment: center;
+                }
+
+                // ---- the lists
+                if !root.editing && !root.editing-conn-profile: VerticalLayout {
+                    spacing: Theme.px(10px);
+
+                    VerticalLayout {
+                        spacing: Theme.px(6px);
+                        Text {
+                            text: @tr("Language");
+                            font-size: Theme.pt(12px);
+                            font-weight: 600;
+                            color: Theme.text-primary;
+                        }
+                        // each language is named in itself, so it can be found from
+                        // any other one
+                        HorizontalLayout {
+                            alignment: start;
+                            spacing: Theme.px(6px);
+                            SegmentButton { text: @tr("Automatic"); selected: root.language == LanguageSetting.automatic; clicked => { root.language-selected(LanguageSetting.automatic); } }
+                            SegmentButton { text: "English"; selected: root.language == LanguageSetting.english; clicked => { root.language-selected(LanguageSetting.english); } }
+                            SegmentButton { text: "Français"; selected: root.language == LanguageSetting.french; clicked => { root.language-selected(LanguageSetting.french); } }
+                        }
+                    }
+
+                    VerticalLayout {
+                        spacing: Theme.px(6px);
+                        Text {
+                            text: @tr("Export format");
+                            font-size: Theme.pt(12px);
+                            font-weight: 600;
+                            color: Theme.text-primary;
+                        }
+                        // what the export buttons start on (they can be switched there)
+                        HorizontalLayout {
+                            alignment: start;
+                            spacing: Theme.px(6px);
+                            SegmentButton { text: @tr("JSON"); selected: !root.export-escaped; clicked => { root.export-escaped-selected(false); } }
+                            SegmentButton { text: @tr("Escaped JSON"); selected: root.export-escaped; clicked => { root.export-escaped-selected(true); } }
+                        }
+                    }
+
+                    VerticalLayout {
+                        spacing: Theme.px(4px);
+                        Text {
+                            text: @tr("Search depth");
+                            font-size: Theme.pt(12px);
+                            font-weight: 600;
+                            color: Theme.text-primary;
+                        }
+                        HorizontalLayout {
+                            alignment: start;
+                            spacing: Theme.px(6px);
+                            SegmentButton { text: "60"; selected: root.search-depth == 60; clicked => { root.search-depth-selected(60); } }
+                            SegmentButton { text: "200"; selected: root.search-depth == 200; clicked => { root.search-depth-selected(200); } }
+                            SegmentButton { text: "1000"; selected: root.search-depth == 1000; clicked => { root.search-depth-selected(1000); } }
+                        }
+                        Text {
+                            text: @tr("How many entries of each key (hash fields, list items, set members...) the global search reads. Fewer is faster, but a match deeper inside a big key is missed.");
+                            height: Theme.pt(42px);
+                            font-size: Theme.pt(10.5px);
+                            color: Theme.text-tertiary;
+                            wrap: word-wrap;
+                        }
+                    }
+
+                    VerticalLayout {
+                        spacing: Theme.px(4px);
+                        Text {
+                            text: @tr("Experimental");
+                            font-size: Theme.pt(12px);
+                            font-weight: 600;
+                            color: Theme.text-primary;
+                        }
+                        CheckRow {
+                            text: @tr("Search on the server (Lua script)");
+                            checked: root.server-search;
+                            toggled => { root.server-search-toggled(!root.server-search); }
+                        }
+                        Text {
+                            text: @tr("The global search lets Redis filter the data itself, so far less of it travels. It uses the server's CPU while it runs, needs permission to run scripts, and goes back to the normal search if the server refuses.");
+                            height: Theme.pt(42px);
+                            font-size: Theme.pt(10.5px);
+                            color: Theme.text-tertiary;
+                            wrap: word-wrap;
+                        }
+                    }
+
+                    VerticalLayout {
+                        spacing: Theme.px(3px);
+                        HorizontalLayout {
+                            height: Theme.px(24px);
+                            Text {
+                                text: @tr("SSH profiles");
+                                font-size: Theme.pt(12px);
+                                font-weight: 600;
+                                color: Theme.text-primary;
+                                vertical-alignment: center;
+                                horizontal-stretch: 1;
+                            }
+                            AddLink { text: @tr("Add profile"); clicked => { root.show-form("", "", ""); } }
+                        }
+                        Text {
+                            text: @tr("The active profile logs in to the SSH tunnels that have no username of their own. A connection that fills in its own username and password uses those instead.");
+                            // two lines: a layout doesn't know how far wrapped text
+                            // grows, so without a height the card came out too short
+                            height: Theme.pt(28px);
+                            font-size: Theme.pt(10.5px);
+                            color: Theme.text-tertiary;
+                            wrap: word-wrap;
+                        }
+                    }
+
+                    list-box := Rectangle {
+                        background: Theme.bg-sunken;
+                        border-radius: Theme.radius-md;
+                        border-width: 1px;
+                        border-color: Theme.border-soft;
+                        height: (root.profiles.length == 0 ? Theme.px(64px) : root.list-height) + Theme.px(2px);
+
+                        if root.profiles.length == 0: Text {
+                            text: @tr("No SSH profiles yet");
+                            font-size: Theme.pt(12px);
+                            color: Theme.text-tertiary;
+                            horizontal-alignment: center;
+                            vertical-alignment: center;
+                        }
+                        if root.profiles.length > 0: HorizontalLayout {
+                            padding: Theme.px(1px);
+                            list-flick := Flickable {
+                                horizontal-stretch: 1;
+                                interactive: true;
+                                list-content := VerticalLayout {
+                                    // pinned to the box's width (less its border):
+                                    // a Flickable's content isn't sized by its frame
+                                    width: list-box.width - Theme.px(2px);
+                                    alignment: start;
+                                    for p in root.profiles: ProfileRow {
+                                        row-width: list-content.width;
+                                        name: p.name;
+                                        username: p.username;
+                                        active: p.active;
+                                        activate => { root.activate(p.id); }
+                                        edit => { root.show-form(p.id, p.name, p.username); }
+                                    }
+                                }
+                            }
+                            if root.needs-scrollbar: VScrollBar {
+                                content-height: list-flick.content-height;
+                                content-y <=> list-flick.content-y;
+                            }
+                        }
+                    }
+
+                    VerticalLayout {
+                        spacing: Theme.px(3px);
+                        HorizontalLayout {
+                            height: Theme.px(24px);
+                            Text {
+                                text: @tr("Connection profiles");
+                                font-size: Theme.pt(12px);
+                                font-weight: 600;
+                                color: Theme.text-primary;
+                                vertical-alignment: center;
+                                horizontal-stretch: 1;
+                            }
+                            AddLink { text: @tr("Add profile"); clicked => { root.show-conn-form("", "", ProfileTint.red); } }
+                        }
+                        Text {
+                            text: @tr("A connection that has one of these profiles tints the app's background while you are connected to it, to tell environments apart.");
+                            height: Theme.pt(28px);
+                            font-size: Theme.pt(10.5px);
+                            color: Theme.text-tertiary;
+                            wrap: word-wrap;
+                        }
+                    }
+
+                    conn-list-box := Rectangle {
+                        background: Theme.bg-sunken;
+                        border-radius: Theme.radius-md;
+                        border-width: 1px;
+                        border-color: Theme.border-soft;
+                        height: (root.conn-profiles.length == 0 ? Theme.px(52px) : root.conn-list-height) + Theme.px(2px);
+
+                        if root.conn-profiles.length == 0: Text {
+                            text: @tr("No connection profiles yet");
+                            font-size: Theme.pt(12px);
+                            color: Theme.text-tertiary;
+                            horizontal-alignment: center;
+                            vertical-alignment: center;
+                        }
+                        if root.conn-profiles.length > 0: HorizontalLayout {
+                            padding: Theme.px(1px);
+                            conn-flick := Flickable {
+                                horizontal-stretch: 1;
+                                interactive: true;
+                                conn-content := VerticalLayout {
+                                    width: conn-list-box.width - Theme.px(2px);
+                                    alignment: start;
+                                    for p in root.conn-profiles: ConnProfileRow {
+                                        row-width: conn-content.width;
+                                        name: p.name;
+                                        tint: p.tint;
+                                        edit => { root.show-conn-form(p.id, p.name, p.tint); }
+                                    }
+                                }
+                            }
+                            if root.conn-needs-scrollbar: VScrollBar {
+                                content-height: conn-flick.content-height;
+                                content-y <=> conn-flick.content-y;
+                            }
+                        }
+                    }
+
+                    if error != "": Text {
+                        text: error;
+                        height: Theme.pt(28px);
+                        color: Theme.accent-red;
+                        font-size: Theme.pt(11px);
+                        wrap: word-wrap;
+                    }
+
+                    // the top padding makes the space above the button as tall as
+                    // the card's padding below it
+                    HorizontalLayout {
+                        height: Theme.px(28px) + Theme.px(6px);
+                        padding-top: Theme.px(6px);
+                        Rectangle { horizontal-stretch: 1; }
+                        ModalButton { text: @tr("Close"); clicked => { root.close(); } }
+                    }
+                }
+
+                // ---- the form of one SSH profile
+                if root.editing: VerticalLayout {
+                    spacing: Theme.px(10px);
+
+                    ConnectionModalField {
+                        clipboard-has-text() => { return root.clipboard-has-text(); } label: @tr("Name"); placeholder: @tr("Work bastion"); text <=> root.field-name; }
+                    ConnectionModalField {
+                        clipboard-has-text() => { return root.clipboard-has-text(); } label: @tr("SSH username"); text <=> root.field-username; }
+                    ConnectionModalField {
+                        clipboard-has-text() => { return root.clipboard-has-text(); }
+                        label: @tr("SSH password");
+                        placeholder: root.field-id == "" ? "" : @tr("Leave blank to keep current");
+                        text <=> root.field-password;
+                        is-password: true;
+                    }
+
+                    if error != "": Text {
+                        text: error;
+                        height: Theme.pt(14px);
+                        color: Theme.accent-red;
+                        font-size: Theme.pt(11px);
+                        vertical-alignment: center;
+                        overflow: elide;
+                    }
+
+                    HorizontalLayout {
+                        height: Theme.px(28px) + Theme.px(6px);
+                        padding-top: Theme.px(6px);
+                        spacing: Theme.px(8px);
+                        // removing is one click to arm, a second to do it
+                        if root.field-id != "": ModalButton {
+                            text: root.confirming-delete ? @tr("Click again to delete") : @tr("Delete");
+                            danger: true;
+                            armed: root.confirming-delete;
+                            clicked => {
+                                if root.confirming-delete {
+                                    root.delete();
+                                } else {
+                                    root.confirming-delete = true;
+                                }
+                            }
+                        }
+                        Rectangle { horizontal-stretch: 1; }
+                        ModalButton { text: @tr("Cancel"); clicked => { root.editing = false; } }
+                        ModalButton { text: @tr("Save"); primary: true; clicked => { root.save(); } }
+                    }
+                }
+
+                // ---- the form of one connection profile
+                if root.editing-conn-profile: VerticalLayout {
+                    spacing: Theme.px(10px);
+
+                    ConnectionModalField {
+                        clipboard-has-text() => { return root.clipboard-has-text(); } label: @tr("Name"); placeholder: "Production"; text <=> root.conn-field-name; }
+                    VerticalLayout {
+                        spacing: Theme.px(6px);
+                        Text {
+                            text: @tr("Color");
+                            font-size: Theme.pt(10.5px);
+                            font-weight: 600;
+                            color: Theme.text-secondary;
+                        }
+                        TintSwatches { tint <=> root.conn-field-tint; }
+                    }
+
+                    if error != "": Text {
+                        text: error;
+                        height: Theme.pt(28px);
+                        color: Theme.accent-red;
+                        font-size: Theme.pt(11px);
+                        wrap: word-wrap;
+                    }
+
+                    HorizontalLayout {
+                        height: Theme.px(28px) + Theme.px(6px);
+                        padding-top: Theme.px(6px);
+                        spacing: Theme.px(8px);
+                        // removing is one click to arm, a second to do it
+                        if root.conn-field-id != "": ModalButton {
+                            text: root.confirming-delete ? @tr("Click again to delete") : @tr("Delete");
+                            danger: true;
+                            armed: root.confirming-delete;
+                            clicked => {
+                                if root.confirming-delete {
+                                    root.conn-delete();
+                                } else {
+                                    root.confirming-delete = true;
+                                }
+                            }
+                        }
+                        Rectangle { horizontal-stretch: 1; }
+                        ModalButton { text: @tr("Cancel"); clicked => { root.editing-conn-profile = false; } }
+                        ModalButton { text: @tr("Save"); primary: true; clicked => { root.conn-save(); } }
+                    }
+                }
+            }
+        }
+    }
+}

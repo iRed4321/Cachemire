@@ -1,0 +1,96 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Cachemire MSI (WiX v6 or v7, built by `cargo xtask build-windows`): per-machine, in-place upgrades
+     (never change the UpgradeCode), and one page where the user must click Install, Update or
+     Uninstall (CachemireUI) before anything happens. -->
+<Wix xmlns="http://wixtoolset.org/schemas/v4/wxs">
+  <Package Name="Cachemire"
+           Manufacturer="Léo Parent"
+           Version="$(var.Version)"
+           UpgradeCode="7d3c1b62-0f4e-4c1a-9a1e-6e2f5b8c9d01"
+           Language="1033"
+           Scope="perMachine"
+           Compressed="yes">
+
+    <MajorUpgrade AllowSameVersionUpgrades="yes" DowngradeErrorMessage="A newer version of Cachemire is already installed." />
+    <MediaTemplate EmbedCab="yes" />
+
+    <Icon Id="CachemireIcon" SourceFile="assets/icon.ico" />
+    <Property Id="ARPPRODUCTICON" Value="CachemireIcon" />
+    <WixVariable Id="WixUIBannerBmp" Value="assets/installer/banner.bmp" />
+    <WixVariable Id="WixUIDialogBmp" Value="assets/installer/dialog.bmp" />
+    <Property Id="ARPCOMMENTS" Value="Cachemire $(var.FullVersion)" />
+
+    <StandardDirectory Id="ProgramFiles64Folder">
+      <Directory Id="INSTALLFOLDER" Name="Cachemire" />
+    </StandardDirectory>
+    <StandardDirectory Id="ProgramMenuFolder" />
+
+    <Feature Id="Main" Title="Cachemire" Level="1">
+      <ComponentGroupRef Id="AppFiles" />
+    </Feature>
+
+    <ComponentGroup Id="AppFiles" Directory="INSTALLFOLDER">
+      <Component Id="MainExe" Guid="c2a9e4d7-5b18-4f3e-8c6a-1d9e0f7b3a52">
+        <File Id="CachemireExe" Source="$(var.ExePath)" Name="cachemire.exe" KeyPath="yes">
+          <Shortcut Id="StartMenuShortcut"
+                    Directory="ProgramMenuFolder"
+                    Name="Cachemire"
+                    Description="Redis key explorer" />
+        </File>
+      </Component>
+    </ComponentGroup>
+
+    <UI Id="CachemireUI">
+      <UIRef Id="WixUI_Common" />
+      <Property Id="WixUI_Mode" Value="Minimal" />
+      <TextStyle Id="WixUI_Font_Normal" FaceName="Tahoma" Size="8" />
+      <TextStyle Id="WixUI_Font_Bigger" FaceName="Tahoma" Size="12" />
+      <TextStyle Id="WixUI_Font_Title" FaceName="Tahoma" Size="9" Bold="yes" />
+      <Property Id="DefaultUIFont" Value="WixUI_Font_Normal" />
+      <DialogRef Id="ErrorDlg" />
+      <DialogRef Id="FatalError" />
+      <DialogRef Id="FilesInUse" />
+      <DialogRef Id="MsiRMFilesInUse" />
+      <DialogRef Id="PrepareDlg" />
+      <DialogRef Id="ProgressDlg" />
+      <DialogRef Id="ResumeDlg" />
+      <DialogRef Id="UserExit" />
+      <DialogRef Id="CancelDlg" />
+
+      <Dialog Id="StartDlg" Width="370" Height="270" Title="Cachemire $(var.FullVersion)">
+        <Control Id="BannerBitmap" Type="Bitmap" X="0" Y="0" Width="370" Height="44" TabSkip="no" Text="WixUI_Bmp_Banner" />
+        <Control Id="BannerLine" Type="Line" X="0" Y="44" Width="370" Height="0" />
+        <Control Id="BottomLine" Type="Line" X="0" Y="234" Width="370" Height="0" />
+
+        <Control Id="TitleInstall" Type="Text" X="15" Y="6" Width="340" Height="15" Transparent="yes" NoPrefix="yes" Text="{\WixUI_Font_Title}Install Cachemire $(var.FullVersion)" Hidden="yes" ShowCondition="NOT Installed AND NOT WIX_UPGRADE_DETECTED" />
+        <Control Id="TitleUpdate" Type="Text" X="15" Y="6" Width="340" Height="15" Transparent="yes" NoPrefix="yes" Text="{\WixUI_Font_Title}Update Cachemire $(var.FullVersion)" Hidden="yes" ShowCondition="NOT Installed AND WIX_UPGRADE_DETECTED" />
+        <Control Id="TitleUninstall" Type="Text" X="15" Y="6" Width="340" Height="15" Transparent="yes" NoPrefix="yes" Text="{\WixUI_Font_Title}Uninstall Cachemire $(var.FullVersion)" Hidden="yes" ShowCondition="Installed" />
+
+        <Control Id="TextInstall" Type="Text" X="25" Y="70" Width="320" Height="60" Transparent="yes" NoPrefix="yes" Text="Click Install to add Cachemire to this computer. Nothing is installed until you do." Hidden="yes" ShowCondition="NOT Installed AND NOT WIX_UPGRADE_DETECTED" />
+        <Control Id="TextUpdate" Type="Text" X="25" Y="70" Width="320" Height="60" Transparent="yes" NoPrefix="yes" Text="An older version of Cachemire is installed. Click Update to replace it with this version. Nothing changes until you do." Hidden="yes" ShowCondition="NOT Installed AND WIX_UPGRADE_DETECTED" />
+        <Control Id="TextUninstall" Type="Text" X="25" Y="70" Width="320" Height="60" Transparent="yes" NoPrefix="yes" Text="Cachemire is installed on this computer. Click Uninstall to remove it. Nothing is removed until you do." Hidden="yes" ShowCondition="Installed" />
+
+        <Control Id="InstallButton" Type="PushButton" X="236" Y="243" Width="56" Height="17" Default="yes" Text="Install" Hidden="yes" ShowCondition="NOT Installed AND NOT WIX_UPGRADE_DETECTED">
+          <Publish Event="EndDialog" Value="Return" />
+        </Control>
+        <Control Id="UpdateButton" Type="PushButton" X="236" Y="243" Width="56" Height="17" Default="yes" Text="Update" Hidden="yes" ShowCondition="NOT Installed AND WIX_UPGRADE_DETECTED">
+          <Publish Event="EndDialog" Value="Return" />
+        </Control>
+        <Control Id="UninstallButton" Type="PushButton" X="236" Y="243" Width="56" Height="17" Default="yes" Text="Uninstall" Hidden="yes" ShowCondition="Installed">
+          <Publish Property="WixUI_InstallMode" Value="Remove" />
+          <Publish Event="Remove" Value="All" Order="2" />
+          <Publish Event="EndDialog" Value="Return" Order="3" />
+        </Control>
+        <Control Id="Cancel" Type="PushButton" X="304" Y="243" Width="56" Height="17" Cancel="yes" Text="Cancel">
+          <Publish Event="SpawnDialog" Value="CancelDlg" />
+        </Control>
+      </Dialog>
+
+      <Publish Dialog="ExitDialog" Control="Finish" Event="EndDialog" Value="Return" Order="999" />
+
+      <InstallUISequence>
+        <Show Dialog="StartDlg" Before="ProgressDlg" Condition="NOT REMOVE" />
+      </InstallUISequence>
+    </UI>
+  </Package>
+</Wix>

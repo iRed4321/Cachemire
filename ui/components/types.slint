@@ -1,0 +1,207 @@
+// Enumerations shared by the UI and Rust (main.slint re-exports them as
+// real Rust enums). A state that's one of a few named values is one of
+// these, not a string, so a typo doesn't compile and `match` stays exhaustive.
+
+// what the title bar says about the connection
+export enum ConnectionStatus {
+    // nothing picked yet
+    none,
+    connected,
+    disconnected,
+}
+
+// a row of the key tree
+export enum TreeRowKind {
+    folder-open,
+    folder-closed,
+    // a key holding a hash, a list, or anything else
+    hash,
+    list,
+    other,
+}
+
+// how a value or the ticked rows are exported
+export enum ExportFormat {
+    // the JSON, pretty-printed
+    json,
+    // the compact JSON as a JSON string
+    escaped,
+}
+
+// what an export does with its text
+export enum ExportTarget {
+    open,
+    download,
+    copy,
+}
+
+// the key panel's ways of showing a key's (filtered) value. A new one is
+// added here, to `KeyDetail.views` (its switcher entry), to the `if` that
+// shows it in key-detail.slint, and to `show_view` in key_detail/mod.rs.
+export enum KeyView {
+    // one row per field, its value collapsed to a line until opened
+    fields,
+    // one row per field, one column per top-level key
+    table,
+}
+
+// the two views of the left panel, chosen by the tabs at its top
+export enum SidebarView {
+    // the tree of the connection's keys
+    keyspace,
+    // saved queries, and the way to write a new one
+    queries,
+}
+
+// where the field/value search bar looks: the field's name, the raw value, or
+// both. Each gets its own color (see ScopeColor in key-detail-widgets.slint),
+// used by the 3-way switch and by the badge a search produces.
+export enum SearchScope {
+    everywhere,
+    fields,
+    value,
+}
+
+// the tint of a connection profile (a fixed set of eight): the app's
+// background takes it while a connection using that profile is in use
+export enum ProfileTint {
+    red,
+    orange,
+    yellow,
+    green,
+    cyan,
+    blue,
+    purple,
+    pink,
+}
+
+// the interface language setting
+export enum LanguageSetting {
+    // the system's
+    automatic,
+    english,
+    french,
+}
+
+// The rows and forms Rust and the UI exchange, shared by the components and
+// globals.slint (which the components import, so these can live in neither).
+
+// one connection profile, as the settings window and the connection form list it
+export struct ConnProfileRowData {
+    id: string,
+    name: string,
+    tint: ProfileTint,
+}
+
+export struct ConnectionRowData {
+    id: string,
+    name: string,
+    address: string, // display string: connection-url, or host:port
+    connection-url: string,
+    username: string,
+    active: bool,
+    // not the one in use, but its tabs are kept for when it is picked again
+    in-background: bool,
+    // what the edit form starts with (the passwords are never sent here)
+    ssh-enabled: bool,
+    ssh-host: string,
+    ssh-port: string,
+    ssh-username: string,
+    ssh-key: string,
+    // the connection profile it uses ("" for none), with its name and tint for the row's badge
+    profile-id: string,
+    profile-name: string,
+    profile-tint: ProfileTint,
+}
+
+// what the add/edit form holds when it's saved
+export struct ConnectionForm {
+    id: string, // empty for a new connection
+    name: string,
+    connection-url: string,
+    username: string,
+    password: string,
+    ssh-enabled: bool,
+    ssh-host: string,
+    ssh-port: string,
+    ssh-username: string,
+    ssh-password: string,
+    ssh-key: string,
+    ssh-passphrase: string,
+    profile-id: string, // "" for none
+}
+
+// one SSH profile as the settings window lists it: never its password
+export struct SshProfileRowData {
+    id: string,
+    name: string,
+    username: string,
+    active: bool,
+}
+
+// what the profile form holds when it's saved
+export struct SshProfileForm {
+    id: string, // empty for a new profile
+    name: string,
+    username: string,
+    password: string,
+}
+
+// what the connection profile form holds when it's saved
+export struct ConnProfileForm {
+    id: string, // empty for a new profile
+    name: string,
+    tint: ProfileTint,
+}
+
+export struct KeyspaceRowData {
+    indent: int,
+    kind: TreeRowKind,
+    name: string,
+    count: string,
+    full-name: string,
+    loading: bool, // folder whose children are being scanned right now
+    checked: int, // export mode's box: 0 empty, 1 ticked, 2 some of what is under it
+}
+
+// a saved query of the Search/Query view
+export struct SavedQueryRowData {
+    id: string,
+    name: string,
+    // what it does, in a few words
+    detail: string,
+}
+
+export struct TabData {
+    // what the tab is called to Rust: the key it shows, or the id of a search/query tab
+    key: string,
+    active: bool,
+    // what the tab says: the same key, or "Search"/"Query"
+    label: string,
+    // a search tab, which has a magnifying glass where a key tab has a key
+    search: bool,
+    // a Redisql query tab, which has its own icon
+    query: bool,
+}
+
+// one hit of a search: where it is (key, and field for a hash, an index for a list...)
+// and its value, each with the search's matches marked
+export struct SearchRowData {
+    key: styled-text,
+    field: styled-text,
+    value: styled-text,
+    // the key itself, and the row of its panel that shows this hit ("" for a hit on
+    // the key's name alone): what a click opens
+    key-name: string,
+    target-field: string,
+}
+
+// one earlier run, as the history lists it
+export struct HistoryRow {
+    // the query on one line
+    label: string,
+    // how long ago, and how long it took
+    detail: string,
+    // it ended in an error
+    failed: bool,
+}

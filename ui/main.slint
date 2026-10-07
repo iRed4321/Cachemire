@@ -1,0 +1,706 @@
+import { Theme } from "components/theme.slint";
+import { TitleBar } from "components/title-bar.slint";
+import { AwsProfileDropdown } from "components/cloud-picker.slint";
+import { About, AboutModal } from "components/about.slint";
+import { CloudSettings, CloudSettingsModal } from "components/cloud-settings.slint";
+import { ConnectionTransfer, ConnectionTransferModal } from "components/connection-transfer.slint";
+import { ConnectionDropdown, ConnectionModal, ConnectionRowData, ConnectionForm, ConnProfileRowData } from "components/connection-picker.slint";
+import { KeyspacePanel, KeyspaceRowData, SavedQueryRowData } from "components/keyspace-panel.slint";
+import { TabBar, TabData, TabContextMenu, SelectionContextMenu, RowContextMenu } from "components/content-header.slint";
+import { KeyDetail, KeyScroll, ExportPrefs, AllValuesRowData, FindResult, SelectionRange, TableRowData, SuggestionRow, CompletionEdit, BadgeData } from "components/key-detail.slint";
+import { SearchPanel, SearchRowData } from "components/search-panel.slint";
+import { QueryEditor, QueryToolbar, ResultTabs, HistoryRow } from "components/query-panel.slint";
+import { TableRowData } from "components/key-detail-types.slint";
+import { FloatingCard, HResizeHandle, SquareIconButton } from "components/widgets.slint";
+import { IconSidebar } from "components/icons.slint";
+import { SettingsModal, SshProfileRowData, SshProfileForm, ConnProfileForm } from "components/settings.slint";
+import { ConnectionStatus, TreeRowKind, ExportFormat, ExportTarget, LanguageSetting, ProfileTint, KeyView, SidebarView, SearchScope } from "components/types.slint";
+import { ConnectionView, ConnectionState, ConnectionEditor, AwsAccount, Preferences, KeyTree, SavedQueries, TabStrip, SearchTab, QueryTab, KeyPanel } from "globals.slint";
+
+// read and written by Rust: where each tab left the key panel scrolled to
+// (Rust tints the background: see Theme.env-tint)
+export { KeyScroll, ExportPrefs, Theme, About, CloudSettings, ConnectionTransfer, SelectionRange }
+// the enumerations Rust shares with the UI
+export { ConnectionStatus, TreeRowKind, ExportFormat, ExportTarget, LanguageSetting, ProfileTint, KeyView, SidebarView, SearchScope }
+// a badge of the key panel's field/value search bar
+export { BadgeData, HistoryRow }
+// a saved query of the left panel's Search/Query view
+export { SavedQueryRowData }
+// a hit of a search tab
+export { SearchRowData }
+// each feature's state and callbacks (see globals.slint)
+export { ConnectionView, ConnectionState, ConnectionEditor, AwsAccount, Preferences, KeyTree, SavedQueries, TabStrip, SearchTab, QueryTab, KeyPanel }
+
+export component MainWindow inherits Window {
+    title: ConnectionState.view.name == "" ? "Cachemire" : ConnectionState.view.name + " — Cachemire";
+    // X11 window icon; Windows takes assets/icon.ico from the exe (build.rs)
+    icon: @image-url("../assets/icon.png");
+    preferred-width: 1360px;
+    preferred-height: 860px;
+    background: Theme.bg-app;
+    default-font-family: Theme.font-ui;
+    no-frame: true;
+    resize-border-width: 5px;
+    forward-focus: root-scope;
+
+    callback request-drag-window();
+    // handled in Rust directly against the winit window, not by flipping
+    // `root.maximized` here: that property only reaches the OS window next
+    // frame and reads back after resize — the direct call skips that round trip
+    callback request-toggle-maximize();
+
+    // keyspace panel width, dragged via the HResizeHandle. Stored
+    // zoom-independent (base, unscaled) and multiplied by Theme.zoom wherever
+    // it's actually bound to the panel's size below.
+    property <length> keyspace-width: 310px;
+
+    // true while the physical Control key is held, used to hand scroll events
+    // over to the zoom handler instead of letting Flickables pan on them
+    property <bool> ctrl-held: false;
+    // a row opening or folding can leave no item focused: the key handler takes it back
+    property <int> refocus-tick: KeyScroll.refocus-tick;
+    changed refocus-tick => { root-scope.focus(); }
+    // bumped by Ctrl+F on a key tab: the key panel focuses its search box
+    property <int> key-search-focus-tick: 0;
+
+    // bumped on Esc; the key panel folds the open value under the pointer
+    property <int> collapse-tick: 0;
+
+    // the display's scale factor, kept up to date by Rust
+    in-out property <float> device-scale: 1.0;
+    // A connection has been picked: connected, or tried and failed (the
+    // reason is then set). Until then the keyspace panel is hidden; a
+    // failure keeps it, so the reason and retry stay reachable.
+    property <bool> connection-chosen: ConnectionState.view.connected;
+    // the last attempt failed
+    property <bool> connection-failed: !ConnectionState.view.connected && ConnectionState.view.status-detail != "";
+    // the tabs shown follow the connection in use
+    property <string> connection-id: ConnectionState.view.connection-id;
+    changed connection-id => { ConnectionState.switched(); }
+    // opening or closing the connection profile form drops what the last action said
+    property <bool> conn-profile-editing: Preferences.conn-profile-editing;
+    changed conn-profile-editing => { Preferences.error = ""; }
+
+    // the title bar's dropdowns: open or not, and where; whether the form edits a connection
+    property <bool> connections-open: false;
+    property <bool> aws-profiles-open: false;
+    property <length> aws-profiles-x: 0px;
+    property <bool> connection-modal-is-edit: false;
+    // the sidebar (the keyspace and the saved queries) is hidden; the tab bar has the button to bring it back
+    in-out property <bool> sidebar-hidden: false;
+    // which of its views the sidebar shows
+    in-out property <SidebarView> sidebar-view: SidebarView.keyspace;
+    // whether the clipboard holds text, for a text box's right-click "Paste"
+    callback clipboard-has-text() -> bool;
+
+    // Right-click "Copy selection" over selectable text in the key detail
+    // panel: the panel reports the click position and the selected text
+    // (see KeyDetail.context-requested); the menu opens only if there is one.
+    property <string> selection-text: "";
+    property <bool> selection-menu-open: false;
+    property <length> selection-menu-x: 0px;
+    property <length> selection-menu-y: 0px;
+
+    // right-click menu on a keyspace row: the row it was opened on, and where (window coordinates)
+    property <bool> row-menu-open: false;
+    property <string> row-menu-name: "";
+    property <length> row-menu-x: 0px;
+    property <length> row-menu-y: 0px;
+
+    // right-click menu on a tab: pure-UI open state, the tab it was opened
+    // on, and where to place it (window coordinates from the click)
+    property <bool> tab-menu-open: false;
+    property <string> tab-menu-key: "";
+    property <length> tab-menu-x: 0px;
+    property <length> tab-menu-y: 0px;
+
+    // Hover tooltip, positioned in window coordinates by whoever raises it:
+    // left edge at `tooltip-x`; `tooltip-anchor-y` is its bottom edge when
+    // `tooltip-above`, top edge otherwise. Drawn at window level to avoid clipping.
+    property <string> tooltip-text: "";
+    property <length> tooltip-x: 0px;
+    property <length> tooltip-anchor-y: 0px;
+    property <bool> tooltip-above: true;
+    property <bool> tooltip-visible: false;
+
+    // Transient notice ("Copied") raised from Rust via `show-toast`.
+    // `toast-tick` folds into the timer interval so a toast raised while one
+    // is showing restarts the countdown (Timer only restarts on interval change).
+    property <string> toast-text: "";
+    property <bool> toast-visible: false;
+    property <int> toast-tick: 0;
+    // where the pointer was when the toast was raised (window coordinates), so
+    // it shows by the button just clicked; negative = unknown, then the toast
+    // sits at the bottom centre
+    property <length> toast-anchor-x: -1px;
+    property <length> toast-anchor-y: -1px;
+    public function show-toast(text: string, x: length, y: length) {
+        toast-text = text;
+        toast-anchor-x = x;
+        toast-anchor-y = y;
+        toast-tick += 1;
+        toast-visible = true;
+    }
+    toast-timer := Timer {
+        interval: 1300ms + Math.mod(toast-tick, 2) * 1ms;
+        running: toast-visible;
+        triggered => { toast-visible = false; }
+    }
+
+    function zoom-in() {
+        Theme.zoom = max(Theme.zoom-min, min(Theme.zoom-max, Theme.zoom + 0.1));
+    }
+    function zoom-out() {
+        Theme.zoom = max(Theme.zoom-min, min(Theme.zoom-max, Theme.zoom - 0.1));
+    }
+    function zoom-reset() {
+        Theme.zoom = 1.0;
+    }
+
+    root-scope := FocusScope {
+        key-pressed(event) => {
+            if (event.text == Key.Control) {
+                ctrl-held = true;
+            }
+            if (event.text == Key.Escape) {
+                collapse-tick += 1;
+                if (KeyTree.export-mode && !KeyTree.export-busy) {
+                    KeyTree.export-mode-toggled();
+                }
+            }
+            if (event.modifiers.control) {
+                if (event.text == "=" || event.text == "+") {
+                    zoom-in();
+                    return accept;
+                }
+                if (event.text == "-") {
+                    zoom-out();
+                    return accept;
+                }
+                if (event.text == "0") {
+                    zoom-reset();
+                    return accept;
+                }
+                // Ctrl+letter arrives as the letter or as its control character
+                if (event.text == "f" || event.text == "F" || event.text == "\u{6}") {
+                    if (KeyPanel.loaded && !TabStrip.active-is-search) {
+                        key-search-focus-tick += 1;
+                    } else if (root.connection-chosen) {
+                        TabStrip.new-search-clicked();
+                    }
+                    return accept;
+                }
+                if (event.text == "w" || event.text == "W" || event.text == "\u{17}") {
+                    TabStrip.close-active();
+                    return accept;
+                }
+            }
+            reject
+        }
+        key-released(event) => {
+            if (event.text == Key.Control) {
+                ctrl-held = false;
+            }
+            reject
+        }
+
+        scroll-zoom := TouchArea {
+            width: 100%;
+            height: 100%;
+            scroll-event(event) => {
+                if (event.modifiers.control) {
+                    if (event.delta-y > 0) {
+                        zoom-in();
+                    } else if (event.delta-y < 0) {
+                        zoom-out();
+                    }
+                    return accept;
+                }
+                reject
+            }
+
+            VerticalLayout {
+                TitleBar {
+                    device-scale: root.device-scale;
+                    is-maximized: root.maximized;
+                    aws-settings-clicked => {
+                        root.aws-profiles-open = false;
+                        CloudSettings.open-requested(0, "");
+                    }
+                    aws-clicked => {
+                        root.aws-profiles-open = false;
+                        AwsAccount.clicked();
+                    }
+                    aws-profile-clicked(x) => {
+                        root.connections-open = false;
+                        root.aws-profiles-x = x;
+                        root.aws-profiles-open = !root.aws-profiles-open;
+                    }
+                    tooltip-show(text, x, top) => {
+                        root.tooltip-text = text;
+                        root.tooltip-x = x;
+                        root.tooltip-anchor-y = top;
+                        root.tooltip-above = false;
+                        root.tooltip-visible = true;
+                    }
+                    tooltip-hide => { root.tooltip-visible = false; }
+                    settings-clicked => {
+                        Preferences.error = "";
+                        Preferences.ssh-profile-editing = false;
+                        Preferences.conn-profile-editing = false;
+                        root.connections-open = false;
+                        Preferences.open = true;
+                    }
+                    expanded: root.connections-open;
+                    bar-clicked => {
+                        root.aws-profiles-open = false;
+                        root.connections-open = !root.connections-open;
+                    }
+                    drag-requested => { root.request-drag-window(); }
+                    maximize-toggle-requested => { root.request-toggle-maximize(); }
+                    minimize-requested => { root.minimized = true; }
+                    close-requested => { root.close(); }
+                }
+
+                HorizontalLayout {
+                    vertical-stretch: 1;
+                    padding-left: Theme.gap;
+                    // none: the bar already leaves the connection pills the same
+                    // room below them as above (5px each), so any more here would
+                    // make the gap under the bar bigger than the one over it
+                    padding-top: 0px;
+                    padding-right: Theme.gap;
+                    padding-bottom: Theme.gap;
+
+                    // hidden until a connection has been picked (see
+                    // `connection-chosen`); its rows live in a window
+                    // property, so recreating it loses nothing
+                    if root.connection-chosen && !root.sidebar-hidden: KeyspacePanel {
+                        width: Theme.px(keyspace-width);
+                        vertical-stretch: 1;
+                        ctrl-held: root.ctrl-held;
+                        clipboard-has-text() => { return root.clipboard-has-text(); }
+                        memory: ConnectionState.view.connected ? ConnectionState.memory : "";
+                        tooltip-show(text, x, top) => {
+                            root.tooltip-text = text;
+                            root.tooltip-x = x;
+                            root.tooltip-anchor-y = top;
+                            root.tooltip-above = false;
+                            root.tooltip-visible = true;
+                        }
+                        tooltip-hide => { root.tooltip-visible = false; }
+                        view <=> root.sidebar-view;
+                        hide-sidebar-clicked => { root.sidebar-hidden = true; }
+                        row-context-requested(name, x, y) => {
+                            root.row-menu-name = name;
+                            root.row-menu-x = min(x, root.width - Theme.px(200px) - Theme.px(4px));
+                            root.row-menu-y = min(y, root.height - Theme.px(100px));
+                            root.row-menu-open = true;
+                        }
+                    }
+
+                    if root.connection-chosen && !root.sidebar-hidden: HResizeHandle {
+                        dragged(delta) => {
+                            keyspace-width = max(180px, min(440px, keyspace-width + delta / Theme.zoom));
+                        }
+                    }
+
+                    // no key open: no panel at all, just a hint on the bare
+                    // background; it comes back with the first tab, and its
+                    // content all lives in window properties
+                    if TabStrip.tabs.length == 0: Rectangle {
+                        horizontal-stretch: 1;
+                        vertical-stretch: 1;
+
+                        // with no tab there is no tab bar to show it again from
+                        if root.sidebar-hidden && root.connection-chosen: empty-show-button := SquareIconButton {
+                            x: Theme.px(4px);
+                            y: Theme.px(4px);
+                            size: Theme.px(30px);
+                            hint: @tr("Show sidebar");
+                            tooltip-show(text, x, top) => {
+                                root.tooltip-text = text;
+                                root.tooltip-x = x;
+                                root.tooltip-anchor-y = top;
+                                root.tooltip-above = false;
+                                root.tooltip-visible = true;
+                            }
+                            tooltip-hide => { root.tooltip-visible = false; }
+                            clicked => { root.sidebar-hidden = false; }
+                            IconSidebar { size: Theme.icon-md; tint: empty-show-button.hovered ? Theme.text-primary : Theme.text-secondary; }
+                        }
+
+                        VerticalLayout {
+                            alignment: center;
+                            spacing: Theme.px(6px);
+                            Text {
+                                text: AwsAccount.error != "" ? @tr("Couldn't use the AWS account")
+                                    : ConnectionState.view.connected ? @tr("Select a key to open it")
+                                    : root.connection-failed ? @tr("Couldn't connect")
+                                    : @tr("Pick a connection to get started");
+                                font-size: Theme.pt(14px);
+                                font-weight: 600;
+                                color: AwsAccount.error != "" ? Theme.accent-red : Theme.text-secondary;
+                                horizontal-alignment: center;
+                            }
+                            Text {
+                                text: AwsAccount.error != "" ? AwsAccount.error
+                                    : ConnectionState.view.connected ? @tr("Browse the keyspace on the left and click a key.")
+                                    : root.connection-failed ? @tr("Hover the connection status in the top bar to see why, or pick another connection.")
+                                    : @tr("Use the connection selector in the top bar.");
+                                font-size: Theme.pt(12px);
+                                color: Theme.text-tertiary;
+                                horizontal-alignment: center;
+                                wrap: word-wrap;
+                            }
+                        }
+                    }
+
+                    if TabStrip.tabs.length > 0: FloatingCard {
+                        horizontal-stretch: 1;
+                        vertical-stretch: 1;
+                        max-height: 100000px;
+                        background: Theme.bg-panel;
+
+                        // Rectangular clip, never rounded: a border-radius clip
+                        // renders offscreen, which at fractional HiDPI scales
+                        // resamples every glyph. The card above gives the rounding.
+                        Rectangle {
+                            clip: true;
+
+                            VerticalLayout {
+                                TabBar {
+                                    sidebar-hidden: root.sidebar-hidden && root.connection-chosen;
+                                    sidebar-show-requested => { root.sidebar-hidden = false; }
+                                    tab-tooltip-show(text, x, bottom) => {
+                                        root.tooltip-text = text;
+                                        root.tooltip-x = x;
+                                        root.tooltip-anchor-y = bottom;
+                                        root.tooltip-above = true;
+                                        root.tooltip-visible = true;
+                                    }
+                                    tab-tooltip-hide => { root.tooltip-visible = false; }
+                                    tab-context-requested(key, x, y) => {
+                                        root.tab-menu-key = key;
+                                        // keep the menu inside the window if the click is near the right edge
+                                        root.tab-menu-x = min(x, root.width - Theme.px(170px) - Theme.px(4px));
+                                        root.tab-menu-y = y;
+                                        root.tab-menu-open = true;
+                                    }
+                                }
+                                if TabStrip.active-is-query: QueryEditor {
+                                    clipboard-has-text() => { return root.clipboard-has-text(); }
+                                }
+                                if TabStrip.active-is-query && QueryTab.results.length > 1: ResultTabs {
+                                }
+                                if TabStrip.active-is-search: SearchPanel {
+                                    vertical-stretch: 1;
+                                    max-height: 100000px;
+                                    clipboard-has-text() => { return root.clipboard-has-text(); }
+                                }
+                                if !TabStrip.active-is-search: KeyDetail {
+                                    empty-hint: QueryTab.ran ? "" : @tr("Write a Redisql query above (FROM/JOIN/WHERE/SELECT/LIMIT), then Run.");
+                                    search-focus-tick: root.key-search-focus-tick;
+                                    clipboard-has-text() => { return root.clipboard-has-text(); }
+                                    context-requested(x, y, selected) => {
+                                        if selected == "" {
+                                            return;
+                                        }
+                                        root.selection-text = selected;
+                                        root.selection-menu-x = min(x, root.width - Theme.px(170px) - Theme.px(4px));
+                                        root.selection-menu-y = min(y, root.height - Theme.px(40px));
+                                        root.selection-menu-open = true;
+                                    }
+                                    vertical-stretch: 1;
+                                    max-height: 100000px;
+                                    collapse-tick: root.collapse-tick;
+                                    if TabStrip.active-is-query: QueryToolbar {
+                                        command(kind) => {
+                                            QueryTab.command-kind = kind;
+                                            QueryTab.command-tick += 1;
+                                        }
+                                        tooltip-show(text, x, top) => {
+                                            root.tooltip-text = text;
+                                            root.tooltip-x = x;
+                                            root.tooltip-anchor-y = top;
+                                            root.tooltip-above = false;
+                                            root.tooltip-visible = true;
+                                        }
+                                        tooltip-hide => { root.tooltip-visible = false; }
+                                    }
+                                    tooltip-show(text, x, top) => {
+                                        root.tooltip-text = text;
+                                        root.tooltip-x = x;
+                                        root.tooltip-anchor-y = top;
+                                        root.tooltip-above = false;
+                                        root.tooltip-visible = true;
+                                    }
+                                    tooltip-hide => { root.tooltip-visible = false; }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        // declared here rather than inside TitleBar so it paints on top: the
+        // title bar paints early in tree order, and a dropdown overflowing its
+        // bounds would end up under the panels below it
+        if connections-open: TouchArea {
+            width: 100%;
+            height: 100%;
+            clicked => { root.connections-open = false; }
+        }
+        // a free-floating x/y-positioned Rectangle doesn't auto-size to its
+        // content and would fill the parent, so a managed layout wraps it (same
+        // as ConnectionModal's `card`)
+        if connections-open: HorizontalLayout {
+            y: Theme.px(40px);
+            width: 100%;
+            height: 100%;
+            alignment: center;
+            cross-axis-alignment: start;
+
+            ConnectionDropdown {
+                new-connection-clicked => {
+                    ConnectionEditor.id = "";
+                    ConnectionEditor.name = "";
+                    ConnectionEditor.connection-url = "";
+                    ConnectionEditor.username = "";
+                    ConnectionEditor.password = "";
+                    ConnectionEditor.ssh-enabled = false;
+                    ConnectionEditor.ssh-host = "";
+                    ConnectionEditor.ssh-port = "22";
+                    ConnectionEditor.ssh-username = "";
+                    ConnectionEditor.ssh-password = "";
+                    ConnectionEditor.ssh-key = "";
+                    ConnectionEditor.ssh-passphrase = "";
+                    ConnectionEditor.profile-enabled = false;
+                    ConnectionEditor.profile-id = "";
+                    ConnectionEditor.error = "";
+                    ConnectionEditor.test-status = "";
+                    root.connection-modal-is-edit = false;
+                    root.connections-open = false;
+                    ConnectionEditor.open = true;
+                }
+                connection-clicked(id) => {
+                    root.connections-open = false;
+                    ConnectionState.selected(id);
+                }
+                transfer-clicked => {
+                    root.connections-open = false;
+                    ConnectionTransfer.open-requested();
+                }
+                cloud-modify-clicked(id) => {
+                    root.connections-open = false;
+                    CloudSettings.open-requested(1, id);
+                }
+                modify-clicked(row) => {
+                    ConnectionEditor.id = row.id;
+                    ConnectionEditor.name = row.name;
+                    ConnectionEditor.connection-url = row.connection-url;
+                    ConnectionEditor.username = row.username;
+                    ConnectionEditor.password = "";
+                    ConnectionEditor.ssh-enabled = row.ssh-enabled;
+                    ConnectionEditor.ssh-host = row.ssh-host;
+                    ConnectionEditor.ssh-port = row.ssh-port;
+                    ConnectionEditor.ssh-username = row.ssh-username;
+                    ConnectionEditor.ssh-password = "";
+                    ConnectionEditor.ssh-key = row.ssh-key;
+                    ConnectionEditor.ssh-passphrase = "";
+                    ConnectionEditor.profile-enabled = row.profile-id != "";
+                    ConnectionEditor.profile-id = row.profile-id;
+                    ConnectionEditor.error = "";
+                    ConnectionEditor.test-status = "";
+                    root.connection-modal-is-edit = true;
+                    root.connections-open = false;
+                    ConnectionEditor.open = true;
+                }
+            }
+        }
+
+        // the AWS profiles list, under the profile button
+        if aws-profiles-open: TouchArea {
+            width: 100%;
+            height: 100%;
+            clicked => { root.aws-profiles-open = false; }
+        }
+        if aws-profiles-open: AwsProfileDropdown {
+            x: root.aws-profiles-x;
+            y: Theme.px(40px);
+            picked(name) => {
+                root.aws-profiles-open = false;
+                AwsAccount.profile-selected(name);
+            }
+        }
+
+        // tab context menu: catcher first (any click outside dismisses),
+        // menu after so it paints on top
+        if tab-menu-open: TouchArea {
+            width: 100%;
+            height: 100%;
+            pointer-event(event) => {
+                if event.kind == PointerEventKind.down {
+                    root.tab-menu-open = false;
+                }
+            }
+        }
+        if tab-menu-open: TabContextMenu {
+            x: root.tab-menu-x;
+            y: root.tab-menu-y;
+            close-others => {
+                root.tab-menu-open = false;
+                TabStrip.close-others(root.tab-menu-key);
+            }
+            close-all => {
+                root.tab-menu-open = false;
+                TabStrip.close-all();
+            }
+        }
+
+        // keyspace row menu: catcher first, menu on top (see tab menu)
+        if row-menu-open: TouchArea {
+            width: 100%;
+            height: 100%;
+            pointer-event(event) => {
+                if event.kind == PointerEventKind.down {
+                    root.row-menu-open = false;
+                }
+            }
+        }
+        if row-menu-open: RowContextMenu {
+            x: root.row-menu-x;
+            y: root.row-menu-y;
+            selection-count: KeyTree.export-mode ? KeyTree.export-count : 0;
+            export-row => {
+                root.row-menu-open = false;
+                KeyTree.export-row(root.row-menu-name);
+            }
+            select-row => {
+                root.row-menu-open = false;
+                KeyTree.export-select-row(root.row-menu-name);
+            }
+            export-selection => {
+                root.row-menu-open = false;
+                KeyTree.export-start();
+            }
+        }
+
+        // "Copy selection" menu: catcher first, menu on top (see tab menu)
+        if selection-menu-open: TouchArea {
+            width: 100%;
+            height: 100%;
+            pointer-event(event) => {
+                if event.kind == PointerEventKind.down {
+                    root.selection-menu-open = false;
+                }
+            }
+        }
+        if selection-menu-open: SelectionContextMenu {
+            x: root.selection-menu-x;
+            y: root.selection-menu-y;
+            copy => {
+                root.selection-menu-open = false;
+                KeyPanel.copy-selection(root.selection-text);
+            }
+        }
+
+        // hover tooltip: no TouchArea, so it never intercepts input; kept
+        // inside the window horizontally, eliding only if the key is wider
+        // than the whole window
+        if tooltip-visible: Rectangle {
+            x: max(Theme.px(4px), min(root.tooltip-x, root.width - self.width - Theme.px(4px)));
+            y: root.tooltip-above
+                ? max(Theme.px(4px), root.tooltip-anchor-y - self.height)
+                : min(root.tooltip-anchor-y, root.height - self.height - Theme.px(4px));
+            width: tooltip-label.width + Theme.px(16px);
+            height: Theme.px(24px);
+            background: Theme.bg-elevated;
+            border-radius: Theme.radius-sm;
+            border-width: 1px;
+            border-color: Theme.border-soft;
+            drop-shadow-color: Theme.shadow-color;
+            drop-shadow-blur: Theme.shadow-blur;
+            drop-shadow-offset-y: Theme.shadow-offset-y;
+
+            tooltip-label := Text {
+                x: Theme.px(8px);
+                y: (parent.height - self.height) / 2;
+                width: min(self.preferred-width, root.width - Theme.px(24px));
+                text: root.tooltip-text;
+                font-size: Theme.pt(12px);
+                font-family: Theme.font-mono;
+                color: Theme.text-primary;
+                vertical-alignment: center;
+                overflow: elide;
+            }
+        }
+
+        // toast pill: above the pointer (below it when there's no room, e.g.
+        // near the title bar), kept inside the window, no TouchArea so it
+        // never swallows input. Every dimension explicit — it doesn't size to content.
+        toast := Rectangle {
+            x: toast-anchor-x < 0px
+                ? (parent.width - self.width) / 2
+                : max(Theme.px(4px), min(toast-anchor-x - self.width / 2, parent.width - self.width - Theme.px(4px)));
+            y: toast-anchor-y < 0px
+                ? parent.height - Theme.px(26px) - self.height - Theme.px(14px)
+                : (toast-anchor-y - self.height - Theme.px(20px) >= Theme.px(4px)
+                    ? toast-anchor-y - self.height - Theme.px(20px)
+                    : toast-anchor-y + Theme.px(24px));
+            width: toast-label.preferred-width + Theme.px(28px);
+            height: Theme.px(30px);
+            border-radius: self.height / 2;
+            background: Theme.bg-elevated;
+            border-width: 1px;
+            border-color: Theme.border-soft;
+            drop-shadow-color: Theme.shadow-color;
+            drop-shadow-blur: Theme.shadow-blur;
+            drop-shadow-offset-y: Theme.shadow-offset-y;
+            opacity: toast-visible ? 1 : 0;
+            animate opacity { duration: 160ms; easing: ease-out; }
+
+            toast-label := Text {
+                x: (parent.width - self.width) / 2;
+                y: (parent.height - self.height) / 2;
+                text: toast-text;
+                font-size: Theme.pt(12px);
+                font-weight: 600;
+                color: Theme.text-primary;
+                vertical-alignment: center;
+            }
+        }
+
+        if Preferences.open: SettingsModal {
+            width: 100%;
+            height: 100%;
+            clipboard-has-text() => { return root.clipboard-has-text(); }
+        }
+
+        if About.open: AboutModal { }
+        if ConnectionTransfer.open: ConnectionTransferModal { }
+        if CloudSettings.open: CloudSettingsModal {
+            clipboard-has-text() => { return root.clipboard-has-text(); }
+        }
+        if ConnectionEditor.open: ConnectionModal {
+            width: 100%;
+            height: 100%;
+            clipboard-has-text() => { return root.clipboard-has-text(); }
+            is-edit: root.connection-modal-is-edit;
+        }
+    }
+
+    // Windowed frame: `no-frame` means the OS draws no border, so this
+    // hairline gives the window an edge back (maximized doesn't need one).
+    // No TouchArea, so it never intercepts clicks or resize borders.
+    if !root.maximized: Rectangle {
+        x: 0;
+        y: 0;
+        width: 100%;
+        height: 100%;
+        border-width: 1px;
+        border-color: Theme.border-soft;
+        background: transparent;
+    }
+}

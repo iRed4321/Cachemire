@@ -1,0 +1,257 @@
+import { Theme } from "theme.slint";
+import { ModalButton, SegmentedToggle, CheckBox, CheckRow, VScrollBar } from "widgets.slint";
+
+// One connection of the import file, or of the saved ones, in the list to tick.
+export struct TransferRow {
+    name: string,
+    detail: string,
+    ticked: bool,
+    // said after the name: it already exists, so it would be imported as a copy
+    note: string,
+}
+
+// What the import / export window shows; Rust fills it and acts on the callbacks.
+export global ConnectionTransfer {
+    in-out property <bool> open: false;
+    // 0: import, 1: export
+    in-out property <int> tab: 0;
+    in-out property <[TransferRow]> import-rows: [];
+    in-out property <[TransferRow]> export-rows: [];
+    in-out property <int> import-count: 0;
+    in-out property <int> export-count: 0;
+    in-out property <string> import-file: "";
+    in-out property <bool> export-passwords: false;
+    in-out property <string> message: "";
+    in-out property <bool> message-ok: false;
+    in-out property <bool> busy: false;
+    callback open-requested();
+    callback choose-file();
+    callback toggle(tab: int, index: int);
+    // Shift-click: rows `from` to `to` take the state of `from`
+    callback toggle-range(tab: int, from: int, to: int);
+    callback set-all(tab: int, ticked: bool);
+    callback run-import();
+    callback run-export();
+}
+
+// The connections to tick, one checkbox row each, in a box that scrolls.
+component TransferList inherits Rectangle {
+    in property <[TransferRow]> rows;
+    callback toggled(index: int);
+    callback range-toggled(from: int, to: int);
+    // the row last toggled, where a Shift-click's range starts (-1: none)
+    property <int> anchor: -1;
+
+    property <length> row-height: Theme.px(28px);
+    property <bool> needs-scrollbar: rows.length * row-height > self.height - Theme.px(2px);
+
+    height: Theme.px(224px);
+    background: Theme.bg-sunken;
+    border-radius: Theme.radius-md;
+    border-width: 1px;
+    border-color: Theme.border-soft;
+
+    HorizontalLayout {
+        padding: Theme.px(1px);
+        list-flick := Flickable {
+            horizontal-stretch: 1;
+            interactive: true;
+            list-content := VerticalLayout {
+                width: root.width - Theme.px(2px);
+                alignment: start;
+                for row[i] in root.rows: Rectangle {
+                    width: list-content.width;
+                    height: root.row-height;
+                    background: row-area.has-hover ? Theme.bg-hover-elevated : transparent;
+                    row-area := TouchArea {
+                        mouse-cursor: pointer;
+                        // Shift is read on the press: a click carries no modifiers
+                        property <bool> shift-down: false;
+                        pointer-event(event) => {
+                            if event.kind == PointerEventKind.down {
+                                self.shift-down = event.modifiers.shift;
+                            }
+                        }
+                        clicked => {
+                            if self.shift-down && root.anchor >= 0 && root.anchor != i {
+                                root.range-toggled(root.anchor, i);
+                            } else {
+                                root.toggled(i);
+                            }
+                            root.anchor = i;
+                        }
+                    }
+                    HorizontalLayout {
+                        padding-left: Theme.px(10px);
+                        padding-right: Theme.px(8px);
+                        spacing: Theme.px(8px);
+                        cross-axis-alignment: center;
+                        CheckBox { checked: row.ticked; }
+                        Text {
+                            text: row.name;
+                            font-size: Theme.pt(12px);
+                            font-weight: 600;
+                            color: Theme.text-primary;
+                            vertical-alignment: center;
+                            overflow: elide;
+                            max-width: Theme.px(170px);
+                        }
+                        Text {
+                            text: row.detail;
+                            font-size: Theme.pt(11px);
+                            font-italic: true;
+                            color: Theme.text-secondary;
+                            vertical-alignment: center;
+                            horizontal-stretch: 1;
+                            min-width: 0px;
+                            overflow: elide;
+                        }
+                        if row.note != "": Text {
+                            text: row.note;
+                            font-size: Theme.pt(10.5px);
+                            color: Theme.accent-orange;
+                            vertical-alignment: center;
+                        }
+                    }
+                }
+            }
+        }
+        if root.needs-scrollbar: VScrollBar {
+            content-height: list-flick.content-height;
+            content-y <=> list-flick.content-y;
+        }
+    }
+}
+
+// The window to import connections from a file and export saved ones to one, in a JSON
+// format. The connections are ticked in a list before either.
+export component ConnectionTransferModal inherits Rectangle {
+    background: #000000aa;
+
+    TouchArea {
+        clicked => { ConnectionTransfer.open = false; }
+    }
+
+    VerticalLayout {
+        alignment: center;
+        cross-axis-alignment: center;
+
+        Rectangle {
+            width: Theme.px(480px);
+            background: Theme.bg-elevated;
+            border-radius: Theme.radius-lg;
+            border-width: 1px;
+            border-color: Theme.border-soft;
+            drop-shadow-color: Theme.shadow-color;
+            drop-shadow-blur: Theme.shadow-blur;
+            drop-shadow-offset-y: Theme.shadow-offset-y;
+
+            // swallow clicks so they don't bubble to the backdrop's close
+            TouchArea { }
+
+            VerticalLayout {
+                padding: Theme.px(16px);
+                spacing: Theme.px(10px);
+
+                HorizontalLayout {
+                    spacing: Theme.px(10px);
+                    Text {
+                        text: @tr("Import / Export connections");
+                        font-size: Theme.pt(14px);
+                        font-weight: 700;
+                        color: Theme.text-primary;
+                        vertical-alignment: center;
+                        horizontal-stretch: 1;
+                    }
+                    SegmentedToggle {
+                        options: [@tr("Import"), @tr("Export")];
+                        segment-width: Theme.px(80px);
+                        current: ConnectionTransfer.tab;
+                        picked(index) => {
+                            ConnectionTransfer.tab = index;
+                            ConnectionTransfer.message = "";
+                        }
+                    }
+                }
+
+                // the same height on both tabs, so the window doesn't change size
+                Rectangle {
+                    height: Theme.px(284px);
+
+                    VerticalLayout {
+                        alignment: start;
+                        spacing: Theme.px(10px);
+
+                        // ---- import
+                        if ConnectionTransfer.tab == 0: HorizontalLayout {
+                            height: Theme.px(28px);
+                            spacing: Theme.px(10px);
+                            ModalButton { text: @tr("Choose a file…"); clicked => { ConnectionTransfer.choose-file(); } }
+                            Text {
+                                text: ConnectionTransfer.import-file == "" ? @tr("A file exported by Cachemire") : ConnectionTransfer.import-file;
+                                font-size: Theme.pt(11px);
+                                color: Theme.text-secondary;
+                                vertical-alignment: center;
+                                horizontal-stretch: 1;
+                                min-width: 0px;
+                                overflow: elide;
+                            }
+                        }
+                        if ConnectionTransfer.tab == 0: TransferList {
+                            rows: ConnectionTransfer.import-rows;
+                            toggled(index) => { ConnectionTransfer.toggle(0, index); }
+                            range-toggled(from, to) => { ConnectionTransfer.toggle-range(0, from, to); }
+                        }
+
+                        // ---- export
+                        if ConnectionTransfer.tab == 1: TransferList {
+                            rows: ConnectionTransfer.export-rows;
+                            toggled(index) => { ConnectionTransfer.toggle(1, index); }
+                            range-toggled(from, to) => { ConnectionTransfer.toggle-range(1, from, to); }
+                        }
+                        if ConnectionTransfer.tab == 1: CheckRow {
+                            text: @tr("Include the passwords");
+                            checked: ConnectionTransfer.export-passwords;
+                            toggled => { ConnectionTransfer.export-passwords = !ConnectionTransfer.export-passwords; }
+                        }
+                        if ConnectionTransfer.tab == 1: Text {
+                            text: ConnectionTransfer.export-passwords ? @tr("The passwords are written in clear text in the file.") : "";
+                            height: Theme.pt(14px);
+                            font-size: Theme.pt(10.5px);
+                            color: Theme.accent-orange;
+                        }
+                    }
+                }
+
+                // room for two lines, so a message doesn't change the window's height either
+                Text {
+                    text: ConnectionTransfer.message;
+                    height: Theme.pt(30px);
+                    color: ConnectionTransfer.message-ok ? Theme.accent-green : Theme.accent-red;
+                    font-size: Theme.pt(11px);
+                    wrap: word-wrap;
+                    overflow: elide;
+                }
+
+                HorizontalLayout {
+                    height: Theme.px(28px);
+                    spacing: Theme.px(8px);
+                    ModalButton { text: @tr("Select all"); clicked => { ConnectionTransfer.set-all(ConnectionTransfer.tab, true); } }
+                    ModalButton { text: @tr("Unselect all"); clicked => { ConnectionTransfer.set-all(ConnectionTransfer.tab, false); } }
+                    Rectangle { horizontal-stretch: 1; }
+                    ModalButton { text: @tr("Close"); clicked => { ConnectionTransfer.open = false; } }
+                    if ConnectionTransfer.tab == 0: ModalButton {
+                        text: @tr("Import ({})", ConnectionTransfer.import-count);
+                        primary: true;
+                        clicked => { if !ConnectionTransfer.busy && ConnectionTransfer.import-count > 0 { ConnectionTransfer.run-import(); } }
+                    }
+                    if ConnectionTransfer.tab == 1: ModalButton {
+                        text: @tr("Export ({})", ConnectionTransfer.export-count);
+                        primary: true;
+                        clicked => { if !ConnectionTransfer.busy && ConnectionTransfer.export-count > 0 { ConnectionTransfer.run-export(); } }
+                    }
+                }
+            }
+        }
+    }
+}

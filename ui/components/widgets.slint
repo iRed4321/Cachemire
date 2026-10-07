@@ -1,0 +1,623 @@
+import { Theme } from "theme.slint";
+
+export component IconButton inherits Rectangle {
+    in property <length> box-size: 24px;
+    in property <bool> active: false;
+    // Short hover hint ("" for none), raised as a request once the pointer
+    // rests here a moment: the window draws it (see main.slint), so the
+    // host forwards `hint-show` / `hint-hide` to its tooltip.
+    in property <string> hint: "";
+    callback clicked <=> area.clicked;
+    callback hint-show(text: string, x: length, top: length);
+    callback hint-hide();
+    width: box-size;
+    height: box-size;
+    border-radius: Theme.radius-sm;
+    background: active ? Theme.bg-selected-soft : (area.has-hover ? Theme.bg-hover : transparent);
+
+    property <bool> hovered: area.has-hover;
+    property <bool> pressed: area.pressed;
+    property <bool> hint-shown: false;
+    // a click means the user already knows what it does, so no hint until
+    // the pointer leaves and comes back
+    property <bool> hint-suppressed: false;
+    function hide-hint() {
+        if hint-shown {
+            hint-shown = false;
+            hint-hide();
+        }
+    }
+    changed hovered => {
+        if !hovered {
+            hint-suppressed = false;
+            hide-hint();
+        }
+    }
+    changed pressed => {
+        if pressed {
+            hint-suppressed = true;
+            hide-hint();
+        }
+    }
+    Timer {
+        interval: 500ms;
+        running: root.hint != "" && root.hovered && !root.hint-shown && !root.hint-suppressed;
+        triggered => {
+            root.hint-shown = true;
+            root.hint-show(root.hint, area.absolute-position.x, area.absolute-position.y + area.height + Theme.px(6px));
+        }
+    }
+
+    // centers whatever icon is placed inside, so call sites don't need
+    // manual x/y centering bindings
+    HorizontalLayout {
+        alignment: center;
+        cross-axis-alignment: center;
+        @children
+    }
+
+    area := TouchArea { }
+}
+
+// A small checkbox. `mixed` draws a dash instead of a tick: "some rows are
+// selected", used by the header's clear-all control. It takes no input; the
+// cell it sits in is the click target.
+export component CheckBox inherits Rectangle {
+    in property <bool> checked: false;
+    in property <bool> mixed: false;
+
+    width: Theme.px(15px);
+    height: Theme.px(15px);
+    border-radius: Theme.px(3px);
+    border-width: 1px;
+    border-color: (checked || mixed) ? Theme.accent-blue : Theme.text-tertiary;
+    background: (checked || mixed) ? Theme.accent-blue : transparent;
+
+    if checked: Path {
+        width: 100%;
+        height: 100%;
+        viewbox-width: 24;
+        viewbox-height: 24;
+        commands: "M6 12.5 L10.5 17 L18 7.5";
+        fill: transparent;
+        stroke: white;
+        stroke-width: 2.6px;
+        stroke-line-cap: round;
+        stroke-line-join: round;
+    }
+    if mixed && !checked: Path {
+        width: 100%;
+        height: 100%;
+        viewbox-width: 24;
+        viewbox-height: 24;
+        commands: "M6.5 12 H17.5";
+        fill: transparent;
+        stroke: white;
+        stroke-width: 2.6px;
+        stroke-line-cap: round;
+    }
+}
+
+// shared look for the floating panels: rounded corners, hairline border and
+// a soft drop shadow. Inherit this and set your own `background`/`width`/content.
+export component FloatingCard inherits Rectangle {
+    border-radius: Theme.radius-lg;
+    border-width: 1px;
+    border-color: Theme.chrome-border;
+    drop-shadow-color: Theme.shadow-color;
+    drop-shadow-blur: Theme.shadow-blur;
+    drop-shadow-offset-y: Theme.shadow-offset-y;
+}
+
+// A right-click "Paste" popup for a text box: one entry that calls `paste()` (wired
+// to `input.paste()`) and closes either way. Shown only when the clipboard has text
+// (see `clipboard-has-text()`, forwarded to Rust by the hosting component).
+export component PastePopup inherits PopupWindow {
+    callback paste();
+    property <length> row-h: Theme.px(28px);
+    property <length> pad: Theme.px(4px);
+    width: Theme.px(110px);
+    height: row-h + 2 * pad;
+
+    Rectangle {
+        background: Theme.bg-elevated;
+        border-radius: Theme.radius-md;
+        border-width: 1px;
+        border-color: Theme.border-soft;
+        drop-shadow-color: Theme.shadow-color;
+        drop-shadow-blur: Theme.shadow-blur;
+        drop-shadow-offset-y: Theme.shadow-offset-y;
+
+        VerticalLayout {
+            padding: pad;
+            Rectangle {
+                height: row-h;
+                border-radius: Theme.radius-sm;
+                background: paste-area.has-hover ? Theme.bg-hover-elevated : transparent;
+                paste-area := TouchArea {
+                    mouse-cursor: pointer;
+                    clicked => { root.paste(); }
+                }
+                HorizontalLayout {
+                    padding-left: Theme.px(12px);
+                    padding-right: Theme.px(12px);
+                    Text {
+                        text: @tr("Paste");
+                        font-size: Theme.pt(12px);
+                        color: Theme.text-primary;
+                        vertical-alignment: center;
+                    }
+                }
+            }
+        }
+    }
+}
+
+component TextMenuRow inherits Rectangle {
+    in property <string> text;
+    callback clicked <=> area.clicked;
+    height: Theme.px(28px);
+    border-radius: Theme.radius-sm;
+    background: area.has-hover ? Theme.bg-hover-elevated : transparent;
+    area := TouchArea { mouse-cursor: pointer; }
+    HorizontalLayout {
+        padding-left: Theme.px(12px);
+        padding-right: Theme.px(12px);
+        Text {
+            text: root.text;
+            font-size: Theme.pt(12px);
+            color: Theme.text-primary;
+            vertical-alignment: center;
+        }
+    }
+}
+
+// A right-click menu for a multi-line text box: Cut and Copy while text is selected, Paste while
+// the clipboard has text, and Select all. Each entry closes it, as a click in a popup does.
+export component TextMenuPopup inherits PopupWindow {
+    in property <bool> has-selection: false;
+    in property <bool> can-paste: false;
+    callback cut();
+    callback copy();
+    callback paste();
+    callback select-all();
+    property <length> pad: Theme.px(4px);
+    width: Theme.px(130px);
+    height: ((has-selection ? 2 : 0) + (can-paste ? 1 : 0) + 1) * Theme.px(28px) + 2 * pad;
+
+    Rectangle {
+        background: Theme.bg-elevated;
+        border-radius: Theme.radius-md;
+        border-width: 1px;
+        border-color: Theme.border-soft;
+        drop-shadow-color: Theme.shadow-color;
+        drop-shadow-blur: Theme.shadow-blur;
+        drop-shadow-offset-y: Theme.shadow-offset-y;
+
+        VerticalLayout {
+            padding: pad;
+            if root.has-selection: TextMenuRow { text: @tr("Cut"); clicked => { root.cut(); } }
+            if root.has-selection: TextMenuRow { text: @tr("Copy"); clicked => { root.copy(); } }
+            if root.can-paste: TextMenuRow { text: @tr("Paste"); clicked => { root.paste(); } }
+            TextMenuRow { text: @tr("Select all"); clicked => { root.select-all(); } }
+        }
+    }
+}
+
+export component HDivider inherits Rectangle {
+    height: 1px;
+    background: Theme.border;
+}
+
+// draggable gap that resizes a panel horizontally; sits between two panels in
+// place of a static spacer. `dragged(delta)` fires continuously while pressed
+// with the horizontal distance moved since the previous call.
+export component HResizeHandle inherits Rectangle {
+    width: Theme.gap;
+    callback dragged(delta: length);
+    background: (area.pressed || area.has-hover) ? Theme.accent-blue.with-alpha(0.3) : transparent;
+
+    area := TouchArea {
+        mouse-cursor: ew-resize;
+        moved => {
+            if self.pressed {
+                dragged(self.mouse-x - self.pressed-x);
+            }
+        }
+    }
+}
+
+// draggable gap that resizes a panel vertically; sits between two panels in
+// place of a static spacer. `dragged(delta)` fires continuously while pressed
+// with the vertical distance moved since the previous call.
+export component VResizeHandle inherits Rectangle {
+    height: Theme.gap;
+    callback dragged(delta: length);
+    background: (area.pressed || area.has-hover) ? Theme.accent-blue.with-alpha(0.3) : transparent;
+
+    area := TouchArea {
+        mouse-cursor: ns-resize;
+        moved => {
+            if self.pressed {
+                dragged(self.mouse-y - self.pressed-y);
+            }
+        }
+    }
+}
+
+// Vertical scrollbar for a `Flickable`: a draggable thumb, sized/positioned
+// proportionally, shown only while scrolling or hovering its strip. It takes
+// no width: its strip and thumb overlay the left edge of its slot.
+export component VScrollBar inherits Rectangle {
+    in property <length> content-height;
+    in-out property <length> content-y;
+
+    width: 0px;
+    visible: content-height > self.height;
+
+    property <float> visible-fraction: content-height <= self.height ? 1.0 : (self.height / content-height);
+    property <length> thumb-height: max(Theme.px(24px), self.height * visible-fraction);
+    property <length> track-travel: self.height - thumb-height;
+    property <length> scroll-range: max(0px, content-height - self.height);
+
+    property <bool> scrolling: false;
+    property <duration> last-scroll: 0ms;
+    property <bool> over-thumb: thumb-area.has-hover || thumb-area.pressed;
+    property <bool> engaged: scrolling || track-area.has-hover || over-thumb;
+    changed content-y => {
+        root.scrolling = true;
+        root.last-scroll = animation-tick();
+    }
+    Timer {
+        interval: 200ms;
+        running: root.scrolling;
+        triggered => {
+            if animation-tick() - root.last-scroll > 700ms {
+                root.scrolling = false;
+            }
+        }
+    }
+
+    // hover zone only: nothing else lives in this strip
+    track := Rectangle {
+        x: -Theme.scrollbar-size;
+        width: Theme.scrollbar-size;
+        height: root.height;
+        background: root.engaged ? Theme.bg-elevated.with-alpha(0.9) : Theme.bg-elevated.with-alpha(0);
+        animate background { duration: 130ms; }
+    }
+
+    track-area := TouchArea {
+        x: -Theme.scrollbar-size;
+        width: Theme.scrollbar-size;
+        height: root.height;
+    }
+
+    thumb := Rectangle {
+        width: root.over-thumb ? Theme.px(8px) : Theme.px(6px);
+        x: -self.width - Theme.px(3px);
+        height: root.thumb-height;
+        y: root.track-travel <= 0px ? 0px : root.track-travel * (-root.content-y / root.scroll-range);
+        border-radius: self.width / 2;
+        background: !root.engaged ? Theme.accent-blue.with-alpha(0)
+            : (root.over-thumb ? Theme.accent-blue.with-alpha(0.55) : Theme.accent-blue.with-alpha(0.35));
+        animate background { duration: 130ms; }
+        animate width { duration: 120ms; }
+
+        thumb-area := TouchArea {
+            property <length> drag-base-y;
+            // `mouse-y`/`pressed-y` are local to this TouchArea, which moves
+            // with the thumb — comparing before/after mixes two coordinate
+            // frames. `absolute-position` is window-relative and doesn't shift.
+            property <length> press-window-y;
+            pointer-event(event) => {
+                if event.kind == PointerEventKind.down {
+                    drag-base-y = root.content-y;
+                    press-window-y = self.mouse-y + self.absolute-position.y;
+                }
+            }
+            moved => {
+                if self.pressed && root.track-travel > 0px {
+                    let current-window-y = self.mouse-y + self.absolute-position.y;
+                    root.content-y = max(-root.scroll-range, min(0px,
+                        drag-base-y - (current-window-y - press-window-y) * (root.scroll-range / root.track-travel)));
+                }
+            }
+        }
+    }
+}
+
+// horizontal counterpart of VScrollBar, for a Flickable that scrolls sideways:
+// same arrangement (bind `content-x` two-way, `content-width` to the
+// Flickable's), zero height, same drag tracking and fading.
+export component HScrollBar inherits Rectangle {
+    in property <length> content-width;
+    in-out property <length> content-x;
+
+    height: 0px;
+    visible: content-width > self.width;
+
+    property <float> visible-fraction: content-width <= self.width ? 1.0 : (self.width / content-width);
+    property <length> thumb-width: max(Theme.px(24px), self.width * visible-fraction);
+    property <length> track-travel: self.width - thumb-width;
+    property <length> scroll-range: max(0px, content-width - self.width);
+
+    property <bool> scrolling: false;
+    property <duration> last-scroll: 0ms;
+    property <bool> over-thumb: thumb-area.has-hover || thumb-area.pressed;
+    property <bool> engaged: scrolling || track-area.has-hover || over-thumb;
+    changed content-x => {
+        root.scrolling = true;
+        root.last-scroll = animation-tick();
+    }
+    Timer {
+        interval: 200ms;
+        running: root.scrolling;
+        triggered => {
+            if animation-tick() - root.last-scroll > 700ms {
+                root.scrolling = false;
+            }
+        }
+    }
+
+    track := Rectangle {
+        y: -Theme.scrollbar-size;
+        width: root.width;
+        height: Theme.scrollbar-size;
+        background: root.engaged ? Theme.bg-elevated.with-alpha(0.9) : Theme.bg-elevated.with-alpha(0);
+        animate background { duration: 130ms; }
+    }
+
+    track-area := TouchArea {
+        y: -Theme.scrollbar-size;
+        width: root.width;
+        height: Theme.scrollbar-size;
+    }
+
+    thumb := Rectangle {
+        height: root.over-thumb ? Theme.px(8px) : Theme.px(6px);
+        y: -self.height - Theme.px(3px);
+        width: root.thumb-width;
+        x: root.track-travel <= 0px ? 0px : root.track-travel * (-root.content-x / root.scroll-range);
+        border-radius: self.height / 2;
+        background: !root.engaged ? Theme.accent-blue.with-alpha(0)
+            : (root.over-thumb ? Theme.accent-blue.with-alpha(0.55) : Theme.accent-blue.with-alpha(0.35));
+        animate background { duration: 130ms; }
+        animate height { duration: 120ms; }
+
+        thumb-area := TouchArea {
+            property <length> drag-base-x;
+            // window-relative, for the same reason as in VScrollBar: this
+            // TouchArea moves with the thumb
+            property <length> press-window-x;
+            pointer-event(event) => {
+                if event.kind == PointerEventKind.down {
+                    drag-base-x = root.content-x;
+                    press-window-x = self.mouse-x + self.absolute-position.x;
+                }
+            }
+            moved => {
+                if self.pressed && root.track-travel > 0px {
+                    let current-window-x = self.mouse-x + self.absolute-position.x;
+                    root.content-x = max(-root.scroll-range, min(0px,
+                        drag-base-x - (current-window-x - press-window-x) * (root.scroll-range / root.track-travel)));
+                }
+            }
+        }
+    }
+}
+
+// Wheel scrolling with a short inertia tail for a Flickable: part of each
+// notch applies at once, the rest decays over ~200ms. Place as the first
+// child, sized to the viewport; the host moves it via `scroll-by`.
+export component WheelScroller inherits TouchArea {
+    callback scroll-by(delta: length);
+    // Only for hosts that also scroll sideways (set `sideways`): Shift+wheel,
+    // and a horizontal wheel or trackpad gesture, report their distance here.
+    // Without it those events are left alone, as before.
+    in property <bool> sideways: false;
+    callback scroll-by-x(delta: length);
+    // Right-click over the scroller (window-relative position): it accepts
+    // presses the content in front ignores, so a host context menu has to
+    // come from here rather than an outer TouchArea.
+    callback context-requested(x: length, y: length);
+
+    property <length> velocity: 0px;
+
+    pointer-event(event) => {
+        if event.button == PointerEventButton.right && event.kind == PointerEventKind.down {
+            context-requested(self.mouse-x + self.absolute-position.x, self.mouse-y + self.absolute-position.y);
+        }
+    }
+
+    scroll-event(event) => {
+        if sideways && !event.modifiers.control {
+            if event.modifiers.shift && event.delta-y != 0 {
+                scroll-by-x(event.delta-y);
+                return accept;
+            }
+            if event.delta-x != 0 {
+                scroll-by-x(event.delta-x);
+                return accept;
+            }
+        }
+        if event.modifiers.control || event.delta-y == 0 {
+            return reject;
+        }
+        // a quarter of the notch now, the rest as a longer glide:
+        // 0.18 / (1 - 0.87) ≈ 1.4× the notch over the tail (~350ms)
+        scroll-by(event.delta-y * 0.25);
+        velocity = velocity + event.delta-y * 0.18;
+        accept
+    }
+
+    Timer {
+        interval: 16ms;
+        running: root.velocity != 0px;
+        triggered => {
+            root.scroll-by(root.velocity);
+            root.velocity = root.velocity * 0.87;
+            if abs(root.velocity) < 0.3px {
+                root.velocity = 0px;
+            }
+        }
+    }
+}
+
+// A button of the modal windows (connection form, settings): as wide as its
+// label needs (a translation can be longer than English), and never narrower
+// than a standard button.
+export component ModalButton inherits Rectangle {
+    in property <string> text;
+    // the blue call to action, or the outlined neutral one
+    in property <bool> primary: false;
+    // outlined red; `armed` turns it into a solid red confirmation
+    in property <bool> danger: false;
+    in property <bool> armed: false;
+    callback clicked <=> area.clicked;
+
+    width: max(Theme.px(72px), label.preferred-width + Theme.px(28px));
+    height: Theme.px(28px);
+    border-radius: Theme.radius-sm;
+    border-width: primary ? 0px : 1px;
+    border-color: danger ? Theme.accent-red : Theme.border-soft;
+    background: primary ? (area.has-hover ? Theme.accent-blue-dim : Theme.accent-blue)
+        : (danger ? (armed ? (area.has-hover ? Theme.accent-red.darker(0.15) : Theme.accent-red)
+                : (area.has-hover ? Theme.accent-red.with-alpha(0.15) : transparent))
+            : (area.has-hover ? Theme.bg-hover : transparent));
+
+    area := TouchArea { mouse-cursor: pointer; }
+    label := Text {
+        text: root.text;
+        color: primary ? #ffffff : (danger ? (armed ? #ffffff : Theme.accent-red) : Theme.text-secondary);
+        font-weight: (primary || armed) ? 600 : 400;
+        font-size: Theme.pt(12px);
+        horizontal-alignment: center;
+        vertical-alignment: center;
+        width: 100%;
+        height: 100%;
+    }
+}
+
+
+// A small joined choice between a few labels, the segments from `first` on: `current` is marked
+// and `picked` says which was clicked. Each segment rounds its own outer corners, as a clip
+// would render the text through an offscreen layer and blur it.
+export component SegmentedToggle inherits Rectangle {
+    in property <[string]> options;
+    in property <int> current;
+    in property <int> first: 0;
+    in property <length> segment-width: Theme.px(58px);
+    callback picked(index: int);
+
+    width: (options.length - first) * segment-width + Theme.px(2px);
+    height: Theme.px(26px);
+    border-radius: Theme.radius-sm;
+    border-width: 1px;
+    border-color: Theme.border-soft;
+
+    HorizontalLayout {
+        padding: 1px;
+        for option[i] in root.options: Rectangle {
+            property <bool> shown: i >= root.first;
+            property <bool> selected: i == root.current;
+            visible: shown;
+            width: shown ? root.segment-width : 0px;
+            border-top-left-radius: i == root.first ? Theme.radius-sm - 1px : 0px;
+            border-bottom-left-radius: i == root.first ? Theme.radius-sm - 1px : 0px;
+            border-top-right-radius: i == root.options.length - 1 ? Theme.radius-sm - 1px : 0px;
+            border-bottom-right-radius: i == root.options.length - 1 ? Theme.radius-sm - 1px : 0px;
+            background: selected ? Theme.bg-selected-soft : (area.has-hover ? Theme.bg-hover : transparent);
+            area := TouchArea {
+                mouse-cursor: pointer;
+                clicked => { root.picked(i); }
+            }
+            Text {
+                text: option;
+                font-size: Theme.pt(11px);
+                font-weight: selected ? 700 : 500;
+                color: selected ? Theme.text-primary : Theme.text-tertiary;
+                horizontal-alignment: center;
+                vertical-alignment: center;
+            }
+        }
+    }
+}
+
+// A checkbox with its label, the whole row clickable; `toggled` asks for the opposite of `checked`.
+export component CheckRow inherits Rectangle {
+    in property <string> text;
+    in property <bool> checked: false;
+    // the label in bold, as a form's section switch
+    in property <bool> bold: false;
+    callback toggled();
+
+    height: Theme.px(24px);
+
+    HorizontalLayout {
+        spacing: Theme.px(8px);
+        cross-axis-alignment: center;
+        CheckBox { checked: root.checked; }
+        Text {
+            text: root.text;
+            font-size: Theme.pt(12px);
+            font-weight: root.bold ? 600 : 400;
+            color: Theme.text-primary;
+            vertical-alignment: center;
+        }
+        Rectangle { horizontal-stretch: 1; }
+    }
+    TouchArea {
+        mouse-cursor: pointer;
+        clicked => { root.toggled(); }
+    }
+}
+
+// A square bordered icon button (the icon is its child), as the sidebar's header has them. Its hover
+// hint is drawn by the window: `tooltip-show` asks for it once the pointer rests here a moment.
+export component SquareIconButton inherits Rectangle {
+    in property <length> size: Theme.px(25px);
+    in property <string> hint: "";
+    callback clicked <=> area.clicked;
+    callback tooltip-show(text: string, x: length, top: length);
+    callback tooltip-hide();
+
+    width: size;
+    height: size;
+    border-radius: Theme.radius-md;
+    border-width: 1px;
+    border-color: Theme.border-soft;
+    background: area.has-hover ? Theme.bg-hover : Theme.bg-elevated;
+
+    out property <bool> hovered: area.has-hover;
+    property <bool> hint-shown: false;
+    function hide-hint() {
+        if hint-shown {
+            hint-shown = false;
+            tooltip-hide();
+        }
+    }
+    changed hovered => { if !hovered { hide-hint(); } }
+    Timer {
+        interval: 500ms;
+        running: root.hovered && root.hint != "" && !area.pressed && !root.hint-shown;
+        triggered => {
+            root.hint-shown = true;
+            root.tooltip-show(root.hint, area.absolute-position.x, area.absolute-position.y + area.height + Theme.px(6px));
+        }
+    }
+
+    HorizontalLayout {
+        alignment: center;
+        cross-axis-alignment: center;
+        @children
+    }
+    area := TouchArea {
+        mouse-cursor: pointer;
+        pointer-event(event) => {
+            if event.kind == PointerEventKind.down {
+                root.hide-hint();
+            }
+        }
+    }
+}
