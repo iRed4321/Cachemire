@@ -6,10 +6,9 @@ on:
   push:
     tags: ["v*"]
 
-# part of the rust-cache keys: keep the same as in ci.yml, whose jobs save the caches read here
+# part of the rust-cache keys: keep the same as in cache.yml, which saves the caches read here
 env:
   CARGO_TERM_COLOR: always
-  CARGO_TERM_QUIET: true
   CARGO_TERM_PROGRESS_WHEN: never
   CARGO_PROFILE_DEV_DEBUG: line-tables-only
 
@@ -24,19 +23,25 @@ jobs:
       - uses: actions/checkout@v7
       - name: Install Rust (rust-toolchain.toml)
         run: rustup toolchain install
-      # read-only: a tag's own cache can't be read by the next tag, so the caches come from main (ci.yml)
+      # read-only: a tag's own cache can't be read by the next tag, so the caches come from main (cache.yml)
       - uses: Swatinem/rust-cache@v2
         with:
           shared-key: ci
           save-if: false
+      # quiet: the build log then lists what gets compiled, not each crate downloaded
+      - name: Fetch crates
+        run: cargo fetch --locked --quiet
       - name: Install Linux libraries
         if: runner.os == 'Linux'
         run: |
           sudo apt-get update
           sudo apt-get install -y pkg-config libfontconfig1-dev libfreetype6-dev \
             libxkbcommon-dev libxkbcommon-x11-dev libwayland-dev libx11-dev libxcb1-dev
+      # --timings + `cargo xtask timings`: what was built and the slowest crates, in the job summary
       - name: Test
-        run: cargo test
+        run: cargo test --timings
+      - name: Report
+        run: cargo xtask timings "Tests (${{ matrix.os }})"
 
   windows:
     name: Windows (MSI and portable zip)
@@ -49,6 +54,9 @@ jobs:
         with:
           shared-key: release
           save-if: false
+      # quiet: the build log then lists what gets compiled, not each crate downloaded
+      - name: Fetch crates
+        run: cargo fetch --locked --quiet
       - name: Install WiX
         shell: pwsh
         run: |
@@ -56,7 +64,7 @@ jobs:
           "$env:USERPROFILE\.dotnet\tools" | Out-File -FilePath $env:GITHUB_PATH -Append
           & "$env:USERPROFILE\.dotnet\tools\wix.exe" eula accept wix7
       - name: Build
-        run: cargo xtask build-windows
+        run: cargo xtask build-windows --timings
       - uses: actions/upload-artifact@v7
         with:
           name: windows
@@ -75,6 +83,9 @@ jobs:
         with:
           shared-key: release
           save-if: false
+      # quiet: the build log then lists what gets compiled, not each crate downloaded
+      - name: Fetch crates
+        run: cargo fetch --locked --quiet
       - name: Install Linux libraries
         run: |
           sudo apt-get update
@@ -85,7 +96,7 @@ jobs:
         with:
           tool: cargo-deb
       - name: Build
-        run: cargo xtask build-linux
+        run: cargo xtask build-linux --timings
       - uses: actions/upload-artifact@v7
         with:
           name: linux

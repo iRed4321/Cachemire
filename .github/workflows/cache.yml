@@ -1,0 +1,64 @@
+name: Cache
+
+# Fills the caches read by releases and pull requests. A tag's own cache can't be read by the
+# next tag, so this runs on main: after each release, or by hand (e.g. after a toolchain bump).
+on:
+  workflow_run:
+    workflows: [Release]
+    types: [completed]
+  workflow_dispatch:
+
+# part of the rust-cache keys: keep the same as in ci.yml and release.yml, which read these caches
+env:
+  CARGO_TERM_COLOR: always
+  CARGO_TERM_PROGRESS_WHEN: never
+  CARGO_PROFILE_DEV_DEBUG: line-tables-only
+
+# bash on Windows too: a multi-line step then stops at its first failing command
+defaults:
+  run:
+    shell: bash
+
+jobs:
+  cache:
+    name: Cache ${{ matrix.cache }} (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+        cache: [ci, release]
+    steps:
+      - uses: actions/checkout@v7
+      - name: Install Rust (rust-toolchain.toml)
+        run: rustup toolchain install
+      # an exact hit (same Cargo.lock, toolchain and env) has nothing new to save: no build then
+      - id: cache
+        uses: Swatinem/rust-cache@v2
+        with:
+          shared-key: ${{ matrix.cache }}
+          save-if: ${{ github.ref == 'refs/heads/main' }}
+      # quiet: the build log then lists what gets compiled, not each crate downloaded
+      - name: Fetch crates
+        if: steps.cache.outputs.cache-hit != 'true'
+        run: cargo fetch --locked --quiet
+      - name: Install Linux libraries
+        if: runner.os == 'Linux' && steps.cache.outputs.cache-hit != 'true'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y pkg-config libfontconfig1-dev libfreetype6-dev \
+            libxkbcommon-dev libxkbcommon-x11-dev libwayland-dev libx11-dev libxcb1-dev
+      # what the pull request checks and the release tests build, plus xtask (its reports)
+      - name: Build (tests)
+        if: matrix.cache == 'ci' && steps.cache.outputs.cache-hit != 'true'
+        run: |
+          cargo clippy --all-targets --locked --timings
+          cargo xtask timings "Clippy (${{ matrix.os }})"
+          cargo test --no-run --locked --timings
+          cargo xtask timings "Tests (${{ matrix.os }})"
+      # what the release packages build: the app (release profile), plus xtask (its reports)
+      - name: Build (release)
+        if: matrix.cache == 'release' && steps.cache.outputs.cache-hit != 'true'
+        run: |
+          cargo build --profile release --locked --timings
+          cargo xtask timings "Release build (${{ matrix.os }})"

@@ -4,14 +4,15 @@
 use std::path::PathBuf;
 use std::process::Command;
 
-use crate::tools::{Result, cargo, repo_root, run, works, zip_file};
+use crate::timings;
+use crate::tools::{Result, cargo, repo_root, run, summary_packages, works, zip_file};
 use crate::version::{in_release, msi_version, read_version};
 
-pub fn run_task(fast: bool, stable: bool, clean: bool, skip_installer: bool, with_zip: bool) -> Result<()> {
-    in_release(fast, stable, || build(fast, clean, skip_installer, with_zip))
+pub fn run_task(fast: bool, stable: bool, clean: bool, skip_installer: bool, with_zip: bool, timed: bool) -> Result<()> {
+    in_release(fast, stable, || build(fast, clean, skip_installer, with_zip, timed))
 }
 
-fn build(fast: bool, clean: bool, skip_installer: bool, with_zip: bool) -> Result<()> {
+fn build(fast: bool, clean: bool, skip_installer: bool, with_zip: bool, timed: bool) -> Result<()> {
     let root = repo_root();
     let profile = if fast { "fast" } else { "release" };
     let release = root.join("target").join(profile);
@@ -23,7 +24,10 @@ fn build(fast: bool, clean: bool, skip_installer: bool, with_zip: bool) -> Resul
     }
     let version = read_version(&std::fs::read_to_string(root.join("Cargo.toml")).map_err(|e| e.to_string())?)?;
     println!("Building Cachemire {version} ({profile})...");
-    run(cargo().current_dir(&root).args(["build", "--profile", profile, "--locked"]))?;
+    run(cargo().current_dir(&root).args(["build", "--profile", profile, "--locked"]).args(timed.then_some("--timings")))?;
+    if timed {
+        timings::publish(&format!("Cachemire {version} for Windows ({profile})"))?;
+    }
     if !exe.is_file() {
         return Err(format!("executable not found: {}", exe.display()));
     }
@@ -60,13 +64,13 @@ fn build(fast: bool, clean: bool, skip_installer: bool, with_zip: bool) -> Resul
     }
 
     println!("\nExecutable: {}\nPortable:   {}", exe.display(), zip_path.display());
-    if let Some(msi) = msi {
+    if let Some(msi) = &msi {
         println!("Installer:  {}", msi.display());
         if with_zip {
             println!("MSI zip:    {}", msi.with_extension("msi.zip").display());
         }
     }
-    Ok(())
+    summary_packages(&[Some(zip_path.as_path()), msi.as_deref()].into_iter().flatten().collect::<Vec<_>>())
 }
 
 /// The WiX CLI: an installed one, else the .NET global tool, installed if missing

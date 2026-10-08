@@ -7,6 +7,7 @@ mod deb;
 mod i18n;
 mod install;
 mod linux;
+mod timings;
 mod tools;
 mod version;
 mod windows;
@@ -53,6 +54,9 @@ enum Task {
         /// Also zip the package (the installer, .deb or AppImage)
         #[arg(long)]
         with_zip: bool,
+        /// Build with `cargo --timings` and report what was built and the slowest crates (see `timings`)
+        #[arg(long = "timings")]
+        timed: bool,
     },
     /// Release build packed as a single-file AppImage in target/appimage
     BuildAppimage {
@@ -65,6 +69,9 @@ enum Task {
         /// Also zip the package (the installer, .deb or AppImage)
         #[arg(long)]
         with_zip: bool,
+        /// Build with `cargo --timings` and report what was built and the slowest crates (see `timings`)
+        #[arg(long = "timings")]
+        timed: bool,
     },
     /// Release build packaged as a .deb in target/debian (needs cargo-deb)
     BuildDeb {
@@ -89,6 +96,15 @@ enum Task {
         /// Also zip the package (the installer, .deb or AppImage)
         #[arg(long)]
         with_zip: bool,
+        /// Build with `cargo --timings` and report what was built and the slowest crates (see `timings`)
+        #[arg(long = "timings")]
+        timed: bool,
+    },
+    /// Report the last `cargo … --timings` build (what was built, the slowest crates), also as the GitHub job summary
+    Timings {
+        /// The report's heading
+        #[arg(default_value = "Build timings")]
+        title: String,
     },
     /// Cargo install plus the desktop entry and icons (Linux) or the Start menu shortcut (Windows)
     Install {
@@ -102,10 +118,11 @@ fn main() {
     let result = match Cli::parse().task {
         Task::I18n => i18n::run_task(),
         Task::Bump { part, stable, no_tag } => version::run_task(part, stable, no_tag),
-        Task::BuildWindows { fast, stable, clean, skip_installer, with_zip } => windows::run_task(fast, stable, clean, skip_installer, with_zip),
-        Task::BuildAppimage { fast, stable, with_zip } => appimage::run_task(fast, stable, with_zip),
+        Task::BuildWindows { fast, stable, clean, skip_installer, with_zip, timed } => windows::run_task(fast, stable, clean, skip_installer, with_zip, timed),
+        Task::BuildAppimage { fast, stable, with_zip, timed } => appimage::run_task(fast, stable, with_zip, timed),
         Task::BuildDeb { fast, stable, with_zip } => deb::run_task(fast, stable, with_zip),
-        Task::BuildLinux { fast, stable, with_zip } => linux::run_task(fast, stable, with_zip),
+        Task::BuildLinux { fast, stable, with_zip, timed } => linux::run_task(fast, stable, with_zip, timed),
+        Task::Timings { title } => timings::publish(&title),
         Task::Install { skip_binary } => install::run_task(skip_binary),
     };
     if let Err(e) = result {
