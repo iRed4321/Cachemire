@@ -4,32 +4,37 @@
 use std::path::{Path, PathBuf};
 use std::process::Command;
 
-use crate::tools::{Result, cargo, repo_root, run, works, zip_file};
+use crate::timings;
+use crate::tools::{Result, cargo, repo_root, run, summary_packages, works, zip_file};
 use crate::version::{in_release, read_version};
 
 const TOOL_URL: &str = "https://github.com/AppImage/appimagetool/releases/download/continuous/appimagetool-x86_64.AppImage";
 
-pub fn run_task(fast: bool, stable: bool, with_zip: bool) -> Result<()> {
+pub fn run_task(fast: bool, stable: bool, with_zip: bool, timed: bool) -> Result<()> {
     if !cfg!(all(target_os = "linux", target_arch = "x86_64")) {
         return Err("build-appimage only runs on x86_64 Linux".into());
     }
     in_release(fast, stable, || {
-        compile(fast)?;
-        package(fast, with_zip)
+        compile(fast, timed)?;
+        summary_packages(&[&package(fast, with_zip)?])
     })
 }
 
-/// The release (or `fast`) build of the binary, into `target/<profile>`.
-pub fn compile(fast: bool) -> Result<()> {
+/// The release (or `fast`) build of the binary, into `target/<profile>`; `timed` reports its timings.
+pub fn compile(fast: bool, timed: bool) -> Result<()> {
     let root = repo_root();
     let profile = if fast { "fast" } else { "release" };
     let version = read_version(&std::fs::read_to_string(root.join("Cargo.toml")).map_err(|e| e.to_string())?)?;
     println!("Building Cachemire {version} ({profile})...");
-    run(cargo().current_dir(&root).args(["build", "--profile", profile, "--locked"]))
+    run(cargo().current_dir(&root).args(["build", "--profile", profile, "--locked"]).args(timed.then_some("--timings")))?;
+    if timed {
+        timings::publish(&format!("Cachemire {version} for Linux ({profile})"))?;
+    }
+    Ok(())
 }
 
-/// Packs the binary already built by [`compile`] as an AppImage.
-pub fn package(fast: bool, with_zip: bool) -> Result<()> {
+/// Packs the binary already built by [`compile`] as an AppImage, and returns its path.
+pub fn package(fast: bool, with_zip: bool) -> Result<PathBuf> {
     let root = repo_root();
     let profile = if fast { "fast" } else { "release" };
     let version = read_version(&std::fs::read_to_string(root.join("Cargo.toml")).map_err(|e| e.to_string())?)?;
@@ -46,7 +51,7 @@ pub fn package(fast: bool, with_zip: bool) -> Result<()> {
     if with_zip {
         zip_file(&output, &output.with_extension("AppImage.zip"), 0o755)?;
     }
-    Ok(())
+    Ok(output)
 }
 
 /// The AppDir layout: the binary, `AppRun`, and the desktop entry and icons at its root and in `usr/share`.
