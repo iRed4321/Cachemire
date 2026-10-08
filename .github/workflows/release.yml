@@ -123,5 +123,7 @@ jobs:
           flags=()
           # a tag with a suffix (v3.0.0-beta.10) is a pre-release
           [[ "$TAG" == *-* ]] && flags+=(--prerelease)
-          gh release create "$TAG" dist/* --repo "$GITHUB_REPOSITORY" \
+          # every file, as an artifact keeps the folders of its files (the linux one: debian/, appimage/)
+          mapfile -t files < <(find dist -type f)
+          gh release create "$TAG" "${files[@]}" --repo "$GITHUB_REPOSITORY" \
             --title "Cachemire ${TAG#v}" --generate-notes "${flags[@]}"
