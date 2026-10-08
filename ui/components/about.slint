@@ -68,20 +68,26 @@ export component AboutModal inherits Rectangle {
                     }
                 }
                 Rectangle { height: Theme.px(8px); }
+                // one button per row: the download button's label is long, and two in a row would
+                // be wider than the card
                 HorizontalLayout {
                     alignment: center;
-                    spacing: Theme.px(8px);
                     ModalButton {
                         text: About.busy ? @tr("Checking...") : @tr("Check for updates");
                         clicked => { if (!About.busy) { About.check(); } }
                     }
-                    if About.update-available: ModalButton {
+                }
+                if About.update-available: HorizontalLayout {
+                    alignment: center;
+                    ModalButton {
                         text: About.download-label;
                         primary: true;
                         clicked => { if (!About.busy) { About.download(); } }
                     }
                 }
                 if About.status != "": Text {
+                    // a layout can't tell how far wrapped text grows: about 38 characters a line
+                    height: Theme.pt(16px) * max(1, ceil(self.text.character-count / 38));
                     text: About.status;
                     font-size: Theme.pt(12px);
                     color: Theme.text-secondary;
