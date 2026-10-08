@@ -31,8 +31,8 @@
 
     <!-- Uninstall with DELETEUSERDATA=1 (the checkbox of StartDlg): removes the user's data folder
          (connections, settings, history), as the user who runs the uninstall. -->
-    <SetProperty Id="DeleteUserDataCmd" Value="cmd.exe /c rmdir /s /q &quot;[AppDataFolder]Cachemire&quot;" Before="DeleteUserData" Sequence="execute" Condition="REMOVE=&quot;ALL&quot; AND NOT UPGRADINGPRODUCTCODE AND DELETEUSERDATA=1" />
-    <CustomAction Id="DeleteUserData" Property="DeleteUserDataCmd" Execute="deferred" Impersonate="yes" Return="ignore" />
+    <SetProperty Id="DeleteUserDataCmd" Value="[System64Folder]cmd.exe" Before="DeleteUserData" Sequence="execute" Condition="REMOVE=&quot;ALL&quot; AND NOT UPGRADINGPRODUCTCODE AND DELETEUSERDATA=1" />
+    <CustomAction Id="DeleteUserData" Property="DeleteUserDataCmd" ExeCommand="/c rmdir /s /q &quot;[AppDataFolder]Cachemire&quot;" Execute="deferred" Impersonate="yes" Return="ignore" />
     <InstallExecuteSequence>
       <Custom Action="DeleteUserData" Before="RemoveFiles" Condition="REMOVE=&quot;ALL&quot; AND NOT UPGRADINGPRODUCTCODE AND DELETEUSERDATA=1" />
     </InstallExecuteSequence>
