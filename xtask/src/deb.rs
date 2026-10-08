@@ -8,16 +8,22 @@ pub fn run_task(fast: bool, stable: bool, with_zip: bool) -> Result<()> {
     if !cfg!(target_os = "linux") {
         return Err("build-deb only runs on Linux".into());
     }
-    in_release(fast, stable, || build(fast, with_zip))
+    in_release(fast, stable, || build(fast, with_zip, false))
 }
 
-fn build(fast: bool, with_zip: bool) -> Result<()> {
+/// Packages the .deb; with `no_build`, from the binary already in `target/<profile>`.
+pub fn build(fast: bool, with_zip: bool, no_build: bool) -> Result<()> {
     if !works("cargo-deb", "--version") {
         println!("cargo-deb is not installed: installing it (once)...");
         run(cargo().args(["install", "cargo-deb", "--locked"]))?;
     }
     let out = repo_root().join("target/debian");
-    run(cargo().current_dir(repo_root()).args(["deb", "--locked", "--profile", if fast { "fast" } else { "release" }]))?;
+    let mut command = cargo();
+    command.current_dir(repo_root()).args(["deb", "--locked", "--profile", if fast { "fast" } else { "release" }]);
+    if no_build {
+        command.arg("--no-build");
+    }
+    run(&mut command)?;
     println!("\nPackage written under {}", out.display());
     if with_zip {
         // the package cargo-deb just wrote: the newest .deb of the folder

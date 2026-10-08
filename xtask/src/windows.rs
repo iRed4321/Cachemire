@@ -23,7 +23,7 @@ fn build(fast: bool, clean: bool, skip_installer: bool, with_zip: bool) -> Resul
     }
     let version = read_version(&std::fs::read_to_string(root.join("Cargo.toml")).map_err(|e| e.to_string())?)?;
     println!("Building Cachemire {version} ({profile})...");
-    run(cargo().current_dir(&root).args(["build", "--profile", profile]))?;
+    run(cargo().current_dir(&root).args(["build", "--profile", profile, "--locked"]))?;
     if !exe.is_file() {
         return Err(format!("executable not found: {}", exe.display()));
     }

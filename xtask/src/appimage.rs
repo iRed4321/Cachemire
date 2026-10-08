@@ -13,16 +13,26 @@ pub fn run_task(fast: bool, stable: bool, with_zip: bool) -> Result<()> {
     if !cfg!(all(target_os = "linux", target_arch = "x86_64")) {
         return Err("build-appimage only runs on x86_64 Linux".into());
     }
-    in_release(fast, stable, || build(fast, with_zip))
+    in_release(fast, stable, || {
+        compile(fast)?;
+        package(fast, with_zip)
+    })
 }
 
-fn build(fast: bool, with_zip: bool) -> Result<()> {
+/// The release (or `fast`) build of the binary, into `target/<profile>`.
+pub fn compile(fast: bool) -> Result<()> {
     let root = repo_root();
     let profile = if fast { "fast" } else { "release" };
     let version = read_version(&std::fs::read_to_string(root.join("Cargo.toml")).map_err(|e| e.to_string())?)?;
     println!("Building Cachemire {version} ({profile})...");
-    run(cargo().current_dir(&root).args(["build", "--profile", profile, "--locked"]))?;
+    run(cargo().current_dir(&root).args(["build", "--profile", profile, "--locked"]))
+}
 
+/// Packs the binary already built by [`compile`] as an AppImage.
+pub fn package(fast: bool, with_zip: bool) -> Result<()> {
+    let root = repo_root();
+    let profile = if fast { "fast" } else { "release" };
+    let version = read_version(&std::fs::read_to_string(root.join("Cargo.toml")).map_err(|e| e.to_string())?)?;
     let out = root.join(if fast { "target/appimage-fast" } else { "target/appimage" });
     let app_dir = out.join("Cachemire.AppDir");
     let _ = std::fs::remove_dir_all(&app_dir);

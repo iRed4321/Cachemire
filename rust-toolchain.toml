@@ -1,0 +1,6 @@
+# The Rust version of every build, local and CI. Its rustc is part of the CI cache keys,
+# so a new one starts the caches over: bump it by hand.
+[toolchain]
+channel = "1.99.0"
+profile = "minimal"
+components = ["clippy", "rustfmt", "rust-src"]

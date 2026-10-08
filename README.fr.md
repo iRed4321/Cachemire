@@ -96,7 +96,7 @@ Ajoutez une connexion depuis la barre de titre (**Nouvelle connexion…**), sél
 | `cargo run --profile fast` | optimisé, sans LTO : recompile en quelques secondes, idéal pour essayer l'application réelle |
 | `cargo run --release` | avec LTO, sans symboles : la version à distribuer |
 
-Les installeurs se construisent avec `cargo xtask build-windows` (MSI et zip portable), `cargo xtask build-deb` et `cargo xtask build-appimage`.
+Les installeurs se construisent avec `cargo xtask build-windows` (MSI et zip portable), `cargo xtask build-deb` et `cargo xtask build-appimage` (ou les deux à partir d'une seule compilation avec `cargo xtask build-linux`).
 
 ## Vos données
 

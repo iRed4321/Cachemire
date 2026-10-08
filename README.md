@@ -94,7 +94,7 @@ Add a connection from the title bar (**New connection…**), pick it, and browse
 | `cargo run --profile fast` | optimized, no LTO: rebuilds in seconds, good for trying the real thing |
 | `cargo run --release` | LTO, stripped: the one to ship |
 
-Installers are built with `cargo xtask build-windows` (MSI and portable zip), `cargo xtask build-deb` and `cargo xtask build-appimage`.
+Installers are built with `cargo xtask build-windows` (MSI and portable zip), `cargo xtask build-deb` and `cargo xtask build-appimage` (or both from one build with `cargo xtask build-linux`).
 
 ## Your data
 

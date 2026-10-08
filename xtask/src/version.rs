@@ -148,13 +148,25 @@ pub fn in_release(fast: bool, stable: bool, build: impl FnOnce() -> Result<()>) 
     let tag = format!("v{version}");
     if at_head.is_some() {
         println!("Building {tag}, the tag on HEAD.");
+        check_tagged_version(&root, &version)?;
         return build();
     }
     let origin = git(&root, &["symbolic-ref", "--quiet", "--short", "HEAD"]).or_else(|_| git(&root, &["rev-parse", "HEAD"]))?;
     println!("Checking out {tag}...");
     git(&root, &["checkout", "--quiet", &tag])?;
     let _restore = Restore { root: &root, origin };
+    check_tagged_version(&root, &version)?;
     build()
+}
+
+/// Fails unless the checked out Cargo.toml holds `version`, the one of its tag.
+fn check_tagged_version(root: &Path, version: &Version) -> Result<()> {
+    let toml = std::fs::read_to_string(root.join("Cargo.toml")).map_err(|e| format!("reading Cargo.toml: {e}"))?;
+    let (_, found) = find_version(&toml)?;
+    if &found != version {
+        return Err(format!("the tag v{version} is on a commit whose Cargo.toml says {found}: tag releases with `cargo bump`"));
+    }
+    Ok(())
 }
 
 pub fn run_task(part: Part, stable_now: bool, no_tag: bool) -> Result<()> {
