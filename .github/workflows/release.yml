@@ -1,15 +1,17 @@
 name: Release
 
-# Runs when a v* tag is pushed (made by `cargo bump`); builds the packages
-# from that tag and attaches them to a GitHub release.
+# Runs when a v* tag is pushed (made by `cargo bump`): tests and builds the packages from that
+# tag side by side, and attaches the packages to a GitHub release only if everything passed.
 on:
   push:
     tags: ["v*"]
 
+# part of the rust-cache keys: keep the same as in ci.yml, whose jobs save the caches read here
 env:
   CARGO_TERM_COLOR: always
   CARGO_TERM_QUIET: true
   CARGO_TERM_PROGRESS_WHEN: never
+  CARGO_PROFILE_DEV_DEBUG: line-tables-only
 
 jobs:
   test:
@@ -20,7 +22,8 @@ jobs:
         os: [ubuntu-latest, windows-latest]
     steps:
       - uses: actions/checkout@v7
-      - uses: dtolnay/rust-toolchain@stable
+      - name: Install Rust (rust-toolchain.toml)
+        run: rustup toolchain install
       # read-only: a tag's own cache can't be read by the next tag, so the caches come from main (ci.yml)
       - uses: Swatinem/rust-cache@v2
         with:
@@ -37,11 +40,11 @@ jobs:
 
   windows:
     name: Windows (MSI and portable zip)
-    needs: test
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v7
-      - uses: dtolnay/rust-toolchain@stable
+      - name: Install Rust (rust-toolchain.toml)
+        run: rustup toolchain install
       - uses: Swatinem/rust-cache@v2
         with:
           shared-key: release
@@ -61,13 +64,13 @@ jobs:
             target/windows/*.msi
             target/windows/Cachemire-Portable-*.zip
 
-  deb:
-    name: Debian package
-    needs: test
+  linux:
+    name: Linux (deb and AppImage)
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
-      - uses: dtolnay/rust-toolchain@stable
+      - name: Install Rust (rust-toolchain.toml)
+        run: rustup toolchain install
       - uses: Swatinem/rust-cache@v2
         with:
           shared-key: release
@@ -82,38 +85,17 @@ jobs:
         with:
           tool: cargo-deb
       - name: Build
-        run: cargo xtask build-deb
+        run: cargo xtask build-linux
       - uses: actions/upload-artifact@v7
         with:
-          name: deb
-          path: target/debian/*.deb
-
-  appimage:
-    name: AppImage
-    needs: test
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v7
-      - uses: dtolnay/rust-toolchain@stable
-      - uses: Swatinem/rust-cache@v2
-        with:
-          shared-key: release
-          save-if: false
-      - name: Install Linux libraries
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y pkg-config libfontconfig1-dev libfreetype6-dev \
-            libxkbcommon-dev libxkbcommon-x11-dev libwayland-dev libx11-dev libxcb1-dev
-      - name: Build
-        run: cargo xtask build-appimage
-      - uses: actions/upload-artifact@v7
-        with:
-          name: appimage
-          path: target/appimage/*.AppImage
+          name: linux
+          path: |
+            target/debian/*.deb
+            target/appimage/*.AppImage
 
   publish:
     name: GitHub release
-    needs: [windows, deb, appimage]
+    needs: [test, windows, linux]
     runs-on: ubuntu-latest
     permissions:
       contents: write

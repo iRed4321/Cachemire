@@ -6,6 +6,7 @@ mod appimage;
 mod deb;
 mod i18n;
 mod install;
+mod linux;
 mod tools;
 mod version;
 mod windows;
@@ -77,6 +78,18 @@ enum Task {
         #[arg(long)]
         with_zip: bool,
     },
+    /// The .deb and the AppImage from a single release build (needs cargo-deb)
+    BuildLinux {
+        /// Use the `fast` profile (no LTO, quicker link) and build the working tree, not a release
+        #[arg(long)]
+        fast: bool,
+        /// Build the latest stable release instead of the latest one
+        #[arg(long)]
+        stable: bool,
+        /// Also zip the package (the installer, .deb or AppImage)
+        #[arg(long)]
+        with_zip: bool,
+    },
     /// Cargo install plus the desktop entry and icons (Linux) or the Start menu shortcut (Windows)
     Install {
         /// Linux only: install just the desktop entry and icons
@@ -92,6 +105,7 @@ fn main() {
         Task::BuildWindows { fast, stable, clean, skip_installer, with_zip } => windows::run_task(fast, stable, clean, skip_installer, with_zip),
         Task::BuildAppimage { fast, stable, with_zip } => appimage::run_task(fast, stable, with_zip),
         Task::BuildDeb { fast, stable, with_zip } => deb::run_task(fast, stable, with_zip),
+        Task::BuildLinux { fast, stable, with_zip } => linux::run_task(fast, stable, with_zip),
         Task::Install { skip_binary } => install::run_task(skip_binary),
     };
     if let Err(e) = result {

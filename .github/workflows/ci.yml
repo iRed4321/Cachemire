@@ -7,12 +7,15 @@ on:
 
 concurrency:
   group: ci-${{ github.ref }}
-  cancel-in-progress: true
+  # only pull requests: a cancelled run on main saves no cache
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
+# part of the rust-cache keys: keep the same as in release.yml, whose jobs read these caches
 env:
   CARGO_TERM_COLOR: always
   CARGO_TERM_QUIET: true
   CARGO_TERM_PROGRESS_WHEN: never
+  CARGO_PROFILE_DEV_DEBUG: line-tables-only
 
 jobs:
   test:
@@ -26,9 +29,8 @@ jobs:
         os: [ubuntu-latest, windows-latest]
     steps:
       - uses: actions/checkout@v7
-      - uses: dtolnay/rust-toolchain@stable
-        with:
-          components: clippy
+      - name: Install Rust (rust-toolchain.toml)
+        run: rustup toolchain install
       # caches are only saved from main: a branch's or tag's own cache can't be read by any other
       - uses: Swatinem/rust-cache@v2
         with:
@@ -46,7 +48,7 @@ jobs:
         run: cargo test
 
   # Builds the release profile on main, so the release workflow (which runs on a tag, and can
-  # only read the caches of main) starts from compiled dependencies instead of from nothing.
+  # only read the caches of main) starts from compiled dependencies. Only when the key changed.
   release-cache:
     name: Release build cache (${{ matrix.os }})
     if: ${{ github.ref == 'refs/heads/main' && !startsWith(github.event.head_commit.message, '[AUTO]') }}
@@ -57,15 +59,21 @@ jobs:
         os: [ubuntu-latest, windows-latest]
     steps:
       - uses: actions/checkout@v7
-      - uses: dtolnay/rust-toolchain@stable
-      - uses: Swatinem/rust-cache@v2
+      - name: Install Rust (rust-toolchain.toml)
+        run: rustup toolchain install
+      - id: cache
+        uses: Swatinem/rust-cache@v2
         with:
           shared-key: release
       - name: Install Linux libraries
-        if: runner.os == 'Linux'
+        if: runner.os == 'Linux' && steps.cache.outputs.cache-hit != 'true'
         run: |
           sudo apt-get update
           sudo apt-get install -y pkg-config libfontconfig1-dev libfreetype6-dev \
             libxkbcommon-dev libxkbcommon-x11-dev libwayland-dev libx11-dev libxcb1-dev
+      # the same builds as the release jobs: the app (release profile) and xtask (dev profile)
       - name: Build
-        run: cargo build --release
+        if: steps.cache.outputs.cache-hit != 'true'
+        run: |
+          cargo build --profile release --locked
+          cargo build --package xtask --locked
