@@ -3,14 +3,14 @@
 
 use std::path::PathBuf;
 
-use crate::tools::{Result, cargo, repo_root, run, summary_packages, works, zip_file};
+use crate::tools::{Result, cargo, repo_root, run, works, zip_file};
 use crate::version::in_release;
 
 pub fn run_task(fast: bool, stable: bool, with_zip: bool) -> Result<()> {
     if !cfg!(target_os = "linux") {
         return Err("build-deb only runs on Linux".into());
     }
-    in_release(fast, stable, || summary_packages(&[&build(fast, with_zip, false)?]))
+    in_release(fast, stable, || build(fast, with_zip, false).map(drop))
 }
 
 /// Packages the .deb and returns its path; with `no_build`, from the binary already in `target/<profile>`.

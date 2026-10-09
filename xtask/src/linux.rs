@@ -1,17 +1,21 @@
 //! `cargo xtask build-linux`: the .deb and the AppImage from a single release build
 //! (see `build-deb` and `build-appimage`), in `target/debian/` and `target/appimage/`.
 
-use crate::tools::{Result, summary_packages};
+use crate::tools::Result;
 use crate::version::in_release;
-use crate::{appimage, deb};
+use crate::{appimage, deb, report};
 
-pub fn run_task(fast: bool, stable: bool, with_zip: bool, timed: bool) -> Result<()> {
+pub fn run_task(fast: bool, stable: bool, with_zip: bool, reported: bool) -> Result<()> {
     if !cfg!(all(target_os = "linux", target_arch = "x86_64")) {
         return Err("build-linux only runs on x86_64 Linux".into());
     }
     in_release(fast, stable, || {
-        appimage::compile(fast, timed)?;
+        appimage::compile(fast, reported)?;
         let appimage = appimage::package(fast, with_zip)?;
-        summary_packages(&[&appimage, &deb::build(fast, with_zip, true)?])
+        let deb = deb::build(fast, with_zip, true)?;
+        if reported {
+            report::save("Release build", &[&appimage, &deb])?;
+        }
+        Ok(())
     })
 }

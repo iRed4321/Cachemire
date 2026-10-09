@@ -7,7 +7,7 @@ mod deb;
 mod i18n;
 mod install;
 mod linux;
-mod timings;
+mod report;
 mod tools;
 mod version;
 mod windows;
@@ -54,9 +54,9 @@ enum Task {
         /// Also zip the package (the installer, .deb or AppImage)
         #[arg(long)]
         with_zip: bool,
-        /// Build with `cargo --timings` and report what was built and the slowest crates (see `timings`)
-        #[arg(long = "timings")]
-        timed: bool,
+        /// Build with `cargo --timings` and save it, with the packages, as the "Release build" step of the CI report (see `report`)
+        #[arg(long = "report")]
+        reported: bool,
     },
     /// Release build packed as a single-file AppImage in target/appimage
     BuildAppimage {
@@ -69,9 +69,9 @@ enum Task {
         /// Also zip the package (the installer, .deb or AppImage)
         #[arg(long)]
         with_zip: bool,
-        /// Build with `cargo --timings` and report what was built and the slowest crates (see `timings`)
-        #[arg(long = "timings")]
-        timed: bool,
+        /// Build with `cargo --timings` and save it, with the packages, as the "Release build" step of the CI report (see `report`)
+        #[arg(long = "report")]
+        reported: bool,
     },
     /// Release build packaged as a .deb in target/debian (needs cargo-deb)
     BuildDeb {
@@ -96,15 +96,22 @@ enum Task {
         /// Also zip the package (the installer, .deb or AppImage)
         #[arg(long)]
         with_zip: bool,
-        /// Build with `cargo --timings` and report what was built and the slowest crates (see `timings`)
-        #[arg(long = "timings")]
-        timed: bool,
+        /// Build with `cargo --timings` and save it, with the packages, as the "Release build" step of the CI report (see `report`)
+        #[arg(long = "report")]
+        reported: bool,
     },
-    /// Report the last `cargo … --timings` build (what was built, the slowest crates), also as the GitHub job summary
-    Timings {
-        /// The report's heading
-        #[arg(default_value = "Build timings")]
+    /// Save what the last `cargo … --timings` build compiled as one step of the CI report, in target/reports
+    ReportBuild {
+        /// The step's name in the report (e.g. "Tests")
+        step: String,
+    },
+    /// Merge the saved reports into one summary comparing the systems, also the GitHub job summary
+    Report {
+        /// The summary's heading
         title: String,
+        /// Where the saved reports are (searched recursively), target/reports by default
+        #[arg(long)]
+        dir: Option<std::path::PathBuf>,
     },
     /// Cargo install plus the desktop entry and icons (Linux) or the Start menu shortcut (Windows)
     Install {
@@ -118,11 +125,12 @@ fn main() {
     let result = match Cli::parse().task {
         Task::I18n => i18n::run_task(),
         Task::Bump { part, stable, no_tag } => version::run_task(part, stable, no_tag),
-        Task::BuildWindows { fast, stable, clean, skip_installer, with_zip, timed } => windows::run_task(fast, stable, clean, skip_installer, with_zip, timed),
-        Task::BuildAppimage { fast, stable, with_zip, timed } => appimage::run_task(fast, stable, with_zip, timed),
+        Task::BuildWindows { fast, stable, clean, skip_installer, with_zip, reported } => windows::run_task(fast, stable, clean, skip_installer, with_zip, reported),
+        Task::BuildAppimage { fast, stable, with_zip, reported } => appimage::run_task(fast, stable, with_zip, reported),
         Task::BuildDeb { fast, stable, with_zip } => deb::run_task(fast, stable, with_zip),
-        Task::BuildLinux { fast, stable, with_zip, timed } => linux::run_task(fast, stable, with_zip, timed),
-        Task::Timings { title } => timings::publish(&title),
+        Task::BuildLinux { fast, stable, with_zip, reported } => linux::run_task(fast, stable, with_zip, reported),
+        Task::ReportBuild { step } => report::save(&step, &[]),
+        Task::Report { title, dir } => report::run_task(&title, dir),
         Task::Install { skip_binary } => install::run_task(skip_binary),
     };
     if let Err(e) = result {

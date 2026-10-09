@@ -4,15 +4,15 @@
 use std::path::PathBuf;
 use std::process::Command;
 
-use crate::timings;
-use crate::tools::{Result, cargo, repo_root, run, summary_packages, works, zip_file};
+use crate::report;
+use crate::tools::{Result, cargo, repo_root, run, works, zip_file};
 use crate::version::{in_release, msi_version, read_version};
 
-pub fn run_task(fast: bool, stable: bool, clean: bool, skip_installer: bool, with_zip: bool, timed: bool) -> Result<()> {
-    in_release(fast, stable, || build(fast, clean, skip_installer, with_zip, timed))
+pub fn run_task(fast: bool, stable: bool, clean: bool, skip_installer: bool, with_zip: bool, reported: bool) -> Result<()> {
+    in_release(fast, stable, || build(fast, clean, skip_installer, with_zip, reported))
 }
 
-fn build(fast: bool, clean: bool, skip_installer: bool, with_zip: bool, timed: bool) -> Result<()> {
+fn build(fast: bool, clean: bool, skip_installer: bool, with_zip: bool, reported: bool) -> Result<()> {
     let root = repo_root();
     let profile = if fast { "fast" } else { "release" };
     let release = root.join("target").join(profile);
@@ -24,10 +24,7 @@ fn build(fast: bool, clean: bool, skip_installer: bool, with_zip: bool, timed: b
     }
     let version = read_version(&std::fs::read_to_string(root.join("Cargo.toml")).map_err(|e| e.to_string())?)?;
     println!("Building Cachemire {version} ({profile})...");
-    run(cargo().current_dir(&root).args(["build", "--profile", profile, "--locked"]).args(timed.then_some("--timings")))?;
-    if timed {
-        timings::publish(&format!("Cachemire {version} for Windows ({profile})"))?;
-    }
+    run(cargo().current_dir(&root).args(["build", "--profile", profile, "--locked"]).args(reported.then_some("--timings")))?;
     if !exe.is_file() {
         return Err(format!("executable not found: {}", exe.display()));
     }
@@ -70,7 +67,10 @@ fn build(fast: bool, clean: bool, skip_installer: bool, with_zip: bool, timed: b
             println!("MSI zip:    {}", msi.with_extension("msi.zip").display());
         }
     }
-    summary_packages(&[Some(zip_path.as_path()), msi.as_deref()].into_iter().flatten().collect::<Vec<_>>())
+    if reported {
+        report::save("Release build", &[Some(zip_path.as_path()), msi.as_deref()].into_iter().flatten().collect::<Vec<_>>())?;
+    }
+    Ok(())
 }
 
 /// The WiX CLI: an installed one, else the .NET global tool, installed if missing

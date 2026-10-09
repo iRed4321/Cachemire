@@ -4,33 +4,33 @@
 use std::path::{Path, PathBuf};
 use std::process::Command;
 
-use crate::timings;
-use crate::tools::{Result, cargo, repo_root, run, summary_packages, works, zip_file};
+use crate::report;
+use crate::tools::{Result, cargo, repo_root, run, works, zip_file};
 use crate::version::{in_release, read_version};
 
 const TOOL_URL: &str = "https://github.com/AppImage/appimagetool/releases/download/continuous/appimagetool-x86_64.AppImage";
 
-pub fn run_task(fast: bool, stable: bool, with_zip: bool, timed: bool) -> Result<()> {
+pub fn run_task(fast: bool, stable: bool, with_zip: bool, reported: bool) -> Result<()> {
     if !cfg!(all(target_os = "linux", target_arch = "x86_64")) {
         return Err("build-appimage only runs on x86_64 Linux".into());
     }
     in_release(fast, stable, || {
-        compile(fast, timed)?;
-        summary_packages(&[&package(fast, with_zip)?])
+        compile(fast, reported)?;
+        let appimage = package(fast, with_zip)?;
+        if reported {
+            report::save("Release build", &[&appimage])?;
+        }
+        Ok(())
     })
 }
 
-/// The release (or `fast`) build of the binary, into `target/<profile>`; `timed` reports its timings.
+/// The release (or `fast`) build of the binary, into `target/<profile>`; `timed` with `cargo --timings`.
 pub fn compile(fast: bool, timed: bool) -> Result<()> {
     let root = repo_root();
     let profile = if fast { "fast" } else { "release" };
     let version = read_version(&std::fs::read_to_string(root.join("Cargo.toml")).map_err(|e| e.to_string())?)?;
     println!("Building Cachemire {version} ({profile})...");
-    run(cargo().current_dir(&root).args(["build", "--profile", profile, "--locked"]).args(timed.then_some("--timings")))?;
-    if timed {
-        timings::publish(&format!("Cachemire {version} for Linux ({profile})"))?;
-    }
-    Ok(())
+    run(cargo().current_dir(&root).args(["build", "--profile", profile, "--locked"]).args(timed.then_some("--timings")))
 }
 
 /// Packs the binary already built by [`compile`] as an AppImage, and returns its path.

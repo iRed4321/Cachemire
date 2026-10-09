@@ -40,12 +40,39 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y pkg-config libfontconfig1-dev libfreetype6-dev \
             libxkbcommon-dev libxkbcommon-x11-dev libwayland-dev libx11-dev libxcb1-dev
-      # --timings + `cargo xtask timings`: what was built and the slowest crates, in the job summary
+      # --timings + `report-build`: what was built, for the summary job
       - name: Clippy
         run: cargo clippy --all-targets --timings -- -D warnings
-      - name: Report (clippy)
-        run: cargo xtask timings "Clippy (${{ matrix.os }})"
+      - name: Save the report (clippy)
+        run: cargo xtask report-build Clippy
       - name: Test
         run: cargo test --timings
-      - name: Report (tests)
-        run: cargo xtask timings "Tests (${{ matrix.os }})"
+      - name: Save the report (tests)
+        run: cargo xtask report-build Tests
+      - uses: actions/upload-artifact@v7
+        with:
+          name: report-${{ matrix.os }}
+          path: target/reports/
+          retention-days: 5
+
+  # one summary for the whole run, from the reports the jobs saved (`cargo xtask report-build`)
+  summary:
+    name: Summary
+    needs: [test]
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - name: Install Rust (rust-toolchain.toml)
+        run: rustup toolchain install
+      - uses: Swatinem/rust-cache@v2
+        with:
+          shared-key: ci
+          save-if: false
+      - uses: actions/download-artifact@v8
+        with:
+          pattern: report-*
+          path: reports
+          merge-multiple: true
+      - name: Summary
+        run: cargo xtask report "🔍 Pull request #${{ github.event.pull_request.number }}" --dir reports

@@ -48,17 +48,46 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y pkg-config libfontconfig1-dev libfreetype6-dev \
             libxkbcommon-dev libxkbcommon-x11-dev libwayland-dev libx11-dev libxcb1-dev
-      # what the pull request checks and the release tests build, plus xtask (its reports)
+      # what the pull request checks and the release tests build, plus xtask (for the reports)
       - name: Build (tests)
         if: matrix.cache == 'ci' && steps.cache.outputs.cache-hit != 'true'
         run: |
           cargo clippy --all-targets --locked --timings
-          cargo xtask timings "Clippy (${{ matrix.os }})"
+          cargo xtask report-build Clippy
           cargo test --no-run --locked --timings
-          cargo xtask timings "Tests (${{ matrix.os }})"
-      # what the release packages build: the app (release profile), plus xtask (its reports)
+          cargo xtask report-build Tests
+      # what the release packages build: the app (release profile), plus xtask (for the reports)
       - name: Build (release)
         if: matrix.cache == 'release' && steps.cache.outputs.cache-hit != 'true'
         run: |
           cargo build --profile release --locked --timings
-          cargo xtask timings "Release build (${{ matrix.os }})"
+          cargo xtask report-build "Release build"
+      # only when something was built: the summary job says so otherwise
+      - if: steps.cache.outputs.cache-hit != 'true'
+        uses: actions/upload-artifact@v7
+        with:
+          name: report-${{ matrix.cache }}-${{ matrix.os }}
+          path: target/reports/
+          retention-days: 5
+
+  # one summary for the whole run, from the reports the jobs saved (`cargo xtask report-build`)
+  summary:
+    name: Summary
+    needs: [cache]
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - name: Install Rust (rust-toolchain.toml)
+        run: rustup toolchain install
+      - uses: Swatinem/rust-cache@v2
+        with:
+          shared-key: ci
+          save-if: false
+      - uses: actions/download-artifact@v8
+        with:
+          pattern: report-*
+          path: reports
+          merge-multiple: true
+      - name: Summary
+        run: cargo xtask report "♻️ Cache refresh" --dir reports

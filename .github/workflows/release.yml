@@ -37,11 +37,16 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y pkg-config libfontconfig1-dev libfreetype6-dev \
             libxkbcommon-dev libxkbcommon-x11-dev libwayland-dev libx11-dev libxcb1-dev
-      # --timings + `cargo xtask timings`: what was built and the slowest crates, in the job summary
+      # --timings + `report-build`: what was built, for the summary job
       - name: Test
         run: cargo test --timings
-      - name: Report
-        run: cargo xtask timings "Tests (${{ matrix.os }})"
+      - name: Save the report
+        run: cargo xtask report-build Tests
+      - uses: actions/upload-artifact@v7
+        with:
+          name: report-tests-${{ matrix.os }}
+          path: target/reports/
+          retention-days: 5
 
   windows:
     name: Windows (MSI and portable zip)
@@ -64,10 +69,15 @@ jobs:
           "$env:USERPROFILE\.dotnet\tools" | Out-File -FilePath $env:GITHUB_PATH -Append
           & "$env:USERPROFILE\.dotnet\tools\wix.exe" eula accept wix7
       - name: Build
-        run: cargo xtask build-windows --timings
+        run: cargo xtask build-windows --report
       - uses: actions/upload-artifact@v7
         with:
-          name: windows
+          name: report-windows
+          path: target/reports/
+          retention-days: 5
+      - uses: actions/upload-artifact@v7
+        with:
+          name: package-windows
           path: |
             target/windows/*.msi
             target/windows/Cachemire-Portable-*.zip
@@ -96,10 +106,15 @@ jobs:
         with:
           tool: cargo-deb
       - name: Build
-        run: cargo xtask build-linux --timings
+        run: cargo xtask build-linux --report
       - uses: actions/upload-artifact@v7
         with:
-          name: linux
+          name: report-linux
+          path: target/reports/
+          retention-days: 5
+      - uses: actions/upload-artifact@v7
+        with:
+          name: package-linux
           path: |
             target/debian/*.deb
             target/appimage/*.AppImage
@@ -113,6 +128,7 @@ jobs:
     steps:
       - uses: actions/download-artifact@v8
         with:
+          pattern: package-*
           path: dist
           merge-multiple: true
       - name: Create the release
@@ -127,3 +143,25 @@ jobs:
           mapfile -t files < <(find dist -type f)
           gh release create "$TAG" "${files[@]}" --repo "$GITHUB_REPOSITORY" \
             --title "Cachemire ${TAG#v}" --generate-notes "${flags[@]}"
+
+  # one summary for the whole run, from the reports the jobs saved (`cargo xtask report-build`)
+  summary:
+    name: Summary
+    needs: [test, windows, linux]
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - name: Install Rust (rust-toolchain.toml)
+        run: rustup toolchain install
+      - uses: Swatinem/rust-cache@v2
+        with:
+          shared-key: ci
+          save-if: false
+      - uses: actions/download-artifact@v8
+        with:
+          pattern: report-*
+          path: reports
+          merge-multiple: true
+      - name: Summary
+        run: cargo xtask report "🚀 Release ${{ github.ref_name }}" --dir reports

@@ -46,17 +46,6 @@ pub fn summary(markdown: &str) -> Result<()> {
     io::Write::write_all(&mut file, format!("{markdown}\n").as_bytes()).map_err(|e| format!("job summary: {e}"))
 }
 
-/// Adds the packages in `files` to the job summary, with their sizes.
-pub fn summary_packages(files: &[&Path]) -> Result<()> {
-    let mut markdown = String::from("#### Packages\n\n| File | Size |\n|---|---:|\n");
-    for file in files {
-        let size = std::fs::metadata(file).map_err(|e| format!("{}: {e}", file.display()))?.len();
-        let name = file.file_name().unwrap_or_default().to_string_lossy();
-        markdown += &format!("| `{name}` | {:.1} MB |\n", size as f64 / 1_048_576.0);
-    }
-    summary(&markdown)
-}
-
 /// Writes `zip_path`, a zip holding just `file` with the Unix `mode`.
 pub fn zip_file(file: &Path, zip_path: &Path, mode: u32) -> Result<()> {
     println!("Creating zip: {}", zip_path.display());
