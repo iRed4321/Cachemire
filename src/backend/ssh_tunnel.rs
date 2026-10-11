@@ -66,16 +66,15 @@ impl client::Handler for HostKeyCheck {
 
 /// `~` or `~/…` at the start of a path stands for the home directory.
 fn expand_home(path: &str) -> PathBuf {
-    let home = || std::env::var_os("HOME").or_else(|| std::env::var_os("USERPROFILE")).map(PathBuf::from);
     match path.strip_prefix('~') {
-        Some("") => home().unwrap_or_else(|| PathBuf::from(path)),
-        Some(rest) if rest.starts_with(['/', '\\']) => home().map_or_else(|| PathBuf::from(path), |h| h.join(&rest[1..])),
+        Some("") => dirs::home_dir().unwrap_or_else(|| PathBuf::from(path)),
+        Some(rest) if rest.starts_with(['/', '\\']) => dirs::home_dir().map_or_else(|| PathBuf::from(path), |h| h.join(&rest[1..])),
         _ => PathBuf::from(path),
     }
 }
 
 fn tunnel_error(error: russh::Error) -> AppError {
-    AppError::Tunnel(error.to_string())
+    AppError::tunnel(error.to_string())
 }
 
 /// Logs in with the private key when there is one, then with the password.
@@ -89,7 +88,7 @@ async fn authenticate(session: &mut Handle<HostKeyCheck>, ssh: &SshSettings) -> 
             let why = e.to_string();
             // an encrypted key with the wrong (or no) passphrase fails in the crypto layer
             let why_lower = why.to_lowercase();
-            AppError::Tunnel(if (passphrase.is_none() && why_lower.contains("encrypted")) || why_lower.contains("cryptographic") {
+            AppError::tunnel(if (passphrase.is_none() && why_lower.contains("encrypted")) || why_lower.contains("cryptographic") {
                 t!("couldn't decrypt the SSH private key %{file}: wrong or missing passphrase?", file = path.display()).into_owned()
             } else {
                 t!("couldn't read the SSH private key %{file}: %{error}", file = path.display(), error = why).into_owned()
@@ -116,9 +115,9 @@ async fn authenticate(session: &mut Handle<HostKeyCheck>, ssh: &SshSettings) -> 
     }
 
     if tried.is_empty() {
-        return Err(AppError::Tunnel(t!("no SSH password or private key to log in with").into_owned()));
+        return Err(AppError::tunnel(t!("no SSH password or private key to log in with")));
     }
-    Err(AppError::Tunnel(
+    Err(AppError::tunnel(
         t!("the SSH server refused the login for %{user} (%{tried})", user = ssh.username, tried = tried.join(&format!(" {} ", t!("and")))).into_owned(),
     ))
 }
@@ -136,7 +135,7 @@ async fn connect(ssh: &SshSettings, known_hosts: &Path) -> Result<Handle<HostKey
 
     let mut session = client::connect(config, (ssh.host.as_str(), ssh.port), handler).await.map_err(|e| {
         // a refused host key surfaces as a generic key error: say why instead
-        AppError::Tunnel(match refusal.lock_recover().take() {
+        AppError::tunnel(match refusal.lock_recover().take() {
             Some(why) => why,
             None => t!("couldn't connect to the SSH server %{host}:%{port}: %{error}", host = ssh.host, port = ssh.port, error = e).into_owned(),
         })
@@ -176,16 +175,16 @@ impl SshTunnel {
     pub async fn open(ssh: &SshSettings, target_host: &str, target_port: u16, known_hosts: &Path) -> Result<SshTunnel, AppError> {
         let session = tokio::time::timeout(SETUP_TIMEOUT, connect(ssh, known_hosts))
             .await
-            .map_err(|_| AppError::Tunnel(t!("timed out connecting to the SSH server %{host}:%{port}", host = ssh.host, port = ssh.port).into_owned()))??;
+            .map_err(|_| AppError::tunnel(t!("timed out connecting to the SSH server %{host}:%{port}", host = ssh.host, port = ssh.port)))??;
 
         let probe = session
             .channel_open_direct_tcpip(target_host, u32::from(target_port), "127.0.0.1", 0)
             .await
-            .map_err(|e| AppError::Tunnel(t!("the SSH server couldn't reach %{host}:%{port}: %{error}", host = target_host, port = target_port, error = e).into_owned()))?;
+            .map_err(|e| AppError::tunnel(t!("the SSH server couldn't reach %{host}:%{port}: %{error}", host = target_host, port = target_port, error = e)))?;
         drop(probe);
 
-        let listener = TcpListener::bind(("127.0.0.1", 0)).await.map_err(|e| AppError::Tunnel(t!("couldn't open a local port for the SSH tunnel: %{error}", error = e).into_owned()))?;
-        let local_port = listener.local_addr().map_err(|e| AppError::Tunnel(e.to_string()))?.port();
+        let listener = TcpListener::bind(("127.0.0.1", 0)).await.map_err(|e| AppError::tunnel(t!("couldn't open a local port for the SSH tunnel: %{error}", error = e)))?;
+        let local_port = listener.local_addr().map_err(|e| AppError::tunnel(e.to_string()))?.port();
         let forwarding = tokio::spawn(forward_loop(listener, session, target_host.to_string(), target_port));
         Ok(SshTunnel { local_port, forwarding })
     }
@@ -208,7 +207,7 @@ mod tests {
 
     #[test]
     fn a_leading_tilde_is_the_home_directory() {
-        let home = std::env::var_os("HOME").or_else(|| std::env::var_os("USERPROFILE")).map(PathBuf::from).unwrap();
+        let home = dirs::home_dir().unwrap();
         assert_eq!(expand_home("~"), home);
         assert_eq!(expand_home("~/.ssh/id_ed25519"), home.join(".ssh/id_ed25519"));
         assert_eq!(expand_home("/etc/key"), PathBuf::from("/etc/key"));

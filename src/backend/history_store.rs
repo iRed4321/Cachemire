@@ -33,7 +33,7 @@ impl HistoryStore {
             Loaded::Read(entries) => entries,
             Loaded::Missing => Vec::new(),
             Loaded::Unusable(why) => {
-                eprintln!("{} can't be read ({why})", file_path.display());
+                tracing::error!("{} can't be read ({why})", file_path.display());
                 persist::set_aside(&file_path);
                 Vec::new()
             }
@@ -70,7 +70,7 @@ impl HistoryStore {
 
     fn save(&self) {
         if let Err(e) = persist::save(&self.file_path, &self.entries) {
-            eprintln!("saving the query history failed: {e}");
+            tracing::error!("saving the query history failed: {e}");
         }
     }
 }

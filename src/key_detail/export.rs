@@ -13,8 +13,8 @@ use crate::value_actions::sanitize_filename;
 use slint::ComponentHandle;
 use crate::{ExportFormat, ExportTarget, KeyPanel, MainWindow};
 
-use super::Ctx;
-use super::field::{Field, FieldValue, Fields, find_field};
+use super::{Ctx, PanelContent};
+use super::field::{Field, FieldValue, Fields};
 use super::table::{selected_rows_json, table_csv};
 
 /// A field's value as pretty (indented) JSON.
@@ -55,13 +55,11 @@ fn copy_text(weak: &Weak<MainWindow>, text: &str) {
     match crate::value_actions::copy_to_clipboard(text) {
         Ok(()) => {
             let weak = weak.clone();
-            let _ = slint::invoke_from_event_loop(move || {
-                if let Some(window) = weak.upgrade() {
-                    crate::toast::show_copied(&window);
-                }
+            let _ = weak.upgrade_in_event_loop(move |window| {
+                crate::toast::show_copied(&window);
             });
         }
-        Err(e) => eprintln!("copy failed: {e}"),
+        Err(e) => tracing::warn!("copy failed: {e}"),
     }
 }
 
@@ -72,26 +70,37 @@ enum ExportAction {
     Copy,
 }
 
-/// Builds an export's text on a blocking thread — serializing a big value
-/// takes long enough to freeze the window otherwise — then opens, saves or
-/// copies it.
+/// Builds an export's text on a blocking thread (serializing a big value would freeze
+/// the window), then opens, saves or copies it. A download asks where to save first,
+/// so a cancelled dialog builds nothing.
 fn run_export(rt: &Handle, weak: &Weak<MainWindow>, action: ExportAction, build: impl FnOnce() -> String + Send + 'static) {
     let weak = weak.clone();
-    rt.spawn_blocking(move || {
-        let text = build();
-        match action {
-            ExportAction::Open(extension) => {
-                if let Err(e) = crate::value_actions::open_in_external_editor(&text, extension) {
-                    eprintln!("open in editor failed: {e}");
+    rt.spawn(async move {
+        let save_to = match &action {
+            ExportAction::Download(filename) => match rfd::AsyncFileDialog::new().set_file_name(filename).save_file().await {
+                Some(file) => Some(file.path().to_path_buf()),
+                None => return,
+            },
+            _ => None,
+        };
+        let _ = tokio::task::spawn_blocking(move || {
+            let text = build();
+            match (action, save_to) {
+                (ExportAction::Open(extension), _) => {
+                    if let Err(e) = crate::value_actions::open_in_external_editor(&text, extension) {
+                        tracing::warn!("open in editor failed: {e}");
+                    }
                 }
-            }
-            ExportAction::Download(filename) => {
-                if let Err(e) = crate::value_actions::save_to_file(&text, &filename) {
-                    eprintln!("download failed: {e}");
+                (ExportAction::Download(_), Some(path)) => {
+                    if let Err(e) = std::fs::write(&path, text) {
+                        tracing::warn!("download to {} failed: {e}", path.display());
+                    }
                 }
+                (ExportAction::Download(_), None) => {}
+                (ExportAction::Copy, _) => copy_text(&weak, &text),
             }
-            ExportAction::Copy => copy_text(&weak, &text),
-        }
+        })
+        .await;
     });
 }
 
@@ -102,15 +111,20 @@ fn run_export(rt: &Handle, weak: &Weak<MainWindow>, action: ExportAction, build:
 struct Exporter {
     rt: Handle,
     weak: Weak<MainWindow>,
-    current: Arc<Mutex<Fields>>,
-    current_key: Arc<Mutex<String>>,
+    content: Arc<Mutex<PanelContent>>,
 }
 
 impl Exporter {
+    /// The fields shown, and their key's name made safe for a file name.
+    fn shown(&self) -> (Fields, String) {
+        let content = self.content.lock_recover();
+        (content.current.clone(), sanitize_filename(&content.key))
+    }
+
     /// Exports one row's own field, as pretty JSON or escaped. `action` gets the
     /// field's file-name-safe name to build a download name from.
     fn field(&self, name: &str, escaped: bool, action: impl FnOnce(String) -> ExportAction) {
-        let Some(field) = find_field(&self.current, name) else { return };
+        let Some(field) = self.content.lock_recover().field(name) else { return };
         let action = action(sanitize_filename(&field.name));
         let text = if escaped { escaped_json } else { pretty_json };
         run_export(&self.rt, &self.weak, action, move || text(&field));
@@ -129,9 +143,8 @@ impl Exporter {
         if indices.is_empty() {
             return;
         }
-        let fields: Fields = self.current.lock_recover().clone();
+        let (fields, stem) = self.shown();
         let escaped = format == ExportFormat::Escaped;
-        let stem = sanitize_filename(&self.current_key.lock_recover());
         let action = match target {
             ExportTarget::Open => ExportAction::Open(if escaped { "txt" } else { "json" }),
             ExportTarget::Download => ExportAction::Download(format!("{stem}.selection.{}", if escaped { "escaped.txt" } else { "json" })),
@@ -150,12 +163,11 @@ impl Exporter {
     /// Saves the table the filter leaves as a CSV file: the ticked rows when
     /// there are any, every row otherwise.
     fn table_csv(&self) {
-        let fields: Fields = self.current.lock_recover().clone();
+        let (fields, stem) = self.shown();
         if fields.is_empty() {
             return;
         }
         let indices = self.selected_rows();
-        let stem = sanitize_filename(&self.current_key.lock_recover());
         let filename = if indices.is_empty() { format!("{stem}.csv") } else { format!("{stem}.selection.csv") };
         run_export(&self.rt, &self.weak, ExportAction::Download(filename), move || {
             table_csv(&fields, (!indices.is_empty()).then_some(indices.as_slice()))
@@ -164,12 +176,11 @@ impl Exporter {
 
     /// Exports every field of the loaded key.
     fn all_fields(&self, format: ExportFormat, target: ExportTarget) {
-        let fields: Fields = self.current.lock_recover().clone();
+        let (fields, stem) = self.shown();
         if fields.is_empty() {
             return;
         }
         let escaped = format == ExportFormat::Escaped;
-        let stem = sanitize_filename(&self.current_key.lock_recover());
         let action = match target {
             ExportTarget::Open => ExportAction::Open(if escaped { "txt" } else { "json" }),
             ExportTarget::Download => ExportAction::Download(format!("{stem}.{}", if escaped { "escaped.txt" } else { "json" })),
@@ -182,7 +193,7 @@ impl Exporter {
 /// Wires the KeyPanel's open/download/copy callbacks: one row's own field, the
 /// table's ticked rows or CSV, every field of the key, and the copy buttons.
 pub(super) fn init(window: &MainWindow, ctx: &Ctx) {
-    let exporter = Exporter { rt: ctx.rt.clone(), weak: ctx.weak.clone(), current: ctx.shared.current.clone(), current_key: ctx.shared.current_key.clone() };
+    let exporter = Exporter { rt: ctx.rt.clone(), weak: ctx.weak.clone(), content: ctx.shared.content.clone() };
     let panel = window.global::<KeyPanel>();
 
     panel.on_open_value({

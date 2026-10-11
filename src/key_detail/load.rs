@@ -39,7 +39,7 @@ impl Ctx {
         let LoadRequest { key, scroll, reuse, announce } = request;
         let ctx = self.clone();
         let weak = &self.weak;
-        let KeyDetailShared { current, pretty_cache, current_key, applied_search, applied_path, loaded, view_epoch, fetched, suggester, .. } = self.shared.clone();
+        let KeyDetailShared { content, pretty_cache, view_epoch, fetched, suggester, .. } = self.shared.clone();
         let epoch = view_epoch.fetch_add(1, Ordering::Relaxed) + 1;
         let cache_slot = (weak.upgrade().map(|w| w.connection_id().to_string()).unwrap_or_default(), key.clone());
         // a field asked for (a hit of a search tab): the page holding it is the one loaded
@@ -53,9 +53,9 @@ impl Ctx {
 
         // field names can collide across keys, so the previous key's pretty text
         // must not be served for this one; renderings still in flight are dropped
-        // on completion by comparing against current_key
+        // on completion by comparing against the content's key
         pretty_cache.lock_recover().clear();
-        current_key.lock_recover().clone_from(&key);
+        content.lock_recover().key.clone_from(&key);
 
         // read on the UI thread, before spawning: on a tab switch `tabs.rs`
         // writes the target tab's saved filter/expanded fields into these
@@ -85,7 +85,7 @@ impl Ctx {
                 (current_search_filter(&window), path, current_expanded_fields(&window))
             })
             .unwrap_or_default();
-        *applied_search.lock_recover() = filter.clone();
+        content.lock_recover().search = filter.clone();
         let pretty_cache_for_restore = pretty_cache.clone();
         let applied = path.clone();
 
@@ -134,7 +134,7 @@ impl Ctx {
                 {
                     let mut cache = pretty_cache_for_restore.lock_recover();
                     for f in shown.iter().filter(|f| expanded.contains(&f.name)) {
-                        cache.entry((f.name.clone(), false)).or_insert_with(|| Arc::new(paragraphs_for(&f.value(), false)));
+                        cache.plain_or_insert_with(&f.name, || paragraphs_for(&f.value(), false));
                     }
                 }
                 let (av_field_chars, av_rows) = build_all_values_table(&shown, &filter, &expanded);
@@ -181,10 +181,13 @@ impl Ctx {
                         window.global::<KeyPanel>().set_all_values_field_chars(av_field_chars);
                         window.global::<KeyPanel>().set_all_values_rows(ModelRc::new(VecModel::from(av_rows)));
 
-                        *loaded.lock_recover() = fields;
+                        {
+                            let mut content = content.lock_recover();
+                            content.loaded = fields;
+                            content.current = shown;
+                            content.path = AppliedPath { path: applied, matches };
+                        }
                         suggester.forget();
-                        *current.lock_recover() = shown;
-                        *applied_path.lock_recover() = AppliedPath { path: applied, matches };
                         ctx.show_view(&window, Some(scroll));
                         // a tab restored with an active search and a hash not
                         // fully loaded yet: keep paging through the rest of it
@@ -202,9 +205,12 @@ impl Ctx {
                         window.global::<KeyPanel>().set_all_values_field_chars(8);
                         window.global::<KeyPanel>().set_all_values_rows(ModelRc::new(VecModel::from(Vec::<AllValuesRowData>::new())));
                         window.global::<KeyPanel>().set_json_filter_status("".into());
-                        *loaded.lock_recover() = Vec::new();
+                        {
+                            let mut content = content.lock_recover();
+                            content.loaded = Vec::new();
+                            content.current = Vec::new();
+                        }
                         suggester.forget();
-                        *current.lock_recover() = Vec::new();
                         clear_table(&window);
                     }
                 }

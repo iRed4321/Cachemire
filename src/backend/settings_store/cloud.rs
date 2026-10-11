@@ -178,7 +178,7 @@ impl SettingsStore {
         let stored = self
             .vault
             .get(&vault_key)
-            .map_err(|e| AppError::Keyring(t!("Couldn't read the SSH tunnel's secrets from the system keyring: %{error}", error = e).into_owned()))?;
+            .map_err(|e| AppError::keyring(t!("Couldn't read the SSH tunnel's secrets from the system keyring: %{error}", error = e)))?;
         if let Some(ssh) = Self::cloud_entry_mut(&mut self.state.cloud, scope).and_then(|entry| entry.ssh.as_mut()) {
             match stored {
                 Some(secrets) => {

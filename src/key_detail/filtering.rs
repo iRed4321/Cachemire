@@ -23,18 +23,19 @@ impl Ctx {
     pub(super) fn on_search_changed(&self) {
         let Some(window) = self.weak.upgrade() else { return };
         let filter = current_search_filter(&window);
-        *self.shared.applied_search.lock_recover() = filter.clone();
         // a snapshot of the pointers, so the lock isn't held while building; the
-        // expanded set is read the same way, off the window, since this doesn't
-        // touch which rows are open
-        let fields: Fields = self.shared.current.lock_recover().clone();
+        // expanded set is read off the window, since this doesn't touch which rows are open
+        let fields: Fields = {
+            let mut content = self.shared.content.lock_recover();
+            content.search = filter.clone();
+            content.current.clone()
+        };
         let expanded = current_expanded_fields(&window);
         let rows_weak = self.weak.clone();
         self.rt.spawn_blocking(move || {
             let (av_field_chars, av_rows) = build_all_values_table(&fields, &filter, &expanded);
 
-            let _ = slint::invoke_from_event_loop(move || {
-                let Some(window) = rows_weak.upgrade() else { return };
+            let _ = rows_weak.upgrade_in_event_loop(move |window| {
                 window.global::<KeyPanel>().set_all_values_field_chars(av_field_chars);
                 window.global::<KeyPanel>().set_all_values_rows(ModelRc::new(VecModel::from(av_rows)));
             });
@@ -100,7 +101,7 @@ impl Ctx {
         let filter = current_search_filter(&window);
 
         let epoch = self.shared.view_epoch.fetch_add(1, Ordering::Relaxed) + 1;
-        let loaded: Fields = self.shared.loaded.lock_recover().clone();
+        let loaded: Fields = self.shared.content.lock_recover().loaded.clone();
         let expanded = current_expanded_fields(&window);
         let ctx = self.clone();
         self.rt.spawn_blocking(move || {
@@ -115,8 +116,11 @@ impl Ctx {
                 }
                 // a jump armed for the previous contents must not fire on these
                 disarm_scroll(&window);
-                *shared.current.lock_recover() = fields;
-                *shared.applied_path.lock_recover() = AppliedPath { path, matches };
+                {
+                    let mut content = shared.content.lock_recover();
+                    content.current = fields;
+                    content.path = AppliedPath { path, matches };
+                }
                 // the cached renderings are of the previous contents
                 shared.pretty_cache.lock_recover().clear();
                 window.global::<KeyPanel>().set_json_filter_status(status.into());

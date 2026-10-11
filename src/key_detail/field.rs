@@ -10,7 +10,6 @@ use rust_i18n::t;
 use serde::Serialize;
 use serde_json::Value;
 
-use crate::backend::LockExt;
 
 use super::pretty_text::ColoredParagraph;
 
@@ -83,10 +82,6 @@ impl Field {
 /// copying its data or keeping the lock.
 pub(super) type Fields = Vec<Arc<Field>>;
 
-pub(super) fn find_field(current: &Mutex<Fields>, name: &str) -> Option<Arc<Field>> {
-    current.lock_recover().iter().find(|f| f.name == name).cloned()
-}
-
 /// JSON-parses each hash field's raw string when possible; non-JSON keeps
 /// only its text. Parses spread across cores, and the map is consumed so
 /// names/strings move into `Field` instead of cloning — matters at scale.
@@ -123,6 +118,35 @@ pub(super) fn single_value_field(value: Value) -> Field {
     }
 }
 
-/// Open-row renderings by field and by whether escaped; shared with the background
-/// tasks that fill it. `Arc` per entry so serving one is a cheap clone.
-pub(super) type PrettyCache = Arc<Mutex<FxHashMap<(String, bool), Arc<Vec<ColoredParagraph>>>>>;
+/// Open-row renderings by field name, plain and escaped apart, so a lookup by `&str`
+/// allocates nothing. `Arc` per entry so serving one is a cheap clone.
+#[derive(Default)]
+pub(super) struct PrettyRenderings([FxHashMap<String, Arc<Vec<ColoredParagraph>>>; 2]);
+
+impl PrettyRenderings {
+    pub(super) fn get(&self, name: &str, escaped: bool) -> Option<&Arc<Vec<ColoredParagraph>>> {
+        self.0[usize::from(escaped)].get(name)
+    }
+
+    pub(super) fn contains(&self, name: &str, escaped: bool) -> bool {
+        self.0[usize::from(escaped)].contains_key(name)
+    }
+
+    pub(super) fn insert(&mut self, name: String, escaped: bool, paragraphs: Arc<Vec<ColoredParagraph>>) {
+        self.0[usize::from(escaped)].insert(name, paragraphs);
+    }
+
+    /// Makes the plain rendering of `name` with `render`, unless there is one already.
+    pub(super) fn plain_or_insert_with(&mut self, name: &str, render: impl FnOnce() -> Vec<ColoredParagraph>) {
+        if !self.contains(name, false) {
+            self.insert(name.to_string(), false, Arc::new(render()));
+        }
+    }
+
+    pub(super) fn clear(&mut self) {
+        self.0.iter_mut().for_each(FxHashMap::clear);
+    }
+}
+
+/// The renderings, shared with the background tasks that fill them.
+pub(super) type PrettyCache = Arc<Mutex<PrettyRenderings>>;

@@ -1,5 +1,5 @@
 // Release builds on Windows shouldn't drag a console window along with the
-// GUI; debug builds keep it so eprintln! diagnostics stay visible.
+// GUI; debug builds keep it so the log on stderr stays visible.
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
 use crate::backend::LockExt;
@@ -22,6 +22,7 @@ mod i18n;
 mod connection_profiles;
 mod connections;
 mod json_path;
+mod logging;
 mod key_detail;
 mod keyspace;
 mod queries;
@@ -39,7 +40,7 @@ mod updates;
 mod value_actions;
 mod window_state;
 
-use backend::error::AppError;
+use backend::error::{AppError, ErrorKind};
 use backend::state::AppState;
 
 slint::include_modules!();
@@ -78,7 +79,7 @@ pub(crate) fn connect_to(
     rt.spawn(async move {
         let outcome = match tokio::time::timeout(CONNECT_TIMEOUT, backend::connection_service::connect_connection(&state, &connection_id)).await {
             Ok(outcome) => outcome,
-            Err(_) => Err(AppError::Timeout(t!("Connection timed out after %{seconds} seconds.", seconds = CONNECT_TIMEOUT.as_secs()).into_owned())),
+            Err(_) => Err(AppError::timeout(t!("Connection timed out after %{seconds} seconds.", seconds = CONNECT_TIMEOUT.as_secs()))),
         };
         // resolved from the saved connection itself, not the attempt's outcome,
         // so the status glyph can still show its lock (see TitleBar) when this
@@ -90,8 +91,7 @@ pub(crate) fn connect_to(
             .and_then(|c| c.ssh.as_ref().map(ssh_server_label))
             .unwrap_or_default();
 
-        let _ = slint::invoke_from_event_loop(move || {
-            let Some(window) = weak.upgrade() else { return };
+        let _ = weak.upgrade_in_event_loop(move |window| {
             // (checked here, on the UI thread, where the attempts are numbered: nothing
             // can start between this check and the connection being made the active one)
             if state.connect_attempt.load(Ordering::SeqCst) != attempt {
@@ -105,22 +105,28 @@ pub(crate) fn connect_to(
                 Ok(c)
             });
             let view = match outcome {
-                Ok(c) => ConnectionView {
-                    connected: true,
-                    status: ConnectionStatus::Connected,
-                    connection_id: connection_id.into(),
-                    address: c.address().into(),
-                    name: c.name.into(),
-                    ssh_via: ssh_via.into(),
-                    ..Default::default()
-                },
-                Err(e) => ConnectionView {
-                    status: ConnectionStatus::Disconnected,
-                    status_detail: e.to_string().into(),
-                    ssh_failed: matches!(e, AppError::Tunnel(_)),
-                    ssh_via: ssh_via.into(),
-                    ..Default::default()
-                },
+                Ok(c) => {
+                    tracing::info!(name = %c.name, address = %c.address(), "connected");
+                    ConnectionView {
+                        connected: true,
+                        status: ConnectionStatus::Connected,
+                        connection_id: connection_id.into(),
+                        address: c.address().into(),
+                        name: c.name.into(),
+                        ssh_via: ssh_via.into(),
+                        ..Default::default()
+                    }
+                }
+                Err(e) => {
+                    tracing::warn!(connection = %connection_id, kind = ?e.kind, "couldn't connect: {e}");
+                    ConnectionView {
+                        status: ConnectionStatus::Disconnected,
+                        status_detail: e.to_string().into(),
+                        ssh_failed: e.kind == ErrorKind::Tunnel,
+                        ssh_via: ssh_via.into(),
+                        ..Default::default()
+                    }
+                }
             };
             let connected = view.connected;
             window.global::<ConnectionState>().set_view(view);
@@ -175,6 +181,7 @@ fn select_backend() -> Result<(), slint::PlatformError> {
 }
 
 fn main() -> Result<(), slint::PlatformError> {
+    let _log = logging::init(&backend::state::resolve_data_file().with_file_name("logs"));
     // Wayland has no per-window icon: the shell finds it through the app id,
     // as the icon of the cachemire.desktop entry (assets/cachemire.desktop)
     select_backend()?;
@@ -236,8 +243,8 @@ fn main() -> Result<(), slint::PlatformError> {
     redisql::init(&app, &window);
     connections::init(&app, &window);
     cloud::init(&app, &window);
-    connection_transfer::init(&app, &window);
-    cloud_settings::init(&app, &window);
+    connection_transfer::init(&window);
+    cloud_settings::init(&window);
     connection_profiles::init(&app, &window);
 
     // what only needs the stores and the runtime

@@ -172,8 +172,7 @@ pub fn init(window: &MainWindow, state: Arc<AppState>, rt: Handle) {
                 if result.is_ok() {
                     drop_profile_pools(&state);
                 }
-                let _ = slint::invoke_from_event_loop(move || {
-                    let Some(window) = weak.upgrade() else { return };
+                let _ = weak.upgrade_in_event_loop(move |window| {
                     match result {
                         Ok(()) => {
                             window.global::<Preferences>().set_ssh_profile_editing(false);

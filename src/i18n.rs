@@ -66,7 +66,7 @@ pub fn apply(language: Language) {
     let code = language.resolve();
     rust_i18n::set_locale(code);
     if let Err(error) = slint::select_bundled_translation(code) {
-        eprintln!("couldn't select the {code} translation of the interface: {error:?}");
+        tracing::warn!("couldn't select the {code} translation of the interface: {error:?}");
     }
 }
 

@@ -10,7 +10,6 @@ use slint::private_unstable_api::re_exports::StyledText;
 use crate::backend::LockExt;
 use crate::{FindResult, KeyPanel, MainWindow, SelectionRange};
 
-use super::field::find_field;
 use super::highlight::{find_matches, pretty_styled_text_with_highlights};
 use super::pretty_text::{ColoredParagraph, paragraphs_for};
 use super::{Ctx, word};
@@ -30,15 +29,15 @@ pub(super) fn init(window: &MainWindow, ctx: &Ctx) {
     // this is normally a hit; on a miss it computes on the UI thread once,
     // which beats showing nothing.
     let cached_or_compute = {
-        let current = shared.current.clone();
+        let content = shared.content.clone();
         let pretty_cache = shared.pretty_cache.clone();
         move |name: &str, escaped: bool| -> Option<Arc<Vec<ColoredParagraph>>> {
-            if let Some(cached) = pretty_cache.lock_recover().get(&(name.to_string(), escaped)) {
+            if let Some(cached) = pretty_cache.lock_recover().get(name, escaped) {
                 return Some(cached.clone());
             }
-            let field = find_field(&current, name)?;
+            let field = content.lock_recover().field(name)?;
             let paragraphs = Arc::new(paragraphs_for(&field.value(), escaped));
-            pretty_cache.lock_recover().insert((name.to_string(), escaped), paragraphs.clone());
+            pretty_cache.lock_recover().insert(name.to_string(), escaped, paragraphs.clone());
             Some(paragraphs)
         }
     };
@@ -48,15 +47,15 @@ pub(super) fn init(window: &MainWindow, ctx: &Ctx) {
     // (see that property's doc comment) instead of being told which field it was
     window.global::<KeyPanel>().on_pretty_is_ready({
         let pretty_cache = shared.pretty_cache.clone();
-        move |field, escaped| pretty_cache.lock_recover().contains_key(&(field.to_string(), escaped))
+        move |field, escaped| pretty_cache.lock_recover().contains(&field, escaped)
     });
 
     window.global::<KeyPanel>().on_request_pretty_value({
         let cached_or_compute = cached_or_compute.clone();
-        let applied_search = shared.applied_search.clone();
+        let content = shared.content.clone();
         move |field, query, current_match, escaped| {
             let Some(paragraphs) = cached_or_compute(field.as_str(), escaped) else { return StyledText::default() };
-            let filter = applied_search.lock_recover().clone();
+            let filter = content.lock_recover().search.clone();
             pretty_styled_text_with_highlights(&paragraphs, &filter.highlight_needles(), filter.case_sensitive, &query.trim().to_lowercase(), current_match)
         }
     });
@@ -106,30 +105,31 @@ pub(super) fn init(window: &MainWindow, ctx: &Ctx) {
         move |name, escaped| {
             let name = name.to_string();
             let shared = &ctx.shared;
-            if shared.pretty_cache.lock_recover().contains_key(&(name.clone(), escaped)) {
+            if shared.pretty_cache.lock_recover().contains(&name, escaped) {
                 if let Some(window) = ctx.weak.upgrade() {
                     signal_pretty_ready(&window);
                 }
                 return;
             }
-            let Some(field) = find_field(&shared.current, &name) else { return };
-            let key_at_request = shared.current_key.lock_recover().clone();
+            let (field, key_at_request) = {
+                let content = shared.content.lock_recover();
+                let Some(field) = content.field(&name) else { return };
+                (field, content.key.clone())
+            };
             let epoch_at_request = shared.view_epoch.load(Ordering::Relaxed);
-            let current_key = shared.current_key.clone();
+            let content = shared.content.clone();
             let view_epoch = shared.view_epoch.clone();
             let pretty_cache = shared.pretty_cache.clone();
             let weak = ctx.weak.clone();
             ctx.rt.spawn_blocking(move || {
                 let paragraphs = Arc::new(paragraphs_for(&field.value(), escaped));
                 // the key changed, or a filter was applied, while rendering: this is for stale contents
-                if *current_key.lock_recover() != key_at_request || view_epoch.load(Ordering::Relaxed) != epoch_at_request {
+                if content.lock_recover().key != key_at_request || view_epoch.load(Ordering::Relaxed) != epoch_at_request {
                     return;
                 }
-                pretty_cache.lock_recover().insert((name, escaped), paragraphs);
-                let _ = slint::invoke_from_event_loop(move || {
-                    if let Some(window) = weak.upgrade() {
-                        signal_pretty_ready(&window);
-                    }
+                pretty_cache.lock_recover().insert(name, escaped, paragraphs);
+                let _ = weak.upgrade_in_event_loop(move |window| {
+                    signal_pretty_ready(&window);
                 });
             });
         }

@@ -329,8 +329,8 @@ impl ConnectionStore {
             Loaded::Missing => (initial_state(), true),
             Loaded::Unusable(why) => {
                 match persist::set_aside(&file_path) {
-                    Some(kept) => eprintln!("{} can't be read ({why}); kept as {}", file_path.display(), kept.display()),
-                    None => eprintln!("{} can't be read ({why}) and couldn't be moved aside", file_path.display()),
+                    Some(kept) => tracing::error!("{} can't be read ({why}); kept as {}", file_path.display(), kept.display()),
+                    None => tracing::error!("{} can't be read ({why}) and couldn't be moved aside", file_path.display()),
                 }
                 (initial_state(), true)
             }
@@ -354,7 +354,7 @@ impl ConnectionStore {
             let stored = self
                 .vault
                 .get(id)
-                .map_err(|e| AppError::Keyring(t!("Couldn't read the saved passwords from the system keyring: %{error}", error = e).into_owned()))?;
+                .map_err(|e| AppError::keyring(t!("Couldn't read the saved passwords from the system keyring: %{error}", error = e)))?;
             let conn = &mut self.state.connections[position];
             match stored {
                 Some(stored) => {
@@ -609,8 +609,8 @@ mod tests {
         let e = to_item(&bare).endpoint().unwrap();
         assert_eq!((e.host.as_str(), e.port, e.db), ("cache.local", 6379, 0));
 
-        assert_eq!(connection_from_payload(payload("x", ""), true).unwrap_err(), AppError::Invalid("Connection URL is required.".into()));
-        assert_eq!(connection_from_payload(payload("", "cache.local"), true).unwrap_err(), AppError::Invalid("Connection name is required.".into()));
+        assert_eq!(connection_from_payload(payload("x", ""), true).unwrap_err(), AppError::invalid("Connection URL is required."));
+        assert_eq!(connection_from_payload(payload("", "cache.local"), true).unwrap_err(), AppError::invalid("Connection name is required."));
         assert!(connection_from_payload(payload("x", "redis://"), true).is_err());
     }
 
@@ -630,15 +630,15 @@ mod tests {
         let ssh = item.ssh.expect("tunnel settings");
         assert_eq!((ssh.host.as_str(), ssh.port, ssh.username.as_str(), ssh.password.as_str()), ("bastion.example.com", 22, "deploy", "pw"));
 
-        assert_eq!(with_ssh(&|p| p.ssh_host = Some("  ".into())).unwrap_err(), AppError::Invalid("SSH host is required.".into()));
+        assert_eq!(with_ssh(&|p| p.ssh_host = Some("  ".into())).unwrap_err(), AppError::invalid("SSH host is required."));
         // without a username the SSH profile from the settings is used at connect time
         assert!(with_ssh(&|p| {
             p.ssh_username = Some("".into());
             p.ssh_password = Some("".into());
         })
         .is_ok());
-        assert_eq!(with_ssh(&|p| p.ssh_port = Some(0)).unwrap_err(), AppError::Invalid("SSH port must be a number between 1 and 65535.".into()));
-        assert_eq!(with_ssh(&|p| p.ssh_password = Some("".into())).unwrap_err(), AppError::Invalid("Provide an SSH password or a private key.".into()));
+        assert_eq!(with_ssh(&|p| p.ssh_port = Some(0)).unwrap_err(), AppError::invalid("SSH port must be a number between 1 and 65535."));
+        assert_eq!(with_ssh(&|p| p.ssh_password = Some("".into())).unwrap_err(), AppError::invalid("Provide an SSH password or a private key."));
         assert!(with_ssh(&|p| {
             p.ssh_password = Some("".into());
             p.ssh_private_key = Some("~/.ssh/id_ed25519".into());

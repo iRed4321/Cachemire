@@ -3,8 +3,8 @@
 
 use std::ops::Range;
 
-pub const DEFAULT_LIMIT: i64 = 250;
-pub const MAX_LIMIT: i64 = 5000;
+pub const DEFAULT_LIMIT: usize = 250;
+pub const MAX_LIMIT: usize = 5000;
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct Source {
@@ -57,5 +57,5 @@ pub struct Query {
     pub joins: Vec<Join>,
     pub wheres: Vec<WhereCond>,
     pub selects: Vec<Select>,
-    pub limit: i64,
+    pub limit: usize,
 }

@@ -347,12 +347,10 @@ fn start(ctx: &ScanContext, plan: Plan) {
     ctx.export_cancel.store(false, Ordering::Relaxed);
     let (weak, state, cancel, rt) = (ctx.weak.clone(), ctx.state.clone(), ctx.export_cancel.clone(), ctx.rt.clone());
     rt.spawn(async move {
-        let dir = tokio::task::spawn_blocking(|| rfd::FileDialog::new().pick_folder()).await.ok().flatten();
+        let dir = rfd::AsyncFileDialog::new().pick_folder().await.map(|folder| folder.path().to_path_buf());
         let Some(dir) = dir else {
-            let _ = slint::invoke_from_event_loop(move || {
-                if let Some(window) = weak.upgrade() {
-                    window.global::<KeyTree>().set_export_busy(false);
-                }
+            let _ = weak.upgrade_in_event_loop(move |window| {
+                window.global::<KeyTree>().set_export_busy(false);
             });
             return;
         };
@@ -364,15 +362,12 @@ fn start(ctx: &ScanContext, plan: Plan) {
             }
             last = Instant::now();
             let weak = progress_weak.clone();
-            let _ = slint::invoke_from_event_loop(move || {
-                if let Some(window) = weak.upgrade() {
-                    window.global::<KeyTree>().set_export_progress(t!("Exporting %{done} of %{total}...", done = done, total = total).as_ref().into());
-                }
+            let _ = weak.upgrade_in_event_loop(move |window| {
+                window.global::<KeyTree>().set_export_progress(t!("Exporting %{done} of %{total}...", done = done, total = total).as_ref().into());
             });
         })
         .await;
-        let _ = slint::invoke_from_event_loop(move || {
-            let Some(window) = weak.upgrade() else { return };
+        let _ = weak.upgrade_in_event_loop(move |window| {
             window.global::<KeyTree>().set_export_busy(false);
             window.global::<KeyTree>().set_export_progress("".into());
             let text = match result {

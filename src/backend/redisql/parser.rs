@@ -229,12 +229,13 @@ impl<'a> Parser<'a> {
         Ok(Select { alias: first, alias_span: first_span, field, explicit_alias: true })
     }
 
-    fn limit(&mut self) -> Result<i64, Located> {
+    /// The LIMIT's number; a negative one is 0, which the query then raises to 1.
+    fn limit(&mut self) -> Result<usize, Located> {
         match self.peek().map(|t| &t.tok) {
             Some(Tok::Number(n)) => {
                 let limit = n.parse::<i64>().map_err(|_| self.error(t!("LIMIT must be a whole number.")))?;
                 self.pos += 1;
-                Ok(limit)
+                Ok(usize::try_from(limit).unwrap_or(0))
             }
             _ => Err(self.error(t!("LIMIT must be a whole number."))),
         }

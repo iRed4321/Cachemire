@@ -103,8 +103,8 @@ impl SettingsStore {
             Loaded::Missing => StoredSettings::default(),
             Loaded::Unusable(why) => {
                 match persist::set_aside(&file_path) {
-                    Some(kept) => eprintln!("{} can't be read ({why}); kept as {}", file_path.display(), kept.display()),
-                    None => eprintln!("{} can't be read ({why}) and couldn't be moved aside", file_path.display()),
+                    Some(kept) => tracing::error!("{} can't be read ({why}); kept as {}", file_path.display(), kept.display()),
+                    None => tracing::error!("{} can't be read ({why}) and couldn't be moved aside", file_path.display()),
                 }
                 StoredSettings::default()
             }
@@ -253,9 +253,9 @@ mod tests {
         assert!(store.ssh_profiles().iter().all(|p| !p.active));
         assert!(store.set_active_ssh_profile("nope").is_err());
 
-        assert_eq!(store.create_ssh_profile("", "u", "p").unwrap_err(), AppError::Invalid("The profile needs a name.".into()));
-        assert_eq!(store.create_ssh_profile("n", " ", "p").unwrap_err(), AppError::Invalid("The profile needs an SSH username.".into()));
-        assert_eq!(store.create_ssh_profile("n", "u", "").unwrap_err(), AppError::Invalid("The profile needs an SSH password.".into()));
+        assert_eq!(store.create_ssh_profile("", "u", "p").unwrap_err(), AppError::invalid("The profile needs a name."));
+        assert_eq!(store.create_ssh_profile("n", " ", "p").unwrap_err(), AppError::invalid("The profile needs an SSH username."));
+        assert_eq!(store.create_ssh_profile("n", "u", "").unwrap_err(), AppError::invalid("The profile needs an SSH password."));
     }
 
     #[test]
@@ -400,7 +400,7 @@ mod tests {
         let mut store = SettingsStore::with_vault(file.clone(), Arc::new(MemoryVault::default()));
         let dev = store.create_connection_profile(" dev ", ProfileColor::Green).unwrap();
         assert_eq!(store.connection_profile(&dev), Some(ConnectionProfile { id: dev.clone(), name: "dev".into(), color: ProfileColor::Green }));
-        assert_eq!(store.create_connection_profile("  ", ProfileColor::Blue).unwrap_err(), AppError::Invalid("The profile needs a name.".into()));
+        assert_eq!(store.create_connection_profile("  ", ProfileColor::Blue).unwrap_err(), AppError::invalid("The profile needs a name."));
 
         store.update_connection_profile(&dev, "staging", ProfileColor::Purple).unwrap();
         assert_eq!(store.connection_profile(&dev).map(|p| (p.name, p.color)), Some(("staging".to_string(), ProfileColor::Purple)));
@@ -447,8 +447,8 @@ mod tests {
         );
         assert_eq!(store.saved_queries().len(), 1);
 
-        assert_eq!(store.create_saved_query("  ", "SELECT *", "").unwrap_err(), AppError::Invalid("The query needs a name.".into()));
-        assert_eq!(store.create_saved_query("Untitled", "  ", "").unwrap_err(), AppError::Invalid("The query needs some text to save.".into()));
+        assert_eq!(store.create_saved_query("  ", "SELECT *", "").unwrap_err(), AppError::invalid("The query needs a name."));
+        assert_eq!(store.create_saved_query("Untitled", "  ", "").unwrap_err(), AppError::invalid("The query needs some text to save."));
 
         store.remove_saved_query(&id).unwrap();
         assert!(store.saved_queries().is_empty());

@@ -1,13 +1,13 @@
 use rust_i18n::t;
 use rustc_hash::FxHashSet;
-use std::collections::VecDeque;
+use futures_util::stream::{FuturesOrdered, StreamExt};
 
 use super::error::AppError;
 use super::key_name::KeyName;
 use serde_json::Value;
 
 use super::redis_value_type::RedisValueType;
-use super::session::{lossy, pairs, ScriptKey, Session, TypedKey};
+use super::session::{lossy, pairs, stream_fields, ScriptKey, Session, TypedKey};
 use super::state::AppState;
 
 /// One increment of a level listing from [`scan_namespaces`]. `folders`
@@ -106,8 +106,8 @@ pub struct WalkBatch {
     pub keys: Vec<TypedKey>,
     /// keys walked so far, and how many the database held when the walk began
     /// (`DBSIZE`, 0 if that couldn't be told)
-    pub scanned: i64,
-    pub total: i64,
+    pub scanned: usize,
+    pub total: usize,
     /// the walk is over: the cursor came back to 0, or `max_keys` were walked
     pub done: bool,
     pub capped: bool,
@@ -119,19 +119,19 @@ pub struct WalkBatch {
 pub async fn walk_keyspace(
     state: &AppState,
     connection_id: Option<&str>,
-    max_keys: i64,
+    max_keys: usize,
     keep_going: impl Fn() -> bool,
     mut on_batch: impl FnMut(WalkBatch),
 ) -> Result<(), AppError> {
     let mut session = Session::open(state, connection_id).await?;
     let total = session.dbsize().await.unwrap_or(0);
-    let (mut cursor, mut scanned) = (0u64, 0i64);
+    let (mut cursor, mut scanned) = (0u64, 0usize);
     loop {
         if !keep_going() {
             return Ok(());
         }
         let (next, names) = session.scan(cursor, None, 1000).await?;
-        scanned += names.len() as i64;
+        scanned += names.len();
         let keys = session.types(names).await?;
         cursor = next;
         let capped = cursor != 0 && scanned >= max_keys;
@@ -160,60 +160,30 @@ pub struct KeyEntries {
 pub struct EntriesBatch {
     pub keys: Vec<KeyEntries>,
     /// Cumulative number of keys walked up to and including this batch.
-    pub scanned: i64,
+    pub scanned: usize,
     /// How many keys the database held when the walk began (`DBSIZE`), or 0 if
     /// that couldn't be told: what `scanned` is measured against.
-    pub total: i64,
+    pub total: usize,
     pub done: bool,
-}
-
-/// The entries of a value read the way the key panel reads it (`read_value`), for
-/// a key the pipelined read could not fetch.
-fn entries_of_value(key_type: &RedisValueType, value: Value) -> Vec<(String, String)> {
-    let text = |v: &Value| match v {
-        Value::String(s) => s.clone(),
-        other => other.to_string(),
-    };
-    match (key_type, value) {
-        (RedisValueType::String, value) => vec![(String::new(), text(&value))],
-        (RedisValueType::Hash, Value::Object(map)) => map.iter().map(|(k, v)| (k.clone(), text(v))).collect(),
-        (RedisValueType::List, Value::Array(items)) => items.iter().enumerate().map(|(i, v)| (format!("[{i}]"), text(v))).collect(),
-        (RedisValueType::Set, Value::Array(items)) => items.iter().map(|v| (String::new(), text(v))).collect(),
-        (RedisValueType::Zset, Value::Array(items)) => items
-            .iter()
-            .filter_map(|v| match v {
-                Value::Array(pair) if pair.len() == 2 => Some((text(&pair[1]), text(&pair[0]))),
-                _ => None,
-            })
-            .collect(),
-        (RedisValueType::Stream, Value::Array(items)) => items
-            .iter()
-            .filter_map(|v| Some((text(v.get("id")?), v.get("values")?.to_string())))
-            .collect(),
-        _ => Vec::new(),
-    }
 }
 
 /// Reads at most `limit` entries of each of `keys` in one pipelined round trip.
 /// If the pipeline fails (a key vanished or changed type), each key is read on
 /// its own and the failing ones are left empty.
-async fn read_entries(session: &mut Session, keys: Vec<TypedKey>, limit: i64) -> Vec<KeyEntries> {
+async fn read_entries(session: &mut Session, keys: Vec<TypedKey>, limit: usize) -> Vec<KeyEntries> {
     if keys.is_empty() {
         return Vec::new();
     }
     let heads = session.entry_heads(&keys, limit).await.ok();
     let mut heads = heads.map(Vec::into_iter);
     let mut out = Vec::with_capacity(keys.len());
-    for TypedKey { name, key_type } in keys {
+    for key in keys {
         let entries = match heads.as_mut().and_then(Iterator::next) {
             Some(entries) => entries,
             // the pipeline failed as a whole: read this key alone
-            None => match read_value(session, &name, &key_type, limit).await {
-                Ok(read) => entries_of_value(&key_type, read.value),
-                Err(_) => Vec::new(),
-            },
+            None => session.entry_heads(std::slice::from_ref(&key), limit).await.ok().and_then(|mut one| one.pop()).unwrap_or_default(),
         };
-        out.push(KeyEntries { key: name, key_type, entries });
+        out.push(KeyEntries { key: key.name, key_type: key.key_type, entries });
     }
     out
 }
@@ -230,10 +200,8 @@ const SEARCH_READS_IN_FLIGHT: usize = 8;
 /// reads never wait for a SCAN, few enough to not pile up key names.
 const SEARCH_PAGES_AHEAD: usize = 4;
 
-/// How often a paused walk looks whether it may go on (or must stop).
-const PAUSED_CHECK_INTERVAL: std::time::Duration = std::time::Duration::from_millis(100);
-
-/// A spawned task that is cancelled if it is dropped before it ends.
+/// A spawned task that is cancelled if it is dropped before it ends; awaiting it
+/// awaits the task.
 struct AbortOnDrop<T>(tokio::task::JoinHandle<T>);
 
 impl<T> Drop for AbortOnDrop<T> {
@@ -242,12 +210,16 @@ impl<T> Drop for AbortOnDrop<T> {
     }
 }
 
+impl<T> std::future::Future for AbortOnDrop<T> {
+    type Output = Result<T, tokio::task::JoinError>;
+
+    fn poll(mut self: std::pin::Pin<&mut Self>, cx: &mut std::task::Context<'_>) -> std::task::Poll<Self::Output> {
+        std::pin::Pin::new(&mut self.0).poll(cx)
+    }
+}
+
 /// What the SCAN task hands over: a page of key names, or why the walk failed.
 type ScanPage = Result<Vec<KeyName>, AppError>;
-
-/// A read of some keys' content under way, with the number of keys SCAN had
-/// walked when it was started.
-type PendingRead = (i64, AbortOnDrop<Result<Vec<KeyEntries>, AppError>>);
 
 /// Follows SCAN's cursor on its own task, a few pages ahead of the reads (the
 /// channel's room). Ends, closing the channel, with the last page or the error
@@ -301,7 +273,7 @@ fn keys_of_script_reply(reply: Vec<ScriptKey>) -> (Vec<KeyEntries>, Vec<usize>) 
 /// `read_entries` done by the server: one round trip returning only the keys and
 /// entries that might match `needle` (lowercased); the caller still checks them
 /// exactly.
-async fn read_entries_lua(session: &mut Session, names: &[KeyName], needle: &str, depth: i64) -> Result<Vec<KeyEntries>, AppError> {
+async fn read_entries_lua(session: &mut Session, names: &[KeyName], needle: &str, depth: usize) -> Result<Vec<KeyEntries>, AppError> {
     let reply = session.search_script(names, needle, depth).await?;
     let (mut keys, left_to_read) = keys_of_script_reply(reply);
     if !left_to_read.is_empty() {
@@ -316,7 +288,7 @@ async fn read_entries_lua(session: &mut Session, names: &[KeyName], needle: &str
 /// Reads what `names` hold: through the search script when there is a server
 /// filter that works, otherwise (or if the server turns the script down) with a
 /// pipelined `TYPE` and a pipelined read.
-async fn read_chunk(mut session: Session, names: Vec<KeyName>, filter: Option<ServerFilter>, depth: i64) -> Result<Vec<KeyEntries>, AppError> {
+async fn read_chunk(mut session: Session, names: Vec<KeyName>, filter: Option<ServerFilter>, depth: usize) -> Result<Vec<KeyEntries>, AppError> {
     if let Some(filter) = &filter
         && filter.working.load(std::sync::atomic::Ordering::Relaxed)
     {
@@ -329,22 +301,16 @@ async fn read_chunk(mut session: Session, names: Vec<KeyName>, filter: Option<Se
     Ok(read_entries(&mut session, typed, depth).await)
 }
 
-/// What the loop of [`scan_entries`] waits for next.
-enum Wake {
-    Page(Option<ScanPage>),
-    Read(Result<Result<Vec<KeyEntries>, AppError>, tokio::task::JoinError>),
-}
-
 /// Walks every key with SCAN, handing each page's keys and entries (at most `depth`
 /// per key) to `on_batch` in SCAN order until `keep_going` is false. `server_filter`
-/// (lowercased) has a Redis script drop what can't match; `is_paused` holds off new reads.
+/// (lowercased) has a Redis script drop what can't match; `paused` holds off new reads.
 pub async fn scan_entries(
     state: &AppState,
     connection_id: Option<&str>,
-    depth: i64,
+    depth: usize,
     server_filter: Option<&str>,
     keep_going: impl Fn() -> bool,
-    is_paused: impl Fn() -> bool,
+    mut paused: tokio::sync::watch::Receiver<bool>,
     mut on_batch: impl FnMut(EntriesBatch),
 ) -> Result<(), AppError> {
     let mut session = Session::open(state, connection_id).await?;
@@ -354,74 +320,55 @@ pub async fn scan_entries(
     let (sender, mut pages) = tokio::sync::mpsc::channel::<ScanPage>(SEARCH_PAGES_AHEAD);
     let _walk = AbortOnDrop(tokio::spawn(scan_pages(session.sibling(), sender)));
 
-    let mut scanned: i64 = 0;
+    // the reads under way, each with the number of keys SCAN had walked when it was
+    // started; they end in any order but come out in the order they were started
+    let mut reads = FuturesOrdered::new();
+    let mut scanned: usize = 0;
     let mut pages_done = false;
-    let mut in_flight: VecDeque<PendingRead> = VecDeque::new();
     loop {
         if !keep_going() {
             return Ok(());
         }
-        if pages_done && in_flight.is_empty() {
+        if pages_done && reads.is_empty() {
             // the last page held no keys: nothing left to read, but the caller
             // is still owed the batch that says it is over
             on_batch(EntriesBatch { keys: Vec::new(), scanned, total, done: true });
             return Ok(());
         }
 
-        let paused = is_paused();
-        if paused && in_flight.is_empty() {
-            tokio::time::sleep(PAUSED_CHECK_INTERVAL).await;
+        let is_paused = *paused.borrow_and_update();
+        if is_paused && reads.is_empty() {
+            // resumed, or the search is gone (its sender dropped)
+            if paused.changed().await.is_err() {
+                return Ok(());
+            }
             continue;
         }
 
-        // Waits for the oldest read to end (its result is what goes out next, so
-        // the order is kept), or, while there is room for one more, for the next page.
-        let room = !paused && !pages_done && in_flight.len() < SEARCH_READS_IN_FLIGHT;
-        let mut oldest = in_flight.pop_front();
-        let wake = std::future::poll_fn(|cx| {
-            use std::future::Future;
-            use std::pin::Pin;
-            use std::task::Poll;
-            if let Some((_, read)) = oldest.as_mut()
-                && let Poll::Ready(joined) = Pin::new(&mut read.0).poll(cx)
-            {
-                return Poll::Ready(Wake::Read(joined));
-            }
-            if room && let Poll::Ready(page) = pages.poll_recv(cx) {
-                return Poll::Ready(Wake::Page(page));
-            }
-            Poll::Pending
-        })
-        .await;
-
-        match wake {
-            Wake::Read(joined) => {
-                let (scanned_then, _) = oldest.take().expect("a read ended, so there was one");
+        let room = !is_paused && !pages_done && reads.len() < SEARCH_READS_IN_FLIGHT;
+        tokio::select! {
+            biased;
+            Some((scanned_then, joined)) = reads.next() => {
                 let keys = joined??;
-                let done = pages_done && in_flight.is_empty();
+                let done = pages_done && reads.is_empty();
                 on_batch(EntriesBatch { keys, scanned: scanned_then, total, done });
                 if done {
                     return Ok(());
                 }
             }
-            Wake::Page(page) => {
-                if let Some(read) = oldest {
-                    in_flight.push_front(read);
-                }
-                match page {
-                    None => pages_done = true,
-                    Some(Err(e)) => return Err(e),
-                    Some(Ok(names)) => {
-                        for chunk in names.chunks(SEARCH_READ_KEYS) {
-                            // each read reports the keys walked up to its own end, so the
-                            // count climbs read by read rather than page by page
-                            scanned += chunk.len() as i64;
-                            let read = tokio::spawn(read_chunk(session.sibling(), chunk.to_vec(), filter.clone(), depth));
-                            in_flight.push_back((scanned, AbortOnDrop(read)));
-                        }
+            page = pages.recv(), if room => match page {
+                None => pages_done = true,
+                Some(Err(e)) => return Err(e),
+                Some(Ok(names)) => {
+                    for chunk in names.chunks(SEARCH_READ_KEYS) {
+                        // each read reports the keys walked up to its own end, so the
+                        // count climbs read by read rather than page by page
+                        scanned += chunk.len();
+                        let read = AbortOnDrop(tokio::spawn(read_chunk(session.sibling(), chunk.to_vec(), filter.clone(), depth)));
+                        reads.push_back(async move { (scanned, read.await) });
                     }
                 }
-            }
+            },
         }
     }
 }
@@ -431,20 +378,10 @@ pub async fn scan_entries(
 // ---------------------------------------------------------------------------
 
 /// Reads stream entries as `{id, values}` objects, from the start.
-async fn read_stream(session: &mut Session, key: &KeyName, limit: Option<i64>) -> Result<Vec<Value>, AppError> {
+async fn read_stream(session: &mut Session, key: &KeyName, limit: Option<usize>) -> Result<Vec<Value>, AppError> {
     let raw = session.stream_head(key, limit).await?;
 
-    Ok(raw
-        .into_iter()
-        .map(|(id, fields)| {
-            let values: serde_json::Map<String, Value> =
-                fields.into_iter().map(|(k, v)| (k, Value::String(v))).collect();
-            let mut obj = serde_json::Map::new();
-            obj.insert("id".to_string(), Value::String(id));
-            obj.insert("values".to_string(), Value::Object(values));
-            Value::Object(obj)
-        })
-        .collect())
+    Ok(raw.into_iter().map(|(id, fields)| serde_json::json!({ "id": id, "values": stream_fields(fields) })).collect())
 }
 
 fn score_to_json(score: f64) -> Value {
@@ -504,28 +441,27 @@ async fn scan_field_names(session: &mut Session, key: &KeyName, mut cursor: u64,
 
 /// Reads a hash bounded to `max_items` fields, in field-name order among those read,
 /// instead of a full `HGETALL`.
-async fn read_hash_bounded(session: &mut Session, key: &KeyName, max_items: i64) -> Result<ReadValueResult, AppError> {
+async fn read_hash_bounded(session: &mut Session, key: &KeyName, max_items: usize) -> Result<ReadValueResult, AppError> {
     let total = session.hash_len(key).await?;
-    let limit = max_items.max(0) as usize;
-    let (mut field_names, _) = scan_field_names(session, key, 0, limit).await?;
-    field_names.truncate(limit);
+    let (mut field_names, _) = scan_field_names(session, key, 0, max_items).await?;
+    field_names.truncate(max_items);
     sort_by_field_name(&mut field_names, |name| name.as_str(), false);
 
     let map = fetch_hash_fields_as_map(session, key, field_names).await?;
-    Ok(ReadValueResult { truncated: total > map.len() as i64, value: Value::Object(map) })
+    Ok(ReadValueResult { truncated: total > map.len(), value: Value::Object(map) })
 }
 
 /// Same idea as [`read_hash_bounded`] but for sets via `SSCAN` instead of a
 /// full `SMEMBERS`.
-async fn read_set_bounded(session: &mut Session, key: &KeyName, max_items: i64) -> Result<ReadValueResult, AppError> {
+async fn read_set_bounded(session: &mut Session, key: &KeyName, max_items: usize) -> Result<ReadValueResult, AppError> {
     let total = session.set_len(key).await?;
 
     let mut items: Vec<String> = Vec::new();
     let mut cursor: u64 = 0;
     let count_hint = max_items.max(10);
-    while (items.len() as i64) < max_items {
+    while items.len() < max_items {
         let (next_cursor, chunk) = session.set_scan(key, cursor, count_hint).await?;
-        let room = max_items as usize - items.len();
+        let room = max_items - items.len();
         items.extend(chunk.into_iter().take(room));
         cursor = next_cursor;
         if cursor == 0 {
@@ -534,12 +470,12 @@ async fn read_set_bounded(session: &mut Session, key: &KeyName, max_items: i64) 
     }
 
     Ok(ReadValueResult {
-        truncated: total > items.len() as i64,
+        truncated: total > items.len(),
         value: Value::Array(items.into_iter().map(Value::String).collect()),
     })
 }
 
-async fn read_value(session: &mut Session, key: &KeyName, value_type: &RedisValueType, max_items: i64) -> Result<ReadValueResult, AppError> {
+async fn read_value(session: &mut Session, key: &KeyName, value_type: &RedisValueType, max_items: usize) -> Result<ReadValueResult, AppError> {
     match value_type {
         RedisValueType::String => {
             let (len, head) = session.string_head(key, MAX_STRING_BYTES).await?;
@@ -578,7 +514,7 @@ async fn read_value(session: &mut Session, key: &KeyName, value_type: &RedisValu
 }
 
 /// The most entries of one key an export reads; a bigger key is cut and marked `truncated`.
-const EXPORT_MAX_ITEMS: i64 = 1_000_000;
+const EXPORT_MAX_ITEMS: usize = 1_000_000;
 
 /// A key as an export writes it.
 pub struct ExportedKey {
@@ -622,7 +558,7 @@ pub async fn get_key_details(
     state: &AppState,
     connection_id: Option<&str>,
     key: &KeyName,
-    max_items: i64,
+    max_items: usize,
     hash_page_size: usize,
     focus: Option<&str>,
     descending: bool,
@@ -638,7 +574,7 @@ pub async fn get_key_details(
     let ttl = ttl.max(-1);
 
     if key_type == RedisValueType::Hash {
-        let field_count = session.hash_len(key).await?.max(0) as usize;
+        let field_count = session.hash_len(key).await?;
         let (mut names, cursor) = scan_field_names(&mut session, key, 0, HASH_NAMES_BATCH).await?;
         // a field asked for that this batch doesn't hold is shown with it
         if let Some(focus) = focus

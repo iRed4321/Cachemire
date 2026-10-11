@@ -69,13 +69,16 @@ impl Ctx {
                 }
             }
         }
-        match dir {
-            PageDir::Next => shared.loaded.lock_recover().extend(new_fields.iter().cloned()),
-            PageDir::Previous => {
-                shared.loaded.lock_recover().splice(0..0, new_fields.iter().cloned());
+        let path = {
+            let mut content = shared.content.lock_recover();
+            match dir {
+                PageDir::Next => content.loaded.extend(new_fields.iter().cloned()),
+                PageDir::Previous => {
+                    content.loaded.splice(0..0, new_fields.iter().cloned());
+                }
             }
-        }
-        let path = shared.applied_path.lock_recover().path.clone();
+            content.path.path.clone()
+        };
         let search = current_search_filter(&window);
         let expanded = current_expanded_fields(&window);
         let ctx = self.clone();
@@ -98,20 +101,16 @@ impl Ctx {
         if shared.view_epoch.load(Ordering::Relaxed) != epoch {
             return;
         }
-        let total = {
-            let mut current = shared.current.lock_recover();
+        let status = {
+            let mut content = shared.content.lock_recover();
             match dir {
-                PageDir::Next => current.extend(shown),
+                PageDir::Next => content.current.extend(shown),
                 PageDir::Previous => {
-                    current.splice(0..0, shown);
+                    content.current.splice(0..0, shown);
                 }
             }
-            current.len()
-        };
-        let status = {
-            let mut applied = shared.applied_path.lock_recover();
-            applied.matches += matches;
-            filter_status(applied.path.as_ref(), applied.matches, total)
+            content.path.matches += matches;
+            filter_status(content.path.path.as_ref(), content.path.matches, content.current.len())
         };
         let panel = window.global::<KeyPanel>();
         panel.set_json_filter_status(status.into());

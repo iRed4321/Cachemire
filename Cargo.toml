@@ -42,12 +42,18 @@ aws-types = "1"
 open = "5"
 ureq = { version = "3", default-features = false, features = ["rustls"] }
 semver = "1"
-slint = { git = "https://github.com/iRed4321/SlintFork.git", branch = "patched/1.18.1", default-features = false, features = ["std", "backend-winit", "renderer-software", "compat-1-2", "unstable-winit-030"] }
+# the fork's patched/1.18.1 branch at a fixed commit (also for slint-build): move both `rev`s to update
+slint = { git = "https://github.com/iRed4321/SlintFork.git", rev = "56377498bbb0f835237307b7901427e61fd27412", default-features = false, features = ["std", "backend-winit", "renderer-software", "compat-1-2", "unstable-winit-030"] }
 rust-i18n = "4"
 sys-locale = "0.3"
+# the log: a daily file in the data directory (see logging.rs), and stderr in debug builds
+tracing = { version = "0.1", default-features = false, features = ["std"] }
+tracing-appender = "0.2"
+tracing-subscriber = { version = "0.3", default-features = false, features = ["fmt", "env-filter", "std", "ansi"] }
+futures-util = { version = "0.3", default-features = false, features = ["std"] }
 
 [build-dependencies]
-slint-build = { git = "https://github.com/iRed4321/SlintFork.git", branch = "patched/1.18.1" }
+slint-build = { git = "https://github.com/iRed4321/SlintFork.git", rev = "56377498bbb0f835237307b7901427e61fd27412" }
 
 # embeds assets/icon.ico (+ version info) into the Windows executable
 [target.'cfg(windows)'.build-dependencies]

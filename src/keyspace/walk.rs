@@ -17,13 +17,13 @@ use crate::MainWindow;
 
 /// The walk stops after this many keys: the index holds every key name, so a
 /// keyspace past this would cost too much memory to list whole.
-const MAX_INDEXED_KEYS: i64 = 5_000_000;
+const MAX_INDEXED_KEYS: usize = 5_000_000;
 
 /// Where the walk is, for the footer.
 #[derive(Default)]
 pub(super) struct Walk {
-    pub(super) scanned: i64,
-    pub(super) total: i64,
+    pub(super) scanned: usize,
+    pub(super) total: usize,
     pub(super) done: bool,
     pub(super) capped: bool,
 }
@@ -89,8 +89,7 @@ pub(super) fn start_walk(ctx: &ScanContext) {
                 move || still_wanted.load(Ordering::Relaxed) == generation,
                 move |batch| {
                     let (weak, tree, latest, reveal_ctx) = (weak.clone(), tree.clone(), latest.clone(), reveal_ctx.clone());
-                    let _ = slint::invoke_from_event_loop(move || {
-                        let Some(window) = weak.upgrade() else { return };
+                    let _ = weak.upgrade_in_event_loop(move |window| {
                         if latest.load(Ordering::Relaxed) != generation {
                             return;
                         }
@@ -103,8 +102,7 @@ pub(super) fn start_walk(ctx: &ScanContext) {
             .await
         };
         if let Err(e) = result {
-            let _ = slint::invoke_from_event_loop(move || {
-                let Some(window) = weak.upgrade() else { return };
+            let _ = weak.upgrade_in_event_loop(move |window| {
                 if latest.load(Ordering::Relaxed) == generation {
                     window.global::<KeyTree>().set_footer(t!("scan failed: %{error}", error = e).as_ref().into());
                 }

@@ -1,6 +1,6 @@
 //! The UI thread's state, in one place: built once in `main`, then handed to each
 //! module's `init`. Work coming back from Tokio (whose closures must be `Send`, so
-//! can't hold it) reaches it again with [`with`].
+//! can't hold it) reaches it again with [`later`].
 
 use std::cell::{OnceCell, RefCell};
 use std::rc::Rc;
@@ -55,4 +55,10 @@ pub fn with(f: impl FnOnce(&Rc<App>, &MainWindow)) {
     if let Some(window) = app.window.upgrade() {
         f(&app, &window);
     }
+}
+
+/// [`with`] from any thread: `f` runs on the UI thread once its event loop gets to it
+/// (dropped if the loop has ended), such as a Tokio task's result going back to the window.
+pub fn later(f: impl FnOnce(&Rc<App>, &MainWindow) + Send + 'static) {
+    let _ = slint::invoke_from_event_loop(move || with(f));
 }

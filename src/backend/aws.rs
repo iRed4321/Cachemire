@@ -75,12 +75,12 @@ fn http_client() -> SharedHttpClient {
 }
 
 fn incomplete<T>(value: Option<T>) -> Result<T, AppError> {
-    value.ok_or_else(|| AppError::Cloud(t!("Incomplete answer from AWS.").into_owned()))
+    value.ok_or_else(|| AppError::cloud(t!("Incomplete answer from AWS.")))
 }
 
 /// An AWS call's error as "message (code)", falling back to the full error chain.
 fn describe<E: std::error::Error + ProvideErrorMetadata>(error: &E) -> AppError {
-    AppError::Cloud(match (error.message(), error.code()) {
+    AppError::cloud(match (error.message(), error.code()) {
         (Some(message), Some(code)) => format!("{message} ({code})"),
         (Some(text), None) | (None, Some(text)) => text.to_string(),
         (None, None) => describe_chain(error),
@@ -128,7 +128,7 @@ async fn sso_access_token(sso: &SsoSettings) -> Result<String, AppError> {
         .map_err(|e| describe(&e))?;
 
     let url = incomplete(authorization.verification_uri_complete().or(authorization.verification_uri()))?;
-    open::that(url).map_err(|e| AppError::System(t!("Couldn't open the browser: %{error}", error = e.to_string()).into_owned()))?;
+    open::that(url).map_err(|e| AppError::system(t!("Couldn't open the browser: %{error}", error = e.to_string())))?;
 
     let deadline = Instant::now() + Duration::from_secs(authorization.expires_in().max(60) as u64);
     let mut interval = Duration::from_secs(authorization.interval().max(1) as u64);
@@ -156,7 +156,7 @@ async fn sso_access_token(sso: &SsoSettings) -> Result<String, AppError> {
             },
         }
         if Instant::now() > deadline {
-            return Err(AppError::Timeout(t!("The sign-in in the browser took too long.").into_owned()));
+            return Err(AppError::timeout(t!("The sign-in in the browser took too long.")));
         }
     }
 }
@@ -173,7 +173,7 @@ async fn sign_in(profile: &Profile) -> Result<SdkConfig, AppError> {
         None => t!("No credentials.").into_owned(),
     };
     let Some(sso) = &profile.sso else {
-        return Err(AppError::Cloud(t!("No usable credentials for the profile %{name}: %{error}", name = profile.name.as_str(), error = chain_error).into_owned()));
+        return Err(AppError::cloud(t!("No usable credentials for the profile %{name}: %{error}", name = profile.name.as_str(), error = chain_error)));
     };
 
     let access_token = sso_access_token(sso).await?;
@@ -185,7 +185,7 @@ async fn sign_in(profile: &Profile) -> Result<SdkConfig, AppError> {
         .send()
         .await
         .map_err(|e| describe(&e))?;
-    let role = granted.role_credentials().ok_or_else(|| AppError::Cloud(t!("No credentials.").into_owned()))?;
+    let role = granted.role_credentials().ok_or_else(|| AppError::cloud(t!("No credentials.")))?;
     let expires = UNIX_EPOCH + Duration::from_millis(role.expiration().max(0) as u64);
     let credentials = Credentials::new(incomplete(role.access_key_id())?, incomplete(role.secret_access_key())?, role.session_token().map(str::to_string), Some(expires), "cachemire-sso");
 
@@ -236,7 +236,7 @@ pub async fn redis_connections(profile_name: &str) -> Result<Listing, AppError> 
     let profile = profiles().await.into_iter().find(|p| p.name == profile_name).ok_or_else(|| AppError::not_found(t!("AWS profile not found: %{name}", name = profile_name)))?;
     let config = sign_in(&profile).await?;
     if config.region().is_none() {
-        return Err(AppError::Cloud(t!("The profile %{name} has no region.", name = profile_name).into_owned()));
+        return Err(AppError::cloud(t!("The profile %{name} has no region.", name = profile_name)));
     }
     let region = config.region().map(|r| r.to_string()).unwrap_or_default();
     let account = aws_sdk_sts::Client::new(&config)
@@ -246,7 +246,7 @@ pub async fn redis_connections(profile_name: &str) -> Result<Listing, AppError> 
         .map_err(|e| describe(&e))?
         .account()
         .map(str::to_string)
-        .ok_or_else(|| AppError::Cloud(t!("No credentials.").into_owned()))?;
+        .ok_or_else(|| AppError::cloud(t!("No credentials.")))?;
     let client = aws_sdk_elasticache::Client::new(&config);
 
     let item = |name: &str, endpoint: Option<&aws_sdk_elasticache::types::Endpoint>, tls: bool| {

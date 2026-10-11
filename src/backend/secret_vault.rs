@@ -154,7 +154,7 @@ pub fn staged<S: VaultBacked, R>(store: &Mutex<S>, op: impl Fn(&mut S) -> R) -> 
 }
 
 fn keyring_error(error: keyring::Error) -> AppError {
-    AppError::Keyring(error.to_string())
+    AppError::keyring(error.to_string())
 }
 
 /// The operating system's credential store.
@@ -164,7 +164,7 @@ impl OsVault {
     fn read(service: &str, id: &str) -> Result<Option<Secrets>, AppError> {
         let entry = keyring::Entry::new(service, id).map_err(keyring_error)?;
         match entry.get_password() {
-            Ok(json) => serde_json::from_str(&json).map(Some).map_err(|e| AppError::Keyring(e.to_string())),
+            Ok(json) => serde_json::from_str(&json).map(Some).map_err(|e| AppError::keyring(e.to_string())),
             Err(keyring::Error::NoEntry) => Ok(None),
             Err(e) => Err(keyring_error(e)),
         }
@@ -194,7 +194,7 @@ impl Vault for OsVault {
     }
 
     fn set(&self, id: &str, secrets: &Secrets) -> Result<(), AppError> {
-        let json = serde_json::to_string(secrets).map_err(|e| AppError::Keyring(e.to_string()))?;
+        let json = serde_json::to_string(secrets).map_err(|e| AppError::keyring(e.to_string()))?;
         keyring::Entry::new(SERVICE, id).and_then(|entry| entry.set_password(&json)).map_err(keyring_error)
     }
 
@@ -218,7 +218,7 @@ pub struct MemoryVault {
 #[cfg(test)]
 impl MemoryVault {
     fn check(&self) -> Result<(), AppError> {
-        if self.broken.load(std::sync::atomic::Ordering::SeqCst) { Err(AppError::Keyring("no credential store".to_string())) } else { Ok(()) }
+        if self.broken.load(std::sync::atomic::Ordering::SeqCst) { Err(AppError::keyring("no credential store".to_string())) } else { Ok(()) }
     }
 }
 

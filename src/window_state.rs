@@ -86,7 +86,7 @@ struct Tracker {
 impl Tracker {
     fn save(&self) {
         if let Err(e) = persist::save(&self.path, &self.state.get()) {
-            eprintln!("can't save the window's place: {e}");
+            tracing::warn!("can't save the window's place: {e}");
         }
     }
 
@@ -162,7 +162,7 @@ pub fn install(window: &MainWindow) -> impl Fn() + use<> {
         Loaded::Read(state) => state,
         Loaded::Missing => WindowState::default(),
         Loaded::Unusable(why) => {
-            eprintln!("{} can't be read ({why})", path.display());
+            tracing::warn!("{} can't be read ({why})", path.display());
             WindowState::default()
         }
     };

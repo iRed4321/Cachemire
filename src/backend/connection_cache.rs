@@ -42,7 +42,9 @@ impl ConnectionPool {
         let tunnel = match &connection.ssh {
             Some(ssh) => {
                 let (host, port) = target_of(connection)?;
-                Some(SshTunnel::open(ssh, &host, port, known_hosts).await?)
+                let tunnel = SshTunnel::open(ssh, &host, port, known_hosts).await?;
+                tracing::info!(ssh_server = %format_args!("{}:{}", ssh.host, ssh.port), local_port = tunnel.local_port(), "SSH tunnel opened");
+                Some(tunnel)
             }
             None => None,
         };
@@ -53,7 +55,7 @@ impl ConnectionPool {
         // a cluster spreads its keys over several servers: talking to one of them would
         // show part of the keyspace and fail on the rest, so it is refused up front
         if cluster_enabled(&mut first).await {
-            return Err(AppError::Unsupported(
+            return Err(AppError::unsupported(
                 t!("This server runs in cluster mode, which Cachemire doesn't support yet. Connect to a server or endpoint with cluster mode disabled.").into_owned(),
             ));
         }

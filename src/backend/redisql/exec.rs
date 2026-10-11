@@ -209,8 +209,8 @@ pub async fn execute(session: &mut Session, query: &Query) -> Result<QueryOutput
         });
     }
 
-    let truncated = (rows.len() as i64) > query.limit;
-    let rows = rows.into_iter().take(query.limit as usize).map(|row| materialize_row(&row, &query.selects)).collect();
+    let truncated = rows.len() > query.limit;
+    let rows = rows.into_iter().take(query.limit).map(|row| materialize_row(&row, &query.selects)).collect();
     Ok(QueryOutput { rows, truncated, sources_truncated })
 }
 

@@ -3,7 +3,7 @@
 //! a connection with a tunnel. Importing never activates, overwrites or merges with a saved one.
 
 use rustc_hash::FxHashSet;
-use std::path::PathBuf;
+use std::path::Path;
 use std::rc::Rc;
 
 use rust_i18n::t;
@@ -15,6 +15,7 @@ use crate::backend::connection_store::build_connection_string;
 use crate::backend::error::AppError;
 use crate::backend::models::ConnectionPayloadInput;
 use crate::backend::secret_vault::staged;
+use crate::backend::state::AppState;
 use crate::backend::{LockExt, now_ms, persist};
 use crate::{ConnectionTransfer, MainWindow, TransferRow};
 
@@ -118,259 +119,263 @@ fn free_name(name: &str, taken: &mut FxHashSet<String>) -> String {
     candidate
 }
 
-pub fn init(app: &Rc<App>, window: &MainWindow) {
-    let (state, rt) = (app.state.clone(), app.rt.clone());
+pub fn init(window: &MainWindow) {
     let global = window.global::<ConnectionTransfer>();
+    global.on_open_requested(|| crate::app::with(open));
+    global.on_toggle(|tab, index| crate::app::with(|_, window| toggle(window, tab, index)));
+    global.on_toggle_range(|tab, from, to| crate::app::with(|_, window| toggle_range(window, tab, from, to)));
+    global.on_set_all(|tab, all| crate::app::with(|_, window| set_all(window, tab, all)));
+    global.on_choose_file(|| crate::app::with(|app, _| choose_file(app)));
+    global.on_run_import(|| crate::app::with(run_import));
+    global.on_run_export(|| crate::app::with(run_export));
+}
 
-    global.on_open_requested({
-        let app = app.clone();
-        move || {
-            let Some(window) = app.window.upgrade() else { return };
-            let connections = app.state.connections.lock_recover().list_state().connections;
-            let mut lists = app.transfer.borrow_mut();
-            lists.exportable = connections.iter().map(|c| c.id.clone()).collect();
-            lists.drafts.clear();
-            drop(lists);
-            let rows: Vec<TransferRow> = connections
+/// Opens the window: every saved connection listed for export, all ticked, and nothing to import yet.
+fn open(app: &Rc<App>, window: &MainWindow) {
+    let connections = app.state.connections.lock_recover().list_state().connections;
+    {
+        let mut lists = app.transfer.borrow_mut();
+        lists.exportable = connections.iter().map(|c| c.id.clone()).collect();
+        lists.drafts.clear();
+    }
+    let rows: Vec<TransferRow> = connections
+        .iter()
+        .map(|c| TransferRow { name: c.name.as_str().into(), detail: c.connection_url.as_str().into(), ticked: true, note: "".into() })
+        .collect();
+    let global = window.global::<ConnectionTransfer>();
+    global.set_export_rows(ModelRc::new(VecModel::from(rows)));
+    global.set_import_rows(ModelRc::new(VecModel::from(Vec::<TransferRow>::new())));
+    global.set_import_file("".into());
+    global.set_export_passwords(false);
+    global.set_tab(0);
+    global.set_busy(false);
+    set_message(window, String::new(), false);
+    refresh_counts(window);
+    global.set_open(true);
+}
+
+/// The rows of tab `tab`: 0 is the import list, anything else the export list.
+fn rows_of(window: &MainWindow, tab: i32) -> ModelRc<TransferRow> {
+    let global = window.global::<ConnectionTransfer>();
+    if tab == 0 { global.get_import_rows() } else { global.get_export_rows() }
+}
+
+fn toggle(window: &MainWindow, tab: i32, index: i32) {
+    let rows = rows_of(window, tab);
+    let Ok(index) = usize::try_from(index) else { return };
+    if let Some(mut row) = rows.row_data(index) {
+        row.ticked = !row.ticked;
+        rows.set_row_data(index, row);
+    }
+    refresh_counts(window);
+}
+
+/// Gives the rows from `from` to `to` the tick of the row at `from`.
+fn toggle_range(window: &MainWindow, tab: i32, from: i32, to: i32) {
+    let rows = rows_of(window, tab);
+    let (Ok(from), Ok(to)) = (usize::try_from(from), usize::try_from(to)) else { return };
+    let Some(on) = rows.row_data(from).map(|row| row.ticked) else { return };
+    for i in from.min(to)..=from.max(to).min(rows.row_count().saturating_sub(1)) {
+        if let Some(mut row) = rows.row_data(i).filter(|row| row.ticked != on) {
+            row.ticked = on;
+            rows.set_row_data(i, row);
+        }
+    }
+    refresh_counts(window);
+}
+
+fn set_all(window: &MainWindow, tab: i32, all: bool) {
+    let rows = rows_of(window, tab);
+    for (i, mut row) in rows.iter().enumerate() {
+        if row.ticked != all {
+            row.ticked = all;
+            rows.set_row_data(i, row);
+        }
+    }
+    refresh_counts(window);
+}
+
+/// "Choose a file…": reads it off the UI thread and lists its connections, all ticked.
+fn choose_file(app: &Rc<App>) {
+    app.rt.spawn(async move {
+        let Some(file) = rfd::AsyncFileDialog::new().set_title(t!("Select a connections file")).add_filter("JSON", &["json"]).pick_file().await else { return };
+        let path = file.path();
+        let parsed = std::fs::read_to_string(path).map_err(|e| AppError::file(t!("Couldn't read the file: %{error}", error = e))).and_then(|text| parse_drafts(&text));
+        let file = path.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default();
+        crate::app::later(move |app, window| show_drafts(app, window, parsed, file));
+    });
+}
+
+/// Lists an import file's connections (`file` is its name), or why it can't be imported.
+fn show_drafts(app: &Rc<App>, window: &MainWindow, parsed: Result<Vec<Draft>, AppError>, file: String) {
+    let global = window.global::<ConnectionTransfer>();
+    match parsed {
+        Ok(drafts) => {
+            let taken: FxHashSet<String> = app.state.connections.lock_recover().list_state().connections.iter().map(|c| c.name.to_lowercase()).collect();
+            let rows: Vec<TransferRow> = drafts
                 .iter()
-                .map(|c| TransferRow { name: c.name.as_str().into(), detail: c.connection_url.as_str().into(), ticked: true, note: "".into() })
+                .map(|d| TransferRow {
+                    name: d.name.as_str().into(),
+                    detail: match &d.ssh {
+                        Some(ssh) => t!("%{address} via SSH %{host}", address = d.connection_url.as_str(), host = ssh.host).into_owned().into(),
+                        None => d.connection_url.as_str().into(),
+                    },
+                    ticked: true,
+                    note: if taken.contains(&d.name.to_lowercase()) { t!("added as a copy").into_owned().into() } else { "".into() },
+                })
                 .collect();
-            let global = window.global::<ConnectionTransfer>();
-            global.set_export_rows(ModelRc::new(VecModel::from(rows)));
+            app.transfer.borrow_mut().drafts = drafts;
+            global.set_import_rows(ModelRc::new(VecModel::from(rows)));
+            global.set_import_file(file.into());
+            set_message(window, String::new(), false);
+        }
+        Err(e) => {
+            app.transfer.borrow_mut().drafts.clear();
             global.set_import_rows(ModelRc::new(VecModel::from(Vec::<TransferRow>::new())));
-            global.set_import_file("".into());
-            global.set_export_passwords(false);
-            global.set_tab(0);
-            global.set_busy(false);
-            set_message(&window, String::new(), false);
-            refresh_counts(&window);
-            global.set_open(true);
+            global.set_import_file(file.into());
+            set_message(window, e.to_string(), false);
         }
-    });
+    }
+    refresh_counts(window);
+}
 
-    global.on_toggle({
-        let weak = window.as_weak();
-        move |tab, index| {
-            let Some(window) = weak.upgrade() else { return };
-            let global = window.global::<ConnectionTransfer>();
-            let rows = if tab == 0 { global.get_import_rows() } else { global.get_export_rows() };
-            if let Some(mut row) = rows.row_data(index as usize) {
-                row.ticked = !row.ticked;
-                rows.set_row_data(index as usize, row);
-            }
-            refresh_counts(&window);
+impl Draft {
+    /// The draft as what saving a connection takes.
+    fn payload(&self) -> ConnectionPayloadInput {
+        let ssh = self.ssh.as_ref();
+        ConnectionPayloadInput {
+            name: Some(self.name.clone()),
+            connection_url: Some(self.connection_url.clone()),
+            username: Some(self.username.clone()),
+            password: self.password.clone().filter(|p| !p.is_empty()),
+            ssh_enabled: Some(ssh.is_some()),
+            ssh_host: ssh.map(|s| s.host.clone()),
+            ssh_port: ssh.map(|s| s.port),
+            ssh_username: ssh.map(|s| s.username.clone()),
+            ssh_private_key: ssh.map(|s| s.private_key.clone()),
+            ssh_password: ssh.and_then(|s| s.password.clone()),
+            ssh_passphrase: ssh.and_then(|s| s.passphrase.clone()),
+            ..Default::default()
         }
-    });
+    }
+}
 
-    global.on_toggle_range({
-        let weak = window.as_weak();
-        move |tab, from, to| {
-            let Some(window) = weak.upgrade() else { return };
-            let global = window.global::<ConnectionTransfer>();
-            let rows = if tab == 0 { global.get_import_rows() } else { global.get_export_rows() };
-            let (Ok(from), Ok(to)) = (usize::try_from(from), usize::try_from(to)) else { return };
-            let Some(on) = rows.row_data(from).map(|row| row.ticked) else { return };
-            for i in from.min(to)..=from.max(to).min(rows.row_count().saturating_sub(1)) {
-                if let Some(mut row) = rows.row_data(i).filter(|row| row.ticked != on) {
-                    row.ticked = on;
-                    rows.set_row_data(i, row);
-                }
-            }
-            refresh_counts(&window);
-        }
-    });
-
-    global.on_set_all({
-        let weak = window.as_weak();
-        move |tab, all| {
-            let Some(window) = weak.upgrade() else { return };
-            let global = window.global::<ConnectionTransfer>();
-            let rows = if tab == 0 { global.get_import_rows() } else { global.get_export_rows() };
-            for (i, mut row) in rows.iter().enumerate() {
-                if row.ticked != all {
-                    row.ticked = all;
-                    rows.set_row_data(i, row);
-                }
-            }
-            refresh_counts(&window);
-        }
-    });
-
-    // "Choose a file…": reads it off the UI thread and lists its connections, all ticked
-    global.on_choose_file({
-        let (state, rt) = (state.clone(), rt.clone());
-        move || {
-            let state = state.clone();
-            rt.spawn_blocking(move || {
-                let Some(path) = rfd::FileDialog::new().set_title(t!("Select a connections file")).add_filter("JSON", &["json"]).pick_file() else { return };
-                let parsed = std::fs::read_to_string(&path).map_err(|e| AppError::File(t!("Couldn't read the file: %{error}", error = e).into_owned())).and_then(|text| parse_drafts(&text));
-                let file = path.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default();
-                let _ = slint::invoke_from_event_loop(move || crate::app::with(|app, window| {
+/// Saves the ticked connections of the import list, each under a name no other has.
+fn run_import(app: &Rc<App>, window: &MainWindow) {
+    let global = window.global::<ConnectionTransfer>();
+    let ticks: Vec<bool> = global.get_import_rows().iter().map(|row| row.ticked).collect();
+    let chosen: Vec<ConnectionPayloadInput> =
+        app.transfer.borrow().drafts.iter().zip(&ticks).filter(|(_, ticked)| **ticked).map(|(d, _)| d.payload()).collect();
+    if chosen.is_empty() {
+        return;
+    }
+    global.set_busy(true);
+    let state = app.state.clone();
+    app.rt.spawn_blocking(move || {
+        // the names are chosen once, so the rehearsal and the real run save the same thing
+        let mut taken: FxHashSet<String> = state.connections.lock_recover().list_state().connections.iter().map(|c| c.name.to_lowercase()).collect();
+        let items: Vec<(String, ConnectionPayloadInput)> = chosen
+            .into_iter()
+            .map(|mut payload| {
+                payload.name = payload.name.map(|name| free_name(&name, &mut taken));
+                (uuid::Uuid::new_v4().to_string(), payload)
+            })
+            .collect();
+        let result = staged(&state.connections, |store| items.iter().try_for_each(|(id, payload)| store.import_with_id(id, payload.clone())));
+        let count = items.len();
+        tracing::info!(count, ok = result.is_ok(), "imported connections");
+        crate::app::later(move |app, window| {
+            window.global::<ConnectionTransfer>().set_busy(false);
+            match result {
+                Ok(()) => {
+                    app.transfer.borrow_mut().drafts.clear();
                     let global = window.global::<ConnectionTransfer>();
-                    match parsed {
-                        Ok(drafts) => {
-                            let taken: FxHashSet<String> = state.connections.lock_recover().list_state().connections.iter().map(|c| c.name.to_lowercase()).collect();
-                            let rows: Vec<TransferRow> = drafts
-                                .iter()
-                                .map(|d| TransferRow {
-                                    name: d.name.as_str().into(),
-                                    detail: match &d.ssh {
-                                        Some(ssh) => t!("%{address} via SSH %{host}", address = d.connection_url.as_str(), host = ssh.host).into_owned().into(),
-                                        None => d.connection_url.as_str().into(),
-                                    },
-                                    ticked: true,
-                                    note: if taken.contains(&d.name.to_lowercase()) { t!("added as a copy").into_owned().into() } else { "".into() },
-                                })
-                                .collect();
-                            app.transfer.borrow_mut().drafts = drafts;
-                            global.set_import_rows(ModelRc::new(VecModel::from(rows)));
-                            global.set_import_file(file.into());
-                            set_message(window, String::new(), false);
-                        }
-                        Err(e) => {
-                            app.transfer.borrow_mut().drafts.clear();
-                            global.set_import_rows(ModelRc::new(VecModel::from(Vec::<TransferRow>::new())));
-                            global.set_import_file(file.into());
-                            set_message(window, e.to_string(), false);
-                        }
-                    }
+                    global.set_import_rows(ModelRc::new(VecModel::from(Vec::<TransferRow>::new())));
+                    global.set_import_file("".into());
                     refresh_counts(window);
-                }));
-            });
-        }
-    });
-
-    global.on_run_import({
-        let (app, rt) = (app.clone(), rt.clone());
-        move || {
-            let Some(window) = app.window.upgrade() else { return };
-            let global = window.global::<ConnectionTransfer>();
-            let ticks: Vec<bool> = global.get_import_rows().iter().map(|row| row.ticked).collect();
-            let chosen: Vec<ConnectionPayloadInput> = {
-                app.transfer
-                    .borrow()
-                    .drafts
-                    .iter()
-                    .zip(&ticks)
-                    .filter(|(_, ticked)| **ticked)
-                    .map(|(d, _)| ConnectionPayloadInput {
-                        name: Some(d.name.clone()),
-                        connection_url: Some(d.connection_url.clone()),
-                        username: Some(d.username.clone()),
-                        password: d.password.clone().filter(|p| !p.is_empty()),
-                        ssh_enabled: Some(d.ssh.is_some()),
-                        ssh_host: d.ssh.as_ref().map(|s| s.host.clone()),
-                        ssh_port: d.ssh.as_ref().map(|s| s.port),
-                        ssh_username: d.ssh.as_ref().map(|s| s.username.clone()),
-                        ssh_private_key: d.ssh.as_ref().map(|s| s.private_key.clone()),
-                        ssh_password: d.ssh.as_ref().and_then(|s| s.password.clone()),
-                        ssh_passphrase: d.ssh.as_ref().and_then(|s| s.passphrase.clone()),
-                        ..Default::default()
-                    })
-                    .collect()
-            };
-            if chosen.is_empty() {
-                return;
+                    crate::connections::refresh(app, window);
+                    set_message(window, t!("Imported %{count} connection(s).", count = count).into_owned(), true);
+                }
+                Err(e) => set_message(window, e.to_string(), false),
             }
-            global.set_busy(true);
-            let state = app.state.clone();
-            rt.spawn_blocking(move || {
-                // the names are chosen once, so the rehearsal and the real run save the same thing
-                let mut taken: FxHashSet<String> = state.connections.lock_recover().list_state().connections.iter().map(|c| c.name.to_lowercase()).collect();
-                let items: Vec<(String, ConnectionPayloadInput)> = chosen
-                    .into_iter()
-                    .map(|mut payload| {
-                        payload.name = payload.name.map(|name| free_name(&name, &mut taken));
-                        (uuid::Uuid::new_v4().to_string(), payload)
-                    })
-                    .collect();
-                let result = staged(&state.connections, |store| items.iter().try_for_each(|(id, payload)| store.import_with_id(id, payload.clone())));
-                let count = items.len();
-                let _ = slint::invoke_from_event_loop(move || crate::app::with(|app, window| {
-                    window.global::<ConnectionTransfer>().set_busy(false);
-                    match result {
-                        Ok(()) => {
-                            app.transfer.borrow_mut().drafts.clear();
-                            let global = window.global::<ConnectionTransfer>();
-                            global.set_import_rows(ModelRc::new(VecModel::from(Vec::<TransferRow>::new())));
-                            global.set_import_file("".into());
-                            refresh_counts(window);
-                            crate::connections::refresh(app, window);
-                            set_message(window, t!("Imported %{count} connection(s).", count = count).into_owned(), true);
-                        }
-                        Err(e) => set_message(window, e.to_string(), false),
-                    }
-                }));
-            });
-        }
+        });
     });
+}
 
-    global.on_run_export({
-        let (app, weak, state, rt) = (app.clone(), window.as_weak(), state, rt);
-        move || {
-            let Some(window) = weak.upgrade() else { return };
-            let global = window.global::<ConnectionTransfer>();
-            let ticks: Vec<bool> = global.get_export_rows().iter().map(|row| row.ticked).collect();
-            let ids: Vec<String> = app.transfer.borrow().exportable.iter().zip(&ticks).filter(|(_, ticked)| **ticked).map(|(id, _)| id.clone()).collect();
-            if ids.is_empty() {
-                return;
+/// Asks where to save the ticked connections of the export list, then writes them there.
+fn run_export(app: &Rc<App>, window: &MainWindow) {
+    let global = window.global::<ConnectionTransfer>();
+    let ticks: Vec<bool> = global.get_export_rows().iter().map(|row| row.ticked).collect();
+    let ids: Vec<String> = app.transfer.borrow().exportable.iter().zip(&ticks).filter(|(_, ticked)| **ticked).map(|(id, _)| id.clone()).collect();
+    if ids.is_empty() {
+        return;
+    }
+    let passwords = global.get_export_passwords();
+    global.set_busy(true);
+    let state = app.state.clone();
+    app.rt.spawn(async move {
+        let now = now_ms();
+        let (year, month, day, hour, minute, second, _) = utc_parts(now);
+        let stamp = format!("{year:04}{month:02}{day:02}-{hour:02}{minute:02}{second:02}");
+        let chosen = rfd::AsyncFileDialog::new()
+            .set_title(t!("Export the connections"))
+            .set_file_name(format!("Cachemire-Connections-{stamp}.json"))
+            .add_filter("JSON", &["json"])
+            .save_file()
+            .await;
+        let Some(path) = chosen.map(|file| file.path().to_path_buf()) else {
+            crate::app::later(|_, window| window.global::<ConnectionTransfer>().set_busy(false));
+            return;
+        };
+        let outcome = tokio::task::spawn_blocking(move || write_export(&state, &ids, passwords, now, &path).map(|count| (path, count)))
+            .await
+            .map_err(AppError::from)
+            .flatten();
+        crate::app::later(move |_, window| {
+            window.global::<ConnectionTransfer>().set_busy(false);
+            match outcome {
+                Ok((path, count)) => {
+                    tracing::info!(count, file = %path.display(), "exported connections");
+                    set_message(window, t!("Exported %{count} connection(s) to %{file}.", count = count, file = path.display()).into_owned(), true);
+                }
+                Err(e) => set_message(window, e.to_string(), false),
             }
-            let passwords = global.get_export_passwords();
-            global.set_busy(true);
-            let (weak, state) = (weak.clone(), state.clone());
-            rt.spawn_blocking(move || {
-                let (year, month, day, hour, minute, second, millis) = utc_parts(now_ms());
-                let stamp = format!("{year:04}{month:02}{day:02}-{hour:02}{minute:02}{second:02}");
-                let outcome = (|| -> Result<Option<(PathBuf, usize)>, AppError> {
-                    let Some(path) = rfd::FileDialog::new()
-                        .set_title(t!("Export the connections"))
-                        .set_file_name(format!("Cachemire-Connections-{stamp}.json"))
-                        .add_filter("JSON", &["json"])
-                        .save_file()
-                    else {
-                        return Ok(None);
-                    };
-                    if passwords {
-                        // the passwords are fetched from the system keyring, off the store's lock
-                        staged(&state.connections, |store| ids.iter().try_for_each(|id| store.unlock_secrets(id)))?;
-                    }
-                    let items: Vec<Value> = {
-                        let store = state.connections.lock_recover();
-                        ids.iter()
-                            .filter_map(|id| store.get(id))
-                            .map(|c| {
-                                let secret = |text: String| if passwords { Value::String(text) } else { Value::Null };
-                                // host, port and db as well, for a version that reads them
-                                let (host, port, db) = c.endpoint().map_or((String::new(), 6379, 0), |e| (e.host, e.port, e.db));
-                                let mut item = json!({
-                                    "id": c.id, "name": c.name, "connectionUrl": c.connection_url, "host": host, "port": port,
-                                    "db": db, "username": c.username, "password": secret(c.password),
-                                });
-                                if let Some(ssh) = c.ssh {
-                                    item["ssh"] = json!({
-                                        "host": ssh.host, "port": ssh.port, "username": ssh.username, "privateKey": ssh.private_key,
-                                        "password": secret(ssh.password), "passphrase": secret(ssh.passphrase),
-                                    });
-                                }
-                                item
-                            })
-                            .collect()
-                    };
-                    let count = items.len();
-                    let exported_at = format!("{year:04}-{month:02}-{day:02}T{hour:02}:{minute:02}:{second:02}.{millis:03}Z");
-                    persist::save(&path, &json!({ "exportedAtUtc": exported_at, "includesPasswords": passwords, "count": count, "connections": items }))?;
-                    Ok(Some((path, count)))
-                })();
-                let _ = slint::invoke_from_event_loop(move || {
-                    let Some(window) = weak.upgrade() else { return };
-                    window.global::<ConnectionTransfer>().set_busy(false);
-                    match outcome {
-                        Ok(Some((path, count))) => set_message(&window, t!("Exported %{count} connection(s) to %{file}.", count = count, file = path.display()).into_owned(), true),
-                        Ok(None) => {}
-                        Err(e) => set_message(&window, e.to_string(), false),
-                    }
+        });
+    });
+}
+
+/// Writes the connections `ids` to `path` as an export made at `now` (ms since the
+/// epoch), with their passwords when `passwords`; how many it wrote.
+fn write_export(state: &AppState, ids: &[String], passwords: bool, now: i64, path: &Path) -> Result<usize, AppError> {
+    if passwords {
+        // the passwords are fetched from the system keyring, off the store's lock
+        staged(&state.connections, |store| ids.iter().try_for_each(|id| store.unlock_secrets(id)))?;
+    }
+    let items: Vec<Value> = {
+        let store = state.connections.lock_recover();
+        ids.iter()
+            .filter_map(|id| store.get(id))
+            .map(|c| {
+                let secret = |text: String| if passwords { Value::String(text) } else { Value::Null };
+                // host, port and db as well, for a version that reads them
+                let (host, port, db) = c.endpoint().map_or((String::new(), 6379, 0), |e| (e.host, e.port, e.db));
+                let mut item = json!({
+                    "id": c.id, "name": c.name, "connectionUrl": c.connection_url, "host": host, "port": port,
+                    "db": db, "username": c.username, "password": secret(c.password),
                 });
-            });
-        }
-    });
+                if let Some(ssh) = c.ssh {
+                    item["ssh"] = json!({
+                        "host": ssh.host, "port": ssh.port, "username": ssh.username, "privateKey": ssh.private_key,
+                        "password": secret(ssh.password), "passphrase": secret(ssh.passphrase),
+                    });
+                }
+                item
+            })
+            .collect()
+    };
+    let count = items.len();
+    let (year, month, day, hour, minute, second, millis) = utc_parts(now);
+    let exported_at = format!("{year:04}-{month:02}-{day:02}T{hour:02}:{minute:02}:{second:02}.{millis:03}Z");
+    persist::save(path, &json!({ "exportedAtUtc": exported_at, "includesPasswords": passwords, "count": count, "connections": items }))?;
+    Ok(count)
 }

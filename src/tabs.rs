@@ -17,7 +17,7 @@ use rust_i18n::t;
 
 /// Per-tab UI state outside the fetched key data: the search bar, scroll
 /// position, open value-list rows. Saved/restored on tab switch; a new tab
-/// always starts from `default_for_new_tab`, never the previous tab's state.
+/// always starts from `default()`, never the previous tab's state.
 #[derive(Clone, Default)]
 struct TabViewState {
     // the search bar's active badges, currently-picked scope and
@@ -36,12 +36,6 @@ struct TabViewState {
     descending: bool,
     // the header's JSON / Escaped switch (see ExportPrefs.header-escaped)
     escaped: bool,
-}
-
-impl TabViewState {
-    fn default_for_new_tab() -> Self {
-        Self::default()
-    }
 }
 
 /// Which special (non-key) tab kind an id names, if any: a search tab (see
@@ -96,6 +90,7 @@ struct ParkedTabs {
 }
 
 /// The open tabs of the connection shown, and those every other one left behind.
+#[derive(Default)]
 pub struct Tabs {
     open: Vec<String>,
     active: Option<String>,
@@ -117,27 +112,7 @@ pub struct Tabs {
     discard_on_leave: bool,
 }
 
-impl Default for Tabs {
-    fn default() -> Self {
-        Self::new()
-    }
-}
-
 impl Tabs {
-    fn new() -> Self {
-        Self {
-            open: Vec::new(),
-            active: None,
-            view_state: FxHashMap::default(),
-            loaded_on: String::new(),
-            connection: String::new(),
-            parked: FxHashMap::default(),
-            highlighted: false,
-            parked_highlights: FxHashSet::default(),
-            discard_on_leave: false,
-        }
-    }
-
     /// The connections whose tabs are parked, to be shown again when switched back to.
     pub fn parked_connections(&self) -> FxHashSet<String> {
         self.parked.keys().cloned().collect()
@@ -268,7 +243,7 @@ fn restore_view_state(window: &MainWindow, tabs: &Tabs, key: &str) -> ScrollPos 
     let state = tabs.view_state.get(key).cloned().unwrap_or_else(|| TabViewState {
         view: if redisql::is_query_id(key) { KeyView::Table } else { KeyView::default() },
         escaped: window.global::<Preferences>().get_export_escaped(),
-        ..TabViewState::default_for_new_tab()
+        ..TabViewState::default()
     });
     window.global::<KeyPanel>().set_filter_badges(ModelRc::new(VecModel::from(state.badges)));
     window.global::<KeyPanel>().set_filter_scope(state.scope);
@@ -488,7 +463,7 @@ fn on_close_other_tabs(app: &App, window: &MainWindow, key: String) {
 fn on_search_hit_opened(app: &App, window: &MainWindow, key: String, field: String) {
     {
         let mut tabs = app.tabs.borrow_mut();
-        let view = tabs.view_state.entry(key.clone()).or_insert_with(TabViewState::default_for_new_tab);
+        let view = tabs.view_state.entry(key.clone()).or_default();
         view.view = KeyView::Fields;
         view.badges.clear();
         view.json_filter.clear();
@@ -605,7 +580,7 @@ mod tests {
 
     #[test]
     fn each_connection_gets_its_tabs_back() {
-        let mut tabs = Tabs::new();
+        let mut tabs = Tabs::default();
         tabs.switch_connection("a", true);
         open(&mut tabs, &["users", "orders"]);
         tabs.view_state.insert("users".into(), TabViewState { json_filter: "x".into(), ..Default::default() });
@@ -627,7 +602,7 @@ mod tests {
 
     #[test]
     fn no_connection_hides_the_tabs_and_a_deleted_one_forgets_them() {
-        let mut tabs = Tabs::new();
+        let mut tabs = Tabs::default();
         tabs.switch_connection("a", true);
         open(&mut tabs, &["k"]);
         tabs.switch_connection("", true);
@@ -642,7 +617,7 @@ mod tests {
 
     #[test]
     fn the_tree_highlight_is_remembered_per_connection() {
-        let mut tabs = Tabs::new();
+        let mut tabs = Tabs::default();
         tabs.switch_connection("a", true);
         open(&mut tabs, &["users"]);
         tabs.highlighted = true;

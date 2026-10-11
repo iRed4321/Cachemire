@@ -50,7 +50,7 @@ use scroll::{arm_table_scroll, disarm_scroll, set_field_expanded, sync_rows_expa
 use table::{apply_table, build_table, reset_table_selection, select_table_range};
 use value_list::meta_text;
 
-const MAX_ITEMS: i64 = 500;
+const MAX_ITEMS: usize = 500;
 /// Badges the search bar holds at once; adding more is blocked past this.
 const MAX_BADGES: usize = 5;
 /// A hash's fields are fetched this many at a time: enough for the first
@@ -109,37 +109,50 @@ fn search_or_filter_active(window: &MainWindow) -> bool {
 /// so `load_key` doesn't need one parameter per piece of it.
 #[derive(Clone)]
 struct KeyDetailShared {
-    current: Arc<Mutex<Fields>>,
+    // what the panel shows, read and replaced together
+    content: Arc<Mutex<PanelContent>>,
     // pretty renderings, built off the UI thread and announced through the
     // window's pretty-ready-* properties; request-pretty-value then serves
     // from here without computing
     pretty_cache: PrettyCache,
-    // the key whose fields `current` holds — a background rendering that
-    // finishes after the key changed must not land in the (new key's) cache
-    current_key: Arc<Mutex<String>>,
-    // the search bar's badges in effect, for highlighting matches in previews
-    // and expanded values; updated on load and whenever a badge is added,
-    // removed, or case-sensitivity is flipped — never from the box's live text
-    applied_search: Arc<Mutex<SearchFilter>>,
     // bumped whenever a table build is started or the view is switched off, so
     // a build that finishes late (a newer key, the switch turned off) is dropped
     table_generation: Arc<AtomicU64>,
-    // The key's fields as loaded; `current` is these after the filter bar's
-    // path (the same list when there's none), and what everything else shows.
-    loaded: Arc<Mutex<Fields>>,
     // bumped when a key starts loading and when the filter is applied, so work
     // started for the previous contents (a load, a filter, a pretty rendering)
     // is dropped when it finishes late
     view_epoch: Arc<AtomicU64>,
     fetched: FetchedCache,
-    // completions of the filter bar's path, from `loaded`
+    // completions of the filter bar's path, from the loaded fields
     suggester: Arc<Suggester>,
-    // the filter bar's path as `current` was last built with, and its match count
-    applied_path: Arc<Mutex<AppliedPath>>,
     // guards a single hash-page fetch — a scroll near the end of what's
     // loaded, or the next step of a search/filter's scan through the rest —
     // from overlapping another one already under way for the same key
     paging_in_flight: Arc<AtomicBool>,
+}
+
+/// The key the panel shows and what of it is shown.
+#[derive(Default)]
+struct PanelContent {
+    // the key whose fields these are: a background rendering that finishes after
+    // the key changed must not land in the (new key's) cache
+    key: String,
+    // the key's fields as loaded; `current` is these after the filter bar's path
+    // (the same list when there's none), and what everything else shows
+    loaded: Fields,
+    current: Fields,
+    // the search bar's badges in effect, for highlighting matches; updated on load
+    // and on every badge change, never from the box's live text
+    search: SearchFilter,
+    // the filter bar's path as `current` was last built with, and its match count
+    path: AppliedPath,
+}
+
+impl PanelContent {
+    /// The shown field named `name`.
+    fn field(&self, name: &str) -> Option<Arc<field::Field>> {
+        self.current.iter().find(|f| f.name == name).cloned()
+    }
 }
 
 /// A JSON path filter in effect: its path (`None`: no filter) and how many matches
@@ -169,8 +182,10 @@ impl Ctx {
         let generation = shared.table_generation.fetch_add(1, Ordering::Relaxed) + 1;
         let latest = shared.table_generation.clone();
         // a snapshot of the pointers, so the lock isn't held while building
-        let fields: Fields = shared.current.lock_recover().clone();
-        let filter = shared.applied_search.lock_recover().clone();
+        let (fields, filter) = {
+            let content = shared.content.lock_recover();
+            (content.current.clone(), content.search.clone())
+        };
         let weak = self.weak.clone();
         self.rt.spawn_blocking(move || {
             // the search bar's badges narrow the table the same way they narrow
@@ -178,8 +193,7 @@ impl Ctx {
             let needles = filter.highlight_needles();
             let fields: Fields = fields.into_par_iter().filter(|f| filter.matches(f)).collect();
             let table = build_table(&fields, &needles, filter.case_sensitive);
-            let _ = slint::invoke_from_event_loop(move || {
-                let Some(window) = weak.upgrade() else { return };
+            let _ = weak.upgrade_in_event_loop(move |window| {
                 if latest.load(Ordering::Relaxed) == generation && window.global::<KeyPanel>().get_view() == KeyView::Table {
                     if let Some(scroll) = scroll {
                         arm_table_scroll(&window, scroll);
@@ -204,6 +218,78 @@ impl Ctx {
     }
 }
 
+impl Ctx {
+    /// The filter's completion list, from every loaded field's value (not what the
+    /// filter has left of them); whether it has any.
+    fn suggest(&self, text: &str, cursor: i32) -> bool {
+        let Some(window) = self.weak.upgrade() else { return false };
+        let fields: Fields = self.shared.content.lock_recover().loaded.clone();
+        let completion = self.shared.suggester.complete(&fields, text, cursor.max(0) as usize);
+        let rows: Vec<SuggestionRow> = completion
+            .iter()
+            .flat_map(|completion| &completion.items)
+            .map(|item| {
+                let (start, end) = item.matched;
+                SuggestionRow { before: item.key[..start].into(), matched: item.key[start..end].into(), after: item.key[end..].into() }
+            })
+            .collect();
+        let any = !rows.is_empty();
+        window.global::<KeyPanel>().set_suggestions(ModelRc::new(VecModel::from(rows)));
+        any
+    }
+
+    /// The switcher picked another view (already stored in `key-view`).
+    fn on_view_changed(&self) {
+        if let Some(window) = self.weak.upgrade() {
+            if window.global::<KeyPanel>().get_view() == KeyView::Fields {
+                sync_rows_expansion(&window);
+            }
+            self.show_view(&window, None);
+        }
+    }
+
+    /// The header's refresh button: fetches the shown key again. The filters, the open
+    /// rows and the scroll position are all still in the window, read as a tab switch does.
+    fn refresh_key(&self) {
+        let Some(window) = self.weak.upgrade() else { return };
+        let key = window.global::<KeyPanel>().get_key_id().to_string();
+        if key.is_empty() {
+            return;
+        }
+        self.load_key(LoadRequest { key, scroll: current_scroll(&window), reuse: false, announce: true });
+    }
+
+    /// The Field header's arrow: flips the order of the hash's fields and loads it
+    /// again from the top, with every row folded.
+    fn toggle_sort(&self) {
+        let Some(window) = self.weak.upgrade() else { return };
+        let panel = window.global::<KeyPanel>();
+        panel.set_sort_descending(!panel.get_sort_descending());
+        let key = panel.get_key_id().to_string();
+        if key.is_empty() {
+            return;
+        }
+        restore_expanded_fields(&window, &FxHashSet::default());
+        self.load_key(LoadRequest { key, scroll: ScrollPos::default(), reuse: false, announce: false });
+    }
+}
+
+impl KeyDetailShared {
+    /// The filter's text once completion `index` of the list is taken, and where its
+    /// cursor goes; the text unchanged (cursor -1) when there is no such completion.
+    fn complete_suggestion(&self, text: slint::SharedString, cursor: i32, index: i32) -> CompletionEdit {
+        let fields: Fields = self.content.lock_recover().loaded.clone();
+        let edit = self
+            .suggester
+            .complete(&fields, &text, cursor.max(0) as usize)
+            .and_then(|completion| completion.accept(&text, index.max(0) as usize));
+        match edit {
+            Some(edit) => CompletionEdit { text: edit.text.into(), cursor: edit.cursor as i32 },
+            None => CompletionEdit { text, cursor: -1 },
+        }
+    }
+}
+
 /// Puts key `id` in the panel's header, as its name reads.
 pub(crate) fn show_key_name(window: &MainWindow, id: &str) {
     let panel = window.global::<KeyPanel>();
@@ -222,9 +308,12 @@ fn show_nothing(window: &MainWindow, shared: &KeyDetailShared) {
     window.global::<KeyPanel>().set_all_values_field_chars(8);
     window.global::<KeyPanel>().set_all_values_rows(ModelRc::new(VecModel::from(Vec::<AllValuesRowData>::new())));
     window.global::<KeyPanel>().set_json_filter_status("".into());
-    *shared.loaded.lock_recover() = Vec::new();
+    {
+        let mut content = shared.content.lock_recover();
+        content.loaded = Vec::new();
+        content.current = Vec::new();
+    }
     shared.suggester.forget();
-    *shared.current.lock_recover() = Vec::new();
     clear_table(window);
 }
 
@@ -232,100 +321,45 @@ fn show_nothing(window: &MainWindow, shared: &KeyDetailShared) {
 /// from tab and tree clicks.
 pub fn init(window: &MainWindow, state: Arc<AppState>, rt: Handle) -> KeyDetail {
     let shared = KeyDetailShared {
-        current: Arc::new(Mutex::new(Vec::new())),
-        pretty_cache: Arc::new(Mutex::new(FxHashMap::default())),
-        current_key: Arc::new(Mutex::new(String::new())),
-        applied_search: Arc::new(Mutex::new(SearchFilter::default())),
+        content: Arc::default(),
+        pretty_cache: PrettyCache::default(),
         table_generation: Arc::new(AtomicU64::new(0)),
-        loaded: Arc::new(Mutex::new(Vec::new())),
         view_epoch: Arc::new(AtomicU64::new(0)),
         fetched: Arc::new(Mutex::new(FxHashMap::default())),
         suggester: Arc::new(Suggester::default()),
-        applied_path: Arc::new(Mutex::new(AppliedPath::default())),
         paging_in_flight: Arc::new(AtomicBool::new(false)),
     };
     let ctx = Ctx { weak: window.as_weak(), state, rt, shared };
     let panel = window.global::<KeyPanel>();
-
-    panel.on_json_filter_submitted({
+    // each handler gets its own handle on the shared state
+    let with_ctx = |handler: fn(&Ctx)| {
         let ctx = ctx.clone();
-        move || ctx.on_json_filter_submitted()
-    });
+        move || handler(&ctx)
+    };
+
+    panel.on_json_filter_submitted(with_ctx(Ctx::on_json_filter_submitted));
     // the search bar: Enter adds badges, a badge's × drops it, and flipping
     // case-sensitivity re-renders under the same badges
-    panel.on_filter_query_submitted({
-        let ctx = ctx.clone();
-        move || ctx.on_filter_query_submitted()
-    });
+    panel.on_filter_query_submitted(with_ctx(Ctx::on_filter_query_submitted));
     panel.on_filter_badge_removed({
         let ctx = ctx.clone();
         move |text, scope| ctx.on_filter_badge_removed(&text, scope)
     });
-    panel.on_filter_case_sensitivity_changed({
-        let ctx = ctx.clone();
-        move || ctx.on_search_changed()
-    });
+    panel.on_filter_case_sensitivity_changed(with_ctx(Ctx::on_search_changed));
     // the field list scrolled near the first loaded field: the page before it is added
-    panel.on_near_start({
-        let ctx = ctx.clone();
-        move || ctx.fetch_page(PageDir::Previous)
-    });
+    panel.on_near_start(with_ctx(|ctx| ctx.fetch_page(PageDir::Previous)));
     // the key panel (either view) scrolled near the end of what's loaded: a hash not
     // fully loaded gets its next page (see `fetch_page` for chaining)
-    panel.on_near_end({
-        let ctx = ctx.clone();
-        move || ctx.fetch_page(PageDir::Next)
-    });
-
-    // the filter's completion list, from every loaded field's value (not what
-    // the filter has left of them)
+    panel.on_near_end(with_ctx(|ctx| ctx.fetch_page(PageDir::Next)));
     panel.on_suggest({
         let ctx = ctx.clone();
-        move |text, cursor| {
-            let Some(window) = ctx.weak.upgrade() else { return false };
-            let fields: Fields = ctx.shared.loaded.lock_recover().clone();
-            let completion = ctx.shared.suggester.complete(&fields, &text, cursor.max(0) as usize);
-            let rows: Vec<SuggestionRow> = completion
-                .iter()
-                .flat_map(|completion| &completion.items)
-                .map(|item| {
-                    let (start, end) = item.matched;
-                    SuggestionRow { before: item.key[..start].into(), matched: item.key[start..end].into(), after: item.key[end..].into() }
-                })
-                .collect();
-            let any = !rows.is_empty();
-            window.global::<KeyPanel>().set_suggestions(ModelRc::new(VecModel::from(rows)));
-            any
-        }
+        move |text, cursor| ctx.suggest(&text, cursor)
     });
-
     panel.on_complete_suggestion({
         let shared = ctx.shared.clone();
-        move |text, cursor, index| {
-            let fields: Fields = shared.loaded.lock_recover().clone();
-            let edit = shared
-                .suggester
-                .complete(&fields, &text, cursor.max(0) as usize)
-                .and_then(|completion| completion.accept(&text, index.max(0) as usize));
-            match edit {
-                Some(edit) => CompletionEdit { text: edit.text.into(), cursor: edit.cursor as i32 },
-                None => CompletionEdit { text, cursor: -1 },
-            }
-        }
+        move |text, cursor, index| shared.complete_suggestion(text, cursor, index)
     });
-
-    // the switcher picked another view (already stored in `key-view`)
-    panel.on_view_changed({
-        let ctx = ctx.clone();
-        move || {
-            if let Some(window) = ctx.weak.upgrade() {
-                if window.global::<KeyPanel>().get_view() == KeyView::Fields {
-                    sync_rows_expansion(&window);
-                }
-                ctx.show_view(&window, None);
-            }
-        }
-    });
+    panel.on_view_changed(with_ctx(Ctx::on_view_changed));
 
     // a value-list row opened or folded: kept in KeyScroll.all-values-expanded,
     // for tabs.rs to save when the tab is left and restore when it's shown again
@@ -349,7 +383,6 @@ pub fn init(window: &MainWindow, state: Arc<AppState>, rt: Handle) -> KeyDetail 
             }
         }
     });
-
     panel.on_table_select_range({
         let weak = window.as_weak();
         move |from, to| {
@@ -358,38 +391,8 @@ pub fn init(window: &MainWindow, state: Arc<AppState>, rt: Handle) -> KeyDetail 
             }
         }
     });
-
-    // header refresh button: fetches the shown key again. The filters, the open
-    // rows and the scroll position are all still in the window, so this reads
-    // them the way a tab switch restores them.
-    panel.on_refresh_key({
-        let ctx = ctx.clone();
-        move || {
-            let Some(window) = ctx.weak.upgrade() else { return };
-            let key = window.global::<KeyPanel>().get_key_id().to_string();
-            if key.is_empty() {
-                return;
-            }
-            ctx.load_key(LoadRequest { key, scroll: current_scroll(&window), reuse: false, announce: true });
-        }
-    });
-
-    // the Field header's arrow: flips the order of the hash's fields and loads it again
-    // from the top, with every row folded
-    panel.on_sort_toggled({
-        let ctx = ctx.clone();
-        move || {
-            let Some(window) = ctx.weak.upgrade() else { return };
-            let panel = window.global::<KeyPanel>();
-            panel.set_sort_descending(!panel.get_sort_descending());
-            let key = panel.get_key_id().to_string();
-            if key.is_empty() {
-                return;
-            }
-            restore_expanded_fields(&window, &FxHashSet::default());
-            ctx.load_key(LoadRequest { key, scroll: ScrollPos::default(), reuse: false, announce: false });
-        }
-    });
+    panel.on_refresh_key(with_ctx(Ctx::refresh_key));
+    panel.on_sort_toggled(with_ctx(Ctx::toggle_sort));
 
     KeyDetail(ctx)
 }

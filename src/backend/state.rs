@@ -1,7 +1,7 @@
 use super::LockExt;
 use rust_i18n::t;
 use std::path::{Path, PathBuf};
-use std::sync::Mutex;
+use std::sync::{LazyLock, Mutex};
 use std::sync::atomic::AtomicU64;
 
 use super::connection_cache::ConnectionCache;
@@ -48,19 +48,22 @@ fn migrate_legacy_data(legacy: &Path, dir: &Path, files: &[&str]) -> bool {
 }
 
 /// `databases.json` in the platform's per-user data directory (`%APPDATA%\Cachemire` or
-/// `~/.local/share/Cachemire`). The former name's folder
-/// (`Redust`) is moved over once; data next to the executable (an older layout) is copied once.
+/// `~/.local/share/Cachemire`), resolved once. The former name's folder (`Redust`) is
+/// moved over once; data next to the executable (an older layout) is copied once.
 pub fn resolve_data_file() -> PathBuf {
-    let Some(data) = dirs::data_dir() else {
-        return exe_dir().join(DATA_FILE);
-    };
-    let dir = data.join("Cachemire");
-    let former = data.join("Redust");
-    if migrate_legacy_data(&former, &dir, &[DATA_FILE, KNOWN_HOSTS_FILE, SETTINGS_FILE, HISTORY_FILE]) {
-        let _ = std::fs::remove_dir_all(&former);
-    }
-    migrate_legacy_data(&exe_dir(), &dir, &[DATA_FILE, KNOWN_HOSTS_FILE]);
-    dir.join(DATA_FILE)
+    static DATA_FILE_PATH: LazyLock<PathBuf> = LazyLock::new(|| {
+        let Some(data) = dirs::data_dir() else {
+            return exe_dir().join(DATA_FILE);
+        };
+        let dir = data.join("Cachemire");
+        let former = data.join("Redust");
+        if migrate_legacy_data(&former, &dir, &[DATA_FILE, KNOWN_HOSTS_FILE, SETTINGS_FILE, HISTORY_FILE]) {
+            let _ = std::fs::remove_dir_all(&former);
+        }
+        migrate_legacy_data(&exe_dir(), &dir, &[DATA_FILE, KNOWN_HOSTS_FILE]);
+        dir.join(DATA_FILE)
+    });
+    DATA_FILE_PATH.clone()
 }
 
 impl AppState {
@@ -85,21 +88,23 @@ pub fn resolve_connection(
     state: &AppState,
     connection_id: Option<&str>,
 ) -> Result<ConnectionItem, AppError> {
-    let mut connection = {
+    let (mut connection, cloud_key) = {
         let store = state.connections.lock_recover();
-        match connection_id {
+        let connection = match connection_id {
             Some(id) if !id.trim().is_empty() => store
                 .get(id)
                 .ok_or_else(|| AppError::not_found(t!("Requested connection not found."))),
             _ => store.get_active(),
-        }?
+        }?;
+        let cloud_key = store.cloud_key(&connection.id);
+        (connection, cloud_key)
     };
     if let Some(ssh) = connection.ssh.as_mut() {
-        let cloud_key = state.connections.lock_recover().cloud_key(&connection.id);
+        let settings = state.settings.lock_recover();
         if let Some(key) = cloud_key {
-            state.settings.lock_recover().fill_cloud_secrets(&key, ssh);
+            settings.fill_cloud_secrets(&key, ssh);
         }
-        state.settings.lock_recover().fill_ssh(ssh)?;
+        settings.fill_ssh(ssh)?;
     }
     Ok(connection)
 }

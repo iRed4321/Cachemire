@@ -269,9 +269,7 @@ fn run(app: &App, window: &MainWindow, query: String, cursor: usize, anchor: usi
         }
         let count = results.len();
         let built: Vec<ResultTable> = results.into_iter().enumerate().map(|(i, result)| result_of(i, count, result.output)).collect();
-        let _ = slint::invoke_from_event_loop(move || {
-            crate::app::with(|app, window| apply_outcome(app, window, &id, run_number, built, error));
-        });
+        crate::app::later(move |app, window| apply_outcome(app, window, &id, run_number, built, error));
     });
 }
 
@@ -397,7 +395,7 @@ fn suggest(app: &App, caches: &Arc<Caches>, text: String, cursor: usize, force: 
             }
         }
         let found = complete(&state, &caches, &text, cursor, force).await;
-        let _ = slint::invoke_from_event_loop(move || crate::app::with(|app, window| {
+        crate::app::later(move |app, window| {
             if latest.load(Ordering::SeqCst) != generation || window.global::<QueryTab>().get_text().as_str() != text {
                 return;
             }
@@ -414,7 +412,7 @@ fn suggest(app: &App, caches: &Arc<Caches>, text: String, cursor: usize, force: 
             window.global::<QueryTab>().set_suggest_open(!rows.is_empty());
             window.global::<QueryTab>().set_suggestions(ModelRc::new(VecModel::from(rows)));
             app.queries.borrow_mut().offered = found;
-        }));
+        });
     });
 }
 
@@ -437,7 +435,7 @@ pub fn init(app: &Rc<App>, window: &MainWindow) {
             let _ = cursor;
             if folder {
                 let (caches, next) = (caches.clone(), next.clone());
-                let _ = slint::invoke_from_event_loop(move || crate::app::with(|app, _| suggest(app, &caches, next, caret, true)));
+                crate::app::later(move |app, _| suggest(app, &caches, next, caret, true));
             }
             CompletionEdit { text: next.into(), cursor: caret as i32 }
         }
@@ -559,7 +557,7 @@ pub fn init(app: &Rc<App>, window: &MainWindow) {
             let saved = state.settings.lock_recover().create_saved_query(&name, &text, &connection_id);
             match saved {
                 Ok(_) => crate::queries::refresh(&window, state),
-                Err(e) => eprintln!("save query failed: {e}"),
+                Err(e) => tracing::error!("save query failed: {e}"),
             }
         }
     });

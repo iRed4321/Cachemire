@@ -11,6 +11,7 @@ use std::time::{Duration, Instant};
 use rayon::prelude::*;
 use rust_i18n::t;
 use slint::{ModelRc, VecModel};
+use tokio::sync::watch;
 
 use crate::app::App;
 use crate::backend::LockExt;
@@ -72,7 +73,7 @@ struct TabSearch {
     /// bumped to drop what a running search still sends (a newer search, a closed tab)
     run: Arc<AtomicU64>,
     /// the running search is paused: it asks Redis for nothing more until this clears
-    paused: Arc<AtomicBool>,
+    paused: watch::Sender<bool>,
 }
 
 impl TabSearch {
@@ -86,7 +87,7 @@ impl TabSearch {
             rows: Rc::new(VecModel::default()),
             longest: Longest::default(),
             run: Arc::new(AtomicU64::new(0)),
-            paused: Arc::new(AtomicBool::new(false)),
+            paused: watch::Sender::new(false),
         }
     }
 }
@@ -117,7 +118,7 @@ impl SearchTabs {
         window.global::<SearchTab>().set_loading(tab.loading);
         window.global::<SearchTab>().set_status(tab.status.as_str().into());
         window.global::<SearchTab>().set_progress(tab.progress);
-        window.global::<SearchTab>().set_paused(tab.paused.load(Ordering::Relaxed));
+        window.global::<SearchTab>().set_paused(*tab.paused.borrow());
         window.global::<SearchTab>().set_rows(ModelRc::from(tab.rows.clone()));
         show_widths(window, tab.longest);
     }
@@ -129,7 +130,7 @@ impl SearchTabs {
         if let Some(tab) = self.tabs.get_mut(id) {
             tab.query = window.global::<SearchTab>().get_query().to_string();
             if tab.loading {
-                tab.paused.store(true, Ordering::Relaxed);
+                tab.paused.send_replace(true);
             }
         }
         self.drop_active(id);
@@ -152,8 +153,8 @@ impl SearchTabs {
     /// The pause button of the shown search tab: pauses its running search, or resumes it.
     fn toggle_pause(&self, window: &MainWindow) {
         let Some(tab) = self.active.as_ref().and_then(|id| self.tabs.get(id)).filter(|tab| tab.loading) else { return };
-        let paused = !tab.paused.load(Ordering::Relaxed);
-        tab.paused.store(paused, Ordering::Relaxed);
+        let paused = !*tab.paused.borrow();
+        tab.paused.send_replace(paused);
         window.global::<SearchTab>().set_paused(paused);
     }
 }
@@ -233,7 +234,7 @@ fn hits_in(batch_keys: Vec<KeyEntries>, needle: &str, room: usize, keys_with_hit
     rows
 }
 
-fn status_text(query: &str, scanned: i64, total: i64, hits: usize, keys: usize, done: bool, capped: bool) -> String {
+fn status_text(query: &str, scanned: usize, total: usize, hits: usize, keys: usize, done: bool, capped: bool) -> String {
     match (done, hits) {
         (false, _) if total > 0 => {
             t!("searching... %{scanned} of %{total} keys scanned, %{hits} matches", scanned = scanned.min(total), total = total, hits = hits).into_owned()
@@ -255,8 +256,8 @@ fn next_progress(shown: f32, reported: f32) -> f32 {
 /// How far along a walk of `total` keys is once `scanned` are seen: it stops just
 /// short of the end until the walk is over, as the total is only what the instance
 /// held at the start. -1 when `total` isn't known.
-fn progress_of(scanned: i64, total: i64) -> f32 {
-    if total <= 0 {
+fn progress_of(scanned: usize, total: usize) -> f32 {
+    if total == 0 {
         return -1.0;
     }
     (scanned as f32 / total as f32).clamp(0.0, 0.99)
@@ -270,35 +271,33 @@ enum Report {
 
 fn report(id: &str, run: u64, report: Report) {
     let id = id.to_string();
-    let _ = slint::invoke_from_event_loop(move || {
-        crate::app::with(|app, window| {
-            let (rows, status, longest, loading, progress) = match report {
-                Report::Progress { rows, status, longest, progress } => (rows, status, longest, true, progress),
-                Report::Finished { rows, status, longest } => (rows, status, longest, false, 1.0),
-            };
-            let mut searches = app.searches.borrow_mut();
-            let is_active = searches.active.as_deref() == Some(id.as_str());
-            let Some(tab) = searches.tabs.get_mut(&id) else { return };
-            // a newer search (or a closed tab) has taken over
-            if tab.run.load(Ordering::Relaxed) != run {
-                return;
-            }
-            tab.rows.extend(rows);
-            tab.status.clone_from(&status);
-            tab.loading = loading;
-            tab.longest = longest;
-            tab.progress = next_progress(tab.progress, progress);
-            if !loading {
-                tab.paused.store(false, Ordering::Relaxed);
-            }
-            if is_active {
-                window.global::<SearchTab>().set_paused(tab.paused.load(Ordering::Relaxed));
-                show_widths(window, longest);
-                window.global::<SearchTab>().set_status(status.into());
-                window.global::<SearchTab>().set_loading(loading);
-                window.global::<SearchTab>().set_progress(tab.progress);
-            }
-        });
+    crate::app::later(move |app, window| {
+        let (rows, status, longest, loading, progress) = match report {
+            Report::Progress { rows, status, longest, progress } => (rows, status, longest, true, progress),
+            Report::Finished { rows, status, longest } => (rows, status, longest, false, 1.0),
+        };
+        let mut searches = app.searches.borrow_mut();
+        let is_active = searches.active.as_deref() == Some(id.as_str());
+        let Some(tab) = searches.tabs.get_mut(&id) else { return };
+        // a newer search (or a closed tab) has taken over
+        if tab.run.load(Ordering::Relaxed) != run {
+            return;
+        }
+        tab.rows.extend(rows);
+        tab.status.clone_from(&status);
+        tab.loading = loading;
+        tab.longest = longest;
+        tab.progress = next_progress(tab.progress, progress);
+        if !loading {
+            tab.paused.send_replace(false);
+        }
+        if is_active {
+            window.global::<SearchTab>().set_paused(*tab.paused.borrow());
+            show_widths(window, longest);
+            window.global::<SearchTab>().set_status(status.into());
+            window.global::<SearchTab>().set_loading(loading);
+            window.global::<SearchTab>().set_progress(tab.progress);
+        }
     });
 }
 
@@ -326,9 +325,9 @@ fn submit(app: &App, window: &MainWindow, query: &str) {
         window.global::<SearchTab>().set_status(tab.status.as_str().into());
         window.global::<SearchTab>().set_run(window.global::<SearchTab>().get_run().wrapping_add(1));
         // a new search starts running
-        tab.paused.store(false, Ordering::Relaxed);
+        tab.paused.send_replace(false);
         window.global::<SearchTab>().set_paused(false);
-        tab.searched.then(|| (id, tab.run.clone(), run, tab.paused.clone()))
+        tab.searched.then(|| (id, tab.run.clone(), run, tab.paused.subscribe()))
     };
     let Some((id, run_flag, run, paused)) = started else { return };
     let (state, rt) = (&app.state, &app.rt);
@@ -336,7 +335,7 @@ fn submit(app: &App, window: &MainWindow, query: &str) {
     // experimental: Redis itself leaves out what certainly doesn't match
     let (server_search, depth) = {
         let settings = state.settings.lock_recover();
-        (settings.server_search(), i64::from(settings.search_depth()))
+        (settings.server_search(), settings.search_depth() as usize)
     };
     let (state, needle) = (state.clone(), query.to_lowercase());
     rt.spawn(async move {
@@ -351,7 +350,7 @@ fn submit(app: &App, window: &MainWindow, query: &str) {
             depth,
             server_search.then_some(needle.as_str()),
             || run_flag.load(Ordering::Relaxed) == run && !enough.load(Ordering::Relaxed),
-            || paused.load(Ordering::Relaxed),
+            paused,
             |EntriesBatch { keys, scanned, total, done }| {
                 let rows = hits_in(keys, &needle, MAX_HITS - found, &mut keys_with_hits, &mut longest);
                 found += rows.len();

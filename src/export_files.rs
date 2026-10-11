@@ -100,7 +100,7 @@ fn outputs(plan: Plan) -> Vec<Output> {
 }
 
 fn io_error(e: std::io::Error) -> AppError {
-    AppError::File(e.to_string())
+    AppError::file(e.to_string())
 }
 
 /// The key as the `{key, type, ttl, value}` object a file holds.
@@ -148,9 +148,9 @@ pub async fn run(
             if let Some(read) = explorer::read_for_export(&mut session, &KeyName::from_id(key)).await? {
                 let json = item(key, &read);
                 if matches!(output, Output::Single { .. }) {
-                    serde_json::to_writer_pretty(&mut writer, &json).map_err(|e| AppError::File(e.to_string()))?;
+                    serde_json::to_writer_pretty(&mut writer, &json).map_err(|e| AppError::file(e.to_string()))?;
                 } else {
-                    let text = serde_json::to_string_pretty(&json).map_err(|e| AppError::File(e.to_string()))?;
+                    let text = serde_json::to_string_pretty(&json).map_err(|e| AppError::file(e.to_string()))?;
                     writer.write_all(if written == 0 { b"\n    " } else { b",\n    " }).map_err(io_error)?;
                     writer.write_all(text.replace('\n', "\n    ").as_bytes()).map_err(io_error)?;
                 }

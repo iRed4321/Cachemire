@@ -149,7 +149,7 @@ impl SettingsStore {
             let stored = self
                 .vault
                 .get(&vault_key(&id))
-                .map_err(|e| AppError::Keyring(t!("Couldn't read the SSH profile's password from the system keyring: %{error}", error = e).into_owned()))?;
+                .map_err(|e| AppError::keyring(t!("Couldn't read the SSH profile's password from the system keyring: %{error}", error = e)))?;
             let profile = &mut self.state.ssh_profiles[position];
             match stored {
                 Some(secrets) => profile.password = secrets.ssh_password,

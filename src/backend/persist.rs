@@ -46,10 +46,10 @@ pub fn set_aside(path: &Path) -> Option<PathBuf> {
 /// — writing in place would truncate first, risking an unparseable half-write.
 pub fn save<T: Serialize>(path: &Path, value: &T) -> Result<(), AppError> {
     if let Some(dir) = path.parent() {
-        fs::create_dir_all(dir).map_err(|e| AppError::File(e.to_string()))?;
+        fs::create_dir_all(dir).map_err(|e| AppError::file(e.to_string()))?;
     }
-    let json = serde_json::to_string_pretty(value).map_err(|e| AppError::File(e.to_string()))?;
-    let name = path.file_name().ok_or_else(|| AppError::File("no file name".into()))?.to_string_lossy().into_owned();
+    let json = serde_json::to_string_pretty(value).map_err(|e| AppError::file(e.to_string()))?;
+    let name = path.file_name().ok_or_else(|| AppError::file("no file name"))?.to_string_lossy().into_owned();
     let temporary = path.with_file_name(format!("{name}.tmp"));
     let written = (|| -> std::io::Result<()> {
         let mut file = fs::File::create(&temporary)?;
@@ -59,7 +59,7 @@ pub fn save<T: Serialize>(path: &Path, value: &T) -> Result<(), AppError> {
     })();
     written.map_err(|e| {
         let _ = fs::remove_file(&temporary);
-        AppError::File(e.to_string())
+        AppError::file(e.to_string())
     })
 }
 

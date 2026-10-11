@@ -1,8 +1,6 @@
 //! Generic "do something with this text" actions backing the JSON viewer's
-//! toolbar: open in the system's default editor for the file type, save to
-//! a chosen file, or copy to the clipboard. None of this is Redis-specific.
-
-use std::io::Write;
+//! toolbar: open in the system's default editor for the file type, or copy
+//! to the clipboard. None of this is Redis-specific.
 
 use crate::backend::error::AppError;
 use crate::backend::now_ms;
@@ -12,7 +10,7 @@ use crate::backend::now_ms;
 /// browser regardless of extension. Tries known GUI editors, falling back to the OS default.
 pub fn open_in_external_editor(text: &str, extension: &str) -> Result<(), AppError> {
     let path = std::env::temp_dir().join(format!("cachemire-value-{}.{extension}", now_ms()));
-    std::fs::write(&path, text).map_err(|e| AppError::File(e.to_string()))?;
+    std::fs::write(&path, text).map_err(|e| AppError::file(e.to_string()))?;
 
     #[cfg(target_os = "windows")]
     const EDITORS: &[&str] = &["code", "notepad++", "notepad"];
@@ -27,22 +25,11 @@ pub fn open_in_external_editor(text: &str, extension: &str) -> Result<(), AppErr
             return Ok(());
         }
     }
-    open::that_detached(&path).map_err(|e| AppError::System(e.to_string()))
-}
-
-/// Opens a native "Save As" dialog pre-filled with `suggested_name`, then
-/// writes `text` to wherever the user picked. Does nothing (not an error) if
-/// the user cancels the dialog.
-pub fn save_to_file(text: &str, suggested_name: &str) -> Result<(), AppError> {
-    let Some(path) = rfd::FileDialog::new().set_file_name(suggested_name).save_file() else {
-        return Ok(());
-    };
-    let mut file = std::fs::File::create(&path).map_err(|e| AppError::File(e.to_string()))?;
-    file.write_all(text.as_bytes()).map_err(|e| AppError::File(e.to_string()))
+    open::that_detached(&path).map_err(|e| AppError::system(e.to_string()))
 }
 
 fn clipboard_error(error: arboard::Error) -> AppError {
-    AppError::System(error.to_string())
+    AppError::system(error.to_string())
 }
 
 /// On X11 the app itself serves clipboard contents, so `Clipboard` must

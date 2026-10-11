@@ -17,10 +17,8 @@ thread_local! {
 
 /// Runs `f` on the UI thread with the window's About global.
 fn on_ui(weak: slint::Weak<MainWindow>, f: impl FnOnce(&About<'_>) + Send + 'static) {
-    let _ = slint::invoke_from_event_loop(move || {
-        if let Some(window) = weak.upgrade() {
-            f(&window.global::<About>());
-        }
+    let _ = weak.upgrade_in_event_loop(move |window| {
+        f(&window.global::<About>());
     });
 }
 
@@ -53,6 +51,11 @@ pub fn init(window: &MainWindow, rt: tokio::runtime::Handle) {
             let weak = weak.clone();
             rt.spawn(async move {
                 let found = tokio::task::spawn_blocking(move || updates::newer_release(&current)).await.map_err(|e| e.to_string()).and_then(|r| r);
+                match &found {
+                    Ok(Some(release)) => tracing::info!(version = %release.version, "an update is available"),
+                    Ok(None) => tracing::info!("no update available"),
+                    Err(error) => tracing::warn!("the update check failed: {error}"),
+                }
                 on_ui(weak, move |about| match found {
                     Ok(Some(release)) => {
                         say(about, t!("Version %{version} is available.", version = release.version.to_string()).into_owned(), false);

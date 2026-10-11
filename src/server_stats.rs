@@ -39,10 +39,8 @@ pub fn init(window: &MainWindow, state: Arc<AppState>, rt: Handle) {
             {
                 shown.clone_from(&memory);
                 let weak = weak.clone();
-                let _ = slint::invoke_from_event_loop(move || {
-                    if let Some(window) = weak.upgrade() {
-                        window.global::<ConnectionState>().set_memory(memory.into());
-                    }
+                let _ = weak.upgrade_in_event_loop(move |window| {
+                    window.global::<ConnectionState>().set_memory(memory.into());
                 });
             }
             tokio::time::sleep(REFRESH_INTERVAL).await;

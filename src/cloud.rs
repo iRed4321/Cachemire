@@ -74,21 +74,22 @@ pub fn init(app: &Rc<App>, window: &MainWindow) {
             app.rt.spawn(async move {
                 let result = aws::login().await;
                 let names: Vec<slint::SharedString> = aws::profiles().await.into_iter().map(|p| p.name.into()).collect();
-                let _ = slint::invoke_from_event_loop(move || crate::app::with(|app, window| {
+                crate::app::later(move |app, window| {
                     window.global::<AwsAccount>().set_busy(false);
                     bring_to_front(window);
                     match result {
                         Ok(()) => {
+                            tracing::info!(profiles = names.len(), "signed in to AWS");
                             window.global::<AwsAccount>().set_profiles(ModelRc::new(VecModel::from(names)));
                             app.cloud.borrow_mut().connected = true;
                             window.global::<AwsAccount>().set_connected(true);
                         }
                         Err(e) => {
-                            eprintln!("aws sign-in failed: {e}");
+                            tracing::warn!("aws sign-in failed: {e}");
                             window.global::<AwsAccount>().set_error(e.into());
                         }
                     }
-                }));
+                });
             });
         }
     });
@@ -114,7 +115,7 @@ pub fn init(app: &Rc<App>, window: &MainWindow) {
 
             app.rt.spawn(async move {
                 let result = aws::redis_connections(&name).await;
-                let _ = slint::invoke_from_event_loop(move || crate::app::with(|app, window| {
+                crate::app::later(move |app, window| {
                     if app.cloud.borrow().generation != generation {
                         return;
                     }
@@ -123,12 +124,13 @@ pub fn init(app: &Rc<App>, window: &MainWindow) {
                     bring_to_front(window);
                     match result {
                         Ok(aws::Listing { account, region, mut items }) => {
+                            tracing::info!(%account, %region, endpoints = items.len(), "listed the cloud connections");
                             // a complete listing: counts the endpoints with settings that it lacks
                             let present: FxHashSet<String> = items.iter().map(|item| item.name.clone()).collect();
                             let cleanups = {
                                 let mut settings = state.settings.lock_recover();
                                 let cleanups = settings.observe_cloud_listing(&account, &region, &present).unwrap_or_else(|e| {
-                                    eprintln!("pruning the cloud settings failed: {e}");
+                                    tracing::error!("pruning the cloud settings failed: {e}");
                                     Vec::new()
                                 });
                                 settings.apply_cloud(&account, &region, &mut items);
@@ -140,11 +142,11 @@ pub fn init(app: &Rc<App>, window: &MainWindow) {
                             crate::connections::refresh(app, window);
                         }
                         Err(e) => {
-                            eprintln!("listing the cloud connections failed: {e}");
+                            tracing::warn!("listing the cloud connections failed: {e}");
                             window.global::<AwsAccount>().set_error(e.into());
                         }
                     }
-                }));
+                });
             });
         }
     });
