@@ -1,3 +1,8 @@
 [alias]
 xtask = "run --quiet --package xtask --"
 bump = "run --quiet --package xtask -- bump"
+
+# MSVC: links the C and C++ runtimes statically (/MT, also for Skia's prebuilt
+# binaries), so the exe needs no vcruntime140.dll / msvcp140.dll.
+[target.'cfg(all(windows, target_env = "msvc"))']
+rustflags = ["-C", "target-feature=+crt-static"]
