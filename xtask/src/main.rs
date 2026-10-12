@@ -25,17 +25,19 @@ struct Cli {
 enum Task {
     /// Extract the UI texts and merge them into each language's .po
     I18n,
-    /// Release the next version after the latest tag (commit and tag), then restore the 0.0.0-dev placeholder
-    Bump {
-        /// major, minor or fix start the next version as -beta.1; beta (the default) raises the beta number; stable drops the suffix
+    /// Release HEAD: pushes it as the release/<request> branch, from which the Release workflow tags and publishes it
+    Release {
+        /// beta (the default) raises the beta number; stable drops the suffix; major, minor or fix start the next version as -beta.1
         #[arg(default_value = "beta")]
         part: version::Part,
-        /// With major, minor or fix: release the new version directly, with no beta
+        /// With major, minor or fix: release the new version at once, with no beta
         #[arg(long)]
         stable: bool,
-        /// Only edit Cargo.toml and Cargo.lock: no commit, no tag
-        #[arg(long)]
-        no_tag: bool,
+    },
+    /// Print the version a release/<request> branch releases, from the latest tag (what the Release workflow runs)
+    NextVersion {
+        /// The branch name without `release/`: a part of `release`, with `-stable` for its --stable
+        request: String,
     },
     /// Release exe, MSI installer and portable zip
     BuildWindows {
@@ -45,6 +47,9 @@ enum Task {
         /// Build the latest stable release instead of the latest one
         #[arg(long)]
         stable: bool,
+        /// Build the working tree in the release profile as this version, as the Release workflow does
+        #[arg(long, value_name = "VERSION", conflicts_with_all = ["fast", "stable"])]
+        as_version: Option<String>,
         /// Run `cargo clean` first
         #[arg(long)]
         clean: bool,
@@ -66,6 +71,9 @@ enum Task {
         /// Build the latest stable release instead of the latest one
         #[arg(long)]
         stable: bool,
+        /// Build the working tree in the release profile as this version, as the Release workflow does
+        #[arg(long, value_name = "VERSION", conflicts_with_all = ["fast", "stable"])]
+        as_version: Option<String>,
         /// Also zip the package (the installer, .deb or AppImage)
         #[arg(long)]
         with_zip: bool,
@@ -81,6 +89,9 @@ enum Task {
         /// Build the latest stable release instead of the latest one
         #[arg(long)]
         stable: bool,
+        /// Build the working tree in the release profile as this version, as the Release workflow does
+        #[arg(long, value_name = "VERSION", conflicts_with_all = ["fast", "stable"])]
+        as_version: Option<String>,
         /// Also zip the package (the installer, .deb or AppImage)
         #[arg(long)]
         with_zip: bool,
@@ -93,6 +104,9 @@ enum Task {
         /// Build the latest stable release instead of the latest one
         #[arg(long)]
         stable: bool,
+        /// Build the working tree in the release profile as this version, as the Release workflow does
+        #[arg(long, value_name = "VERSION", conflicts_with_all = ["fast", "stable"])]
+        as_version: Option<String>,
         /// Also zip the package (the installer, .deb or AppImage)
         #[arg(long)]
         with_zip: bool,
@@ -124,11 +138,14 @@ enum Task {
 fn main() {
     let result = match Cli::parse().task {
         Task::I18n => i18n::run_task(),
-        Task::Bump { part, stable, no_tag } => version::run_task(part, stable, no_tag),
-        Task::BuildWindows { fast, stable, clean, skip_installer, with_zip, reported } => windows::run_task(fast, stable, clean, skip_installer, with_zip, reported),
-        Task::BuildAppimage { fast, stable, with_zip, reported } => appimage::run_task(fast, stable, with_zip, reported),
-        Task::BuildDeb { fast, stable, with_zip } => deb::run_task(fast, stable, with_zip),
-        Task::BuildLinux { fast, stable, with_zip, reported } => linux::run_task(fast, stable, with_zip, reported),
+        Task::Release { part, stable } => version::request_release(part, stable),
+        Task::NextVersion { request } => version::print_next_version(&request),
+        Task::BuildWindows { fast, stable, as_version, clean, skip_installer, with_zip, reported } => {
+            windows::run_task(fast, stable, as_version.as_deref(), clean, skip_installer, with_zip, reported)
+        }
+        Task::BuildAppimage { fast, stable, as_version, with_zip, reported } => appimage::run_task(fast, stable, as_version.as_deref(), with_zip, reported),
+        Task::BuildDeb { fast, stable, as_version, with_zip } => deb::run_task(fast, stable, as_version.as_deref(), with_zip),
+        Task::BuildLinux { fast, stable, as_version, with_zip, reported } => linux::run_task(fast, stable, as_version.as_deref(), with_zip, reported),
         Task::ReportBuild { step } => report::save(&step, &[]),
         Task::Report { title, dir } => report::run_task(&title, dir),
         Task::Install { skip_binary } => install::run_task(skip_binary),

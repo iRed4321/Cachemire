@@ -1,16 +1,38 @@
 name: Release
 
-# Runs when a v* tag is pushed (made by `cargo bump`): tests and builds the packages from that
-# tag side by side, and attaches the packages to a GitHub release only if everything passed.
+# Releases the commit pushed as a release/<request> branch (`cargo ship`), or the one
+# picked here by hand: works out the version from the tags, tests and builds the packages as that
+# version, then tags the commit and publishes the packages, only if everything passed.
 on:
   push:
-    tags: ["v*"]
+    branches: ["release/*"]
+  workflow_dispatch:
+    inputs:
+      part:
+        description: What to release (see `cargo ship --help`)
+        type: choice
+        options: [beta, stable, fix, minor, major]
+        default: beta
+      stable:
+        description: With fix, minor or major, release the new version at once, with no beta
+        type: boolean
+        default: false
 
-# part of the rust-cache keys: keep the same as in cache.yml, which saves the caches read here
+# one release at a time, so two can't work out the same version
+concurrency:
+  group: release
+  cancel-in-progress: false
+
+# colored logs without progress bars; test builds keep line tables only, enough for backtraces
 env:
   CARGO_TERM_COLOR: always
   CARGO_TERM_PROGRESS_WHEN: never
   CARGO_PROFILE_DEV_DEBUG: line-tables-only
+
+# bash on Windows too: the version is passed as "$VERSION"
+defaults:
+  run:
+    shell: bash
 
 jobs:
   test:
@@ -21,13 +43,6 @@ jobs:
         os: [ubuntu-latest, windows-latest]
     steps:
       - uses: actions/checkout@v7
-      - name: Install Rust (rust-toolchain.toml)
-        run: rustup toolchain install
-      # read-only: a tag's own cache can't be read by the next tag, so the caches come from main (cache.yml)
-      - uses: Swatinem/rust-cache@v2
-        with:
-          shared-key: ci
-          save-if: false
       # quiet: the build log then lists what gets compiled, not each crate downloaded
       - name: Fetch crates
         run: cargo fetch --locked --quiet
@@ -51,14 +66,25 @@ jobs:
   windows:
     name: Windows (MSI and portable zip)
     runs-on: windows-latest
+    outputs:
+      version: ${{ steps.next.outputs.version }}
     steps:
+      # the whole history, for the tags the version is worked out from
       - uses: actions/checkout@v7
-      - name: Install Rust (rust-toolchain.toml)
-        run: rustup toolchain install
-      - uses: Swatinem/rust-cache@v2
         with:
-          shared-key: release
-          save-if: false
+          fetch-depth: 0
+      # pushed: the request is the branch's name (release/fix-stable); started by hand: the form's
+      - id: next
+        name: Next version
+        env:
+          PART: ${{ inputs.part }}
+          STABLE: ${{ inputs.stable }}
+        run: |
+          request=${PART:-${GITHUB_REF_NAME#release/}}
+          [[ "$STABLE" == true ]] && request+=-stable
+          version=$(cargo xtask next-version "$request")
+          echo "Releasing $version from $GITHUB_SHA" >> "$GITHUB_STEP_SUMMARY"
+          echo "version=$version" >> "$GITHUB_OUTPUT"
       # quiet: the build log then lists what gets compiled, not each crate downloaded
       - name: Fetch crates
         run: cargo fetch --locked --quiet
@@ -69,7 +95,9 @@ jobs:
           "$env:USERPROFILE\.dotnet\tools" | Out-File -FilePath $env:GITHUB_PATH -Append
           & "$env:USERPROFILE\.dotnet\tools\wix.exe" eula accept wix7
       - name: Build
-        run: cargo xtask build-windows --report
+        env:
+          VERSION: ${{ steps.next.outputs.version }}
+        run: cargo xtask build-windows --as-version "$VERSION" --report
       - uses: actions/upload-artifact@v7
         with:
           name: report-windows
@@ -85,14 +113,25 @@ jobs:
   linux:
     name: Linux (deb and AppImage)
     runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.next.outputs.version }}
     steps:
+      # the whole history, for the tags the version is worked out from
       - uses: actions/checkout@v7
-      - name: Install Rust (rust-toolchain.toml)
-        run: rustup toolchain install
-      - uses: Swatinem/rust-cache@v2
         with:
-          shared-key: release
-          save-if: false
+          fetch-depth: 0
+      # pushed: the request is the branch's name (release/fix-stable); started by hand: the form's
+      - id: next
+        name: Next version
+        env:
+          PART: ${{ inputs.part }}
+          STABLE: ${{ inputs.stable }}
+        run: |
+          request=${PART:-${GITHUB_REF_NAME#release/}}
+          [[ "$STABLE" == true ]] && request+=-stable
+          version=$(cargo xtask next-version "$request")
+          echo "Releasing $version from $GITHUB_SHA" >> "$GITHUB_STEP_SUMMARY"
+          echo "version=$version" >> "$GITHUB_OUTPUT"
       # quiet: the build log then lists what gets compiled, not each crate downloaded
       - name: Fetch crates
         run: cargo fetch --locked --quiet
@@ -106,7 +145,9 @@ jobs:
         with:
           tool: cargo-deb
       - name: Build
-        run: cargo xtask build-linux --report
+        env:
+          VERSION: ${{ steps.next.outputs.version }}
+        run: cargo xtask build-linux --as-version "$VERSION" --report
       - uses: actions/upload-artifact@v7
         with:
           name: report-linux
@@ -119,6 +160,7 @@ jobs:
             target/debian/*.deb
             target/appimage/*.AppImage
 
+  # the tag is made here, on the released commit: it only exists once everything passed
   publish:
     name: GitHub release
     needs: [test, windows, linux]
@@ -131,18 +173,40 @@ jobs:
           pattern: package-*
           path: dist
           merge-multiple: true
-      - name: Create the release
+      - name: Tag and create the release
         env:
           GH_TOKEN: ${{ github.token }}
-          TAG: ${{ github.ref_name }}
+          VERSION: ${{ needs.windows.outputs.version }}
+          LINUX_VERSION: ${{ needs.linux.outputs.version }}
         run: |
+          # each build worked out the version on its own, from the same tags
+          [[ "$VERSION" == "$LINUX_VERSION" ]] || { echo "::error::Windows built $VERSION, Linux $LINUX_VERSION"; exit 1; }
           flags=()
-          # a tag with a suffix (v3.0.0-beta.10) is a pre-release
-          [[ "$TAG" == *-* ]] && flags+=(--prerelease)
+          # a version with a suffix (3.0.0-beta.10) is a pre-release
+          [[ "$VERSION" == *-* ]] && flags+=(--prerelease)
           # every file, as an artifact keeps the folders of its files (the linux one: debian/, appimage/)
           mapfile -t files < <(find dist -type f)
-          gh release create "$TAG" "${files[@]}" --repo "$GITHUB_REPOSITORY" \
-            --title "Cachemire ${TAG#v}" --generate-notes "${flags[@]}"
+          gh release create "v$VERSION" "${files[@]}" --repo "$GITHUB_REPOSITORY" --target "$GITHUB_SHA" \
+            --title "v$VERSION" --generate-notes "${flags[@]}"
+
+  # removes the request branch whatever happened, so the same request can be pushed again;
+  # left alone if it was pushed anew meanwhile (that request runs next)
+  cleanup:
+    name: Remove the release request
+    needs: [test, windows, linux, publish]
+    if: always() && github.event_name == 'push'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Delete ${{ github.ref_name }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+          BRANCH: ${{ github.ref_name }}
+        run: |
+          if current=$(gh api "repos/$GITHUB_REPOSITORY/git/ref/heads/$BRANCH" --jq .object.sha) && [[ "$current" == "$GITHUB_SHA" ]]; then
+            gh api --method DELETE "repos/$GITHUB_REPOSITORY/git/refs/heads/$BRANCH"
+          fi
 
   # one summary for the whole run, from the reports the jobs saved (`cargo xtask report-build`)
   summary:
@@ -152,16 +216,15 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
-      - name: Install Rust (rust-toolchain.toml)
-        run: rustup toolchain install
-      - uses: Swatinem/rust-cache@v2
-        with:
-          shared-key: ci
-          save-if: false
       - uses: actions/download-artifact@v8
         with:
           pattern: report-*
           path: reports
           merge-multiple: true
       - name: Summary
-        run: cargo xtask report "🚀 Release ${{ github.ref_name }}" --dir reports
+        env:
+          VERSION: ${{ needs.windows.outputs.version || needs.linux.outputs.version }}
+        run: |
+          title="🚀 Release v$VERSION"
+          [[ -z "$VERSION" ]] && title="🚀 Release request $GITHUB_REF_NAME"
+          cargo xtask report "$title" --dir reports

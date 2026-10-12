@@ -8,8 +8,8 @@ use crate::report;
 use crate::tools::{Result, cargo, repo_root, run, works, zip_file};
 use crate::version::{in_release, msi_version, read_version};
 
-pub fn run_task(fast: bool, stable: bool, clean: bool, skip_installer: bool, with_zip: bool, reported: bool) -> Result<()> {
-    in_release(fast, stable, || build(fast, clean, skip_installer, with_zip, reported))
+pub fn run_task(fast: bool, stable: bool, as_version: Option<&str>, clean: bool, skip_installer: bool, with_zip: bool, reported: bool) -> Result<()> {
+    in_release(fast, stable, as_version, || build(fast, clean, skip_installer, with_zip, reported))
 }
 
 fn build(fast: bool, clean: bool, skip_installer: bool, with_zip: bool, reported: bool) -> Result<()> {

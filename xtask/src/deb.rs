@@ -6,11 +6,11 @@ use std::path::PathBuf;
 use crate::tools::{Result, cargo, repo_root, run, works, zip_file};
 use crate::version::in_release;
 
-pub fn run_task(fast: bool, stable: bool, with_zip: bool) -> Result<()> {
+pub fn run_task(fast: bool, stable: bool, as_version: Option<&str>, with_zip: bool) -> Result<()> {
     if !cfg!(target_os = "linux") {
         return Err("build-deb only runs on Linux".into());
     }
-    in_release(fast, stable, || build(fast, with_zip, false).map(drop))
+    in_release(fast, stable, as_version, || build(fast, with_zip, false).map(drop))
 }
 
 /// Packages the .deb and returns its path; with `no_build`, from the binary already in `target/<profile>`.

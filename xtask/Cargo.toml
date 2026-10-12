@@ -3,7 +3,7 @@ name = "xtask"
 version = "0.0.0"
 edition = "2024"
 publish = false
-description = "Development tasks: translations, version bumps and the Windows/Linux release build (`cargo xtask`)"
+description = "Development tasks: translations, release requests and the Windows/Linux release build (`cargo xtask`)"
 
 [dependencies]
 semver = "1"

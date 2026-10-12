@@ -8,7 +8,7 @@ concurrency:
   group: ci-${{ github.ref }}
   cancel-in-progress: true
 
-# part of the rust-cache keys: keep the same as in cache.yml, which saves the caches read here
+# colored logs without progress bars; test builds keep line tables only, enough for backtraces
 env:
   CARGO_TERM_COLOR: always
   CARGO_TERM_PROGRESS_WHEN: never
@@ -24,13 +24,6 @@ jobs:
         os: [ubuntu-latest, windows-latest]
     steps:
       - uses: actions/checkout@v7
-      - name: Install Rust (rust-toolchain.toml)
-        run: rustup toolchain install
-      # read-only: a pull request's own cache can't be read by any other, so the caches come from main (cache.yml)
-      - uses: Swatinem/rust-cache@v2
-        with:
-          shared-key: ci
-          save-if: false
       # quiet: the build log then lists what gets compiled, not each crate downloaded
       - name: Fetch crates
         run: cargo fetch --locked --quiet
@@ -63,12 +56,6 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
-      - name: Install Rust (rust-toolchain.toml)
-        run: rustup toolchain install
-      - uses: Swatinem/rust-cache@v2
-        with:
-          shared-key: ci
-          save-if: false
       - uses: actions/download-artifact@v8
         with:
           pattern: report-*

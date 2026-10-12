@@ -98,6 +98,19 @@ Ajoutez une connexion depuis la barre de titre (**Nouvelle connexion…**), sél
 
 Les installeurs se construisent avec `cargo xtask build-windows` (MSI et zip portable), `cargo xtask build-deb` et `cargo xtask build-appimage` (ou les deux à partir d'une seule compilation avec `cargo xtask build-linux`).
 
+### Publier une version
+
+`Cargo.toml` indique toujours `0.0.0-dev` : les versions n'existent que dans les tags de release, et rien n'est commité pour en publier une. Pour publier le commit sur lequel vous êtes :
+
+| Commande | Publie |
+|---|---|
+| `cargo ship beta` | la bêta suivante (`3.0.0-beta.19` → `3.0.0-beta.20`) |
+| `cargo ship stable` | la bêta en cours, en stable (`3.0.0-beta.20` → `3.0.0`) |
+| `cargo ship fix` (ou `minor`, `major`) | la première bêta d'une nouvelle version (`3.0.0` → `3.0.1-beta.1`) |
+| `cargo ship fix --stable` (ou `minor`, `major`) | une nouvelle version, sans bêta (`3.0.0` → `3.0.1`) |
+
+La commande pousse le commit sous forme de branche `release/<demande>` : `git push origin HEAD:release/beta` fait la même chose, et `release/fix-stable` correspond à `fix --stable`. Le workflow Release calcule alors la version à partir des tags, lance les tests, construit les paquets, puis tague le commit et publie la release seulement si tout a réussi. Il peut aussi être lancé depuis l'onglet Actions du dépôt.
+
 ## Vos données
 
 Elles sont enregistrées dans le dossier de données de l'utilisateur (`%APPDATA%\Cachemire` ou `~/.local/share/Cachemire`) : connexions, réglages, requêtes enregistrées, clés d'hôte SSH et historique des requêtes.

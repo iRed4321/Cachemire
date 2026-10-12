@@ -5,11 +5,11 @@ use crate::tools::Result;
 use crate::version::in_release;
 use crate::{appimage, deb, report};
 
-pub fn run_task(fast: bool, stable: bool, with_zip: bool, reported: bool) -> Result<()> {
+pub fn run_task(fast: bool, stable: bool, as_version: Option<&str>, with_zip: bool, reported: bool) -> Result<()> {
     if !cfg!(all(target_os = "linux", target_arch = "x86_64")) {
         return Err("build-linux only runs on x86_64 Linux".into());
     }
-    in_release(fast, stable, || {
+    in_release(fast, stable, as_version, || {
         appimage::compile(fast, reported)?;
         let appimage = appimage::package(fast, with_zip)?;
         let deb = deb::build(fast, with_zip, true)?;

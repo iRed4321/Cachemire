@@ -96,6 +96,19 @@ Add a connection from the title bar (**New connection…**), pick it, and browse
 
 Installers are built with `cargo xtask build-windows` (MSI and portable zip), `cargo xtask build-deb` and `cargo xtask build-appimage` (or both from one build with `cargo xtask build-linux`).
 
+### Releasing
+
+`Cargo.toml` always says `0.0.0-dev`: versions only exist in the release tags, and nothing is committed to make one. To release the commit you're on:
+
+| Command | Releases |
+|---|---|
+| `cargo ship beta` | the next beta (`3.0.0-beta.19` → `3.0.0-beta.20`) |
+| `cargo ship stable` | the current beta as stable (`3.0.0-beta.20` → `3.0.0`) |
+| `cargo ship fix` (or `minor`, `major`) | a new version's first beta (`3.0.0` → `3.0.1-beta.1`) |
+| `cargo ship fix --stable` (or `minor`, `major`) | a new version, with no beta (`3.0.0` → `3.0.1`) |
+
+It pushes the commit as a `release/<request>` branch: `git push origin HEAD:release/beta` does the same, and `release/fix-stable` stands for `fix --stable`. The Release workflow then works out the version from the tags, tests and builds the packages, and tags the commit and publishes the release only if everything passed. It can also be started from the repository's Actions tab.
+
 ## Your data
 
 Saved in your user data folder (`%APPDATA%\Cachemire` or `~/.local/share/Cachemire`): your connections, settings, saved queries, SSH host keys and query history.

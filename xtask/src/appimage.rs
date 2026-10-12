@@ -10,11 +10,11 @@ use crate::version::{in_release, read_version};
 
 const TOOL_URL: &str = "https://github.com/AppImage/appimagetool/releases/download/continuous/appimagetool-x86_64.AppImage";
 
-pub fn run_task(fast: bool, stable: bool, with_zip: bool, reported: bool) -> Result<()> {
+pub fn run_task(fast: bool, stable: bool, as_version: Option<&str>, with_zip: bool, reported: bool) -> Result<()> {
     if !cfg!(all(target_os = "linux", target_arch = "x86_64")) {
         return Err("build-appimage only runs on x86_64 Linux".into());
     }
-    in_release(fast, stable, || {
+    in_release(fast, stable, as_version, || {
         compile(fast, reported)?;
         let appimage = package(fast, with_zip)?;
         if reported {

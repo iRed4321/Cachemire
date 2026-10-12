@@ -27,8 +27,6 @@ pub fn save(step: &str, packages: &[&Path]) -> Result<()> {
         "step": step,
         "os": std::env::consts::OS,
         "time": number("Total time"),
-        "fresh": number("Fresh units"),
-        "total": number("Total units"),
         "units": unit_data(&html)?,
         "packages": packages,
     });
@@ -56,8 +54,6 @@ struct Report {
     step: String,
     os: String,
     time: f64,
-    fresh: f64,
-    total: f64,
     units: Vec<(String, f64)>,
     packages: Vec<(String, u64)>,
 }
@@ -77,8 +73,6 @@ fn collect(dir: &Path, reports: &mut Vec<Report>) -> Result<()> {
                 step: value["step"].as_str().unwrap_or("Build").to_string(),
                 os: value["os"].as_str().unwrap_or("?").to_string(),
                 time: value["time"].as_f64().unwrap_or(0.0),
-                fresh: value["fresh"].as_f64().unwrap_or(0.0),
-                total: value["total"].as_f64().unwrap_or(0.0),
                 units: pairs("units").map(|(name, secs)| (name, secs.as_f64().unwrap_or(0.0))).collect(),
                 packages: pairs("packages").map(|(name, size)| (name, size.as_u64().unwrap_or(0))).collect(),
             });
@@ -90,7 +84,7 @@ fn collect(dir: &Path, reports: &mut Vec<Report>) -> Result<()> {
 fn render(title: &str, reports: &[Report]) -> String {
     let mut out = format!("## {title}\n\n");
     if reports.is_empty() {
-        return out + "💤 Nothing was built: every job found its work in the cache (or stopped before building).\n";
+        return out + "💤 Nothing was built: every job failed or stopped before building.\n";
     }
     let systems: Vec<_> = SYSTEMS.iter().filter(|(os, _)| reports.iter().any(|r| r.os == *os)).collect();
     let find = |step: &str, os: &str| reports.iter().rev().find(|r| r.step == step && r.os == os);
@@ -106,7 +100,7 @@ fn render(title: &str, reports: &[Report]) -> String {
     let compare = systems.len() == 2 && systems[0].0 == "linux" && systems[1].0 == "windows";
     let mut missing = false;
 
-    // the steps: build time and share of the units that came from the cache, per OS
+    // the steps: build time per OS
     out += "| Build |";
     for (_, name) in &systems {
         out += &format!(" {name} |");
@@ -118,7 +112,6 @@ fn render(title: &str, reports: &[Report]) -> String {
         out += &format!("| {} **{step}** |", emoji(step));
         for (os, _) in &systems {
             match find(step, os) {
-                Some(r) if r.total > 0.0 => out += &format!(" ⏱️ **{}** · ♻️ {:.0} % |", duration(r.time), r.fresh / r.total * 100.0),
                 Some(r) => out += &format!(" ⏱️ **{}** |", duration(r.time)),
                 None => {
                     missing = true;
@@ -195,9 +188,9 @@ fn render(title: &str, reports: &[Report]) -> String {
         }
         out += "\n";
     }
-    out += "<sub>⏱️ build time · ♻️ units taken from the cache";
+    out += "<sub>⏱️ build time";
     if any_slow {
-        out += &format!(" · `·` under {SLOW:.0} s, or from the cache");
+        out += &format!(" · `·` under {SLOW:.0} s");
     }
     if missing {
         out += " · — no report: the job failed, was skipped or had nothing to build";

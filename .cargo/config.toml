@@ -1,6 +1,7 @@
 [alias]
 xtask = "run --quiet --package xtask --"
-bump = "run --quiet --package xtask -- bump"
+# `cargo ship beta`, `cargo ship minor --stable`…: requests a release (see `cargo xtask release`)
+ship = "run --quiet --package xtask -- release"
 
 # MSVC: links the C and C++ runtimes statically (/MT, also for Skia's prebuilt
 # binaries), so the exe needs no vcruntime140.dll / msvcp140.dll.

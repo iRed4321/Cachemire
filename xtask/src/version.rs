@@ -1,11 +1,11 @@
-//! `cargo bump`: releases the next version after the latest `v<version>` tag (major, minor or fix start
-//! a `-beta.1`; beta and stable follow it): commits and tags it, then restores the 0.0.0-dev placeholder.
+//! Release versions: worked out by the Release workflow from the latest `v<version>` tag and a
+//! request (`cargo xtask release`), then written into the checkout being built, never committed.
 
 use semver::{Prerelease, Version};
 
 use std::path::Path;
 
-use crate::tools::{Result, cargo, git, repo_root, run};
+use crate::tools::{Result, git, repo_root};
 
 /// The package's `version = "..."` line (the first one at the start of a line,
 /// as dependency versions are indented or inline) and its value.
@@ -41,15 +41,6 @@ pub enum Part {
     Fix,
     Beta,
     Stable,
-}
-
-/// The version Cargo.toml holds between releases: the real one lives in the git tags.
-const PLACEHOLDER: &str = "0.0.0-dev";
-
-/// The version of the latest `v<version>` tag reachable from `HEAD`.
-fn last_released(root: &Path) -> Result<Version> {
-    let tag = git(root, &["describe", "--tags", "--match", "v*", "--abbrev=0"]).map_err(|e| format!("no release tag to start from (are the tags fetched?): {e}"))?;
-    Version::parse(tag.trim_start_matches('v')).map_err(|e| format!("the tag {tag} is not a version: {e}"))
 }
 
 /// The version to release for `part`, from the latest released one. From a stable version,
@@ -90,19 +81,56 @@ fn with_version(toml: &str, line: usize, version: &Version) -> String {
         .collect()
 }
 
-/// Writes `version` into Cargo.toml and refreshes Cargo.lock.
-fn write_version(root: &Path, line: usize, version: &Version) -> Result<()> {
-    let path = root.join("Cargo.toml");
-    let toml = std::fs::read_to_string(&path).map_err(|e| format!("reading Cargo.toml: {e}"))?;
-    std::fs::write(&path, with_version(&toml, line, version)).map_err(|e| format!("writing Cargo.toml: {e}"))?;
-    println!("Refreshing Cargo.lock...");
-    run(cargo().current_dir(root).args(["check", "--quiet"]))
+/// `lock` with the app's own `[[package]]` entry at `version`, keeping each line's own ending.
+fn with_locked_version(lock: &str, version: &Version) -> Result<String> {
+    let mut out = String::with_capacity(lock.len());
+    let (mut in_app, mut found) = (false, false);
+    for text in lock.split_inclusive('\n') {
+        let line = text.trim_end();
+        if in_app && line.starts_with("version = \"") {
+            out += &format!("version = \"{version}\"{}", &text[line.len()..]);
+            (in_app, found) = (false, true);
+            continue;
+        }
+        in_app = line == "name = \"cachemire\"";
+        out += text;
+    }
+    found.then_some(out).ok_or_else(|| "no cachemire package in Cargo.lock".into())
 }
 
-/// Commits Cargo.toml and Cargo.lock with `message`.
-fn commit_version(root: &Path, message: &str) -> Result<()> {
-    git(root, &["add", "Cargo.toml", "Cargo.lock"])?;
-    git(root, &["commit", "-m", message, "--", "Cargo.toml", "Cargo.lock"]).map(drop)
+/// Writes `version` into Cargo.toml and Cargo.lock, building nothing.
+fn write_version(root: &Path, version: &Version) -> Result<()> {
+    let read = |name: &str| std::fs::read_to_string(root.join(name)).map_err(|e| format!("reading {name}: {e}"));
+    let write = |name: &str, text: String| std::fs::write(root.join(name), text).map_err(|e| format!("writing {name}: {e}"));
+    let toml = read("Cargo.toml")?;
+    let (line, _) = find_version(&toml)?;
+    let lock = with_locked_version(&read("Cargo.lock")?, version)?;
+    write("Cargo.toml", with_version(&toml, line, version))?;
+    write("Cargo.lock", lock)
+}
+
+/// Cargo.toml and Cargo.lock written at a release's version, put back as committed when dropped.
+struct Stamped<'a> {
+    root: &'a Path,
+}
+
+impl<'a> Stamped<'a> {
+    fn new(root: &'a Path, version: &Version) -> Result<Self> {
+        if !git(root, &["status", "--porcelain", "--", "Cargo.toml", "Cargo.lock"])?.is_empty() {
+            return Err("Cargo.toml or Cargo.lock has uncommitted changes: commit or stash them first".into());
+        }
+        write_version(root, version)?;
+        println!("Building as version {version}.");
+        Ok(Self { root })
+    }
+}
+
+impl Drop for Stamped<'_> {
+    fn drop(&mut self) {
+        if let Err(e) = git(self.root, &["checkout", "--quiet", "--", "Cargo.toml", "Cargo.lock"]) {
+            eprintln!("could not put Cargo.toml and Cargo.lock back: {e}");
+        }
+    }
 }
 
 /// The highest version among the `v*` tags in `tags` (one per line), skipping betas when `stable`.
@@ -126,13 +154,22 @@ impl Drop for Restore<'_> {
     }
 }
 
-/// Runs `build` on a release: the tag on HEAD if any, else the latest tag (the latest stable one with
-/// `stable`), checked out meanwhile. `fast` builds the working tree as is and can't go with `stable`.
-pub fn in_release(fast: bool, stable: bool, build: impl FnOnce() -> Result<()>) -> Result<()> {
+/// Runs `build` on a release, with its version written into Cargo.toml meanwhile. `as_version` builds the
+/// working tree as that version (what the Release workflow does); otherwise the tag on HEAD if any, else the
+/// latest tag (the latest stable one with `stable`), checked out meanwhile. `fast` builds the working tree as is.
+pub fn in_release(fast: bool, stable: bool, as_version: Option<&str>, build: impl FnOnce() -> Result<()>) -> Result<()> {
+    let root = repo_root();
+    if let Some(version) = as_version {
+        if fast || stable {
+            return Err("--as-version builds the working tree in the release profile: it can't go with --fast or --stable".into());
+        }
+        let version = Version::parse(version).map_err(|e| format!("{version} is not a version: {e}"))?;
+        let _stamped = Stamped::new(&root, &version)?;
+        return build();
+    }
     if fast {
         return if stable { Err("--fast builds the working tree: it can't go with --stable".into()) } else { build() };
     }
-    let root = repo_root();
     if !git(&root, &["status", "--porcelain", "--untracked-files=no"])?.is_empty() {
         return Err("the working tree has uncommitted changes: commit or stash them first".into());
     }
@@ -148,53 +185,69 @@ pub fn in_release(fast: bool, stable: bool, build: impl FnOnce() -> Result<()>) 
     let tag = format!("v{version}");
     if at_head.is_some() {
         println!("Building {tag}, the tag on HEAD.");
-        check_tagged_version(&root, &version)?;
+        let _stamped = Stamped::new(&root, &version)?;
         return build();
     }
     let origin = git(&root, &["symbolic-ref", "--quiet", "--short", "HEAD"]).or_else(|_| git(&root, &["rev-parse", "HEAD"]))?;
     println!("Checking out {tag}...");
     git(&root, &["checkout", "--quiet", &tag])?;
+    // dropped in reverse: the files are put back before HEAD is
     let _restore = Restore { root: &root, origin };
-    check_tagged_version(&root, &version)?;
+    let _stamped = Stamped::new(&root, &version)?;
     build()
 }
 
-/// Fails unless the checked out Cargo.toml holds `version`, the one of its tag.
-fn check_tagged_version(root: &Path, version: &Version) -> Result<()> {
-    let toml = std::fs::read_to_string(root.join("Cargo.toml")).map_err(|e| format!("reading Cargo.toml: {e}"))?;
-    let (_, found) = find_version(&toml)?;
-    if &found != version {
-        return Err(format!("the tag v{version} is on a commit whose Cargo.toml says {found}: tag releases with `cargo bump`"));
-    }
+/// What a `release/<request>` branch asks for: a [`Part`], with `-stable` for `release --stable`.
+fn parse_request(request: &str) -> Result<(Part, bool)> {
+    let (part, stable_now) = request.strip_suffix("-stable").map_or((request, false), |part| (part, true));
+    let part = <Part as clap::ValueEnum>::from_str(part, true)
+        .map_err(|_| format!("`{request}` is not a release request: beta, stable, fix, minor or major, the last three optionally followed by -stable"))?;
+    Ok((part, stable_now))
+}
+
+/// The request `release` pushes for `part` (and `--stable`), as its branch names it.
+fn request_of(part: Part, stable_now: bool) -> String {
+    let name = clap::ValueEnum::to_possible_value(&part).map_or_else(String::new, |value| value.get_name().to_string());
+    if stable_now { format!("{name}-stable") } else { name }
+}
+
+/// The version `request` releases, after the highest `v*` tag of the repository.
+fn next_version(root: &Path, request: &str) -> Result<Version> {
+    let (part, stable_now) = parse_request(request)?;
+    let last = highest(&git(root, &["tag", "--list", "v*"])?, false).ok_or("no release tag to start from (are the tags fetched?)")?;
+    target_version(&last, part, stable_now)
+}
+
+/// `cargo xtask next-version`: prints the version `request` releases.
+pub fn print_next_version(request: &str) -> Result<()> {
+    println!("{}", next_version(&repo_root(), request)?);
     Ok(())
 }
 
-pub fn run_task(part: Part, stable_now: bool, no_tag: bool) -> Result<()> {
-    let root = repo_root();
-    let toml = std::fs::read_to_string(root.join("Cargo.toml")).map_err(|e| format!("reading Cargo.toml: {e}"))?;
-    let (line, _) = find_version(&toml)?;
-    let last = last_released(&root)?;
-    let new = target_version(&last, part, stable_now)?;
-    let tag = format!("v{new}");
-    if !no_tag {
-        if !git(&root, &["status", "--porcelain", "--untracked-files=no"])?.is_empty() {
-            return Err("the working tree has uncommitted changes: commit them first (or pass --no-tag)".into());
-        }
-        if !git(&root, &["tag", "--list", &tag])?.is_empty() {
-            return Err(format!("the tag {tag} already exists"));
-        }
-    }
-    println!("Bumping version: {last} -> {new}");
-    write_version(&root, line, &new)?;
-    if no_tag {
-        println!("Version bumped to {new} (Cargo.toml, Cargo.lock).");
-        return Ok(());
-    }
+/// The `owner/repo` of the `origin` remote, when it is on GitHub.
+fn github_repo(root: &Path) -> Option<String> {
+    let url = git(root, &["remote", "get-url", "origin"]).ok()?;
+    let path = url.split_once("github.com").map(|(_, path)| path.trim_start_matches([':', '/']))?;
+    Some(path.trim_end_matches('/').trim_end_matches(".git").to_string())
+}
 
-    commit_version(&root, &format!("release {tag}"))?;
-    git(&root, &["tag", "-a", &tag, "-m", &format!("Cachemire {new}")])?;
-    write_version(&root, line, &Version::parse(PLACEHOLDER).map_err(|e| e.to_string())?)?;
-    commit_version(&root, &format!("[AUTO] back to {PLACEHOLDER}"))?;
-    println!("Released {new}: committed and tagged {tag}, then back to {PLACEHOLDER}. Build the packages from {tag}, push with `git push --follow-tags`.");
+/// `cargo xtask release`: asks the Release workflow to release HEAD, by pushing it as the
+/// `release/<request>` branch. The workflow works out the version, builds, tags and publishes.
+pub fn request_release(part: Part, stable_now: bool) -> Result<()> {
+    let root = repo_root();
+    let request = request_of(part, stable_now);
+    git(&root, &["fetch", "--quiet", "--tags", "origin"])?;
+    let version = next_version(&root, &request)?;
+    if !git(&root, &["status", "--porcelain", "--untracked-files=no"])?.is_empty() {
+        println!("Note: the uncommitted changes are not part of the release, only HEAD is.");
+    }
+    let head = git(&root, &["log", "-1", "--format=%h %s"])?;
+    println!("Requesting the release of {version} from {head}...");
+    let branch = format!("release/{request}");
+    git(&root, &["push", "--quiet", "origin", &format!("HEAD:refs/heads/{branch}")]).map_err(|e| {
+        format!("{e}\nIf {branch} is already on origin, a release is under way, or one ended without removing it: wait, or remove it with `git push origin --delete {branch}`.")
+    })?;
+    let runs = github_repo(&root).map_or_else(|| "the repository's Actions tab".to_string(), |repo| format!("https://github.com/{repo}/actions"));
+    println!("Requested. The Release workflow tags and publishes v{version} once its tests and builds pass: {runs}");
     Ok(())
 }
