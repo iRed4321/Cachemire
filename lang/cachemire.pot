@@ -2,7 +2,7 @@
 msgid ""
 msgstr ""
 "Project-Id-Version: cachemire VERSION\n"
-"POT-Creation-Date: 2026-10-12 16:55+0000\n"
+"POT-Creation-Date: 2026-10-12 20:55+0000\n"
 "PO-Revision-Date: YEAR-MO-DA HO:MI+ZONE\n"
 "Last-Translator: FULL NAME <EMAIL@ADDRESS>\n"
 "Language-Team: LANGUAGE <LL@li.org>\n"
@@ -12,41 +12,41 @@ msgstr ""
 "Content-Transfer-Encoding: 8bit\n"
 "Plural-Forms: nplurals=1; plural=0;\n"
 
-#: ui/main.slint:320 ui/components/content-header.slint:274
+#: ui/main.slint:321 ui/components/content-header.slint:274
 msgid "Show sidebar"
 msgstr ""
 
-#: ui/main.slint:337
+#: ui/main.slint:338
 msgid "Couldn't use the AWS account"
 msgstr ""
 
-#: ui/main.slint:338
+#: ui/main.slint:339
 msgid "Select a key to open it"
 msgstr ""
 
-#: ui/main.slint:339
+#: ui/main.slint:340
 msgid "Couldn't connect"
 msgstr ""
 
-#: ui/main.slint:340
+#: ui/main.slint:341
 msgid "Pick a connection to get started"
 msgstr ""
 
-#: ui/main.slint:348
+#: ui/main.slint:349
 msgid "Browse the keyspace on the left and click a key."
 msgstr ""
 
-#: ui/main.slint:349
+#: ui/main.slint:350
 msgid ""
 "Hover the connection status in the top bar to see why, or pick another "
 "connection."
 msgstr ""
 
-#: ui/main.slint:350
+#: ui/main.slint:351
 msgid "Use the connection selector in the top bar."
 msgstr ""
 
-#: ui/main.slint:402
+#: ui/main.slint:403
 msgid "Write a Redisql query above (FROM/JOIN/WHERE/SELECT/LIMIT), then Run."
 msgstr ""
 

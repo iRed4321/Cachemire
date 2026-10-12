@@ -33,8 +33,9 @@ export { ConnectionView, ConnectionState, ConnectionEditor, AwsAccount, Preferen
 
 export component MainWindow inherits Window {
     title: ConnectionState.view.name == "" ? "Cachemire" : ConnectionState.view.name + " — Cachemire";
-    // X11 window icon; Windows takes assets/icon.ico from the exe (build.rs)
-    icon: @image-url("../assets/icon.png");
+    // the window icon elsewhere; on Windows main.rs sets it from the exe's .ico, which holds
+    // a ready-made image for each size the taskbar draws
+    icon: Platform.os == OperatingSystemType.windows ? @image-url("") : @image-url("../assets/icon.png");
     preferred-width: 1360px;
     preferred-height: 860px;
     background: Theme.bg-app;

@@ -163,6 +163,36 @@ pub(crate) fn connect_active(window: &MainWindow, state: Arc<AppState>, rt: &tok
     }
 }
 
+/// The id of the exe's icon resource (see build.rs).
+#[cfg(windows)]
+const ICON_RESOURCE: u16 = 1;
+
+/// Gives the window the exe's own icon at the sizes Windows draws (16 and 32 times the scale),
+/// once it exists and again when its scale changes: Windows then picks the .ico's matching
+/// images instead of shrinking one bitmap itself.
+#[cfg(windows)]
+fn use_exe_icon(window: &MainWindow) {
+    use slint::winit_030::winit::{dpi::PhysicalSize, event::WindowEvent, platform::windows::{IconExtWindows, WindowExtWindows}, window::Icon};
+    use slint::winit_030::{EventResult, WinitWindowAccessor};
+
+    let mut applied = false;
+    window.window().on_winit_window_event(move |window, event| {
+        if !applied || matches!(event, WindowEvent::ScaleFactorChanged { .. }) {
+            applied = true;
+            window.with_winit_window(|winit_window| {
+                let scale = winit_window.scale_factor();
+                let icon = |logical: f64| {
+                    let side = (logical * scale).round() as u32;
+                    Icon::from_resource(ICON_RESOURCE, Some(PhysicalSize::new(side, side))).ok()
+                };
+                winit_window.set_window_icon(icon(16.0));
+                winit_window.set_taskbar_icon(icon(32.0));
+            });
+        }
+        EventResult::Propagate
+    });
+}
+
 /// Selects the Slint backend before any window exists. Windows defaults to
 /// the software renderer (the OpenGL path presents unreliably there — stale
 /// buffers, stalls during DWM animations) and `with_transparent(false)`.
@@ -188,6 +218,8 @@ fn main() -> Result<(), slint::PlatformError> {
     slint::set_xdg_app_id("cachemire")?;
     let window = MainWindow::new()?;
     let save_window_state = window_state::install(&window);
+    #[cfg(windows)]
+    use_exe_icon(&window);
 
     toast::init(&window);
 

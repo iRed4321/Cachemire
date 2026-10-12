@@ -12,31 +12,31 @@ msgstr ""
 "Content-Transfer-Encoding: 8bit\n"
 "Plural-Forms: nplurals=2; plural=(n > 1);\n"
 
-#: ui/main.slint:320 ui/components/content-header.slint:274
+#: ui/main.slint:321 ui/components/content-header.slint:274
 msgid "Show sidebar"
 msgstr "Afficher le panneau latéral"
 
-#: ui/main.slint:337
+#: ui/main.slint:338
 msgid "Couldn't use the AWS account"
 msgstr "Impossible d'utiliser le compte AWS"
 
-#: ui/main.slint:338
+#: ui/main.slint:339
 msgid "Select a key to open it"
 msgstr "Sélectionnez une clé pour l'ouvrir"
 
-#: ui/main.slint:339
+#: ui/main.slint:340
 msgid "Couldn't connect"
 msgstr "Connexion impossible"
 
-#: ui/main.slint:340
+#: ui/main.slint:341
 msgid "Pick a connection to get started"
 msgstr "Choisissez une connexion pour commencer"
 
-#: ui/main.slint:348
+#: ui/main.slint:349
 msgid "Browse the keyspace on the left and click a key."
 msgstr "Parcourez l'espace de clés à gauche et cliquez sur une clé."
 
-#: ui/main.slint:349
+#: ui/main.slint:350
 msgid ""
 "Hover the connection status in the top bar to see why, or pick another "
 "connection."
@@ -44,11 +44,11 @@ msgstr ""
 "Survolez l'indicateur d'état dans la barre du haut pour en connaître la "
 "raison, ou choisissez une autre connexion."
 
-#: ui/main.slint:350
+#: ui/main.slint:351
 msgid "Use the connection selector in the top bar."
 msgstr "Utilisez le sélecteur de connexion dans la barre du haut."
 
-#: ui/main.slint:402
+#: ui/main.slint:403
 msgid "Write a Redisql query above (FROM/JOIN/WHERE/SELECT/LIMIT), then Run."
 msgstr ""
 "Écrivez une requête Redisql ci-dessus (FROM/JOIN/WHERE/SELECT/LIMIT), puis "

@@ -9,13 +9,13 @@ fn main() {
     slint_build::compile_with_config("ui/main.slint", config).unwrap();
     theme_colors();
 
-    // Windows executable resources: the app icon (shown in Explorer, the
-    // taskbar and the installer's shortcut) plus version info from Cargo.toml.
+    // Windows executable resources: the app icon (Explorer, the installer's shortcut, and the
+    // window's icons, loaded by its id in main.rs) plus version info from Cargo.toml.
     #[cfg(windows)]
     {
         println!("cargo:rerun-if-changed=assets/icon.ico");
         let mut res = winresource::WindowsResource::new();
-        res.set_icon("assets/icon.ico");
+        res.set_icon_with_id("assets/icon.ico", "1");
         res.set("ProductName", "Cachemire");
         res.set("FileDescription", "Cachemire - Redis key explorer");
         res.compile().expect("failed to compile the Windows resources (icon / version info)");
