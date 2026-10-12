@@ -54,15 +54,27 @@ msgstr ""
 "Écrivez une requête Redisql ci-dessus (FROM/JOIN/WHERE/SELECT/LIMIT), puis "
 "Exécuter."
 
-#: ui/components/about.slint:60
+#: ui/components/about.slint:63
 msgid "GitHub repository"
 msgstr "Dépôt GitHub"
 
-#: ui/components/about.slint:75
+#: ui/components/about.slint:78
+msgid "Updates"
+msgstr "Mises à jour"
+
+#: ui/components/about.slint:84
+msgid "Stable"
+msgstr "Stable"
+
+#: ui/components/about.slint:84
+msgid "Beta"
+msgstr "Bêta"
+
+#: ui/components/about.slint:96
 msgid "Checking..."
 msgstr "Vérification..."
 
-#: ui/components/about.slint:75
+#: ui/components/about.slint:96
 msgid "Check for updates"
 msgstr "Rechercher des mises à jour"
 

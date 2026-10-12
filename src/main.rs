@@ -220,7 +220,7 @@ fn main() -> Result<(), slint::PlatformError> {
     // the interface language: needs the window (Slint) and the settings
     i18n::apply(state.settings.lock_recover().language());
     let rt = backend::runtime::spawn();
-    updates::init(&window, rt.clone());
+    updates::init(&window, state.clone(), rt.clone());
     // no auto-connect here — the title bar and keyspace panel both start
     // empty until the user picks a connection from the title bar's picker
     let app = app::install(app::App {

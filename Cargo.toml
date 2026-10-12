@@ -18,7 +18,8 @@ uuid = { version = "1", features = ["v4"] }
 url = "2"
 percent-encoding = "2"
 arboard = { version = "3", default-features = false, features = ["wayland-data-control"] }
-rfd = "0.17"
+# only the portal: dialogs are never attached to a parent window, so no Wayland support is needed
+rfd = { version = "0.17", default-features = false, features = ["xdg-portal"] }
 # SSH tunnels to the Redis server; `ring` rather than the default aws-lc-rs,
 # which needs a C toolchain (cmake/nasm) to build on Windows
 dirs = "7"
@@ -49,7 +50,7 @@ sys-locale = "0.3"
 # the log: a daily file in the data directory (see logging.rs), and stderr in debug builds
 tracing = { version = "0.1", default-features = false, features = ["std"] }
 tracing-appender = "0.2"
-tracing-subscriber = { version = "0.3", default-features = false, features = ["fmt", "env-filter", "std", "ansi"] }
+tracing-subscriber = { version = "0.3", default-features = false, features = ["fmt", "std", "ansi"] }
 futures-util = { version = "0.3", default-features = false, features = ["std"] }
 
 [build-dependencies]

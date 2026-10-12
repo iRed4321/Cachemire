@@ -1,5 +1,5 @@
 import { Theme } from "theme.slint";
-import { ModalButton } from "widgets.slint";
+import { ModalButton, SegmentedToggle } from "widgets.slint";
 
 // The "i" button's window: who made the app, which version this is and whether a newer one
 // exists (all set by Rust).
@@ -10,6 +10,9 @@ export global About {
     in property <bool> busy: false;
     in property <bool> update-available: false;
     in property <string> download-label: "";
+    // the releases the check looks among: 0 stable only, 1 betas too
+    in property <int> channel: 0;
+    callback channel-picked(index: int);
     callback open-repo();
     callback check();
     callback download();
@@ -68,6 +71,23 @@ export component AboutModal inherits Rectangle {
                     }
                 }
                 Rectangle { height: Theme.px(8px); }
+                HorizontalLayout {
+                    alignment: center;
+                    spacing: Theme.px(8px);
+                    Text {
+                        text: @tr("Updates");
+                        font-size: Theme.pt(12px);
+                        color: Theme.text-secondary;
+                        vertical-alignment: center;
+                    }
+                    SegmentedToggle {
+                        options: [@tr("Stable"), @tr("Beta")];
+                        segment-width: Theme.px(64px);
+                        current: About.channel;
+                        picked(index) => { if (!About.busy && index != About.channel) { About.channel-picked(index); } }
+                    }
+                }
+                Rectangle { height: Theme.px(2px); }
                 // one button per row: the download button's label is long, and two in a row would
                 // be wider than the card
                 HorizontalLayout {

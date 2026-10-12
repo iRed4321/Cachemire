@@ -1,5 +1,5 @@
-//! Looking for a newer release of the app on GitHub and fetching its installer. A beta looks
-//! among the beta releases, a stable version among the stable ones, a dev build looks for none.
+//! Looking for a newer release of the app on GitHub and fetching its installer. The stable channel
+//! looks among the stable releases, the beta channel among the betas too; a dev build looks for none.
 
 use std::time::Duration;
 
@@ -25,6 +25,29 @@ impl Channel {
             _ => Self::Beta,
         }
     }
+
+    /// The channel's name in the settings file.
+    pub fn code(self) -> &'static str {
+        match self {
+            Self::Dev => "dev",
+            Self::Beta => "beta",
+            Self::Stable => "stable",
+        }
+    }
+
+    pub fn from_code(code: &str) -> Option<Self> {
+        [Self::Dev, Self::Beta, Self::Stable].into_iter().find(|channel| channel.code() == code)
+    }
+
+    /// Whether a release of `version` is offered on this channel: the beta channel takes the
+    /// stable releases too.
+    pub fn offers(self, version: &Version) -> bool {
+        match self {
+            Self::Stable => version.pre.is_empty(),
+            Self::Beta => matches!(Self::of(version), Self::Beta | Self::Stable),
+            Self::Dev => false,
+        }
+    }
 }
 
 /// A published release.
@@ -45,14 +68,13 @@ fn agent() -> ureq::Agent {
     ureq::Agent::config_builder().timeout_global(Some(Duration::from_secs(30))).user_agent("cachemire").build().into()
 }
 
-/// The newest release newer than `current` among those of its channel, if any.
-pub fn newer_release(current: &Version) -> Result<Option<Release>, String> {
-    let channel = Channel::of(current);
+/// The newest release newer than `current` among those `channel` offers, if any.
+pub fn newer_release(current: &Version, channel: Channel) -> Result<Option<Release>, String> {
     let url = format!("https://api.github.com/repos/{REPO}/releases?per_page=50");
     let body = agent().get(&url).header("Accept", "application/vnd.github+json").call().map_err(|e| e.to_string())?.body_mut().read_to_string().map_err(|e| e.to_string())?;
     let listed: Value = serde_json::from_str(&body).map_err(|e| e.to_string())?;
     let releases = listed.as_array().map(Vec::as_slice).unwrap_or_default();
-    Ok(releases.iter().filter_map(parse_release).filter(|r| Channel::of(&r.version) == channel && r.version > *current).max_by(|a, b| a.version.cmp(&b.version)))
+    Ok(releases.iter().filter_map(parse_release).filter(|r| channel.offers(&r.version) && r.version > *current).max_by(|a, b| a.version.cmp(&b.version)))
 }
 
 fn parse_release(item: &Value) -> Option<Release> {

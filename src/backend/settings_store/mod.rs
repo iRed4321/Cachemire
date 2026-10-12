@@ -16,6 +16,7 @@ use crate::i18n::Language;
 use super::error::AppError;
 use super::persist::{self, Loaded};
 use super::secret_vault::{OsVault, Secrets, Vault, VaultBacked};
+use super::updates::Channel;
 
 mod cloud;
 mod connection_profiles;
@@ -48,6 +49,9 @@ struct StoredSettings {
     // whether the export buttons start on escaped JSON rather than plain JSON
     #[serde(default)]
     export_escaped: bool,
+    // the release channel the update check follows ("" until one is picked: the running build's)
+    #[serde(default)]
+    update_channel: String,
     // experimental: the global search filters inside Redis, with a script
     #[serde(default)]
     server_search: bool,
@@ -150,6 +154,17 @@ impl SettingsStore {
     pub fn set_server_search(&mut self, enabled: bool) -> Result<(), AppError> {
         let mut next = self.state.clone();
         next.server_search = enabled;
+        self.commit(next, false)
+    }
+
+    /// The release channel picked for the update check, if one was.
+    pub fn update_channel(&self) -> Option<Channel> {
+        Channel::from_code(&self.state.update_channel)
+    }
+
+    pub fn set_update_channel(&mut self, channel: Channel) -> Result<(), AppError> {
+        let mut next = self.state.clone();
+        next.update_channel = channel.code().to_string();
         self.commit(next, false)
     }
 
