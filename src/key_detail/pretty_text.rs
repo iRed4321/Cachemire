@@ -34,6 +34,8 @@ struct ColorAccumulator {
     text: String,
     spans: ColorSpans,
     budget: usize,
+    // the string being written: where it starts and its kind ("key" or "string")
+    open_string: Option<(usize, &'static str)>,
 }
 
 impl ColorAccumulator {
@@ -67,6 +69,16 @@ impl ColorAccumulator {
         result
     }
 
+    /// Colors the string being written, from its opening quote to the end of the text so far.
+    fn close_string(&mut self) {
+        if let Some((start, kind)) = self.open_string.take()
+            && let Some(color) = color_for_kind(kind)
+            && self.text.len() > start
+        {
+            self.spans.push((start..self.text.len(), color));
+        }
+    }
+
     fn finish_paragraph(&mut self) {
         self.paragraphs.push((std::mem::take(&mut self.text), std::mem::take(&mut self.spans)));
     }
@@ -77,13 +89,12 @@ struct ColorTrackingFormatter {
     current_indent: usize,
     has_value: bool,
     in_object_key: bool,
-    string_start: usize,
     acc: Rc<RefCell<ColorAccumulator>>,
 }
 
 impl ColorTrackingFormatter {
     fn new(pretty: bool, acc: Rc<RefCell<ColorAccumulator>>) -> Self {
-        Self { pretty, current_indent: 0, has_value: false, in_object_key: false, string_start: 0, acc }
+        Self { pretty, current_indent: 0, has_value: false, in_object_key: false, acc }
     }
 
     /// Finishes the current line and starts a new one, indented to the
@@ -131,19 +142,16 @@ impl Formatter for ColorTrackingFormatter {
     // quotes included — is one key/string-colored span, matching one token.
     fn begin_string<W: ?Sized + io::Write>(&mut self, _w: &mut W) -> io::Result<()> {
         let mut acc = self.acc.borrow_mut();
-        self.string_start = acc.text.len();
+        let kind = if self.in_object_key { "key" } else { "string" };
+        acc.open_string = Some((acc.text.len(), kind));
         acc.push_plain("\"")
     }
 
     fn end_string<W: ?Sized + io::Write>(&mut self, _w: &mut W) -> io::Result<()> {
         let mut acc = self.acc.borrow_mut();
-        acc.push_plain("\"")?;
-        let end = acc.text.len();
-        let kind = if self.in_object_key { "key" } else { "string" };
-        if let Some(color) = color_for_kind(kind) {
-            acc.spans.push((self.string_start..end, color));
-        }
-        Ok(())
+        let written = acc.push_plain("\"");
+        acc.close_string();
+        written
     }
 
     fn write_string_fragment<W: ?Sized + io::Write>(&mut self, _w: &mut W, fragment: &str) -> io::Result<()> {
@@ -238,6 +246,8 @@ pub(super) fn colored_paragraphs_for(value: &impl Serialize, pretty: bool, budge
         let _ = value.serialize(&mut serializer);
     }
     let mut acc = acc.borrow_mut();
+    // a budget cutoff inside a string still colors what was written of it
+    acc.close_string();
     acc.finish_paragraph();
     std::mem::take(&mut acc.paragraphs)
 }

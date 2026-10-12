@@ -373,7 +373,8 @@ component MenuRow inherits Rectangle {
     callback clicked <=> area.clicked;
     height: Theme.px(28px);
     border-radius: Theme.radius-sm;
-    background: area.has-hover ? Theme.bg-hover-elevated : transparent;
+    // opaque at rest: a hover change only redraws the row, which then covers its own area
+    background: area.has-hover ? Theme.bg-hover-elevated : Theme.bg-elevated;
     area := TouchArea { mouse-cursor: pointer; }
     HorizontalLayout {
         padding-left: Theme.px(12px);

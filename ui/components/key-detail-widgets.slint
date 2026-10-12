@@ -542,7 +542,8 @@ export component SuggestionPopup inherits Rectangle {
             for row[i] in root.rows: Rectangle {
                 height: root.row-h;
                 border-radius: Theme.radius-sm;
-                background: i == root.selected ? Theme.bg-selected : (row-area.has-hover ? Theme.bg-hover-elevated : transparent);
+                // opaque at rest: a hover change only redraws the row, which then covers its own area
+                background: i == root.selected ? Theme.bg-selected : (row-area.has-hover ? Theme.bg-hover-elevated : Theme.bg-elevated);
                 HorizontalLayout {
                     padding-left: Theme.px(8px);
                     padding-right: Theme.px(8px);

@@ -169,7 +169,8 @@ component HistoryPopup inherits PopupWindow {
                         for row[i] in root.rows: Rectangle {
                             height: root.row-h;
                             border-radius: Theme.radius-sm;
-                            background: row-area.has-hover ? Theme.bg-hover-elevated : transparent;
+                            // opaque at rest: a hover change only redraws the row, which then covers its own area
+                            background: row-area.has-hover ? Theme.bg-hover-elevated : Theme.bg-elevated;
                             row-area := TouchArea {
                                 mouse-cursor: pointer;
                                 // on the press, as the popup closes with the click
@@ -214,7 +215,7 @@ component HistoryPopup inherits PopupWindow {
             if root.rows.length > 0: Rectangle {
                 height: root.row-h;
                 border-radius: Theme.radius-sm;
-                background: clear-area.has-hover ? Theme.bg-hover-elevated : transparent;
+                background: clear-area.has-hover ? Theme.bg-hover-elevated : Theme.bg-elevated;
                 clear-area := TouchArea {
                     mouse-cursor: pointer;
                     clicked => { root.cleared(); }

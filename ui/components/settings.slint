@@ -43,7 +43,8 @@ component ProfileRow inherits Rectangle {
 
     width: row-width;
     height: Theme.px(46px);
-    background: row-area.has-hover ? Theme.bg-hover-elevated : transparent;
+    // opaque at rest (the list box's color): a hover change only redraws the row, which then covers its own area
+    background: row-area.has-hover ? Theme.bg-hover-elevated : Theme.bg-sunken;
 
     row-area := TouchArea {
         mouse-cursor: pointer;
@@ -161,7 +162,8 @@ component ConnProfileRow inherits Rectangle {
 
     width: row-width;
     height: Theme.px(34px);
-    background: row-area.has-hover ? Theme.bg-hover-elevated : transparent;
+    // opaque at rest (the list box's color), like ProfileRow
+    background: row-area.has-hover ? Theme.bg-hover-elevated : Theme.bg-sunken;
 
     row-area := TouchArea {
         mouse-cursor: pointer;

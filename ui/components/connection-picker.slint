@@ -63,7 +63,9 @@ component ConnectionRow inherits Rectangle {
 
     width: row-width;
     height: Theme.px(30px);
-    background: active ? Theme.bg-selected-soft : (row-area.has-hover ? Theme.bg-hover-elevated : transparent);
+    // opaque even at rest: a hover change only redraws the row, which must then cover
+    // its whole area itself rather than count on the panel behind being redrawn too
+    background: active ? Theme.bg-selected-soft : (row-area.has-hover ? Theme.bg-hover-elevated : Theme.bg-elevated);
 
     row-area := TouchArea {
         mouse-cursor: pointer;
@@ -177,7 +179,8 @@ export component ConnectionDropdown inherits Rectangle {
             Rectangle {
                 width: (root.width - Theme.px(1px)) / 2;
                 border-top-left-radius: root.border-radius;
-                background: new-area.has-hover ? Theme.bg-hover-elevated : transparent;
+                // opaque at rest, like ConnectionRow's background
+                background: new-area.has-hover ? Theme.bg-hover-elevated : Theme.bg-elevated;
                 new-area := TouchArea {
                     mouse-cursor: pointer;
                     clicked => { root.new-connection-clicked(); }
@@ -200,7 +203,7 @@ export component ConnectionDropdown inherits Rectangle {
             Rectangle {
                 width: (root.width - Theme.px(1px)) / 2;
                 border-top-right-radius: root.border-radius;
-                background: transfer-area.has-hover ? Theme.bg-hover-elevated : transparent;
+                background: transfer-area.has-hover ? Theme.bg-hover-elevated : Theme.bg-elevated;
                 transfer-area := TouchArea {
                     mouse-cursor: pointer;
                     clicked => { root.transfer-clicked(); }
@@ -423,7 +426,8 @@ export component ProfileChoiceList inherits Rectangle {
                 for p in root.profiles: Rectangle {
                     width: choice-content.width;
                     height: root.row-height;
-                    background: choice-area.has-hover ? Theme.bg-hover-elevated : transparent;
+                    // opaque at rest (the list box's color): a hover change only redraws the row
+                    background: choice-area.has-hover ? Theme.bg-hover-elevated : Theme.bg-sunken;
                     choice-area := TouchArea {
                         mouse-cursor: pointer;
                         clicked => { root.selected = p.id; }

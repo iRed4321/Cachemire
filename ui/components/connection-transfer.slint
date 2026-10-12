@@ -62,7 +62,8 @@ component TransferList inherits Rectangle {
                 for row[i] in root.rows: Rectangle {
                     width: list-content.width;
                     height: root.row-height;
-                    background: row-area.has-hover ? Theme.bg-hover-elevated : transparent;
+                    // opaque at rest (the list box's color): a hover change only redraws the row
+                    background: row-area.has-hover ? Theme.bg-hover-elevated : Theme.bg-sunken;
                     row-area := TouchArea {
                         mouse-cursor: pointer;
                         // Shift is read on the press: a click carries no modifiers

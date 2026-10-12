@@ -16,7 +16,8 @@ component SavedQueryRow inherits Rectangle {
     callback deleted();
 
     height: Theme.px(27px);
-    background: selected ? Theme.bg-selected : (area.has-hover ? Theme.bg-hover : transparent);
+    // opaque at rest (the sidebar's color): a hover change only redraws the row
+    background: selected ? Theme.bg-selected : (area.has-hover ? Theme.bg-hover : Theme.bg-panel);
     border-radius: Theme.px(5px);
 
     area := TouchArea { }
@@ -63,7 +64,8 @@ component SavedQueryRow inherits Rectangle {
                 height: Theme.px(20px);
                 y: (parent.height - self.height) / 2;
                 border-radius: Theme.radius-sm;
-                background: delete-touch.has-hover ? Theme.bg-hover-elevated : transparent;
+                // the row's own color at rest, so the square covers its area when redrawn
+                background: delete-touch.has-hover ? Theme.bg-hover-elevated : root.background;
                 IconClose {
                     size: Theme.px(10px);
                     tint: delete-touch.has-hover ? Theme.accent-red : Theme.text-tertiary;

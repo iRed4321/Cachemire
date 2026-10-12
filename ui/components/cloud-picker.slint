@@ -49,7 +49,8 @@ export component AwsProfileDropdown inherits Rectangle {
                     alignment: start;
                     for name in profiles: Rectangle {
                         height: row-stride;
-                        background: name == root.selected ? Theme.bg-selected-soft : (row-area.has-hover ? Theme.bg-hover-elevated : transparent);
+                        // opaque at rest: a hover change only redraws the row, which then covers its own area
+                        background: name == root.selected ? Theme.bg-selected-soft : (row-area.has-hover ? Theme.bg-hover-elevated : Theme.bg-elevated);
                         row-area := TouchArea {
                             mouse-cursor: pointer;
                             clicked => { root.picked(name); }
