@@ -1,0 +1,99 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16" width="16" height="16">
+<title>Cachemire icon, drawn for 16x16 px</title>
+<defs>
+<linearGradient id="gvW" x1="0" y1="0" x2="1" y2="0"><stop offset="0" stop-color="#c9c4b9"/><stop offset="0.12" stop-color="#ebe8e0"/><stop offset="0.4" stop-color="#fefefc"/><stop offset="0.62" stop-color="#f3f1ec"/><stop offset="0.88" stop-color="#ebe8e0"/><stop offset="1" stop-color="#c9c4b9"/></linearGradient>
+<linearGradient id="gvR" x1="0" y1="0" x2="1" y2="0"><stop offset="0" stop-color="#780d10"/><stop offset="0.12" stop-color="#b92428"/><stop offset="0.4" stop-color="#e2443f"/><stop offset="0.62" stop-color="#cf3033"/><stop offset="0.88" stop-color="#b92428"/><stop offset="1" stop-color="#780d10"/></linearGradient>
+<linearGradient id="ghW" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#c9c4b9"/><stop offset="0.12" stop-color="#ebe8e0"/><stop offset="0.4" stop-color="#fefefc"/><stop offset="0.62" stop-color="#f3f1ec"/><stop offset="0.88" stop-color="#ebe8e0"/><stop offset="1" stop-color="#c9c4b9"/></linearGradient>
+<linearGradient id="ghR" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#780d10"/><stop offset="0.12" stop-color="#b92428"/><stop offset="0.4" stop-color="#e2443f"/><stop offset="0.62" stop-color="#cf3033"/><stop offset="0.88" stop-color="#b92428"/><stop offset="1" stop-color="#780d10"/></linearGradient>
+<linearGradient id="sL" x1="0" y1="0" x2="1" y2="0"><stop offset="0" stop-color="#2a0000" stop-opacity="0.26"/><stop offset="1" stop-color="#2a0000" stop-opacity="0"/></linearGradient>
+<linearGradient id="sR" x1="1" y1="0" x2="0" y2="0"><stop offset="0" stop-color="#2a0000" stop-opacity="0.26"/><stop offset="1" stop-color="#2a0000" stop-opacity="0"/></linearGradient>
+<linearGradient id="sT" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#2a0000" stop-opacity="0.26"/><stop offset="1" stop-color="#2a0000" stop-opacity="0"/></linearGradient>
+<linearGradient id="sB" x1="0" y1="1" x2="0" y2="0"><stop offset="0" stop-color="#2a0000" stop-opacity="0.26"/><stop offset="1" stop-color="#2a0000" stop-opacity="0"/></linearGradient>
+<clipPath id="vf0"><path d="M2,1A1.0 1 0 0 1 4,1V15A1.0 1 0 0 1 2,15Z"/></clipPath>
+<linearGradient id="pxV0" gradientUnits="userSpaceOnUse" x1="2" x2="4" y1="0" y2="0"><stop offset="0.0000" stop-color="#f7f5f0"/><stop offset="0.5000" stop-color="#f7f5f0"/><stop offset="0.5000" stop-color="#cfc9bd"/><stop offset="1.0000" stop-color="#cfc9bd"/></linearGradient>
+<g id="V0"><path d="M2,1A1.0 1 0 0 1 4,1V15A1.0 1 0 0 1 2,15Z" fill="url(#pxV0)"/></g>
+<clipPath id="vf1"><path d="M5,1H7V15H5Z"/></clipPath>
+<linearGradient id="pxV1" gradientUnits="userSpaceOnUse" x1="5" x2="7" y1="0" y2="0"><stop offset="0.0000" stop-color="#d8393a"/><stop offset="0.5000" stop-color="#d8393a"/><stop offset="0.5000" stop-color="#a51e22"/><stop offset="1.0000" stop-color="#a51e22"/></linearGradient>
+<g id="V1"><path d="M5,1H7V15H5Z" fill="url(#pxV1)"/></g>
+<clipPath id="vf2"><path d="M7,1A1.0 1 0 0 1 9,1V15A1.0 1 0 0 1 7,15Z"/></clipPath>
+<linearGradient id="pxV2" gradientUnits="userSpaceOnUse" x1="7" x2="9" y1="0" y2="0"><stop offset="0.0000" stop-color="#f7f5f0"/><stop offset="0.5000" stop-color="#f7f5f0"/><stop offset="0.5000" stop-color="#cfc9bd"/><stop offset="1.0000" stop-color="#cfc9bd"/></linearGradient>
+<g id="V2"><path d="M7,1A1.0 1 0 0 1 9,1V15A1.0 1 0 0 1 7,15Z" fill="url(#pxV2)"/></g>
+<clipPath id="vf3"><path d="M9,1H11V15H9Z"/></clipPath>
+<linearGradient id="pxV3" gradientUnits="userSpaceOnUse" x1="9" x2="11" y1="0" y2="0"><stop offset="0.0000" stop-color="#d8393a"/><stop offset="0.5000" stop-color="#d8393a"/><stop offset="0.5000" stop-color="#a51e22"/><stop offset="1.0000" stop-color="#a51e22"/></linearGradient>
+<g id="V3"><path d="M9,1H11V15H9Z" fill="url(#pxV3)"/></g>
+<clipPath id="vf4"><path d="M12,1A1.0 1 0 0 1 14,1V15A1.0 1 0 0 1 12,15Z"/></clipPath>
+<linearGradient id="pxV4" gradientUnits="userSpaceOnUse" x1="12" x2="14" y1="0" y2="0"><stop offset="0.0000" stop-color="#f7f5f0"/><stop offset="0.5000" stop-color="#f7f5f0"/><stop offset="0.5000" stop-color="#cfc9bd"/><stop offset="1.0000" stop-color="#cfc9bd"/></linearGradient>
+<g id="V4"><path d="M12,1A1.0 1 0 0 1 14,1V15A1.0 1 0 0 1 12,15Z" fill="url(#pxV4)"/></g>
+<clipPath id="hf0"><path d="M2,1H14A2 1.0 0 0 1 14,3H2A2 1.0 0 0 1 2,1Z"/></clipPath>
+<linearGradient id="pxH0" gradientUnits="userSpaceOnUse" y1="1" y2="3" x1="0" x2="0"><stop offset="0.0000" stop-color="#f7f5f0"/><stop offset="0.5000" stop-color="#f7f5f0"/><stop offset="0.5000" stop-color="#cfc9bd"/><stop offset="1.0000" stop-color="#cfc9bd"/></linearGradient>
+<g id="H0"><path d="M2,1H14A2 1.0 0 0 1 14,3H2A2 1.0 0 0 1 2,1Z" fill="url(#pxH0)"/></g>
+<clipPath id="hf1"><path d="M2,3H14A2 1.0 0 0 1 14,5H2A2 1.0 0 0 1 2,3Z"/></clipPath>
+<linearGradient id="pxH1" gradientUnits="userSpaceOnUse" y1="3" y2="5" x1="0" x2="0"><stop offset="0.0000" stop-color="#f7f5f0"/><stop offset="0.5000" stop-color="#f7f5f0"/><stop offset="0.5000" stop-color="#cfc9bd"/><stop offset="1.0000" stop-color="#cfc9bd"/></linearGradient>
+<g id="H1"><path d="M2,3H14A2 1.0 0 0 1 14,5H2A2 1.0 0 0 1 2,3Z" fill="url(#pxH1)"/></g>
+<clipPath id="hf2"><path d="M2,5H14V7H2Z"/></clipPath>
+<linearGradient id="pxH2" gradientUnits="userSpaceOnUse" y1="5" y2="7" x1="0" x2="0"><stop offset="0.0000" stop-color="#d8393a"/><stop offset="0.5000" stop-color="#d8393a"/><stop offset="0.5000" stop-color="#a51e22"/><stop offset="1.0000" stop-color="#a51e22"/></linearGradient>
+<g id="H2"><path d="M2,5H14V7H2Z" fill="url(#pxH2)"/></g>
+<clipPath id="hf3"><path d="M2,7H14A2 1.0 0 0 1 14,9H2A2 1.0 0 0 1 2,7Z"/></clipPath>
+<linearGradient id="pxH3" gradientUnits="userSpaceOnUse" y1="7" y2="9" x1="0" x2="0"><stop offset="0.0000" stop-color="#f7f5f0"/><stop offset="0.5000" stop-color="#f7f5f0"/><stop offset="0.5000" stop-color="#cfc9bd"/><stop offset="1.0000" stop-color="#cfc9bd"/></linearGradient>
+<g id="H3"><path d="M2,7H14A2 1.0 0 0 1 14,9H2A2 1.0 0 0 1 2,7Z" fill="url(#pxH3)"/></g>
+<clipPath id="hf4"><path d="M2,9H14V11H2Z"/></clipPath>
+<linearGradient id="pxH4" gradientUnits="userSpaceOnUse" y1="9" y2="11" x1="0" x2="0"><stop offset="0.0000" stop-color="#d8393a"/><stop offset="0.5000" stop-color="#d8393a"/><stop offset="0.5000" stop-color="#a51e22"/><stop offset="1.0000" stop-color="#a51e22"/></linearGradient>
+<g id="H4"><path d="M2,9H14V11H2Z" fill="url(#pxH4)"/></g>
+<clipPath id="hf5"><path d="M2,11H14A2 1.0 0 0 1 14,13H2A2 1.0 0 0 1 2,11Z"/></clipPath>
+<linearGradient id="pxH5" gradientUnits="userSpaceOnUse" y1="11" y2="13" x1="0" x2="0"><stop offset="0.0000" stop-color="#f7f5f0"/><stop offset="0.5000" stop-color="#f7f5f0"/><stop offset="0.5000" stop-color="#cfc9bd"/><stop offset="1.0000" stop-color="#cfc9bd"/></linearGradient>
+<g id="H5"><path d="M2,11H14A2 1.0 0 0 1 14,13H2A2 1.0 0 0 1 2,11Z" fill="url(#pxH5)"/></g>
+<clipPath id="hf6"><path d="M2,13H14A2 1.0 0 0 1 14,15H2A2 1.0 0 0 1 2,13Z"/></clipPath>
+<linearGradient id="pxH6" gradientUnits="userSpaceOnUse" y1="13" y2="15" x1="0" x2="0"><stop offset="0.0000" stop-color="#f7f5f0"/><stop offset="0.5000" stop-color="#f7f5f0"/><stop offset="0.5000" stop-color="#cfc9bd"/><stop offset="1.0000" stop-color="#cfc9bd"/></linearGradient>
+<g id="H6"><path d="M2,13H14A2 1.0 0 0 1 14,15H2A2 1.0 0 0 1 2,13Z" fill="url(#pxH6)"/></g>
+<clipPath id="k0_0"><rect x="2" y="1" width="2" height="2"/></clipPath>
+<clipPath id="k0_2"><rect x="2" y="5" width="2" height="2"/></clipPath>
+<clipPath id="k0_4"><rect x="2" y="9" width="2" height="2"/></clipPath>
+<clipPath id="k0_6"><rect x="2" y="13" width="2" height="2"/></clipPath>
+<clipPath id="k1_1"><rect x="5" y="3" width="2" height="2"/></clipPath>
+<clipPath id="k1_2"><rect x="5" y="5" width="2" height="2"/></clipPath>
+<clipPath id="k1_3"><rect x="5" y="7" width="2" height="2"/></clipPath>
+<clipPath id="k1_5"><rect x="5" y="11" width="2" height="2"/></clipPath>
+<clipPath id="k2_0"><rect x="7" y="1" width="2" height="2"/></clipPath>
+<clipPath id="k2_1"><rect x="7" y="3" width="2" height="2"/></clipPath>
+<clipPath id="k2_5"><rect x="7" y="11" width="2" height="2"/></clipPath>
+<clipPath id="k3_1"><rect x="9" y="3" width="2" height="2"/></clipPath>
+<clipPath id="k3_3"><rect x="9" y="7" width="2" height="2"/></clipPath>
+<clipPath id="k3_4"><rect x="9" y="9" width="2" height="2"/></clipPath>
+<clipPath id="k3_5"><rect x="9" y="11" width="2" height="2"/></clipPath>
+<clipPath id="k4_0"><rect x="12" y="1" width="2" height="2"/></clipPath>
+<clipPath id="k4_2"><rect x="12" y="5" width="2" height="2"/></clipPath>
+<clipPath id="k4_4"><rect x="12" y="9" width="2" height="2"/></clipPath>
+<clipPath id="k4_6"><rect x="12" y="13" width="2" height="2"/></clipPath>
+</defs>
+<use href="#V0"/>
+<use href="#V1"/>
+<use href="#V2"/>
+<use href="#V3"/>
+<use href="#V4"/>
+<use href="#H0"/>
+<use href="#H1"/>
+<use href="#H2"/>
+<use href="#H3"/>
+<use href="#H4"/>
+<use href="#H5"/>
+<use href="#H6"/>
+<g clip-path="url(#k0_0)"><use href="#V0"/></g>
+<g clip-path="url(#k0_2)"><use href="#V0"/></g>
+<g clip-path="url(#k0_4)"><use href="#V0"/></g>
+<g clip-path="url(#k0_6)"><use href="#V0"/></g>
+<g clip-path="url(#k1_1)"><use href="#V1"/></g>
+<g clip-path="url(#k1_2)"><use href="#V1"/></g>
+<g clip-path="url(#k1_3)"><use href="#V1"/></g>
+<g clip-path="url(#k1_5)"><use href="#V1"/></g>
+<g clip-path="url(#k2_0)"><use href="#V2"/></g>
+<g clip-path="url(#k2_1)"><use href="#V2"/></g>
+<g clip-path="url(#k2_5)"><use href="#V2"/></g>
+<g clip-path="url(#k3_1)"><use href="#V3"/></g>
+<g clip-path="url(#k3_3)"><use href="#V3"/></g>
+<g clip-path="url(#k3_4)"><use href="#V3"/></g>
+<g clip-path="url(#k3_5)"><use href="#V3"/></g>
+<g clip-path="url(#k4_0)"><use href="#V4"/></g>
+<g clip-path="url(#k4_2)"><use href="#V4"/></g>
+<g clip-path="url(#k4_4)"><use href="#V4"/></g>
+<g clip-path="url(#k4_6)"><use href="#V4"/></g>
+</svg>
