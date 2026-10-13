@@ -16,6 +16,12 @@ Rust · [Slint](https://slint.dev) · Windows and Linux
 
 ---
 
+<p align="center">
+  <img src="docs/screenshots/table-view.png" alt="A hash of JSON values shown as a table, one column per JSON key" width="45%">
+  &nbsp;
+  <img src="docs/screenshots/fields-view.png" alt="The same kind of hash as fields, one expanded to pretty-printed JSON" width="45%">
+</p>
+
 > **Opinionated by design.** Cachemire is built around one use case: hashes whose values are JSON. That is where its filters, tables and Redisql shine; other types are readable, but get less attention.
 
 ## Features
@@ -77,6 +83,14 @@ Open keys, searches and queries in tabs. Drag them around; each remembers its fi
 ### Polish
 
 Zoom with <kbd>Ctrl</kbd>+<kbd>+</kbd>/<kbd>-</kbd>/<kbd>0</kbd> or <kbd>Ctrl</kbd>+scroll. 🌍 **English and French**, following your system or chosen in **Settings**, switched without a restart.
+
+## Planned
+
+- ✏️ **Editing** keys and values
+- 🗝️ **Valkey** support
+- 🎨 **Themes**
+- ⌨️ **Advanced key bindings**
+- 🖍️ **Syntax highlighting** for values in other languages than JSON
 
 ## Getting started
 
