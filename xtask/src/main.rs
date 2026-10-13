@@ -63,6 +63,12 @@ enum Task {
         #[arg(long = "report")]
         reported: bool,
     },
+    /// The real MSI around a stand-in app (`installer-test`), quick to build, to try the installer; in target/installer-test
+    BuildInstallerTest {
+        /// The version to build it as, any one (e.g. 1.2.0 or 1.3.0-beta.2)
+        #[arg(long)]
+        version: String,
+    },
     /// Release build packed as a single-file AppImage in target/appimage
     BuildAppimage {
         /// Use the `fast` profile (no LTO, quicker link) and build the working tree, not a release; output in target/appimage-fast
@@ -143,6 +149,7 @@ fn main() {
         Task::BuildWindows { fast, stable, as_version, clean, skip_installer, with_zip, reported } => {
             windows::run_task(fast, stable, as_version.as_deref(), clean, skip_installer, with_zip, reported)
         }
+        Task::BuildInstallerTest { version } => windows::build_installer_test(&version),
         Task::BuildAppimage { fast, stable, as_version, with_zip, reported } => appimage::run_task(fast, stable, as_version.as_deref(), with_zip, reported),
         Task::BuildDeb { fast, stable, as_version, with_zip } => deb::run_task(fast, stable, as_version.as_deref(), with_zip),
         Task::BuildLinux { fast, stable, as_version, with_zip, reported } => linux::run_task(fast, stable, as_version.as_deref(), with_zip, reported),

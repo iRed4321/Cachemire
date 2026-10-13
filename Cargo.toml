@@ -7,7 +7,7 @@ description = "Redis key explorer"
 license = "GPL-3.0-only"
 
 [workspace]
-members = ["xtask"]
+members = ["xtask", "installer-test"]
 
 [dependencies]
 tokio = { version = "1", features = ["rt-multi-thread", "sync", "time"] }

@@ -1,7 +1,8 @@
 //! `cargo xtask build-windows`: the release executable, an MSI installer (WiX v6 or v7) and
 //! a portable zip (and a zip of the MSI on request), in target/windows. Built from the latest release tag.
+//! `cargo xtask build-installer-test`: the same MSI around a stand-in app, to try the installer.
 
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::process::Command;
 
 use crate::report;
@@ -35,25 +36,8 @@ fn build(fast: bool, clean: bool, skip_installer: bool, with_zip: bool, reported
 
     let mut msi = None;
     if !skip_installer {
-        let wix = wix_command()?;
-        let ui_extension = ensure_ui_extension(&wix)?;
         let path = out.join(format!("Cachemire-{version}-x64.msi"));
-        let _ = std::fs::remove_file(&path);
-        // -b: base path of the .wxs's relative SourceFile references (the icon)
-        run(Command::new(wix)
-            .args(["build", "-arch", "x64", "-ext"])
-            .arg(&ui_extension)
-            .arg("-b")
-            .arg(&root)
-            .arg("-d")
-            .arg(format!("Version={}", msi_version(&version)))
-            .arg("-d")
-            .arg(format!("FullVersion={version}"))
-            .arg("-d")
-            .arg(format!("ExePath={}", exe.display()))
-            .arg("-o")
-            .arg(&path)
-            .arg(root.join("assets/cachemire.wxs")))?;
+        build_msi(&exe, &version, &path)?;
         if with_zip {
             zip_file(&path, &path.with_extension("msi.zip"), 0o644)?;
         }
@@ -71,6 +55,48 @@ fn build(fast: bool, clean: bool, skip_installer: bool, with_zip: bool, reported
         report::save("Release build", &[Some(zip_path.as_path()), msi.as_deref()].into_iter().flatten().collect::<Vec<_>>())?;
     }
     Ok(())
+}
+
+/// Builds the installer test: the stand-in app of `installer-test`, built as `version`, in the real
+/// MSI, in target/installer-test. Quick to build, for trying installs, updates and removals.
+pub fn build_installer_test(version: &str) -> Result<()> {
+    if cfg!(not(windows)) {
+        return Err("the installer test is an MSI: it can only be built on Windows".into());
+    }
+    let version = semver::Version::parse(version).map_err(|e| format!("{version} is not a version: {e}"))?.to_string();
+    let root = repo_root();
+    println!("Building the installer test of Cachemire {version}...");
+    run(cargo().current_dir(&root).args(["build", "--release", "--locked", "--package", "installer-test"]).env("CACHEMIRE_VERSION", &version))?;
+    let exe = root.join("target/release").join(format!("installer-test{}", std::env::consts::EXE_SUFFIX));
+    let out = root.join("target/installer-test");
+    std::fs::create_dir_all(&out).map_err(|e| e.to_string())?;
+    let path = out.join(format!("Cachemire-{version}-installer-test-x64.msi"));
+    build_msi(&exe, &version, &path)?;
+    println!("\nInstaller:  {}", path.display());
+    Ok(())
+}
+
+/// Writes the MSI of assets/cachemire.wxs at `path`, holding `exe` as `version`.
+fn build_msi(exe: &Path, version: &str, path: &Path) -> Result<()> {
+    let root = repo_root();
+    let wix = wix_command()?;
+    let ui_extension = ensure_ui_extension(&wix)?;
+    let _ = std::fs::remove_file(path);
+    // -b: base path of the .wxs's relative SourceFile references (the icon)
+    run(Command::new(wix)
+        .args(["build", "-arch", "x64", "-ext"])
+        .arg(&ui_extension)
+        .arg("-b")
+        .arg(&root)
+        .arg("-d")
+        .arg(format!("Version={}", msi_version(version)))
+        .arg("-d")
+        .arg(format!("FullVersion={version}"))
+        .arg("-d")
+        .arg(format!("ExePath={}", exe.display()))
+        .arg("-o")
+        .arg(path)
+        .arg(root.join("assets/cachemire.wxs")))
 }
 
 /// The WiX CLI: an installed one, else the .NET global tool, installed if missing

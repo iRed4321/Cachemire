@@ -98,6 +98,8 @@ Ajoutez une connexion depuis la barre de titre (**Nouvelle connexion…**), sél
 
 Les installeurs se construisent avec `cargo xtask build-windows` (MSI et zip portable), `cargo xtask build-deb` et `cargo xtask build-appimage` (ou les deux à partir d'une seule compilation avec `cargo xtask build-linux`).
 
+Pour essayer le MSI seul, `cargo xtask build-installer-test --version 1.2.0` y met une application factice, rapide à compiler, à la version voulue ; sur GitHub, lancez le workflow *Installer test* et téléchargez son artefact.
+
 ### Publier une version
 
 `Cargo.toml` indique toujours `0.0.0-dev` : les versions n'existent que dans les tags de release, et rien n'est commité pour en publier une. Pour publier le commit sur lequel vous êtes :

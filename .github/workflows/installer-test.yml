@@ -1,0 +1,38 @@
+name: Installer test
+
+# Started by hand: the real MSI around a stand-in app, built as the version given here, quick to
+# build; to try installing, updating and removing Cachemire (`cargo xtask build-installer-test`).
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: The version to build the installer as (e.g. 1.2.0 or 1.3.0-beta.2)
+        type: string
+        required: true
+        default: 1.0.0
+
+env:
+  CARGO_TERM_COLOR: always
+  CARGO_TERM_PROGRESS_WHEN: never
+
+jobs:
+  installer:
+    name: Installer test ${{ inputs.version }}
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v7
+      - name: Install WiX
+        shell: pwsh
+        run: |
+          dotnet tool install --global wix --version "7.*"
+          "$env:USERPROFILE\.dotnet\tools" | Out-File -FilePath $env:GITHUB_PATH -Append
+          & "$env:USERPROFILE\.dotnet\tools\wix.exe" eula accept wix7
+      - name: Build
+        shell: bash
+        env:
+          VERSION: ${{ inputs.version }}
+        run: cargo xtask build-installer-test --version "$VERSION"
+      - uses: actions/upload-artifact@v7
+        with:
+          name: installer-test-${{ inputs.version }}
+          path: target/installer-test/*.msi
