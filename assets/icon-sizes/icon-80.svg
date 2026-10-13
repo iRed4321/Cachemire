@@ -5,10 +5,14 @@
 <linearGradient id="gvR" x1="0" y1="0" x2="1" y2="0"><stop offset="0" stop-color="#780d10"/><stop offset="0.12" stop-color="#b92428"/><stop offset="0.4" stop-color="#e2443f"/><stop offset="0.62" stop-color="#cf3033"/><stop offset="0.88" stop-color="#b92428"/><stop offset="1" stop-color="#780d10"/></linearGradient>
 <linearGradient id="ghW" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#c9c4b9"/><stop offset="0.12" stop-color="#ebe8e0"/><stop offset="0.4" stop-color="#fefefc"/><stop offset="0.62" stop-color="#f3f1ec"/><stop offset="0.88" stop-color="#ebe8e0"/><stop offset="1" stop-color="#c9c4b9"/></linearGradient>
 <linearGradient id="ghR" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#780d10"/><stop offset="0.12" stop-color="#b92428"/><stop offset="0.4" stop-color="#e2443f"/><stop offset="0.62" stop-color="#cf3033"/><stop offset="0.88" stop-color="#b92428"/><stop offset="1" stop-color="#780d10"/></linearGradient>
-<linearGradient id="sL" x1="0" y1="0" x2="1" y2="0"><stop offset="0" stop-color="#2a0000" stop-opacity="0.4"/><stop offset="1" stop-color="#2a0000" stop-opacity="0"/></linearGradient>
-<linearGradient id="sR" x1="1" y1="0" x2="0" y2="0"><stop offset="0" stop-color="#2a0000" stop-opacity="0.4"/><stop offset="1" stop-color="#2a0000" stop-opacity="0"/></linearGradient>
-<linearGradient id="sT" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#2a0000" stop-opacity="0.4"/><stop offset="1" stop-color="#2a0000" stop-opacity="0"/></linearGradient>
-<linearGradient id="sB" x1="0" y1="1" x2="0" y2="0"><stop offset="0" stop-color="#2a0000" stop-opacity="0.4"/><stop offset="1" stop-color="#2a0000" stop-opacity="0"/></linearGradient>
+<linearGradient id="sLW" x1="0" y1="0" x2="1" y2="0"><stop offset="0" stop-color="#3a352d" stop-opacity="0.4"/><stop offset="1" stop-color="#3a352d" stop-opacity="0"/></linearGradient>
+<linearGradient id="sRW" x1="1" y1="0" x2="0" y2="0"><stop offset="0" stop-color="#3a352d" stop-opacity="0.4"/><stop offset="1" stop-color="#3a352d" stop-opacity="0"/></linearGradient>
+<linearGradient id="sTW" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#3a352d" stop-opacity="0.4"/><stop offset="1" stop-color="#3a352d" stop-opacity="0"/></linearGradient>
+<linearGradient id="sBW" x1="0" y1="1" x2="0" y2="0"><stop offset="0" stop-color="#3a352d" stop-opacity="0.4"/><stop offset="1" stop-color="#3a352d" stop-opacity="0"/></linearGradient>
+<linearGradient id="sLR" x1="0" y1="0" x2="1" y2="0"><stop offset="0" stop-color="#2a0000" stop-opacity="0.4"/><stop offset="1" stop-color="#2a0000" stop-opacity="0"/></linearGradient>
+<linearGradient id="sRR" x1="1" y1="0" x2="0" y2="0"><stop offset="0" stop-color="#2a0000" stop-opacity="0.4"/><stop offset="1" stop-color="#2a0000" stop-opacity="0"/></linearGradient>
+<linearGradient id="sTR" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#2a0000" stop-opacity="0.4"/><stop offset="1" stop-color="#2a0000" stop-opacity="0"/></linearGradient>
+<linearGradient id="sBR" x1="0" y1="1" x2="0" y2="0"><stop offset="0" stop-color="#2a0000" stop-opacity="0.4"/><stop offset="1" stop-color="#2a0000" stop-opacity="0"/></linearGradient>
 <clipPath id="vf0"><path d="M8,7A5.0 7 0 0 1 18,7V73A5.0 7 0 0 1 8,73Z"/></clipPath>
 <linearGradient id="pxV0" gradientUnits="userSpaceOnUse" x1="8" x2="18" y1="0" y2="0"><stop offset="0.0000" stop-color="#bcb8af"/><stop offset="0.1000" stop-color="#bcb8af"/><stop offset="0.1000" stop-color="#edeae3"/><stop offset="0.2000" stop-color="#edeae3"/><stop offset="0.2000" stop-color="#f4f2ed"/><stop offset="0.3000" stop-color="#f4f2ed"/><stop offset="0.3000" stop-color="#fbfaf7"/><stop offset="0.4000" stop-color="#fbfaf7"/><stop offset="0.4000" stop-color="#fcfbf8"/><stop offset="0.5000" stop-color="#fcfbf8"/><stop offset="0.5000" stop-color="#f6f5f1"/><stop offset="0.6000" stop-color="#f6f5f1"/><stop offset="0.6000" stop-color="#f2f0eb"/><stop offset="0.7000" stop-color="#f2f0eb"/><stop offset="0.7000" stop-color="#efece6"/><stop offset="0.8000" stop-color="#efece6"/><stop offset="0.8000" stop-color="#ece9e1"/><stop offset="0.9000" stop-color="#ece9e1"/><stop offset="0.9000" stop-color="#bcb8af"/><stop offset="1.0000" stop-color="#bcb8af"/></linearGradient>
 <g id="V0"><path d="M8,7A5.0 7 0 0 1 18,7V73A5.0 7 0 0 1 8,73Z" fill="url(#pxV0)"/></g>
@@ -96,54 +100,54 @@
 <g clip-path="url(#k4_2)"><use href="#V4"/></g>
 <g clip-path="url(#k4_4)"><use href="#V4"/></g>
 <g clip-path="url(#k4_6)"><use href="#V4"/></g>
-<rect x="6" y="7" width="2" height="10" fill="url(#sR)" clip-path="url(#hf0)"/>
-<rect x="18" y="7" width="2" height="10" fill="url(#sL)" clip-path="url(#hf0)"/>
-<rect x="8" y="15" width="10" height="2" fill="url(#sB)" clip-path="url(#vf0)"/>
-<rect x="8" y="27" width="10" height="2" fill="url(#sT)" clip-path="url(#vf0)"/>
-<rect x="18" y="27" width="2" height="8" fill="url(#sL)" clip-path="url(#hf2)"/>
-<rect x="8" y="33" width="10" height="2" fill="url(#sB)" clip-path="url(#vf0)"/>
-<rect x="8" y="45" width="10" height="2" fill="url(#sT)" clip-path="url(#vf0)"/>
-<rect x="18" y="45" width="2" height="8" fill="url(#sL)" clip-path="url(#hf4)"/>
-<rect x="8" y="51" width="10" height="2" fill="url(#sB)" clip-path="url(#vf0)"/>
-<rect x="8" y="63" width="10" height="2" fill="url(#sT)" clip-path="url(#vf0)"/>
-<rect x="6" y="63" width="2" height="10" fill="url(#sR)" clip-path="url(#hf6)"/>
-<rect x="18" y="63" width="2" height="10" fill="url(#sL)" clip-path="url(#hf6)"/>
-<rect x="27" y="17" width="8" height="2" fill="url(#sT)" clip-path="url(#vf1)"/>
-<rect x="25" y="17" width="2" height="10" fill="url(#sR)" clip-path="url(#hf1)"/>
-<rect x="25" y="27" width="2" height="8" fill="url(#sR)" clip-path="url(#hf2)"/>
-<rect x="35" y="27" width="2" height="8" fill="url(#sL)" clip-path="url(#hf2)"/>
-<rect x="25" y="35" width="2" height="10" fill="url(#sR)" clip-path="url(#hf3)"/>
-<rect x="35" y="35" width="2" height="10" fill="url(#sL)" clip-path="url(#hf3)"/>
-<rect x="27" y="43" width="8" height="2" fill="url(#sB)" clip-path="url(#vf1)"/>
-<rect x="27" y="53" width="8" height="2" fill="url(#sT)" clip-path="url(#vf1)"/>
-<rect x="25" y="53" width="2" height="10" fill="url(#sR)" clip-path="url(#hf5)"/>
-<rect x="27" y="61" width="8" height="2" fill="url(#sB)" clip-path="url(#vf1)"/>
-<rect x="33" y="7" width="2" height="10" fill="url(#sR)" clip-path="url(#hf0)"/>
-<rect x="45" y="7" width="2" height="10" fill="url(#sL)" clip-path="url(#hf0)"/>
-<rect x="35" y="25" width="10" height="2" fill="url(#sB)" clip-path="url(#vf2)"/>
-<rect x="35" y="53" width="10" height="2" fill="url(#sT)" clip-path="url(#vf2)"/>
-<rect x="35" y="61" width="10" height="2" fill="url(#sB)" clip-path="url(#vf2)"/>
-<rect x="35" y="73" width="10" height="2" fill="url(#sT)" clip-path="url(#vf2)"/>
-<rect x="45" y="17" width="8" height="2" fill="url(#sT)" clip-path="url(#vf3)"/>
-<rect x="53" y="17" width="2" height="10" fill="url(#sL)" clip-path="url(#hf1)"/>
-<rect x="45" y="25" width="8" height="2" fill="url(#sB)" clip-path="url(#vf3)"/>
-<rect x="45" y="35" width="8" height="2" fill="url(#sT)" clip-path="url(#vf3)"/>
-<rect x="43" y="35" width="2" height="10" fill="url(#sR)" clip-path="url(#hf3)"/>
-<rect x="53" y="35" width="2" height="10" fill="url(#sL)" clip-path="url(#hf3)"/>
-<rect x="43" y="45" width="2" height="8" fill="url(#sR)" clip-path="url(#hf4)"/>
-<rect x="53" y="45" width="2" height="8" fill="url(#sL)" clip-path="url(#hf4)"/>
-<rect x="53" y="53" width="2" height="10" fill="url(#sL)" clip-path="url(#hf5)"/>
-<rect x="45" y="61" width="8" height="2" fill="url(#sB)" clip-path="url(#vf3)"/>
-<rect x="60" y="7" width="2" height="10" fill="url(#sR)" clip-path="url(#hf0)"/>
-<rect x="72" y="7" width="2" height="10" fill="url(#sL)" clip-path="url(#hf0)"/>
-<rect x="62" y="15" width="10" height="2" fill="url(#sB)" clip-path="url(#vf4)"/>
-<rect x="62" y="27" width="10" height="2" fill="url(#sT)" clip-path="url(#vf4)"/>
-<rect x="60" y="27" width="2" height="8" fill="url(#sR)" clip-path="url(#hf2)"/>
-<rect x="62" y="33" width="10" height="2" fill="url(#sB)" clip-path="url(#vf4)"/>
-<rect x="62" y="45" width="10" height="2" fill="url(#sT)" clip-path="url(#vf4)"/>
-<rect x="60" y="45" width="2" height="8" fill="url(#sR)" clip-path="url(#hf4)"/>
-<rect x="62" y="51" width="10" height="2" fill="url(#sB)" clip-path="url(#vf4)"/>
-<rect x="62" y="63" width="10" height="2" fill="url(#sT)" clip-path="url(#vf4)"/>
-<rect x="60" y="63" width="2" height="10" fill="url(#sR)" clip-path="url(#hf6)"/>
-<rect x="72" y="63" width="2" height="10" fill="url(#sL)" clip-path="url(#hf6)"/>
+<rect x="6" y="7" width="2" height="10" fill="url(#sRW)" clip-path="url(#hf0)"/>
+<rect x="18" y="7" width="2" height="10" fill="url(#sLW)" clip-path="url(#hf0)"/>
+<rect x="8" y="15" width="10" height="2" fill="url(#sBW)" clip-path="url(#vf0)"/>
+<rect x="8" y="27" width="10" height="2" fill="url(#sTW)" clip-path="url(#vf0)"/>
+<rect x="18" y="27" width="2" height="8" fill="url(#sLR)" clip-path="url(#hf2)"/>
+<rect x="8" y="33" width="10" height="2" fill="url(#sBW)" clip-path="url(#vf0)"/>
+<rect x="8" y="45" width="10" height="2" fill="url(#sTW)" clip-path="url(#vf0)"/>
+<rect x="18" y="45" width="2" height="8" fill="url(#sLR)" clip-path="url(#hf4)"/>
+<rect x="8" y="51" width="10" height="2" fill="url(#sBW)" clip-path="url(#vf0)"/>
+<rect x="8" y="63" width="10" height="2" fill="url(#sTW)" clip-path="url(#vf0)"/>
+<rect x="6" y="63" width="2" height="10" fill="url(#sRW)" clip-path="url(#hf6)"/>
+<rect x="18" y="63" width="2" height="10" fill="url(#sLW)" clip-path="url(#hf6)"/>
+<rect x="27" y="17" width="8" height="2" fill="url(#sTR)" clip-path="url(#vf1)"/>
+<rect x="25" y="17" width="2" height="10" fill="url(#sRW)" clip-path="url(#hf1)"/>
+<rect x="25" y="27" width="2" height="8" fill="url(#sRR)" clip-path="url(#hf2)"/>
+<rect x="35" y="27" width="2" height="8" fill="url(#sLR)" clip-path="url(#hf2)"/>
+<rect x="25" y="35" width="2" height="10" fill="url(#sRW)" clip-path="url(#hf3)"/>
+<rect x="35" y="35" width="2" height="10" fill="url(#sLW)" clip-path="url(#hf3)"/>
+<rect x="27" y="43" width="8" height="2" fill="url(#sBR)" clip-path="url(#vf1)"/>
+<rect x="27" y="53" width="8" height="2" fill="url(#sTR)" clip-path="url(#vf1)"/>
+<rect x="25" y="53" width="2" height="10" fill="url(#sRW)" clip-path="url(#hf5)"/>
+<rect x="27" y="61" width="8" height="2" fill="url(#sBR)" clip-path="url(#vf1)"/>
+<rect x="33" y="7" width="2" height="10" fill="url(#sRW)" clip-path="url(#hf0)"/>
+<rect x="45" y="7" width="2" height="10" fill="url(#sLW)" clip-path="url(#hf0)"/>
+<rect x="35" y="25" width="10" height="2" fill="url(#sBW)" clip-path="url(#vf2)"/>
+<rect x="35" y="53" width="10" height="2" fill="url(#sTW)" clip-path="url(#vf2)"/>
+<rect x="35" y="61" width="10" height="2" fill="url(#sBW)" clip-path="url(#vf2)"/>
+<rect x="35" y="73" width="10" height="2" fill="url(#sTW)" clip-path="url(#vf2)"/>
+<rect x="45" y="17" width="8" height="2" fill="url(#sTR)" clip-path="url(#vf3)"/>
+<rect x="53" y="17" width="2" height="10" fill="url(#sLW)" clip-path="url(#hf1)"/>
+<rect x="45" y="25" width="8" height="2" fill="url(#sBR)" clip-path="url(#vf3)"/>
+<rect x="45" y="35" width="8" height="2" fill="url(#sTR)" clip-path="url(#vf3)"/>
+<rect x="43" y="35" width="2" height="10" fill="url(#sRW)" clip-path="url(#hf3)"/>
+<rect x="53" y="35" width="2" height="10" fill="url(#sLW)" clip-path="url(#hf3)"/>
+<rect x="43" y="45" width="2" height="8" fill="url(#sRR)" clip-path="url(#hf4)"/>
+<rect x="53" y="45" width="2" height="8" fill="url(#sLR)" clip-path="url(#hf4)"/>
+<rect x="53" y="53" width="2" height="10" fill="url(#sLW)" clip-path="url(#hf5)"/>
+<rect x="45" y="61" width="8" height="2" fill="url(#sBR)" clip-path="url(#vf3)"/>
+<rect x="60" y="7" width="2" height="10" fill="url(#sRW)" clip-path="url(#hf0)"/>
+<rect x="72" y="7" width="2" height="10" fill="url(#sLW)" clip-path="url(#hf0)"/>
+<rect x="62" y="15" width="10" height="2" fill="url(#sBW)" clip-path="url(#vf4)"/>
+<rect x="62" y="27" width="10" height="2" fill="url(#sTW)" clip-path="url(#vf4)"/>
+<rect x="60" y="27" width="2" height="8" fill="url(#sRR)" clip-path="url(#hf2)"/>
+<rect x="62" y="33" width="10" height="2" fill="url(#sBW)" clip-path="url(#vf4)"/>
+<rect x="62" y="45" width="10" height="2" fill="url(#sTW)" clip-path="url(#vf4)"/>
+<rect x="60" y="45" width="2" height="8" fill="url(#sRR)" clip-path="url(#hf4)"/>
+<rect x="62" y="51" width="10" height="2" fill="url(#sBW)" clip-path="url(#vf4)"/>
+<rect x="62" y="63" width="10" height="2" fill="url(#sTW)" clip-path="url(#vf4)"/>
+<rect x="60" y="63" width="2" height="10" fill="url(#sRW)" clip-path="url(#hf6)"/>
+<rect x="72" y="63" width="2" height="10" fill="url(#sLW)" clip-path="url(#hf6)"/>
 </svg>

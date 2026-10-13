@@ -5,10 +5,14 @@
 <linearGradient id="gvR" x1="0" y1="0" x2="1" y2="0"><stop offset="0" stop-color="#780d10"/><stop offset="0.12" stop-color="#b92428"/><stop offset="0.4" stop-color="#e2443f"/><stop offset="0.62" stop-color="#cf3033"/><stop offset="0.88" stop-color="#b92428"/><stop offset="1" stop-color="#780d10"/></linearGradient>
 <linearGradient id="ghW" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#c9c4b9"/><stop offset="0.12" stop-color="#ebe8e0"/><stop offset="0.4" stop-color="#fefefc"/><stop offset="0.62" stop-color="#f3f1ec"/><stop offset="0.88" stop-color="#ebe8e0"/><stop offset="1" stop-color="#c9c4b9"/></linearGradient>
 <linearGradient id="ghR" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#780d10"/><stop offset="0.12" stop-color="#b92428"/><stop offset="0.4" stop-color="#e2443f"/><stop offset="0.62" stop-color="#cf3033"/><stop offset="0.88" stop-color="#b92428"/><stop offset="1" stop-color="#780d10"/></linearGradient>
-<linearGradient id="sL" x1="0" y1="0" x2="1" y2="0"><stop offset="0" stop-color="#2a0000" stop-opacity="0.3"/><stop offset="1" stop-color="#2a0000" stop-opacity="0"/></linearGradient>
-<linearGradient id="sR" x1="1" y1="0" x2="0" y2="0"><stop offset="0" stop-color="#2a0000" stop-opacity="0.3"/><stop offset="1" stop-color="#2a0000" stop-opacity="0"/></linearGradient>
-<linearGradient id="sT" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#2a0000" stop-opacity="0.3"/><stop offset="1" stop-color="#2a0000" stop-opacity="0"/></linearGradient>
-<linearGradient id="sB" x1="0" y1="1" x2="0" y2="0"><stop offset="0" stop-color="#2a0000" stop-opacity="0.3"/><stop offset="1" stop-color="#2a0000" stop-opacity="0"/></linearGradient>
+<linearGradient id="sLW" x1="0" y1="0" x2="1" y2="0"><stop offset="0" stop-color="#3a352d" stop-opacity="0.3"/><stop offset="1" stop-color="#3a352d" stop-opacity="0"/></linearGradient>
+<linearGradient id="sRW" x1="1" y1="0" x2="0" y2="0"><stop offset="0" stop-color="#3a352d" stop-opacity="0.3"/><stop offset="1" stop-color="#3a352d" stop-opacity="0"/></linearGradient>
+<linearGradient id="sTW" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#3a352d" stop-opacity="0.3"/><stop offset="1" stop-color="#3a352d" stop-opacity="0"/></linearGradient>
+<linearGradient id="sBW" x1="0" y1="1" x2="0" y2="0"><stop offset="0" stop-color="#3a352d" stop-opacity="0.3"/><stop offset="1" stop-color="#3a352d" stop-opacity="0"/></linearGradient>
+<linearGradient id="sLR" x1="0" y1="0" x2="1" y2="0"><stop offset="0" stop-color="#2a0000" stop-opacity="0.3"/><stop offset="1" stop-color="#2a0000" stop-opacity="0"/></linearGradient>
+<linearGradient id="sRR" x1="1" y1="0" x2="0" y2="0"><stop offset="0" stop-color="#2a0000" stop-opacity="0.3"/><stop offset="1" stop-color="#2a0000" stop-opacity="0"/></linearGradient>
+<linearGradient id="sTR" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#2a0000" stop-opacity="0.3"/><stop offset="1" stop-color="#2a0000" stop-opacity="0"/></linearGradient>
+<linearGradient id="sBR" x1="0" y1="1" x2="0" y2="0"><stop offset="0" stop-color="#2a0000" stop-opacity="0.3"/><stop offset="1" stop-color="#2a0000" stop-opacity="0"/></linearGradient>
 <clipPath id="vf0"><path d="M3,3A2.5 3 0 0 1 8,3V33A2.5 3 0 0 1 3,33Z"/></clipPath>
 <linearGradient id="pxV0" gradientUnits="userSpaceOnUse" x1="3" x2="8" y1="0" y2="0"><stop offset="0.0000" stop-color="#c6c2bb"/><stop offset="0.2000" stop-color="#c6c2bb"/><stop offset="0.2000" stop-color="#f7f6f2"/><stop offset="0.4000" stop-color="#f7f6f2"/><stop offset="0.4000" stop-color="#f9f8f5"/><stop offset="0.6000" stop-color="#f9f8f5"/><stop offset="0.6000" stop-color="#f1eee8"/><stop offset="0.8000" stop-color="#f1eee8"/><stop offset="0.8000" stop-color="#c6c2bb"/><stop offset="1.0000" stop-color="#c6c2bb"/></linearGradient>
 <g id="V0"><path d="M3,3A2.5 3 0 0 1 8,3V33A2.5 3 0 0 1 3,33Z" fill="url(#pxV0)"/></g>
@@ -96,54 +100,54 @@
 <g clip-path="url(#k4_2)"><use href="#V4"/></g>
 <g clip-path="url(#k4_4)"><use href="#V4"/></g>
 <g clip-path="url(#k4_6)"><use href="#V4"/></g>
-<rect x="2" y="3" width="1" height="5" fill="url(#sR)" clip-path="url(#hf0)"/>
-<rect x="8" y="3" width="1" height="5" fill="url(#sL)" clip-path="url(#hf0)"/>
-<rect x="3" y="7" width="5" height="1" fill="url(#sB)" clip-path="url(#vf0)"/>
-<rect x="3" y="12" width="5" height="1" fill="url(#sT)" clip-path="url(#vf0)"/>
-<rect x="8" y="12" width="1" height="4" fill="url(#sL)" clip-path="url(#hf2)"/>
-<rect x="3" y="15" width="5" height="1" fill="url(#sB)" clip-path="url(#vf0)"/>
-<rect x="3" y="20" width="5" height="1" fill="url(#sT)" clip-path="url(#vf0)"/>
-<rect x="8" y="20" width="1" height="4" fill="url(#sL)" clip-path="url(#hf4)"/>
-<rect x="3" y="23" width="5" height="1" fill="url(#sB)" clip-path="url(#vf0)"/>
-<rect x="3" y="28" width="5" height="1" fill="url(#sT)" clip-path="url(#vf0)"/>
-<rect x="2" y="28" width="1" height="5" fill="url(#sR)" clip-path="url(#hf6)"/>
-<rect x="8" y="28" width="1" height="5" fill="url(#sL)" clip-path="url(#hf6)"/>
-<rect x="12" y="8" width="4" height="1" fill="url(#sT)" clip-path="url(#vf1)"/>
-<rect x="11" y="8" width="1" height="4" fill="url(#sR)" clip-path="url(#hf1)"/>
-<rect x="11" y="12" width="1" height="4" fill="url(#sR)" clip-path="url(#hf2)"/>
-<rect x="16" y="12" width="1" height="4" fill="url(#sL)" clip-path="url(#hf2)"/>
-<rect x="11" y="16" width="1" height="4" fill="url(#sR)" clip-path="url(#hf3)"/>
-<rect x="16" y="16" width="1" height="4" fill="url(#sL)" clip-path="url(#hf3)"/>
-<rect x="12" y="19" width="4" height="1" fill="url(#sB)" clip-path="url(#vf1)"/>
-<rect x="12" y="24" width="4" height="1" fill="url(#sT)" clip-path="url(#vf1)"/>
-<rect x="11" y="24" width="1" height="4" fill="url(#sR)" clip-path="url(#hf5)"/>
-<rect x="12" y="27" width="4" height="1" fill="url(#sB)" clip-path="url(#vf1)"/>
-<rect x="15" y="3" width="1" height="5" fill="url(#sR)" clip-path="url(#hf0)"/>
-<rect x="20" y="3" width="1" height="5" fill="url(#sL)" clip-path="url(#hf0)"/>
-<rect x="16" y="11" width="4" height="1" fill="url(#sB)" clip-path="url(#vf2)"/>
-<rect x="16" y="24" width="4" height="1" fill="url(#sT)" clip-path="url(#vf2)"/>
-<rect x="16" y="27" width="4" height="1" fill="url(#sB)" clip-path="url(#vf2)"/>
-<rect x="16" y="33" width="4" height="1" fill="url(#sT)" clip-path="url(#vf2)"/>
-<rect x="20" y="8" width="4" height="1" fill="url(#sT)" clip-path="url(#vf3)"/>
-<rect x="24" y="8" width="1" height="4" fill="url(#sL)" clip-path="url(#hf1)"/>
-<rect x="20" y="11" width="4" height="1" fill="url(#sB)" clip-path="url(#vf3)"/>
-<rect x="20" y="16" width="4" height="1" fill="url(#sT)" clip-path="url(#vf3)"/>
-<rect x="19" y="16" width="1" height="4" fill="url(#sR)" clip-path="url(#hf3)"/>
-<rect x="24" y="16" width="1" height="4" fill="url(#sL)" clip-path="url(#hf3)"/>
-<rect x="19" y="20" width="1" height="4" fill="url(#sR)" clip-path="url(#hf4)"/>
-<rect x="24" y="20" width="1" height="4" fill="url(#sL)" clip-path="url(#hf4)"/>
-<rect x="24" y="24" width="1" height="4" fill="url(#sL)" clip-path="url(#hf5)"/>
-<rect x="20" y="27" width="4" height="1" fill="url(#sB)" clip-path="url(#vf3)"/>
-<rect x="27" y="3" width="1" height="5" fill="url(#sR)" clip-path="url(#hf0)"/>
-<rect x="33" y="3" width="1" height="5" fill="url(#sL)" clip-path="url(#hf0)"/>
-<rect x="28" y="7" width="5" height="1" fill="url(#sB)" clip-path="url(#vf4)"/>
-<rect x="28" y="12" width="5" height="1" fill="url(#sT)" clip-path="url(#vf4)"/>
-<rect x="27" y="12" width="1" height="4" fill="url(#sR)" clip-path="url(#hf2)"/>
-<rect x="28" y="15" width="5" height="1" fill="url(#sB)" clip-path="url(#vf4)"/>
-<rect x="28" y="20" width="5" height="1" fill="url(#sT)" clip-path="url(#vf4)"/>
-<rect x="27" y="20" width="1" height="4" fill="url(#sR)" clip-path="url(#hf4)"/>
-<rect x="28" y="23" width="5" height="1" fill="url(#sB)" clip-path="url(#vf4)"/>
-<rect x="28" y="28" width="5" height="1" fill="url(#sT)" clip-path="url(#vf4)"/>
-<rect x="27" y="28" width="1" height="5" fill="url(#sR)" clip-path="url(#hf6)"/>
-<rect x="33" y="28" width="1" height="5" fill="url(#sL)" clip-path="url(#hf6)"/>
+<rect x="2" y="3" width="1" height="5" fill="url(#sRW)" clip-path="url(#hf0)"/>
+<rect x="8" y="3" width="1" height="5" fill="url(#sLW)" clip-path="url(#hf0)"/>
+<rect x="3" y="7" width="5" height="1" fill="url(#sBW)" clip-path="url(#vf0)"/>
+<rect x="3" y="12" width="5" height="1" fill="url(#sTW)" clip-path="url(#vf0)"/>
+<rect x="8" y="12" width="1" height="4" fill="url(#sLR)" clip-path="url(#hf2)"/>
+<rect x="3" y="15" width="5" height="1" fill="url(#sBW)" clip-path="url(#vf0)"/>
+<rect x="3" y="20" width="5" height="1" fill="url(#sTW)" clip-path="url(#vf0)"/>
+<rect x="8" y="20" width="1" height="4" fill="url(#sLR)" clip-path="url(#hf4)"/>
+<rect x="3" y="23" width="5" height="1" fill="url(#sBW)" clip-path="url(#vf0)"/>
+<rect x="3" y="28" width="5" height="1" fill="url(#sTW)" clip-path="url(#vf0)"/>
+<rect x="2" y="28" width="1" height="5" fill="url(#sRW)" clip-path="url(#hf6)"/>
+<rect x="8" y="28" width="1" height="5" fill="url(#sLW)" clip-path="url(#hf6)"/>
+<rect x="12" y="8" width="4" height="1" fill="url(#sTR)" clip-path="url(#vf1)"/>
+<rect x="11" y="8" width="1" height="4" fill="url(#sRW)" clip-path="url(#hf1)"/>
+<rect x="11" y="12" width="1" height="4" fill="url(#sRR)" clip-path="url(#hf2)"/>
+<rect x="16" y="12" width="1" height="4" fill="url(#sLR)" clip-path="url(#hf2)"/>
+<rect x="11" y="16" width="1" height="4" fill="url(#sRW)" clip-path="url(#hf3)"/>
+<rect x="16" y="16" width="1" height="4" fill="url(#sLW)" clip-path="url(#hf3)"/>
+<rect x="12" y="19" width="4" height="1" fill="url(#sBR)" clip-path="url(#vf1)"/>
+<rect x="12" y="24" width="4" height="1" fill="url(#sTR)" clip-path="url(#vf1)"/>
+<rect x="11" y="24" width="1" height="4" fill="url(#sRW)" clip-path="url(#hf5)"/>
+<rect x="12" y="27" width="4" height="1" fill="url(#sBR)" clip-path="url(#vf1)"/>
+<rect x="15" y="3" width="1" height="5" fill="url(#sRW)" clip-path="url(#hf0)"/>
+<rect x="20" y="3" width="1" height="5" fill="url(#sLW)" clip-path="url(#hf0)"/>
+<rect x="16" y="11" width="4" height="1" fill="url(#sBW)" clip-path="url(#vf2)"/>
+<rect x="16" y="24" width="4" height="1" fill="url(#sTW)" clip-path="url(#vf2)"/>
+<rect x="16" y="27" width="4" height="1" fill="url(#sBW)" clip-path="url(#vf2)"/>
+<rect x="16" y="33" width="4" height="1" fill="url(#sTW)" clip-path="url(#vf2)"/>
+<rect x="20" y="8" width="4" height="1" fill="url(#sTR)" clip-path="url(#vf3)"/>
+<rect x="24" y="8" width="1" height="4" fill="url(#sLW)" clip-path="url(#hf1)"/>
+<rect x="20" y="11" width="4" height="1" fill="url(#sBR)" clip-path="url(#vf3)"/>
+<rect x="20" y="16" width="4" height="1" fill="url(#sTR)" clip-path="url(#vf3)"/>
+<rect x="19" y="16" width="1" height="4" fill="url(#sRW)" clip-path="url(#hf3)"/>
+<rect x="24" y="16" width="1" height="4" fill="url(#sLW)" clip-path="url(#hf3)"/>
+<rect x="19" y="20" width="1" height="4" fill="url(#sRR)" clip-path="url(#hf4)"/>
+<rect x="24" y="20" width="1" height="4" fill="url(#sLR)" clip-path="url(#hf4)"/>
+<rect x="24" y="24" width="1" height="4" fill="url(#sLW)" clip-path="url(#hf5)"/>
+<rect x="20" y="27" width="4" height="1" fill="url(#sBR)" clip-path="url(#vf3)"/>
+<rect x="27" y="3" width="1" height="5" fill="url(#sRW)" clip-path="url(#hf0)"/>
+<rect x="33" y="3" width="1" height="5" fill="url(#sLW)" clip-path="url(#hf0)"/>
+<rect x="28" y="7" width="5" height="1" fill="url(#sBW)" clip-path="url(#vf4)"/>
+<rect x="28" y="12" width="5" height="1" fill="url(#sTW)" clip-path="url(#vf4)"/>
+<rect x="27" y="12" width="1" height="4" fill="url(#sRR)" clip-path="url(#hf2)"/>
+<rect x="28" y="15" width="5" height="1" fill="url(#sBW)" clip-path="url(#vf4)"/>
+<rect x="28" y="20" width="5" height="1" fill="url(#sTW)" clip-path="url(#vf4)"/>
+<rect x="27" y="20" width="1" height="4" fill="url(#sRR)" clip-path="url(#hf4)"/>
+<rect x="28" y="23" width="5" height="1" fill="url(#sBW)" clip-path="url(#vf4)"/>
+<rect x="28" y="28" width="5" height="1" fill="url(#sTW)" clip-path="url(#vf4)"/>
+<rect x="27" y="28" width="1" height="5" fill="url(#sRW)" clip-path="url(#hf6)"/>
+<rect x="33" y="28" width="1" height="5" fill="url(#sLW)" clip-path="url(#hf6)"/>
 </svg>

@@ -80,12 +80,15 @@ pub fn build_installer_test(version: &str) -> Result<()> {
 fn build_msi(exe: &Path, version: &str, path: &Path) -> Result<()> {
     let root = repo_root();
     let wix = wix_command()?;
-    let ui_extension = ensure_ui_extension(&wix)?;
+    let ui_extension = ensure_extension(&wix, "WixToolset.UI.wixext")?;
+    let util_extension = ensure_extension(&wix, "WixToolset.Util.wixext")?;
     let _ = std::fs::remove_file(path);
     // -b: base path of the .wxs's relative SourceFile references (the icon)
     run(Command::new(wix)
         .args(["build", "-arch", "x64", "-ext"])
         .arg(&ui_extension)
+        .arg("-ext")
+        .arg(&util_extension)
         .arg("-b")
         .arg(&root)
         .arg("-d")
@@ -128,22 +131,22 @@ fn wix_command() -> Result<PathBuf> {
     Ok(tool)
 }
 
-/// The WiX UI extension (the installer's dialogs) at the CLI's own version, as the `-ext` argument.
-/// Several WiX versions can coexist (v6 and v7 installs), each with its own global extension cache
-/// entries, so the version is pinned; a damaged entry for it is removed and reinstalled.
-fn ensure_ui_extension(wix: &PathBuf) -> Result<String> {
+/// A WiX extension (`name`: the UI one for the dialogs, Util for its custom actions) at the CLI's own
+/// version, as the `-ext` argument. Several WiX versions can coexist, each with its own global extension
+/// cache entries, so the version is pinned; a damaged entry for it is removed and reinstalled.
+fn ensure_extension(wix: &PathBuf, name: &str) -> Result<String> {
     let output = |args: &[&str]| Command::new(wix).args(args).output().map_err(|e| format!("could not run wix: {e}"));
     let version = String::from_utf8_lossy(&output(&["--version"])?.stdout).trim().split('+').next().unwrap_or_default().to_string();
-    let id = format!("WixToolset.UI.wixext/{version}");
+    let id = format!("{name}/{version}");
     let listed = String::from_utf8_lossy(&output(&["extension", "list", "--global"])?.stdout).into_owned();
-    let entry = listed.lines().find(|l| l.split_whitespace().take(2).eq(["WixToolset.UI.wixext", version.as_str()]));
+    let entry = listed.lines().find(|l| l.split_whitespace().take(2).eq([name, version.as_str()]));
     match entry {
         Some(l) if !l.contains("damaged") => return Ok(id),
         Some(_) => {
-            println!("The WiX UI extension {version} is damaged: reinstalling it...");
+            println!("The WiX extension {name} {version} is damaged: reinstalling it...");
             run(Command::new(wix).args(["extension", "remove", "--global"]).arg(&id))?;
         }
-        None => println!("The WiX UI extension is not installed: installing it (once)..."),
+        None => println!("The WiX extension {name} is not installed: installing it (once)..."),
     }
     run(Command::new(wix).args(["extension", "add", "--global"]).arg(&id))?;
     Ok(id)

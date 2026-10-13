@@ -331,9 +331,19 @@ export component MainWindow inherits Window {
                             IconSidebar { size: Theme.icon-md; tint: empty-show-button.hovered ? Theme.text-primary : Theme.text-secondary; }
                         }
 
+                        // the app's mark above the hint (tab-colored rods, outlined darker than the background):
+                        // with the spacers' stretch of 1 each, its 2 make it about half the height, all centred
                         VerticalLayout {
-                            alignment: center;
                             spacing: Theme.px(6px);
+                            Rectangle { vertical-stretch: 1; }
+                            Image {
+                                source: @image-url("../assets/weave-icon-mono-dark.svg");
+                                image-fit: contain;
+                                vertical-stretch: 2;
+                                min-height: 0;
+                                preferred-height: 0;
+                            }
+                            Rectangle { height: Theme.px(18px); }
                             Text {
                                 text: AwsAccount.error != "" ? @tr("Couldn't use the AWS account")
                                     : ConnectionState.view.connected ? @tr("Select a key to open it")
@@ -354,6 +364,7 @@ export component MainWindow inherits Window {
                                 horizontal-alignment: center;
                                 wrap: word-wrap;
                             }
+                            Rectangle { vertical-stretch: 1; }
                         }
                     }
 
