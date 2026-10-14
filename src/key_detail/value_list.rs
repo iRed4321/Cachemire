@@ -152,7 +152,10 @@ pub(super) fn build_all_values_table(fields: &[Arc<Field>], filter: &SearchFilte
         .into_par_iter()
         .map(|f| {
             let (value_compact, value_compact_escaped) = compact_styled_texts_for(f.value(), &needles, filter.case_sensitive);
-            AllValuesRowData { field: f.name.as_str().into(), value_compact, value_compact_escaped, initial_expanded: expanded.contains(&f.name) }
+            let too_long = f.too_long.map(|size| crate::backend::server_info::format_bytes(size as i64)).unwrap_or_default();
+            // a value left out for its size has nothing to open: its row never starts open
+            let initial_expanded = f.too_long.is_none() && expanded.contains(&f.name);
+            AllValuesRowData { field: f.name.as_str().into(), value_compact, value_compact_escaped, too_long: too_long.into(), initial_expanded }
         })
         .collect();
 

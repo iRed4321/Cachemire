@@ -4,11 +4,15 @@
 
 use std::sync::{Arc, Mutex};
 
+use rustc_hash::FxHashMap;
 use serde::Serialize;
 use slint::{Model, Weak};
 use tokio::runtime::Handle;
 
 use crate::backend::LockExt;
+use crate::backend::explorer;
+use crate::backend::key_name::KeyName;
+use crate::backend::state::AppState;
 use crate::value_actions::sanitize_filename;
 use slint::ComponentHandle;
 use crate::{ExportFormat, ExportTarget, KeyPanel, MainWindow};
@@ -70,12 +74,32 @@ enum ExportAction {
     Copy,
 }
 
-/// Builds an export's text on a blocking thread (serializing a big value would freeze
-/// the window), then opens, saves or copies it. A download asks where to save first,
-/// so a cancelled dialog builds nothing.
-fn run_export(rt: &Handle, weak: &Weak<MainWindow>, action: ExportAction, build: impl FnOnce() -> String + Send + 'static) {
-    let weak = weak.clone();
-    rt.spawn(async move {
+/// `fields` with the full values `read` (by name) in place of those left out for
+/// their size; a field gone from the server since stays empty.
+fn with_full_values(fields: Fields, read: Vec<(String, Option<String>)>) -> Fields {
+    let mut read: FxHashMap<String, String> = read.into_iter().filter_map(|(name, value)| Some((name, value?))).collect();
+    if read.is_empty() {
+        return fields;
+    }
+    fields
+        .into_iter()
+        .map(|field| match field.too_long.and_then(|_| read.remove(&field.name)) {
+            Some(raw) => {
+                let json = serde_json::from_str(&raw).ok();
+                Arc::new(Field::new(field.name.clone(), raw, json))
+            }
+            None => field,
+        })
+        .collect()
+}
+
+/// Builds an export's text from `fields` on a blocking thread (serializing a big value
+/// would freeze the window), then opens, saves or copies it. A download asks where to
+/// save first; the values of `key` left out for their size are then read in full.
+fn run_export(exporter: &Exporter, key: String, fields: Fields, action: ExportAction, build: impl FnOnce(Fields) -> String + Send + 'static) {
+    let weak = exporter.weak.clone();
+    let state = exporter.state.clone();
+    exporter.rt.spawn(async move {
         let save_to = match &action {
             ExportAction::Download(filename) => match rfd::AsyncFileDialog::new().set_file_name(filename).save_file().await {
                 Some(file) => Some(file.path().to_path_buf()),
@@ -83,8 +107,20 @@ fn run_export(rt: &Handle, weak: &Weak<MainWindow>, action: ExportAction, build:
             },
             _ => None,
         };
+        let too_long: Vec<String> = fields.iter().filter(|f| f.too_long.is_some()).map(|f| f.name.clone()).collect();
+        let read = if too_long.is_empty() {
+            Vec::new()
+        } else {
+            match explorer::hash_full_values(&state, None, &KeyName::from_id(&key), &too_long).await {
+                Ok(values) => too_long.into_iter().zip(values).collect(),
+                Err(e) => {
+                    tracing::warn!("reading the values left out for their size failed: {e}");
+                    return;
+                }
+            }
+        };
         let _ = tokio::task::spawn_blocking(move || {
-            let text = build();
+            let text = build(with_full_values(fields, read));
             match (action, save_to) {
                 (ExportAction::Open(extension), _) => {
                     if let Err(e) = crate::value_actions::open_in_external_editor(&text, extension) {
@@ -111,23 +147,28 @@ fn run_export(rt: &Handle, weak: &Weak<MainWindow>, action: ExportAction, build:
 struct Exporter {
     rt: Handle,
     weak: Weak<MainWindow>,
+    state: Arc<AppState>,
     content: Arc<Mutex<PanelContent>>,
 }
 
 impl Exporter {
-    /// The fields shown, and their key's name made safe for a file name.
+    /// The fields shown, and their key.
     fn shown(&self) -> (Fields, String) {
         let content = self.content.lock_recover();
-        (content.current.clone(), sanitize_filename(&content.key))
+        (content.current.clone(), content.key.clone())
     }
 
     /// Exports one row's own field, as pretty JSON or escaped. `action` gets the
     /// field's file-name-safe name to build a download name from.
     fn field(&self, name: &str, escaped: bool, action: impl FnOnce(String) -> ExportAction) {
-        let Some(field) = self.content.lock_recover().field(name) else { return };
+        let (field, key) = {
+            let content = self.content.lock_recover();
+            let Some(field) = content.field(name) else { return };
+            (field, content.key.clone())
+        };
         let action = action(sanitize_filename(&field.name));
         let text = if escaped { escaped_json } else { pretty_json };
-        run_export(&self.rt, &self.weak, action, move || text(&field));
+        run_export(self, key, vec![field], action, move |fields| fields.first().map(|field| text(field)).unwrap_or_default());
     }
 
     /// The indices of the table's ticked rows, in table order.
@@ -143,14 +184,15 @@ impl Exporter {
         if indices.is_empty() {
             return;
         }
-        let (fields, stem) = self.shown();
+        let (fields, key) = self.shown();
+        let stem = sanitize_filename(&key);
         let escaped = format == ExportFormat::Escaped;
         let action = match target {
             ExportTarget::Open => ExportAction::Open(if escaped { "txt" } else { "json" }),
             ExportTarget::Download => ExportAction::Download(format!("{stem}.selection.{}", if escaped { "escaped.txt" } else { "json" })),
             ExportTarget::Copy => ExportAction::Copy,
         };
-        run_export(&self.rt, &self.weak, action, move || {
+        run_export(self, key, fields, action, move |fields| {
             let rows = selected_rows_json(&fields, &indices);
             if escaped {
                 serde_json::to_string(&serde_json::to_string(&rows).unwrap_or_default()).unwrap_or_default()
@@ -163,37 +205,39 @@ impl Exporter {
     /// Saves the table the filter leaves as a CSV file: the ticked rows when
     /// there are any, every row otherwise.
     fn table_csv(&self) {
-        let (fields, stem) = self.shown();
+        let (fields, key) = self.shown();
         if fields.is_empty() {
             return;
         }
+        let stem = sanitize_filename(&key);
         let indices = self.selected_rows();
         let filename = if indices.is_empty() { format!("{stem}.csv") } else { format!("{stem}.selection.csv") };
-        run_export(&self.rt, &self.weak, ExportAction::Download(filename), move || {
+        run_export(self, key, fields, ExportAction::Download(filename), move |fields| {
             table_csv(&fields, (!indices.is_empty()).then_some(indices.as_slice()))
         });
     }
 
     /// Exports every field of the loaded key.
     fn all_fields(&self, format: ExportFormat, target: ExportTarget) {
-        let (fields, stem) = self.shown();
+        let (fields, key) = self.shown();
         if fields.is_empty() {
             return;
         }
+        let stem = sanitize_filename(&key);
         let escaped = format == ExportFormat::Escaped;
         let action = match target {
             ExportTarget::Open => ExportAction::Open(if escaped { "txt" } else { "json" }),
             ExportTarget::Download => ExportAction::Download(format!("{stem}.{}", if escaped { "escaped.txt" } else { "json" })),
             ExportTarget::Copy => ExportAction::Copy,
         };
-        run_export(&self.rt, &self.weak, action, move || all_fields_json(&fields, escaped));
+        run_export(self, key, fields, action, move |fields| all_fields_json(&fields, escaped));
     }
 }
 
 /// Wires the KeyPanel's open/download/copy callbacks: one row's own field, the
 /// table's ticked rows or CSV, every field of the key, and the copy buttons.
 pub(super) fn init(window: &MainWindow, ctx: &Ctx) {
-    let exporter = Exporter { rt: ctx.rt.clone(), weak: ctx.weak.clone(), content: ctx.shared.content.clone() };
+    let exporter = Exporter { rt: ctx.rt.clone(), weak: ctx.weak.clone(), state: ctx.state.clone(), content: ctx.shared.content.clone() };
     let panel = window.global::<KeyPanel>();
 
     panel.on_open_value({

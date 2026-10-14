@@ -16,27 +16,27 @@ msgstr ""
 msgid "Show sidebar"
 msgstr "Afficher le panneau latéral"
 
-#: ui/main.slint:338
+#: ui/main.slint:348
 msgid "Couldn't use the AWS account"
 msgstr "Impossible d'utiliser le compte AWS"
 
-#: ui/main.slint:339
+#: ui/main.slint:349
 msgid "Select a key to open it"
 msgstr "Sélectionnez une clé pour l'ouvrir"
 
-#: ui/main.slint:340
+#: ui/main.slint:350
 msgid "Couldn't connect"
 msgstr "Connexion impossible"
 
-#: ui/main.slint:341
+#: ui/main.slint:351
 msgid "Pick a connection to get started"
 msgstr "Choisissez une connexion pour commencer"
 
-#: ui/main.slint:349
+#: ui/main.slint:359
 msgid "Browse the keyspace on the left and click a key."
 msgstr "Parcourez l'espace de clés à gauche et cliquez sur une clé."
 
-#: ui/main.slint:350
+#: ui/main.slint:360
 msgid ""
 "Hover the connection status in the top bar to see why, or pick another "
 "connection."
@@ -44,11 +44,11 @@ msgstr ""
 "Survolez l'indicateur d'état dans la barre du haut pour en connaître la "
 "raison, ou choisissez une autre connexion."
 
-#: ui/main.slint:351
+#: ui/main.slint:361
 msgid "Use the connection selector in the top bar."
 msgstr "Utilisez le sélecteur de connexion dans la barre du haut."
 
-#: ui/main.slint:403
+#: ui/main.slint:414
 msgid "Write a Redisql query above (FROM/JOIN/WHERE/SELECT/LIMIT), then Run."
 msgstr ""
 "Écrivez une requête Redisql ci-dessus (FROM/JOIN/WHERE/SELECT/LIMIT), puis "
@@ -126,74 +126,74 @@ msgstr "Tunnel SSH"
 
 #: ui/components/cloud-settings.slint:178
 #: ui/components/cloud-settings.slint:178
-#: ui/components/cloud-settings.slint:178 ui/components/settings.slint:606
-#: ui/components/cloud-settings.slint:178 ui/components/settings.slint:606 ui/components/settings.slint:606
+#: ui/components/cloud-settings.slint:178 ui/components/settings.slint:608
+#: ui/components/cloud-settings.slint:178 ui/components/settings.slint:608 ui/components/settings.slint:608
 msgid "Cancel"
 msgstr "Annuler"
 
 #: ui/components/cloud-settings.slint:179
 #: ui/components/cloud-settings.slint:179
-#: ui/components/cloud-settings.slint:179 ui/components/query-panel.slint:668
-#: ui/components/cloud-settings.slint:179 ui/components/query-panel.slint:668 ui/components/query-panel.slint:668
-#: ui/components/cloud-settings.slint:179 ui/components/query-panel.slint:668 ui/components/query-panel.slint:668
+#: ui/components/cloud-settings.slint:179 ui/components/query-panel.slint:669
+#: ui/components/cloud-settings.slint:179 ui/components/query-panel.slint:669 ui/components/query-panel.slint:669
+#: ui/components/cloud-settings.slint:179 ui/components/query-panel.slint:669 ui/components/query-panel.slint:669
 msgid "Save"
 msgstr "Enregistrer"
 
-#: ui/components/connection-picker.slint:191
+#: ui/components/connection-picker.slint:194
 msgid "New connection..."
 msgstr "Nouvelle connexion..."
 
-#: ui/components/connection-picker.slint:209
+#: ui/components/connection-picker.slint:212
 msgid "Import / Export"
 msgstr "Importer / Exporter"
 
-#: ui/components/connection-picker.slint:220
+#: ui/components/connection-picker.slint:223
 msgid "No saved connections yet"
 msgstr "Aucune connexion enregistrée"
 
-#: ui/components/connection-picker.slint:261
+#: ui/components/connection-picker.slint:264
 msgid "Cloud connections"
 msgstr "Connexions cloud"
 
-#: ui/components/connection-picker.slint:493
+#: ui/components/connection-picker.slint:497
 msgid "SSH host"
 msgstr "Hôte SSH"
 
-#: ui/components/connection-picker.slint:500
+#: ui/components/connection-picker.slint:504
 msgid "SSH port"
 msgstr "Port SSH"
 
-#: ui/components/connection-picker.slint:510 ui/components/settings.slint:570
+#: ui/components/connection-picker.slint:514 ui/components/settings.slint:572
 msgid "SSH username"
 msgstr "Utilisateur SSH"
 
-#: ui/components/connection-picker.slint:511
+#: ui/components/connection-picker.slint:515
 msgid "Active SSH profile"
 msgstr "Profil SSH actif"
 
-#: ui/components/connection-picker.slint:516 ui/components/settings.slint:573
+#: ui/components/connection-picker.slint:520 ui/components/settings.slint:575
 msgid "SSH password"
 msgstr "Mot de passe SSH"
 
-#: ui/components/connection-picker.slint:517
-#: ui/components/connection-picker.slint:517
-#: ui/components/connection-picker.slint:517 ui/components/settings.slint:574
+#: ui/components/connection-picker.slint:521
+#: ui/components/connection-picker.slint:521
+#: ui/components/connection-picker.slint:521 ui/components/settings.slint:576
 msgid "Leave blank to keep current"
 msgstr "Laisser vide pour conserver l'actuel"
 
-#: ui/components/connection-picker.slint:526
+#: ui/components/connection-picker.slint:530
 msgid "Private key file (optional)"
 msgstr "Fichier de clé privée (facultatif)"
 
-#: ui/components/connection-picker.slint:542
+#: ui/components/connection-picker.slint:546
 msgid "Browse…"
 msgstr "Parcourir…"
 
-#: ui/components/connection-picker.slint:555
+#: ui/components/connection-picker.slint:559
 msgid "Key passphrase (if the key has one)"
 msgstr "Phrase secrète de la clé (si elle en a une)"
 
-#: ui/components/connection-picker.slint:561
+#: ui/components/connection-picker.slint:565
 msgid ""
 "Log in with a password, a private key, or both (the key is tried first). "
 "Leave the username empty to log in with the active SSH profile from Settings."
@@ -202,129 +202,129 @@ msgstr ""
 "essayée en premier). Laissez l'utilisateur vide pour utiliser le profil SSH "
 "actif des Paramètres."
 
-#: ui/components/connection-picker.slint:642
+#: ui/components/connection-picker.slint:646
 msgid "Edit connection"
 msgstr "Modifier la connexion"
 
-#: ui/components/connection-picker.slint:642
+#: ui/components/connection-picker.slint:646
 msgid "New connection"
 msgstr "Nouvelle connexion"
 
-#: ui/components/connection-picker.slint:651 ui/components/settings.slint:568
-#: ui/components/connection-picker.slint:651 ui/components/settings.slint:568 ui/components/settings.slint:568
+#: ui/components/connection-picker.slint:655 ui/components/settings.slint:570
+#: ui/components/connection-picker.slint:655 ui/components/settings.slint:570 ui/components/settings.slint:570
 msgid "Name"
 msgstr "Nom"
 
-#: ui/components/connection-picker.slint:654
+#: ui/components/connection-picker.slint:658
 msgid "Connection URL"
 msgstr "URL de connexion"
 
-#: ui/components/connection-picker.slint:661
+#: ui/components/connection-picker.slint:665
 msgid "Username (optional)"
 msgstr "Nom d'utilisateur (facultatif)"
 
-#: ui/components/connection-picker.slint:664
+#: ui/components/connection-picker.slint:668
 msgid "Password"
 msgstr "Mot de passe"
 
-#: ui/components/connection-picker.slint:673
+#: ui/components/connection-picker.slint:677
 msgid "Enable SSH Tunnel"
 msgstr "Activer le tunnel SSH"
 
-#: ui/components/connection-picker.slint:692
+#: ui/components/connection-picker.slint:696
 msgid "Add a connection profile"
 msgstr "Ajouter un profil de connexion"
 
-#: ui/components/connection-picker.slint:739 ui/components/settings.slint:594
-#: ui/components/connection-picker.slint:739 ui/components/settings.slint:594 ui/components/settings.slint:594
+#: ui/components/connection-picker.slint:743 ui/components/settings.slint:596
+#: ui/components/connection-picker.slint:743 ui/components/settings.slint:596 ui/components/settings.slint:596
 msgid "Click again to delete"
 msgstr "Cliquez à nouveau pour supprimer"
 
-#: ui/components/connection-picker.slint:739 ui/components/settings.slint:594
-#: ui/components/connection-picker.slint:739 ui/components/settings.slint:594 ui/components/settings.slint:594
+#: ui/components/connection-picker.slint:743 ui/components/settings.slint:596
+#: ui/components/connection-picker.slint:743 ui/components/settings.slint:596 ui/components/settings.slint:596
 msgid "Delete"
 msgstr "Supprimer"
 
-#: ui/components/connection-picker.slint:752
+#: ui/components/connection-picker.slint:756
 msgid "Testing…"
 msgstr "Test en cours…"
 
-#: ui/components/connection-picker.slint:752
+#: ui/components/connection-picker.slint:756
 msgid "Test connection"
 msgstr "Tester la connexion"
 
-#: ui/components/connection-transfer.slint:159
+#: ui/components/connection-transfer.slint:160
 msgid "Import / Export connections"
 msgstr "Importer / Exporter des connexions"
 
-#: ui/components/connection-transfer.slint:167
+#: ui/components/connection-transfer.slint:168
 msgid "Import"
 msgstr "Importer"
 
-#: ui/components/connection-transfer.slint:167
-#: ui/components/connection-transfer.slint:167
+#: ui/components/connection-transfer.slint:168
+#: ui/components/connection-transfer.slint:168
 msgid "Export"
 msgstr "Exporter"
 
-#: ui/components/connection-transfer.slint:189
+#: ui/components/connection-transfer.slint:190
 msgid "Choose a file…"
 msgstr "Choisir un fichier…"
 
-#: ui/components/connection-transfer.slint:191
+#: ui/components/connection-transfer.slint:192
 msgid "A file exported by Cachemire"
 msgstr "Un fichier exporté par Cachemire"
 
-#: ui/components/connection-transfer.slint:213
+#: ui/components/connection-transfer.slint:214
 msgid "Include the passwords"
 msgstr "Inclure les mots de passe"
 
-#: ui/components/connection-transfer.slint:218
+#: ui/components/connection-transfer.slint:219
 msgid "The passwords are written in clear text in the file."
 msgstr "Les mots de passe sont écrits en clair dans le fichier."
 
-#: ui/components/connection-transfer.slint:239
-#: ui/components/connection-transfer.slint:239 ui/components/widgets.slint:202
+#: ui/components/connection-transfer.slint:240
+#: ui/components/connection-transfer.slint:240 ui/components/widgets.slint:204
 msgid "Select all"
 msgstr "Tout sélectionner"
 
-#: ui/components/connection-transfer.slint:240
+#: ui/components/connection-transfer.slint:241
 msgid "Unselect all"
 msgstr "Tout désélectionner"
 
-#: ui/components/connection-transfer.slint:242
-#: ui/components/connection-transfer.slint:242
+#: ui/components/connection-transfer.slint:243
+#: ui/components/connection-transfer.slint:243
 msgid "Close"
 msgstr "Fermer"
 
-#: ui/components/connection-transfer.slint:244
+#: ui/components/connection-transfer.slint:245
 msgid "Import ({})"
 msgstr "Importer ({})"
 
-#: ui/components/connection-transfer.slint:249
+#: ui/components/connection-transfer.slint:250
 msgid "Export ({})"
 msgstr "Exporter ({})"
 
-#: ui/components/content-header.slint:411
+#: ui/components/content-header.slint:412
 msgid "Copy selection"
 msgstr "Copier"
 
-#: ui/components/content-header.slint:439
+#: ui/components/content-header.slint:440
 msgid "Close other tabs"
 msgstr "Fermer les autres onglets"
 
-#: ui/components/content-header.slint:440
+#: ui/components/content-header.slint:441
 msgid "Close all tabs"
 msgstr "Fermer tous les onglets"
 
-#: ui/components/content-header.slint:468
+#: ui/components/content-header.slint:469
 msgid "Export…"
 msgstr "Exporter…"
 
-#: ui/components/content-header.slint:469
+#: ui/components/content-header.slint:470
 msgid "Select for export"
 msgstr "Sélectionner pour l'export"
 
-#: ui/components/content-header.slint:470
+#: ui/components/content-header.slint:471
 msgid "Export {} selected…"
 msgstr "Exporter {} sélectionné(s)…"
 
@@ -332,7 +332,11 @@ msgstr "Exporter {} sélectionné(s)…"
 msgid "Find in value..."
 msgstr "Rechercher dans la valeur..."
 
-#: ui/components/key-detail-row.slint:495
+#: ui/components/key-detail-row.slint:466
+msgid "Value too long ({})"
+msgstr "Valeur trop longue ({})"
+
+#: ui/components/key-detail-row.slint:530
 msgid "Formatting..."
 msgstr "Mise en forme..."
 
@@ -349,7 +353,7 @@ msgstr "Champ"
 msgid "Value"
 msgstr "Valeur"
 
-#: ui/components/key-detail-widgets.slint:75 ui/components/settings.slint:368
+#: ui/components/key-detail-widgets.slint:75 ui/components/settings.slint:370
 msgid "JSON"
 msgstr "JSON"
 
@@ -382,7 +386,7 @@ msgstr "Sélectionnez une clé"
 msgid "Refresh value"
 msgstr "Actualiser la valeur"
 
-#: ui/components/key-detail.slint:297 ui/components/keyspace-panel.slint:193
+#: ui/components/key-detail.slint:297 ui/components/keyspace-panel.slint:195
 msgid "{} selected"
 msgstr "{} sélectionné(s)"
 
@@ -425,59 +429,59 @@ msgstr ""
 "Rien à afficher en tableau : aucune ligne, ou les lignes n'ont aucune clé "
 "de premier niveau en commun"
 
-#: ui/components/keyspace-panel.slint:203
+#: ui/components/keyspace-panel.slint:205
 msgid "Clear"
 msgstr "Effacer"
 
-#: ui/components/keyspace-panel.slint:214
+#: ui/components/keyspace-panel.slint:216
 msgid "Group by folder"
 msgstr "Grouper par dossier"
 
-#: ui/components/keyspace-panel.slint:506
+#: ui/components/keyspace-panel.slint:508
 msgid "Keyspace"
 msgstr "Espace de clés"
 
-#: ui/components/keyspace-panel.slint:511
+#: ui/components/keyspace-panel.slint:513
 msgid "Query"
 msgstr "Requête"
 
-#: ui/components/keyspace-panel.slint:548
+#: ui/components/keyspace-panel.slint:550
 msgid "Search everything: keys, fields and values (Ctrl+F)"
 msgstr "Tout rechercher : clés, champs et valeurs (Ctrl+F)"
 
-#: ui/components/keyspace-panel.slint:566
+#: ui/components/keyspace-panel.slint:568
 msgid "Hide sidebar"
 msgstr "Masquer le panneau latéral"
 
-#: ui/components/keyspace-panel.slint:608
+#: ui/components/keyspace-panel.slint:610
 msgid "Search keys, e.g. user:*"
 msgstr "Rechercher, p. ex. user:*"
 
-#: ui/components/keyspace-panel.slint:672
+#: ui/components/keyspace-panel.slint:674
 msgid "Export keys"
 msgstr "Exporter des clés"
 
-#: ui/components/keyspace-panel.slint:680
+#: ui/components/keyspace-panel.slint:682
 msgid "Refresh"
 msgstr "Actualiser"
 
-#: ui/components/keyspace-panel.slint:784
+#: ui/components/keyspace-panel.slint:786
 msgid "{} used"
 msgstr "{} utilisés"
 
-#: ui/components/keyspace-panel.slint:810
+#: ui/components/keyspace-panel.slint:812
 msgid "New query"
 msgstr "Nouvelle requête"
 
-#: ui/components/keyspace-panel.slint:841
+#: ui/components/keyspace-panel.slint:843
 msgid "Filter saved queries"
 msgstr "Filtrer les requêtes enregistrées"
 
-#: ui/components/keyspace-panel.slint:936
+#: ui/components/keyspace-panel.slint:938
 msgid "Saved queries"
 msgstr "Requêtes enregistrées"
 
-#: ui/components/keyspace-panel.slint:954
+#: ui/components/keyspace-panel.slint:956
 msgid "Global queries"
 msgstr "Requêtes globales"
 
@@ -493,11 +497,11 @@ msgstr "Globale (toutes les connexions)"
 msgid "Nothing run on this connection yet"
 msgstr "Rien d'exécuté sur cette connexion pour l'instant"
 
-#: ui/components/query-panel.slint:224
+#: ui/components/query-panel.slint:225
 msgid "Clear history"
 msgstr "Effacer l'historique"
 
-#: ui/components/query-panel.slint:344
+#: ui/components/query-panel.slint:345
 msgid ""
 "FROM KEY 'my:key' AS x\nSELECT *\nLIMIT 100\n\n(Ctrl+Enter runs the "
 "statement, Ctrl+Shift+Enter the whole script)"
@@ -505,23 +509,23 @@ msgstr ""
 "FROM KEY 'ma:cle' AS x\nSELECT *\nLIMIT 100\n\n(Ctrl+Entrée exécute "
 "l'instruction, Ctrl+Maj+Entrée tout le script)"
 
-#: ui/components/query-panel.slint:620
+#: ui/components/query-panel.slint:621
 msgid "Undo (Ctrl+Z)"
 msgstr "Annuler (Ctrl+Z)"
 
-#: ui/components/query-panel.slint:628
+#: ui/components/query-panel.slint:629
 msgid "Redo (Ctrl+Y)"
 msgstr "Rétablir (Ctrl+Y)"
 
-#: ui/components/query-panel.slint:636
+#: ui/components/query-panel.slint:637
 msgid "History"
 msgstr "Historique"
 
-#: ui/components/query-panel.slint:700
+#: ui/components/query-panel.slint:701
 msgid "Run all"
 msgstr "Tout exécuter"
 
-#: ui/components/query-panel.slint:743 ui/components/query-panel.slint:755
+#: ui/components/query-panel.slint:744 ui/components/query-panel.slint:756
 msgid "Run"
 msgstr "Exécuter"
 
@@ -551,51 +555,51 @@ msgstr "Pause"
 msgid "Key"
 msgstr "Clé"
 
-#: ui/components/settings.slint:99
+#: ui/components/settings.slint:100
 msgid "Active"
 msgstr "Actif"
 
-#: ui/components/settings.slint:324
+#: ui/components/settings.slint:326
 msgid "New connection profile"
 msgstr "Nouveau profil de connexion"
 
-#: ui/components/settings.slint:324
+#: ui/components/settings.slint:326
 msgid "Edit connection profile"
 msgstr "Modifier le profil de connexion"
 
-#: ui/components/settings.slint:325 ui/components/title-bar.slint:313
+#: ui/components/settings.slint:327 ui/components/title-bar.slint:313
 msgid "Settings"
 msgstr "Paramètres"
 
-#: ui/components/settings.slint:325
+#: ui/components/settings.slint:327
 msgid "New SSH profile"
 msgstr "Nouveau profil SSH"
 
-#: ui/components/settings.slint:325
+#: ui/components/settings.slint:327
 msgid "Edit SSH profile"
 msgstr "Modifier le profil SSH"
 
-#: ui/components/settings.slint:340
+#: ui/components/settings.slint:342
 msgid "Language"
 msgstr "Langue"
 
-#: ui/components/settings.slint:350
+#: ui/components/settings.slint:352
 msgid "Automatic"
 msgstr "Automatique"
 
-#: ui/components/settings.slint:359
+#: ui/components/settings.slint:361
 msgid "Export format"
 msgstr "Format d'export"
 
-#: ui/components/settings.slint:369
+#: ui/components/settings.slint:371
 msgid "Escaped JSON"
 msgstr "JSON échappé"
 
-#: ui/components/settings.slint:376
+#: ui/components/settings.slint:378
 msgid "Search depth"
 msgstr "Profondeur de recherche"
 
-#: ui/components/settings.slint:389
+#: ui/components/settings.slint:391
 msgid ""
 "How many entries of each key (hash fields, list items, set members...) the "
 "global search reads. Fewer is faster, but a match deeper inside a big key is "
@@ -605,15 +609,15 @@ msgstr ""
 "membres d'un set...) la recherche globale lit. Moins, c'est plus rapide, "
 "mais une correspondance plus profonde dans une grosse clé est manquée."
 
-#: ui/components/settings.slint:400
+#: ui/components/settings.slint:402
 msgid "Experimental"
 msgstr "Expérimental"
 
-#: ui/components/settings.slint:406
+#: ui/components/settings.slint:408
 msgid "Search on the server (Lua script)"
 msgstr "Recherche sur le serveur (script Lua)"
 
-#: ui/components/settings.slint:411
+#: ui/components/settings.slint:413
 msgid ""
 "The global search lets Redis filter the data itself, so far less of it "
 "travels. It uses the server's CPU while it runs, needs permission to run "
@@ -624,15 +628,15 @@ msgstr ""
 "exécution, demande l'autorisation d'exécuter des scripts, et revient à la "
 "recherche normale si le serveur refuse."
 
-#: ui/components/settings.slint:424
+#: ui/components/settings.slint:426
 msgid "SSH profiles"
 msgstr "Profils SSH"
 
-#: ui/components/settings.slint:431 ui/components/settings.slint:497
+#: ui/components/settings.slint:433 ui/components/settings.slint:499
 msgid "Add profile"
 msgstr "Ajouter un profil"
 
-#: ui/components/settings.slint:434
+#: ui/components/settings.slint:436
 msgid ""
 "The active profile logs in to the SSH tunnels that have no username of their "
 "own. A connection that fills in its own username and password uses those "
@@ -642,15 +646,15 @@ msgstr ""
 "d'utilisateur propre. Une connexion qui renseigne son propre utilisateur et "
 "mot de passe utilise ceux-ci à la place."
 
-#: ui/components/settings.slint:452
+#: ui/components/settings.slint:454
 msgid "No SSH profiles yet"
 msgstr "Aucun profil SSH pour l'instant"
 
-#: ui/components/settings.slint:490
+#: ui/components/settings.slint:492
 msgid "Connection profiles"
 msgstr "Profils de connexion"
 
-#: ui/components/settings.slint:500
+#: ui/components/settings.slint:502
 msgid ""
 "A connection that has one of these profiles tints the app's background while "
 "you are connected to it, to tell environments apart."
@@ -659,15 +663,15 @@ msgstr ""
 "l'application tant que vous y êtes connecté, pour distinguer les "
 "environnements."
 
-#: ui/components/settings.slint:516
+#: ui/components/settings.slint:518
 msgid "No connection profiles yet"
 msgstr "Aucun profil de connexion pour l'instant"
 
-#: ui/components/settings.slint:568
+#: ui/components/settings.slint:570
 msgid "Work bastion"
 msgstr "Bastion de travail"
 
-#: ui/components/settings.slint:620
+#: ui/components/settings.slint:622
 msgid "Color"
 msgstr "Couleur"
 
@@ -695,14 +699,14 @@ msgstr "Connexion..."
 msgid "No connection"
 msgstr "Aucune connexion"
 
-#: ui/components/widgets.slint:145 ui/components/widgets.slint:201
+#: ui/components/widgets.slint:146 ui/components/widgets.slint:203
 msgid "Paste"
 msgstr "Coller"
 
-#: ui/components/widgets.slint:199
+#: ui/components/widgets.slint:201
 msgid "Cut"
 msgstr "Couper"
 
-#: ui/components/widgets.slint:200
+#: ui/components/widgets.slint:202
 msgid "Copy"
 msgstr "Copier"

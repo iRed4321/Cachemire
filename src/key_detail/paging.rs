@@ -4,6 +4,7 @@
 use std::sync::atomic::Ordering;
 
 use rustc_hash::FxHashSet;
+use serde_json::Value;
 use slint::{ComponentHandle, Model, ModelRc, VecModel};
 
 use crate::backend::LockExt;
@@ -182,7 +183,7 @@ impl Ctx {
         self.rt.spawn(async move {
             let result = explorer::hash_field_page(&ctx.state, None, &KeyName::from_id(&key), &names).await;
             let _ = slint::invoke_from_event_loop(move || match result {
-                Ok(value) => ctx.on_hash_page_loaded(&connection, &key, epoch, dir, build_fields(value)),
+                Ok((values, oversized)) => ctx.on_hash_page_loaded(&connection, &key, epoch, dir, build_fields(Value::Object(values), oversized, &names)),
                 // not retried right away: the next scroll near the end asks again
                 Err(_) => ctx.shared.paging_in_flight.store(false, Ordering::Release),
             });

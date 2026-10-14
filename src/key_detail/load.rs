@@ -94,7 +94,9 @@ impl Ctx {
                 Some(fetch) => Ok(fetch),
                 None => explorer::get_key_details(&ctx.state, None, &KeyName::from_id(&key), MAX_ITEMS, HASH_PAGE_SIZE, focus.as_deref(), descending).await.map(|details| {
                     let fields: Fields = if details.key_type == RedisValueType::Hash {
-                        build_fields(details.value)
+                        let names = details.all_field_names.as_deref().unwrap_or_default();
+                        let page = &names[details.page_start.min(names.len())..(details.page_start + HASH_PAGE_SIZE).min(names.len())];
+                        build_fields(details.value, details.oversized, page)
                     } else {
                         vec![Arc::new(single_value_field(details.value))]
                     };

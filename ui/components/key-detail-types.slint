@@ -47,6 +47,9 @@ export struct AllValuesRowData {
     field: string,
     value-compact: styled-text, // single line, colored, no indentation
     value-compact-escaped: styled-text, // the same, escaped into a JSON string
+    // the value's size when it was too big to be read with the page ("" otherwise):
+    // the row then shows that instead, with buttons that read it to open, save or copy
+    too-long: string,
     // whether this row should open right away — Rust sets this from the tab's
     // saved set of expanded fields (see KeyScroll.all-values-expanded) when it
     // builds the rows, so a tab switched back to reopens what was open

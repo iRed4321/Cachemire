@@ -37,6 +37,9 @@ pub(super) struct Field {
     pub(super) name: String,
     pub(super) raw: String,
     pub(super) json: Option<Value>,
+    // the value's size in bytes when it was too big to be read with the others
+    // (`raw` is then empty, until an export reads it)
+    pub(super) too_long: Option<usize>,
     // lowercased on first use by a case-insensitive search, then kept for
     // every later keystroke/badge — `raw` especially can be a large JSON
     // blob, not worth re-lowering on every pass over the fields
@@ -46,7 +49,12 @@ pub(super) struct Field {
 
 impl Field {
     pub(super) fn new(name: String, raw: String, json: Option<Value>) -> Field {
-        Field { name, raw, json, lower_name: OnceLock::new(), lower_raw: OnceLock::new() }
+        Field { name, raw, json, too_long: None, lower_name: OnceLock::new(), lower_raw: OnceLock::new() }
+    }
+
+    /// A hash field whose value, `size` bytes long, was left out for its size.
+    pub(super) fn too_long(name: String, size: usize) -> Field {
+        Field { too_long: Some(size), ..Field::new(name, String::new(), None) }
     }
 
     /// A field holding `value`: a string stays plain text (shown as a JSON
@@ -82,26 +90,32 @@ impl Field {
 /// copying its data or keeping the lock.
 pub(super) type Fields = Vec<Arc<Field>>;
 
-/// JSON-parses each hash field's raw string when possible; non-JSON keeps
-/// only its text. Parses spread across cores, and the map is consumed so
-/// names/strings move into `Field` instead of cloning — matters at scale.
-pub(super) fn build_fields(details_value: Value) -> Fields {
-    match details_value {
-        Value::Object(map) => map
-            .into_iter()
-            .collect::<Vec<_>>()
-            .into_par_iter()
-            .map(|(name, raw)| {
-                let raw = match raw {
+/// A page of hash fields in the order of `names`: each read value JSON-parsed when
+/// possible (spread across cores, names/strings moved rather than cloned), each one
+/// in `oversized` by its size; a name in neither is gone from the server.
+pub(super) fn build_fields(details_value: Value, mut oversized: FxHashMap<String, usize>, names: &[String]) -> Fields {
+    let Value::Object(map) = details_value else { return Vec::new() };
+    let mut values: FxHashMap<String, Value> = map.into_iter().collect();
+    names
+        .iter()
+        .filter_map(|name| match values.remove_entry(name) {
+            Some((name, value)) => Some((name, Ok(value))),
+            None => oversized.remove_entry(name).map(|(name, size)| (name, Err(size))),
+        })
+        .collect::<Vec<_>>()
+        .into_par_iter()
+        .map(|(name, value)| match value {
+            Ok(value) => {
+                let raw = match value {
                     Value::String(s) => s,
                     other => other.to_string(),
                 };
                 let json = serde_json::from_str::<Value>(&raw).ok();
                 Arc::new(Field::new(name, raw, json))
-            })
-            .collect(),
-        _ => Vec::new(),
-    }
+            }
+            Err(size) => Arc::new(Field::too_long(name, size)),
+        })
+        .collect()
 }
 
 /// The single "(value)" field standing for a non-hash key's whole value.

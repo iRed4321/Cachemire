@@ -1,5 +1,5 @@
 use rust_i18n::t;
-use rustc_hash::FxHashSet;
+use rustc_hash::{FxHashMap, FxHashSet};
 use futures_util::stream::{FuturesOrdered, StreamExt};
 
 use super::error::AppError;
@@ -403,17 +403,40 @@ fn sort_by_field_name<T>(items: &mut [T], name: impl Fn(&T) -> &str, descending:
     items.sort_by(|a, b| if descending { natord::compare(name(b), name(a)) } else { natord::compare(name(a), name(b)) });
 }
 
-/// Fetches `field_names`' values via `HMGET`, pairing them into a JSON
-/// object in that order (a field deleted since its name was read is skipped).
-/// Needs serde_json's `preserve_order` feature for the order to reach the UI.
-async fn fetch_hash_fields_as_map(session: &mut Session, key: &KeyName, field_names: Vec<String>) -> Result<serde_json::Map<String, Value>, AppError> {
+/// Values of a hash's fields, as [`fetch_hash_fields_as_map`] reads them: a JSON object
+/// in field order, and the size in bytes of each field left out for being too big.
+pub type HashValues = (serde_json::Map<String, Value>, FxHashMap<String, usize>);
+
+/// Fetches `field_names`' values via `HMGET` into a JSON object in that order (a field
+/// deleted since is skipped); with `max_bytes`, a pipelined `HSTRLEN` first leaves out
+/// any value past it. Needs serde_json's `preserve_order` for the order to reach the UI.
+async fn fetch_hash_fields_as_map(session: &mut Session, key: &KeyName, field_names: Vec<String>, max_bytes: Option<usize>) -> Result<HashValues, AppError> {
+    let mut oversized = FxHashMap::default();
+    let field_names = match max_bytes {
+        Some(max) => {
+            let sizes = session.hash_value_sizes(key, &field_names).await?;
+            field_names
+                .into_iter()
+                .zip(sizes)
+                .filter_map(|(field, size)| {
+                    if size <= max {
+                        return Some(field);
+                    }
+                    oversized.insert(field, size);
+                    None
+                })
+                .collect()
+        }
+        None => field_names,
+    };
     let values = session.hash_values(key, &field_names).await?;
 
-    Ok(field_names
+    let map = field_names
         .into_iter()
         .zip(values)
         .filter_map(|(field, value)| Some((field, Value::String(value?))))
-        .collect())
+        .collect();
+    Ok((map, oversized))
 }
 
 /// How many field names of a hash are read before they are sorted and shown: a
@@ -422,6 +445,10 @@ pub const HASH_NAMES_BATCH: usize = 10_000;
 
 /// The longest string value read; past it, the value is cut and marked so.
 pub const MAX_STRING_BYTES: usize = 4 * 1024 * 1024;
+
+/// The biggest hash field value the key panel reads with its page; a bigger one is
+/// shown by its size, and read only when it's opened, saved or copied.
+pub const MAX_FIELD_BYTES: usize = 128 * 1024;
 
 /// The field names of `key` from `HSCAN` cursor `cursor` on, until `limit` are read
 /// or the scan ends (cursor 0), without the duplicates a scan may repeat. Each step
@@ -447,7 +474,7 @@ async fn read_hash_bounded(session: &mut Session, key: &KeyName, max_items: usiz
     field_names.truncate(max_items);
     sort_by_field_name(&mut field_names, |name| name.as_str(), false);
 
-    let map = fetch_hash_fields_as_map(session, key, field_names).await?;
+    let (map, _) = fetch_hash_fields_as_map(session, key, field_names, None).await?;
     Ok(ReadValueResult { truncated: total > map.len(), value: Value::Object(map) })
 }
 
@@ -543,6 +570,9 @@ pub struct KeyDetails {
     /// page, the rest are read a page at a time as the panel scrolls or a search
     /// needs them. `None` for every other type.
     pub all_field_names: Option<Vec<String>>,
+    /// For a hash: the size in bytes of each field of the page left out of `value`
+    /// for being over [`MAX_FIELD_BYTES`].
+    pub oversized: FxHashMap<String, usize>,
     /// For a hash: where in `all_field_names` the fields of `value` start.
     pub page_start: usize,
     /// For a hash: how many fields it has, and where the scan of its names goes on
@@ -587,13 +617,13 @@ pub async fn get_key_details(
         sort_by_field_name(&mut names, |name| name.as_str(), descending);
         let page_start = focus.and_then(|f| names.iter().position(|n| n == f)).map_or(0, |i| i / hash_page_size * hash_page_size);
         let page: Vec<String> = names.iter().skip(page_start).take(hash_page_size).cloned().collect();
-        let map = fetch_hash_fields_as_map(&mut session, key, page).await?;
+        let (map, oversized) = fetch_hash_fields_as_map(&mut session, key, page, Some(MAX_FIELD_BYTES)).await?;
         let names_cursor = (cursor != 0).then_some(cursor);
-        return Ok(KeyDetails { key_type, ttl, value: Value::Object(map), truncated: false, all_field_names: Some(names), page_start, field_count, names_cursor });
+        return Ok(KeyDetails { key_type, ttl, value: Value::Object(map), truncated: false, all_field_names: Some(names), oversized, page_start, field_count, names_cursor });
     }
 
     let read = read_value(&mut session, key, &key_type, max_items).await?;
-    Ok(KeyDetails { key_type, ttl, value: read.value, truncated: read.truncated, all_field_names: None, page_start: 0, field_count: 0, names_cursor: None })
+    Ok(KeyDetails { key_type, ttl, value: read.value, truncated: read.truncated, all_field_names: None, oversized: FxHashMap::default(), page_start: 0, field_count: 0, names_cursor: None })
 }
 
 /// The next batch of a hash's field names, from where the last one's scan stopped:
@@ -605,16 +635,22 @@ pub async fn hash_more_names(state: &AppState, connection_id: Option<&str>, key:
     Ok((names, (next != 0).then_some(next)))
 }
 
-/// The values of exactly `names` (known field names of a hash) as a JSON object
-/// in that order: a page past the first, fetched on scroll, search or JSON path
-/// filter.
-pub async fn hash_field_page(state: &AppState, connection_id: Option<&str>, key: &KeyName, names: &[String]) -> Result<Value, AppError> {
+/// The values of exactly `names` (known field names of a hash), those over
+/// [`MAX_FIELD_BYTES`] left out: a page past the first, fetched on scroll, search
+/// or JSON path filter.
+pub async fn hash_field_page(state: &AppState, connection_id: Option<&str>, key: &KeyName, names: &[String]) -> Result<HashValues, AppError> {
     if names.is_empty() {
-        return Ok(Value::Object(serde_json::Map::new()));
+        return Ok(Default::default());
     }
     let mut session = Session::open(state, connection_id).await?;
-    let map = fetch_hash_fields_as_map(&mut session, key, names.to_vec()).await?;
-    Ok(Value::Object(map))
+    fetch_hash_fields_as_map(&mut session, key, names.to_vec(), Some(MAX_FIELD_BYTES)).await
+}
+
+/// The values of `names` in a hash, whatever their size, in that order (`None` for
+/// a field that is gone).
+pub async fn hash_full_values(state: &AppState, connection_id: Option<&str>, key: &KeyName, names: &[String]) -> Result<Vec<Option<String>>, AppError> {
+    let mut session = Session::open(state, connection_id).await?;
+    session.hash_values(key, names).await
 }
 
 #[cfg(test)]

@@ -228,6 +228,19 @@ impl Session {
         Ok(values.into_iter().map(|value| value.map(lossy)).collect())
     }
 
+    /// The size in bytes of each of `fields`' values, in that order (0 for a field that
+    /// is gone), from one pipelined `HSTRLEN` per field.
+    pub async fn hash_value_sizes(&mut self, key: &KeyName, fields: &[String]) -> Result<Vec<usize>, AppError> {
+        if fields.is_empty() {
+            return Ok(Vec::new());
+        }
+        let mut pipe = redis::pipe();
+        for field in fields {
+            pipe.cmd("HSTRLEN").arg(key).arg(field);
+        }
+        Ok(pipe.query_async(&mut self.con).await?)
+    }
+
     /// One `HSCAN` step from `cursor`: the next cursor and the field/value pairs found.
     pub async fn hash_scan(&mut self, key: &KeyName, cursor: u64, count: usize) -> Result<(u64, Vec<(String, String)>), AppError> {
         let (next, flat): (u64, Vec<Vec<u8>>) = redis::cmd("HSCAN").arg(key).arg(cursor).arg("COUNT").arg(count).query_async(&mut self.con).await?;

@@ -1,6 +1,6 @@
 import { Theme } from "theme.slint";
 import { IconButton } from "widgets.slint";
-import { IconChevron, IconSpinner } from "icons.slint";
+import { IconChevron, IconCopy, IconDownload, IconExternalLink, IconSpinner } from "icons.slint";
 import { ExportGroup, SearchField } from "key-detail-widgets.slint";
 import { KeyScroll, ExportPrefs } from "key-detail-types.slint";
 import { KeyPanel } from "../globals.slint";
@@ -117,6 +117,8 @@ export component AllValuesRow inherits Rectangle {
     in property <string> field;
     in property <styled-text> value-compact;
     in property <styled-text> value-compact-escaped;
+    // see AllValuesRowData.too-long: such a row never opens
+    in property <string> too-long: "";
     in property <int> index;
     in property <length> field-col-width;
     // this row's slot in the content, the viewport window the table shows (both
@@ -389,7 +391,7 @@ export component AllValuesRow inherits Rectangle {
     // lingering on a row triggers it, not passing over it.
     Timer {
         interval: 350ms;
-        running: row-area.has-hover && !expanded && !pretty-loaded && !prefetch-requested;
+        running: row-area.has-hover && !expanded && !pretty-loaded && !prefetch-requested && too-long == "";
         triggered => {
             prefetch-requested = true;
             KeyPanel.request-pretty-value-async(field, escaped);
@@ -402,12 +404,12 @@ export component AllValuesRow inherits Rectangle {
     row-area := TouchArea {
         // hand on a collapsed row (click opens it); an open one is text to
         // select, and its header brings its own hand
-        mouse-cursor: !expanded ? MouseCursor.pointer : (pretty-loaded ? MouseCursor.text : MouseCursor.default);
+        mouse-cursor: too-long != "" ? MouseCursor.default : !expanded ? MouseCursor.pointer : (pretty-loaded ? MouseCursor.text : MouseCursor.default);
         // a click on a collapsed row's padding or empty space opens it; an
         // open row is only folded from its header or name pill, so a stray
         // click while selecting text never closes it
         clicked => {
-            if !expanded {
+            if !expanded && too-long == "" {
                 expanded = true;
             }
         }
@@ -430,8 +432,12 @@ export component AllValuesRow inherits Rectangle {
             // column and shows its name in its header instead
             if !expanded: field-area := TouchArea {
                 width: field-col-width;
-                mouse-cursor: pointer;
-                clicked => { expanded = true; }
+                mouse-cursor: too-long == "" ? MouseCursor.pointer : MouseCursor.default;
+                clicked => {
+                    if too-long == "" {
+                        expanded = true;
+                    }
+                }
                 Text {
                     text: field;
                     font-size: Theme.pt(12px);
@@ -452,7 +458,36 @@ export component AllValuesRow inherits Rectangle {
                 // Collapsed preview: one line laid out at its full natural
                 // width inside a clipping box, so StyledText's word wrapping
                 // never kicks in. Cheaper than eliding a wrapped layout.
-                if !expanded: Rectangle {
+                if !expanded && too-long != "": HorizontalLayout {
+                    height: collapsed-height;
+                    spacing: Theme.px(4px);
+                    alignment: start;
+                    Text {
+                        text: @tr("Value too long ({})", root.too-long);
+                        font-size: Theme.pt(12px);
+                        font-family: Theme.font-mono;
+                        color: Theme.text-tertiary;
+                        vertical-alignment: center;
+                    }
+                    Rectangle { width: Theme.px(4px); }
+                    // read from the server on click, as the row's JSON/Escaped choice says
+                    IconButton {
+                        box-size: collapsed-height;
+                        clicked => { KeyPanel.open-value(root.field, root.escaped); }
+                        IconExternalLink { size: Theme.icon-sm; tint: Theme.text-secondary; }
+                    }
+                    IconButton {
+                        box-size: collapsed-height;
+                        clicked => { KeyPanel.download-value(root.field, root.escaped); }
+                        IconDownload { size: Theme.icon-sm; tint: Theme.text-secondary; }
+                    }
+                    IconButton {
+                        box-size: collapsed-height;
+                        clicked => { KeyPanel.copy-value(root.field, root.escaped); }
+                        IconCopy { size: Theme.icon-sm; tint: Theme.text-secondary; }
+                    }
+                }
+                if !expanded && too-long == "": Rectangle {
                     height: collapsed-height;
                     clip: true;
 
