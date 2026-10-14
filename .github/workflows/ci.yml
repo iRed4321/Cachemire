@@ -1,8 +1,12 @@
 name: CI
 
-# The checks of a pull request; releases run their own tests (release.yml).
+# The checks of a pull request and of every push to main; releases run their own tests (release.yml).
 on:
   pull_request:
+  push:
+    branches: [main]
+    # a push touching only text has nothing to build
+    paths-ignore: ["**.md", "docs/**", "LICENSE"]
 
 concurrency:
   group: ci-${{ github.ref }}
@@ -62,4 +66,8 @@ jobs:
           path: reports
           merge-multiple: true
       - name: Summary
-        run: cargo xtask report "🔍 Pull request #${{ github.event.pull_request.number }}" --dir reports
+        env:
+          PR: ${{ github.event.pull_request.number }}
+        run: |
+          if [[ -n "$PR" ]]; then title="🔍 Pull request #$PR"; else title="🔍 ${GITHUB_REF_NAME} at ${GITHUB_SHA::7}"; fi
+          cargo xtask report "$title" --dir reports

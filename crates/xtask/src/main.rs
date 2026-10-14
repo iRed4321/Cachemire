@@ -3,6 +3,7 @@
 //! they run the same on every platform; the external tools they need are installed on demand.
 
 mod appimage;
+mod changelog;
 mod deb;
 mod i18n;
 mod install;
@@ -33,11 +34,19 @@ enum Task {
         /// With major, minor or fix: release the new version at once, with no beta
         #[arg(long)]
         stable: bool,
+        /// Don't ask before a stable release commits CHANGELOG.md and pushes main
+        #[arg(long)]
+        yes: bool,
     },
     /// Print the version a release/<request> branch releases, from the latest tag (what the Release workflow runs)
     NextVersion {
         /// The branch name without `release/`: a part of `release`, with `-stable` for its --stable
         request: String,
+    },
+    /// Print a stable version's section of CHANGELOG.md, its release notes (what the Release workflow runs)
+    ReleaseNotes {
+        /// The version, as `next-version` prints it
+        version: String,
     },
     /// Release exe, MSI installer and portable zip
     BuildWindows {
@@ -144,8 +153,9 @@ enum Task {
 fn main() {
     let result = match Cli::parse().task {
         Task::I18n => i18n::run_task(),
-        Task::Release { part, stable } => version::request_release(part, stable),
+        Task::Release { part, stable, yes } => version::request_release(part, stable, yes),
         Task::NextVersion { request } => version::print_next_version(&request),
+        Task::ReleaseNotes { version } => changelog::print_notes(&version),
         Task::BuildWindows { fast, stable, as_version, clean, skip_installer, with_zip, reported } => {
             windows::run_task(fast, stable, as_version.as_deref(), clean, skip_installer, with_zip, reported)
         }

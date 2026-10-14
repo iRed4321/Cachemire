@@ -8,7 +8,7 @@
 
 **Votre cache sous toutes les coutures !**
 
-Un explorateur de clés Redis rapide et natif. Parcourez vos clés en arbre, lisez vos valeurs en JSON coloré, filtrez-les avec un chemin JSON et affichez-les en tableau. Accédez à des serveurs derrière un bastion SSH, avec tous vos mots de passe rangés dans le trousseau de votre système.
+Pensé pour les hashs Redis remplis de JSON : lisez chaque valeur en JSON coloré, filtrez-les toutes avec un chemin JSON et affichez les résultats dans un tableau exportable en CSV. Redisql, un petit langage de requête inspiré du SQL, extrait des lignes de plusieurs clés et les joint entre elles. Fonctionne à travers des tunnels SSH et avec AWS ElastiCache.
 
 <p>
   <a href="https://github.com/iRed4321/Cachemire/releases/latest"><img alt="Version stable" src="https://img.shields.io/github/v/release/iRed4321/Cachemire?label=stable"></a>
@@ -34,7 +34,7 @@ Un explorateur de clés Redis rapide et natif. Parcourez vos clés en arbre, lis
   <img src="screenshots/fields-view.png" alt="Le même genre de hash en champs, dont un déplié en JSON indenté" width="45%">
 </p>
 
-> **Pensé pour un usage particulier.** Cachemire est conçu autour des hashs dont les valeurs sont du JSON. C'est là que ses filtres, ses tableaux et Redisql sont les plus utiles ; les autres types restent lisibles, mais ont reçu moins d'attention.
+> **Construit autour de mon propre usage.** Les fonctionnalités et types de Redis ne sont pas encore tous pris en charge : le reste arrivera progressivement.
 
 ## Fonctionnalités
 

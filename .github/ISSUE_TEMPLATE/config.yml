@@ -1,0 +1,5 @@
+blank_issues_enabled: true
+contact_links:
+  - name: Report a security vulnerability
+    url: https://github.com/iRed4321/Cachemire/security/advisories/new
+    about: Privately, so it can be fixed before it's known.

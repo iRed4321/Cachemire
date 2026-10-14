@@ -1,0 +1,83 @@
+name: Bug report
+description: Something doesn't work as it should
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for taking the time! A security problem goes through the [private report](https://github.com/iRed4321/Cachemire/security/advisories/new) instead.
+
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened
+      description: What you did, what you saw, and what you expected instead.
+    validations:
+      required: true
+
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+      placeholder: |
+        1. Connect to a server through an SSH tunnel
+        2. Open a hash with ...
+        3. ...
+    validations:
+      required: true
+
+  - type: input
+    id: version
+    attributes:
+      label: Cachemire version
+      description: Shown by the **i** button of the title bar.
+      placeholder: 3.0.0
+    validations:
+      required: true
+
+  - type: dropdown
+    id: install
+    attributes:
+      label: How it's installed
+      options:
+        - Windows installer (.msi)
+        - Windows portable (.zip)
+        - Debian / Ubuntu package (.deb)
+        - AppImage
+        - Built from source
+    validations:
+      required: true
+
+  - type: input
+    id: os
+    attributes:
+      label: Operating system
+      placeholder: Windows 11, Ubuntu 24.04 (Wayland), Fedora 41 (X11)...
+    validations:
+      required: true
+
+  - type: input
+    id: server
+    attributes:
+      label: Redis server
+      description: Its version and where it runs, if it matters here.
+      placeholder: Redis 7.4 in Docker, ElastiCache Valkey 8...
+
+  - type: checkboxes
+    id: connection
+    attributes:
+      label: Connection
+      description: What the connection goes through, if any.
+      options:
+        - label: TLS (`rediss://`)
+        - label: SSH tunnel
+        - label: AWS sign-in
+
+  - type: textarea
+    id: logs
+    attributes:
+      label: Log
+      description: |
+        The day's file in `%APPDATA%\Cachemire\logs` (Windows) or `~/.local/share/Cachemire/logs` (Linux).
+        Check it for host names or key names you'd rather not share.
+      render: text

@@ -1,0 +1,24 @@
+name: Feature request
+description: Something Cachemire could do, or do better
+labels: [enhancement]
+body:
+  - type: textarea
+    id: need
+    attributes:
+      label: What you're trying to do
+      description: "The task or the situation, rather than the solution: it helps find the best way to cover it."
+      placeholder: I often need to compare the same field across many keys...
+    validations:
+      required: true
+
+  - type: textarea
+    id: idea
+    attributes:
+      label: What you have in mind
+      description: How you'd see it working, if you have an idea.
+
+  - type: textarea
+    id: around
+    attributes:
+      label: How you do it today
+      description: A workaround, or another tool that does it well.

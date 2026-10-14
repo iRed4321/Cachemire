@@ -5,7 +5,11 @@ use semver::{Prerelease, Version};
 
 use std::path::Path;
 
+use crate::changelog::{self, CHANGELOG};
 use crate::tools::{APP_MANIFEST, Result, git, repo_root};
+
+/// The branch stable releases are made from, and their changelog commit pushed to.
+const MAIN: &str = "main";
 
 /// The package's `version = "..."` line (the first one at the start of a line,
 /// as dependency versions are indented or inline) and its value.
@@ -231,15 +235,58 @@ fn github_repo(root: &Path) -> Option<String> {
     Some(path.trim_end_matches('/').trim_end_matches(".git").to_string())
 }
 
+/// Asks `question` on the terminal: true for y or yes.
+fn confirm(question: &str) -> Result<bool> {
+    print!("{question} [y/N] ");
+    std::io::Write::flush(&mut std::io::stdout()).map_err(|e| e.to_string())?;
+    let mut answer = String::new();
+    std::io::stdin().read_line(&mut answer).map_err(|e| e.to_string())?;
+    Ok(matches!(answer.trim().to_lowercase().as_str(), "y" | "yes"))
+}
+
+/// Before releasing the stable `version` from an up-to-date main: names the changelog's `## Unreleased`
+/// section after it, once confirmed (unless `yes`), commits the changelog alone and pushes main.
+/// `false` when called off, with nothing changed.
+fn name_changelog(root: &Path, version: &Version, yes: bool) -> Result<bool> {
+    let branch = git(root, &["symbolic-ref", "--quiet", "--short", "HEAD"]).unwrap_or_default();
+    if branch != MAIN {
+        return Err(format!("a stable release is made from {MAIN}, and HEAD is on {}: switch to {MAIN} first", if branch.is_empty() { "a detached commit" } else { &branch }));
+    }
+    git(root, &["fetch", "--quiet", "origin", MAIN])?;
+    if git(root, &["rev-list", "--count", &format!("HEAD..origin/{MAIN}")])? != "0" {
+        return Err(format!("origin/{MAIN} has commits HEAD doesn't: pull them first"));
+    }
+    let changelog = changelog::for_stable(version)?;
+    println!("Release notes of {version}, from {CHANGELOG}:\n\n{}\n", changelog.notes);
+    if !yes && !confirm(&format!("Release {version} with these notes, committing {CHANGELOG} and pushing {MAIN}?"))? {
+        println!("Called off: nothing was changed.");
+        return Ok(false);
+    }
+    if let Some(text) = changelog.text {
+        std::fs::write(root.join(CHANGELOG), text).map_err(|e| format!("writing {CHANGELOG}: {e}"))?;
+    }
+    // committed alone, whatever else is staged; skipped when HEAD already has it as it is
+    if !git(root, &["status", "--porcelain", "--", CHANGELOG])?.is_empty() {
+        git(root, &["add", "--", CHANGELOG])?;
+        git(root, &["commit", "--quiet", "--message", &format!("Release {version}"), "--", CHANGELOG])?;
+    }
+    git(root, &["push", "--quiet", "origin", &format!("HEAD:refs/heads/{MAIN}")])?;
+    Ok(true)
+}
+
 /// `cargo xtask release`: asks the Release workflow to release HEAD, by pushing it as the
 /// `release/<request>` branch. The workflow works out the version, builds, tags and publishes.
-pub fn request_release(part: Part, stable_now: bool) -> Result<()> {
+pub fn request_release(part: Part, stable_now: bool, yes: bool) -> Result<()> {
     let root = repo_root();
     let request = request_of(part, stable_now);
     git(&root, &["fetch", "--quiet", "--tags", "origin"])?;
     let version = next_version(&root, &request)?;
     if !git(&root, &["status", "--porcelain", "--untracked-files=no"])?.is_empty() {
         println!("Note: the uncommitted changes are not part of the release, only HEAD is.");
+    }
+    // a stable release is published with its section of the changelog as its notes
+    if version.pre.is_empty() && !name_changelog(&root, &version, yes)? {
+        return Ok(());
     }
     let head = git(&root, &["log", "-1", "--format=%h %s"])?;
     println!("Requesting the release of {version} from {head}...");

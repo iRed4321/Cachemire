@@ -20,6 +20,12 @@
   `.po` files by hand. Then only fill in the `msgstr` of what the task reports as
   untranslated, and run it again until nothing is. Messages built in Rust
   (`t!(...)`) live in `resources/lang/app.yml`, which has no task.
+- Changelog: after a substantial change a user would notice (a feature, a fix, a
+  changed behavior or limit), add or update its line under `## Unreleased` in
+  `CHANGELOG.md`, in the subsection it belongs to; create `## Unreleased` at the
+  top if it's missing. Write for users: what changed for them, not how it's built.
+  Internal work (refactors, CI, tooling) gets no line. Never rename `## Unreleased`
+  or write a version heading: a stable `cargo ship` does that, and commits it.
 
 # Environment
 
