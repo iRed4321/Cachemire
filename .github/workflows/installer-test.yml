@@ -11,9 +11,11 @@ on:
         required: true
         default: 1.0.0
 
+# the same CARGO_* variables as the other workflows: they're part of the xtask cache's key
 env:
   CARGO_TERM_COLOR: always
   CARGO_TERM_PROGRESS_WHEN: never
+  CARGO_PROFILE_DEV_DEBUG: line-tables-only
 
 jobs:
   installer:
@@ -21,6 +23,12 @@ jobs:
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v7
+      # xtask's own build (target/xtask) as the CI saved it from main
+      - uses: Swatinem/rust-cache@v2
+        with:
+          shared-key: xtask
+          workspaces: ". -> target/xtask"
+          save-if: false
       - name: Install WiX
         shell: pwsh
         run: |

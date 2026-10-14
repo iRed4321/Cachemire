@@ -28,6 +28,17 @@ jobs:
         os: [ubuntu-latest, windows-latest]
     steps:
       - uses: actions/checkout@v7
+      # the compiled dependencies, kept between runs (one cache per OS); saved from main only,
+      # which pull requests start from
+      - uses: Swatinem/rust-cache@v2
+        with:
+          save-if: ${{ github.ref == 'refs/heads/main' }}
+      # xtask's own build (target/xtask), shared by every job of the OS, in both workflows
+      - uses: Swatinem/rust-cache@v2
+        with:
+          shared-key: xtask
+          workspaces: ". -> target/xtask"
+          save-if: ${{ github.ref == 'refs/heads/main' }}
       # quiet: the build log then lists what gets compiled, not each crate downloaded
       - name: Fetch crates
         run: cargo fetch --locked --quiet
@@ -60,6 +71,12 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
+      # xtask's own build (target/xtask), shared by every job of the OS, in both workflows
+      - uses: Swatinem/rust-cache@v2
+        with:
+          shared-key: xtask
+          workspaces: ". -> target/xtask"
+          save-if: ${{ github.ref == 'refs/heads/main' }}
       - uses: actions/download-artifact@v8
         with:
           pattern: report-*
