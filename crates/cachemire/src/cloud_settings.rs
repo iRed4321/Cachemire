@@ -8,6 +8,7 @@ use std::rc::Rc;
 use rust_i18n::t;
 use slint::{ComponentHandle, ModelRc, VecModel};
 
+
 use crate::app::App;
 use crate::backend::LockExt;
 use crate::backend::secret_vault::staged;
