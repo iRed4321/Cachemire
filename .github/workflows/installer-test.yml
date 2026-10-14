@@ -26,6 +26,7 @@ jobs:
       # xtask's own build (target/xtask) as the CI saved it from main
       - uses: Swatinem/rust-cache@v2
         with:
+          cache-bin: false
           shared-key: xtask
           workspaces: ". -> target/xtask"
           save-if: false

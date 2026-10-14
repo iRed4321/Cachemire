@@ -29,13 +29,16 @@ jobs:
     steps:
       - uses: actions/checkout@v7
       # the compiled dependencies, kept between runs (one cache per OS); saved from main only,
-      # which pull requests start from
+      # which pull requests start from. cache-bin off: its cleanup deletes cargo, which the other
+      # cache's post step still needs
       - uses: Swatinem/rust-cache@v2
         with:
+          cache-bin: false
           save-if: ${{ github.ref == 'refs/heads/main' }}
       # xtask's own build (target/xtask), shared by every job of the OS, in both workflows
       - uses: Swatinem/rust-cache@v2
         with:
+          cache-bin: false
           shared-key: xtask
           workspaces: ". -> target/xtask"
           save-if: ${{ github.ref == 'refs/heads/main' }}
@@ -74,6 +77,7 @@ jobs:
       # xtask's own build (target/xtask), shared by every job of the OS, in both workflows
       - uses: Swatinem/rust-cache@v2
         with:
+          cache-bin: false
           shared-key: xtask
           workspaces: ". -> target/xtask"
           save-if: ${{ github.ref == 'refs/heads/main' }}

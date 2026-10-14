@@ -46,6 +46,7 @@ jobs:
       # xtask's own build (target/xtask) as the CI saved it from main; the app's builds aren't cached
       - uses: Swatinem/rust-cache@v2
         with:
+          cache-bin: false
           shared-key: xtask
           workspaces: ". -> target/xtask"
           save-if: false
@@ -82,6 +83,7 @@ jobs:
       # xtask's own build (target/xtask) as the CI saved it from main; the app's builds aren't cached
       - uses: Swatinem/rust-cache@v2
         with:
+          cache-bin: false
           shared-key: xtask
           workspaces: ". -> target/xtask"
           save-if: false
@@ -135,6 +137,7 @@ jobs:
       # xtask's own build (target/xtask) as the CI saved it from main; the app's builds aren't cached
       - uses: Swatinem/rust-cache@v2
         with:
+          cache-bin: false
           shared-key: xtask
           workspaces: ". -> target/xtask"
           save-if: false
@@ -257,6 +260,7 @@ jobs:
       # xtask's own build (target/xtask) as the CI saved it from main; the app's builds aren't cached
       - uses: Swatinem/rust-cache@v2
         with:
+          cache-bin: false
           shared-key: xtask
           workspaces: ". -> target/xtask"
           save-if: false
