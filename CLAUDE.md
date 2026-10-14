@@ -16,10 +16,10 @@
   to it. If an edit pushes a comment past 3 lines, shorten it instead. Count
   the lines of every comment you write or touch before finishing.
 - Translations: after adding or changing an `@tr(...)` text in the `.slint` files,
-  run `cargo xtask i18n`; never add or edit entries of `lang/cachemire.pot` or the
+  run `cargo xtask i18n`; never add or edit entries of `resources/lang/cachemire.pot` or the
   `.po` files by hand. Then only fill in the `msgstr` of what the task reports as
   untranslated, and run it again until nothing is. Messages built in Rust
-  (`t!(...)`) live in `locales/app.yml`, which has no task.
+  (`t!(...)`) live in `resources/lang/app.yml`, which has no task.
 
 # Environment
 

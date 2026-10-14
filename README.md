@@ -1,16 +1,26 @@
 <div align="center">
 
-**English** · [Français](README.fr.md)
+**English** · [Français](docs/README.fr.md)
 
-<img src="assets/icon.svg" alt="Cachemire" width="128" height="128">
+<img src="resources/icon.svg" alt="Cachemire" width="128" height="128">
 
 # Cachemire
 
-**Knit-pick your cache.**
+**Knit-pick your cache!**
 
 A fast, native Redis key explorer. Browse your keys as a tree, read values as colored JSON, filter them with a JSON path and see them as a table. Reach servers behind an SSH bastion, with every password kept in your OS keyring.
 
-Rust · [Slint](https://slint.dev) · Windows and Linux
+<p>
+  <a href="https://github.com/iRed4321/Cachemire/releases/latest"><img alt="Stable release" src="https://img.shields.io/github/v/release/iRed4321/Cachemire?label=stable"></a>
+  <a href="https://github.com/iRed4321/Cachemire/releases"><img alt="Latest release" src="https://img.shields.io/github/v/release/iRed4321/Cachemire?include_prereleases&label=latest"></a>
+  <a href="https://github.com/iRed4321/Cachemire/releases"><img alt="Downloads" src="https://img.shields.io/github/downloads/iRed4321/Cachemire/total"></a>
+  <a href="https://github.com/iRed4321/Cachemire/actions/workflows/release.yml"><img alt="Release build" src="https://img.shields.io/github/actions/workflow/status/iRed4321/Cachemire/release.yml"></a>
+  <a href="LICENSE"><img alt="License" src="https://img.shields.io/github/license/iRed4321/Cachemire"></a>
+  <br>
+  <a href="https://www.rust-lang.org"><img alt="Rust" src="https://img.shields.io/badge/Rust-dea584?logo=rust&logoColor=black"></a>
+  <a href="https://slint.dev"><img alt="Slint" src="https://img.shields.io/badge/UI-Slint-2379f4"></a>
+  <img alt="Platforms: Windows and Linux" src="https://img.shields.io/badge/platform-Windows%20%7C%20Linux-informational">
+</p>
 
 </div>
 
@@ -112,19 +122,6 @@ Installers are built with `cargo xtask build-windows` (MSI and portable zip), `c
 
 To try the MSI alone, `cargo xtask build-installer-test --version 1.2.0` packs a stand-in app, quick to build, as any version; on GitHub, run the *Installer test* workflow and download its artifact.
 
-### Releasing
-
-`Cargo.toml` always says `0.0.0-dev`: versions only exist in the release tags, and nothing is committed to make one. To release the commit you're on:
-
-| Command | Releases |
-|---|---|
-| `cargo ship beta` | the next beta (`3.0.0-beta.19` → `3.0.0-beta.20`) |
-| `cargo ship stable` | the current beta as stable (`3.0.0-beta.20` → `3.0.0`) |
-| `cargo ship fix` (or `minor`, `major`) | a new version's first beta (`3.0.0` → `3.0.1-beta.1`) |
-| `cargo ship fix --stable` (or `minor`, `major`) | a new version, with no beta (`3.0.0` → `3.0.1`) |
-
-It pushes the commit as a `release/<request>` branch: `git push origin HEAD:release/beta` does the same, and `release/fix-stable` stands for `fix --stable`. The Release workflow then works out the version from the tags, tests and builds the packages, and tags the commit and publishes the release only if everything passed. It can also be started from the repository's Actions tab.
-
 ## Your data
 
 Saved in your user data folder (`%APPDATA%\Cachemire` or `~/.local/share/Cachemire`): your connections, settings, saved queries, SSH host keys and query history.
@@ -137,4 +134,4 @@ Most of Cachemire's code was written by AI ([Claude Code](https://claude.com/cla
 
 Cachemire is free software under the [GNU GPL v3](LICENSE). You can use it and fork it freely; if you redistribute a version, it must stay under the same license, with its source and credit to the original author.
 
-Bundled fonts: [Roboto](assets/fonts/Roboto-OFL.txt) and [JetBrains Mono](assets/fonts/JetBrainsMono-OFL.txt), under the SIL Open Font License.
+Bundled fonts: [Roboto](resources/fonts/Roboto-OFL.txt) and [JetBrains Mono](resources/fonts/JetBrainsMono-OFL.txt), under the SIL Open Font License.

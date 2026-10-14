@@ -1,0 +1,11 @@
+[package]
+name = "installer-test"
+version = "0.0.0"
+edition = "2024"
+authors.workspace = true
+publish = false
+description = "A stand-in for the app, quick to build, for trying the MSI (`cargo xtask build-installer-test`)"
+
+# the app's icon (+ version info) in the executable, as in the real one
+[target.'cfg(windows)'.build-dependencies]
+winresource = "0.1"

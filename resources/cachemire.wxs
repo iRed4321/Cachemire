@@ -1,0 +1,147 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Cachemire MSI (WiX v6 or v7, built by `cargo xtask build-windows`): per-machine, in-place upgrades
+     (never change the UpgradeCode), one page where the user must click Install, Update or Uninstall
+     (CachemireUI) before anything happens, and the shortcuts offered on the last one (CachemireExitDlg). -->
+<Wix xmlns="http://wixtoolset.org/schemas/v4/wxs">
+  <Package Name="Cachemire"
+           Manufacturer="Léo Parent"
+           Version="$(var.Version)"
+           UpgradeCode="7d3c1b62-0f4e-4c1a-9a1e-6e2f5b8c9d01"
+           Language="1033"
+           Scope="perMachine"
+           Compressed="yes">
+
+    <MajorUpgrade AllowSameVersionUpgrades="yes" DowngradeErrorMessage="A newer version of Cachemire is already installed." />
+    <MediaTemplate EmbedCab="yes" />
+
+    <Icon Id="CachemireIcon" SourceFile="resources/icon.ico" />
+    <Property Id="ARPPRODUCTICON" Value="CachemireIcon" />
+    <WixVariable Id="WixUIBannerBmp" Value="resources/installer/banner.bmp" />
+    <WixVariable Id="WixUIDialogBmp" Value="resources/installer/dialog.bmp" />
+    <Property Id="ARPCONTACT" Value="Léo Parent" />
+    <Property Id="ARPCOMMENTS" Value="Knit-pick your Redis keys! (Cachemire $(var.FullVersion))" />
+
+    <StandardDirectory Id="ProgramFiles64Folder">
+      <Directory Id="INSTALLFOLDER" Name="Cachemire" />
+    </StandardDirectory>
+
+    <Feature Id="Main" Title="Cachemire" Level="1">
+      <ComponentGroupRef Id="AppFiles" />
+    </Feature>
+
+    <!-- Uninstall with DELETEUSERDATA=1 (the checkbox of StartDlg): removes the user's data folder
+         (connections, settings, history), as the user who runs the uninstall. -->
+    <SetProperty Id="DeleteUserDataCmd" Value="[System64Folder]cmd.exe" Before="DeleteUserData" Sequence="execute" Condition="REMOVE=&quot;ALL&quot; AND NOT UPGRADINGPRODUCTCODE AND DELETEUSERDATA=1" />
+    <CustomAction Id="DeleteUserData" Property="DeleteUserDataCmd" ExeCommand="/c rmdir /s /q &quot;[AppDataFolder]Cachemire&quot;" Execute="deferred" Impersonate="yes" Return="ignore" />
+    <InstallExecuteSequence>
+      <Custom Action="DeleteUserData" Before="RemoveFiles" Condition="REMOVE=&quot;ALL&quot; AND NOT UPGRADINGPRODUCTCODE AND DELETEUSERDATA=1" />
+      <Custom Action="DeleteShortcuts" Before="RemoveFiles" Condition="REMOVE=&quot;ALL&quot; AND NOT UPGRADINGPRODUCTCODE" />
+    </InstallExecuteSequence>
+
+    <CustomAction Id="LaunchCachemire" FileRef="CachemireExe" ExeCommand="" Execute="immediate" Impersonate="yes" Return="asyncNoWait" />
+
+    <!-- The shortcuts ticked on the last page: made once the install is done, so by a hidden PowerShell
+         (WixQuietExec) in the user's own Start menu and desktop, not by MSI. Each Set… action puts its
+         command in WixQuietExecCmdLine just before its Create… action runs it. -->
+    <Property Id="ADDSTARTMENU" Value="1" />
+    <Property Id="ADDDESKTOP" Value="1" />
+    <CustomAction Id="SetStartMenuShortcutCmd" Property="WixQuietExecCmdLine" Value="&quot;[System64Folder]WindowsPowerShell\v1.0\powershell.exe&quot; -NoProfile -NonInteractive -ExecutionPolicy Bypass -Command &quot;$w = New-Object -ComObject WScript.Shell; $l = $w.CreateShortcut($w.SpecialFolders('Programs') + '\Cachemire.lnk'); $l.TargetPath = '[#CachemireExe]'; $l.Description = 'Knit-pick your Redis keys!'; $l.Save()&quot;" Execute="immediate" />
+    <CustomAction Id="CreateStartMenuShortcut" BinaryRef="Wix4UtilCA_X64" DllEntry="WixQuietExec" Execute="immediate" Return="ignore" />
+    <CustomAction Id="SetDesktopShortcutCmd" Property="WixQuietExecCmdLine" Value="&quot;[System64Folder]WindowsPowerShell\v1.0\powershell.exe&quot; -NoProfile -NonInteractive -ExecutionPolicy Bypass -Command &quot;$w = New-Object -ComObject WScript.Shell; $l = $w.CreateShortcut($w.SpecialFolders('Desktop') + '\Cachemire.lnk'); $l.TargetPath = '[#CachemireExe]'; $l.Description = 'Knit-pick your Redis keys!'; $l.Save()&quot;" Execute="immediate" />
+    <CustomAction Id="CreateDesktopShortcut" BinaryRef="Wix4UtilCA_X64" DllEntry="WixQuietExec" Execute="immediate" Return="ignore" />
+
+    <!-- Uninstall (not the removal of an update): deletes those shortcuts if they exist, as the user who runs it. -->
+    <SetProperty Id="DeleteShortcuts" Value="&quot;[System64Folder]WindowsPowerShell\v1.0\powershell.exe&quot; -NoProfile -NonInteractive -ExecutionPolicy Bypass -Command &quot;$w = New-Object -ComObject WScript.Shell; Remove-Item -LiteralPath @(($w.SpecialFolders('Programs') + '\Cachemire.lnk'), ($w.SpecialFolders('Desktop') + '\Cachemire.lnk')) -ErrorAction SilentlyContinue&quot;" Before="DeleteShortcuts" Sequence="execute" Condition="REMOVE=&quot;ALL&quot; AND NOT UPGRADINGPRODUCTCODE" />
+    <CustomAction Id="DeleteShortcuts" BinaryRef="Wix4UtilCA_X64" DllEntry="WixQuietExec" Execute="deferred" Impersonate="yes" Return="ignore" />
+
+    <ComponentGroup Id="AppFiles" Directory="INSTALLFOLDER">
+      <Component Id="MainExe" Guid="c2a9e4d7-5b18-4f3e-8c6a-1d9e0f7b3a52">
+        <File Id="CachemireExe" Source="$(var.ExePath)" Name="cachemire.exe" KeyPath="yes" />
+      </Component>
+    </ComponentGroup>
+
+    <UI Id="CachemireUI">
+      <UIRef Id="WixUI_Common" />
+      <Property Id="WixUI_Mode" Value="Minimal" />
+      <TextStyle Id="WixUI_Font_Normal" FaceName="Tahoma" Size="8" />
+      <TextStyle Id="WixUI_Font_Bigger" FaceName="Tahoma" Size="12" />
+      <TextStyle Id="WixUI_Font_Title" FaceName="Tahoma" Size="9" Bold="yes" />
+      <Property Id="DefaultUIFont" Value="WixUI_Font_Normal" />
+      <DialogRef Id="ErrorDlg" />
+      <DialogRef Id="FatalError" />
+      <DialogRef Id="FilesInUse" />
+      <DialogRef Id="MsiRMFilesInUse" />
+      <DialogRef Id="PrepareDlg" />
+      <DialogRef Id="ProgressDlg" />
+      <DialogRef Id="ResumeDlg" />
+      <DialogRef Id="UserExit" />
+      <DialogRef Id="CancelDlg" />
+
+      <Dialog Id="StartDlg" Width="370" Height="270" Title="Cachemire $(var.FullVersion)">
+        <Control Id="BannerBitmap" Type="Bitmap" X="0" Y="0" Width="370" Height="44" TabSkip="no" Text="WixUI_Bmp_Banner" />
+        <Control Id="BannerLine" Type="Line" X="0" Y="44" Width="370" Height="0" />
+        <Control Id="BottomLine" Type="Line" X="0" Y="234" Width="370" Height="0" />
+
+        <Control Id="TitleInstall" Type="Text" X="15" Y="6" Width="340" Height="15" Transparent="yes" NoPrefix="yes" Text="{\WixUI_Font_Title}Install Cachemire $(var.FullVersion)" Hidden="yes" ShowCondition="NOT Installed AND NOT WIX_UPGRADE_DETECTED" />
+        <Control Id="TitleUpdate" Type="Text" X="15" Y="6" Width="340" Height="15" Transparent="yes" NoPrefix="yes" Text="{\WixUI_Font_Title}Update Cachemire $(var.FullVersion)" Hidden="yes" ShowCondition="NOT Installed AND WIX_UPGRADE_DETECTED" />
+        <Control Id="TitleUninstall" Type="Text" X="15" Y="6" Width="340" Height="15" Transparent="yes" NoPrefix="yes" Text="{\WixUI_Font_Title}Uninstall Cachemire $(var.FullVersion)" Hidden="yes" ShowCondition="Installed" />
+
+        <Control Id="TextInstall" Type="Text" X="25" Y="70" Width="320" Height="60" Transparent="yes" NoPrefix="yes" Text="Click Install to add Cachemire to this computer. Nothing is installed until you do." Hidden="yes" ShowCondition="NOT Installed AND NOT WIX_UPGRADE_DETECTED" />
+        <Control Id="TextUpdate" Type="Text" X="25" Y="70" Width="320" Height="60" Transparent="yes" NoPrefix="yes" Text="An older version of Cachemire is installed. Click Update to replace it with this version. Nothing changes until you do." Hidden="yes" ShowCondition="NOT Installed AND WIX_UPGRADE_DETECTED" />
+        <Control Id="TextUninstall" Type="Text" X="25" Y="70" Width="320" Height="60" Transparent="yes" NoPrefix="yes" Text="Cachemire is installed on this computer. Click Uninstall to remove it. Nothing is removed until you do." Hidden="yes" ShowCondition="Installed" />
+
+        <Control Id="DeleteUserDataCheck" Type="CheckBox" X="25" Y="140" Width="320" Height="18" Property="DELETEUSERDATA" CheckBoxValue="1" Text="Also delete my connections, settings and history" Hidden="yes" ShowCondition="Installed" />
+
+        <Control Id="InstallButton" Type="PushButton" X="236" Y="243" Width="56" Height="17" Default="yes" Text="Install" Hidden="yes" ShowCondition="NOT Installed AND NOT WIX_UPGRADE_DETECTED">
+          <Publish Event="EndDialog" Value="Return" />
+        </Control>
+        <Control Id="UpdateButton" Type="PushButton" X="236" Y="243" Width="56" Height="17" Default="yes" Text="Update" Hidden="yes" ShowCondition="NOT Installed AND WIX_UPGRADE_DETECTED">
+          <Publish Event="EndDialog" Value="Return" />
+        </Control>
+        <Control Id="UninstallButton" Type="PushButton" X="236" Y="243" Width="56" Height="17" Default="yes" Text="Uninstall" Hidden="yes" ShowCondition="Installed">
+          <Publish Property="WixUI_InstallMode" Value="Remove" />
+          <Publish Event="Remove" Value="All" Order="2" />
+          <Publish Event="EndDialog" Value="Return" Order="3" />
+        </Control>
+        <Control Id="Cancel" Type="PushButton" X="304" Y="243" Width="56" Height="17" Cancel="yes" Text="Cancel">
+          <Publish Event="SpawnDialog" Value="CancelDlg" />
+        </Control>
+      </Dialog>
+
+      <!-- WixUI's ExitDialog with three options after an install or update instead of its single one -->
+      <Property Id="LAUNCHCACHEMIRE" Value="1" />
+      <Dialog Id="CachemireExitDlg" Width="370" Height="270" Title="Cachemire $(var.FullVersion)">
+        <Control Id="Finish" Type="PushButton" X="236" Y="243" Width="56" Height="17" Default="yes" Cancel="yes" Text="Finish">
+          <Publish Event="DoAction" Value="SetStartMenuShortcutCmd" Order="1" Condition="ADDSTARTMENU = 1 AND NOT Installed AND NOT REMOVE" />
+          <Publish Event="DoAction" Value="CreateStartMenuShortcut" Order="2" Condition="ADDSTARTMENU = 1 AND NOT Installed AND NOT REMOVE" />
+          <Publish Event="DoAction" Value="SetDesktopShortcutCmd" Order="3" Condition="ADDDESKTOP = 1 AND NOT Installed AND NOT REMOVE" />
+          <Publish Event="DoAction" Value="CreateDesktopShortcut" Order="4" Condition="ADDDESKTOP = 1 AND NOT Installed AND NOT REMOVE" />
+          <Publish Event="DoAction" Value="LaunchCachemire" Order="5" Condition="LAUNCHCACHEMIRE = 1 AND NOT Installed AND NOT REMOVE" />
+          <Publish Event="EndDialog" Value="Return" Order="6" />
+        </Control>
+        <Control Id="Cancel" Type="PushButton" X="304" Y="243" Width="56" Height="17" Disabled="yes" Text="Cancel" />
+        <Control Id="Back" Type="PushButton" X="180" Y="243" Width="56" Height="17" Disabled="yes" Text="Back" />
+        <Control Id="Bitmap" Type="Bitmap" X="0" Y="0" Width="370" Height="234" TabSkip="no" Text="WixUI_Bmp_Dialog" />
+        <Control Id="BottomLine" Type="Line" X="0" Y="234" Width="370" Height="0" />
+
+        <Control Id="TitleInstalled" Type="Text" X="135" Y="20" Width="220" Height="60" Transparent="yes" NoPrefix="yes" Text="{\WixUI_Font_Bigger}Cachemire $(var.FullVersion) is installed" Hidden="yes" ShowCondition="NOT Installed AND NOT WIX_UPGRADE_DETECTED" />
+        <Control Id="TitleUpdated" Type="Text" X="135" Y="20" Width="220" Height="60" Transparent="yes" NoPrefix="yes" Text="{\WixUI_Font_Bigger}Cachemire is updated to $(var.FullVersion)" Hidden="yes" ShowCondition="NOT Installed AND WIX_UPGRADE_DETECTED" />
+        <Control Id="TitleRemoved" Type="Text" X="135" Y="20" Width="220" Height="60" Transparent="yes" NoPrefix="yes" Text="{\WixUI_Font_Bigger}Cachemire is removed" Hidden="yes" ShowCondition="Installed AND REMOVE=&quot;ALL&quot;" />
+        <Control Id="TitleDone" Type="Text" X="135" Y="20" Width="220" Height="60" Transparent="yes" NoPrefix="yes" Text="{\WixUI_Font_Bigger}Cachemire setup is complete" Hidden="yes" ShowCondition="Installed AND NOT REMOVE=&quot;ALL&quot;" />
+        <Control Id="Description" Type="Text" X="135" Y="70" Width="220" Height="40" Transparent="yes" NoPrefix="yes" Text="Click Finish to close this window." />
+
+        <Control Id="StartMenuCheck" Type="CheckBox" X="135" Y="150" Width="220" Height="18" Property="ADDSTARTMENU" CheckBoxValue="1" Text="Add to the Start menu" Hidden="yes" ShowCondition="NOT Installed AND NOT REMOVE" />
+        <Control Id="DesktopCheck" Type="CheckBox" X="135" Y="170" Width="220" Height="18" Property="ADDDESKTOP" CheckBoxValue="1" Text="Add a desktop shortcut" Hidden="yes" ShowCondition="NOT Installed AND NOT REMOVE" />
+        <Control Id="LaunchCheck" Type="CheckBox" X="135" Y="190" Width="220" Height="18" Property="LAUNCHCACHEMIRE" CheckBoxValue="1" Text="Open Cachemire now" Hidden="yes" ShowCondition="NOT Installed AND NOT REMOVE" />
+      </Dialog>
+
+      <InstallUISequence>
+        <Show Dialog="StartDlg" Before="ProgressDlg" Condition="NOT REMOVE" />
+        <Show Dialog="CachemireExitDlg" OnExit="success" />
+      </InstallUISequence>
+      <AdminUISequence>
+        <Show Dialog="CachemireExitDlg" OnExit="success" />
+      </AdminUISequence>
+    </UI>
+  </Package>
+</Wix>

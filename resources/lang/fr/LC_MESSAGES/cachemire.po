@@ -1,0 +1,727 @@
+#
+msgid ""
+msgstr ""
+"Project-Id-Version: cachemire\n"
+"POT-Creation-Date: 2026-09-21 20:38+0000\n"
+"PO-Revision-Date: 2026-09-21 00:00+0000\n"
+"Last-Translator: Cachemire\n"
+"Language-Team: French\n"
+"Language: fr\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"Plural-Forms: nplurals=2; plural=(n > 1);\n"
+
+#: crates/cachemire/ui/main.slint:321 crates/cachemire/ui/main.slint:321
+msgid "Show sidebar"
+msgstr "Afficher le panneau latéral"
+
+#: crates/cachemire/ui/main.slint:348
+msgid "Couldn't use the AWS account"
+msgstr "Impossible d'utiliser le compte AWS"
+
+#: crates/cachemire/ui/main.slint:349
+msgid "Select a key to open it"
+msgstr "Sélectionnez une clé pour l'ouvrir"
+
+#: crates/cachemire/ui/main.slint:350
+msgid "Couldn't connect"
+msgstr "Connexion impossible"
+
+#: crates/cachemire/ui/main.slint:351
+msgid "Pick a connection to get started"
+msgstr "Choisissez une connexion pour commencer"
+
+#: crates/cachemire/ui/main.slint:359
+msgid "Browse the keyspace on the left and click a key."
+msgstr "Parcourez l'espace de clés à gauche et cliquez sur une clé."
+
+#: crates/cachemire/ui/main.slint:360
+msgid ""
+"Hover the connection status in the top bar to see why, or pick another "
+"connection."
+msgstr ""
+"Survolez l'indicateur d'état dans la barre du haut pour en connaître la "
+"raison, ou choisissez une autre connexion."
+
+#: crates/cachemire/ui/main.slint:361
+msgid "Use the connection selector in the top bar."
+msgstr "Utilisez le sélecteur de connexion dans la barre du haut."
+
+#: crates/cachemire/ui/main.slint:414
+msgid "Write a Redisql query above (FROM/JOIN/WHERE/SELECT/LIMIT), then Run."
+msgstr ""
+"Écrivez une requête Redisql ci-dessus (FROM/JOIN/WHERE/SELECT/LIMIT), puis "
+"Exécuter."
+
+#: crates/cachemire/ui/components/about.slint:63
+msgid "GitHub repository"
+msgstr "Dépôt GitHub"
+
+#: crates/cachemire/ui/components/about.slint:78
+msgid "Updates"
+msgstr "Mises à jour"
+
+#: crates/cachemire/ui/components/about.slint:84
+msgid "Stable"
+msgstr "Stable"
+
+#: crates/cachemire/ui/components/about.slint:84
+msgid "Beta"
+msgstr "Bêta"
+
+#: crates/cachemire/ui/components/about.slint:96
+msgid "Checking..."
+msgstr "Vérification..."
+
+#: crates/cachemire/ui/components/about.slint:96
+msgid "Check for updates"
+msgstr "Rechercher des mises à jour"
+
+#: crates/cachemire/ui/components/cloud-picker.slint:36
+msgid "No AWS profiles found"
+msgstr "Aucun profil AWS trouvé"
+
+#. inherit (an endpoint only), none, or a value of its own
+#: crates/cachemire/ui/components/cloud-settings.slint:39
+msgid "Inherit"
+msgstr "Hériter"
+
+#. inherit (an endpoint only), none, or a value of its own
+#: crates/cachemire/ui/components/cloud-settings.slint:39
+msgid "None"
+msgstr "Aucun"
+
+#. inherit (an endpoint only), none, or a value of its own
+#: crates/cachemire/ui/components/cloud-settings.slint:39
+msgid "Custom"
+msgstr "Personnalisé"
+
+#: crates/cachemire/ui/components/cloud-settings.slint:69
+msgid "AWS account settings"
+msgstr "Paramètres du compte AWS"
+
+#: crates/cachemire/ui/components/cloud-settings.slint:69
+msgid "Cloud connection settings"
+msgstr "Paramètres de la connexion cloud"
+
+#: crates/cachemire/ui/components/cloud-settings.slint:90
+msgid "Connection profile"
+msgstr "Profil de connexion"
+
+#: crates/cachemire/ui/components/cloud-settings.slint:112
+#: crates/cachemire/ui/components/cloud-settings.slint:112
+msgid "From the account: {}"
+msgstr "Du compte : {}"
+
+#: crates/cachemire/ui/components/cloud-settings.slint:122
+#: crates/cachemire/ui/components/cloud-settings.slint:122
+msgid "No connection profiles yet: create one in Settings."
+msgstr ""
+"Aucun profil de connexion pour l'instant : créez-en un dans les Paramètres."
+
+#: crates/cachemire/ui/components/cloud-settings.slint:132
+msgid "SSH tunnel"
+msgstr "Tunnel SSH"
+
+#: crates/cachemire/ui/components/cloud-settings.slint:178
+#: crates/cachemire/ui/components/cloud-settings.slint:178
+#: crates/cachemire/ui/components/cloud-settings.slint:178
+#: crates/cachemire/ui/components/cloud-settings.slint:178
+#: crates/cachemire/ui/components/cloud-settings.slint:178
+msgid "Cancel"
+msgstr "Annuler"
+
+#: crates/cachemire/ui/components/cloud-settings.slint:179
+#: crates/cachemire/ui/components/cloud-settings.slint:179
+#: crates/cachemire/ui/components/cloud-settings.slint:179
+#: crates/cachemire/ui/components/cloud-settings.slint:179
+#: crates/cachemire/ui/components/cloud-settings.slint:179
+#: crates/cachemire/ui/components/cloud-settings.slint:179
+msgid "Save"
+msgstr "Enregistrer"
+
+#: crates/cachemire/ui/components/connection-picker.slint:194
+msgid "New connection..."
+msgstr "Nouvelle connexion..."
+
+#: crates/cachemire/ui/components/connection-picker.slint:212
+msgid "Import / Export"
+msgstr "Importer / Exporter"
+
+#: crates/cachemire/ui/components/connection-picker.slint:223
+msgid "No saved connections yet"
+msgstr "Aucune connexion enregistrée"
+
+#: crates/cachemire/ui/components/connection-picker.slint:264
+msgid "Cloud connections"
+msgstr "Connexions cloud"
+
+#: crates/cachemire/ui/components/connection-picker.slint:497
+msgid "SSH host"
+msgstr "Hôte SSH"
+
+#: crates/cachemire/ui/components/connection-picker.slint:504
+msgid "SSH port"
+msgstr "Port SSH"
+
+#: crates/cachemire/ui/components/connection-picker.slint:514
+#: crates/cachemire/ui/components/connection-picker.slint:514
+msgid "SSH username"
+msgstr "Utilisateur SSH"
+
+#: crates/cachemire/ui/components/connection-picker.slint:515
+msgid "Active SSH profile"
+msgstr "Profil SSH actif"
+
+#: crates/cachemire/ui/components/connection-picker.slint:520
+#: crates/cachemire/ui/components/connection-picker.slint:520
+msgid "SSH password"
+msgstr "Mot de passe SSH"
+
+#: crates/cachemire/ui/components/connection-picker.slint:521
+#: crates/cachemire/ui/components/connection-picker.slint:521
+#: crates/cachemire/ui/components/connection-picker.slint:521
+#: crates/cachemire/ui/components/connection-picker.slint:521
+msgid "Leave blank to keep current"
+msgstr "Laisser vide pour conserver l'actuel"
+
+#: crates/cachemire/ui/components/connection-picker.slint:530
+msgid "Private key file (optional)"
+msgstr "Fichier de clé privée (facultatif)"
+
+#: crates/cachemire/ui/components/connection-picker.slint:546
+msgid "Browse…"
+msgstr "Parcourir…"
+
+#: crates/cachemire/ui/components/connection-picker.slint:559
+msgid "Key passphrase (if the key has one)"
+msgstr "Phrase secrète de la clé (si elle en a une)"
+
+#: crates/cachemire/ui/components/connection-picker.slint:565
+msgid ""
+"Log in with a password, a private key, or both (the key is tried first). "
+"Leave the username empty to log in with the active SSH profile from Settings."
+msgstr ""
+"Connexion par mot de passe, par clé privée, ou les deux (la clé est "
+"essayée en premier). Laissez l'utilisateur vide pour utiliser le profil SSH "
+"actif des Paramètres."
+
+#: crates/cachemire/ui/components/connection-picker.slint:646
+msgid "Edit connection"
+msgstr "Modifier la connexion"
+
+#: crates/cachemire/ui/components/connection-picker.slint:646
+msgid "New connection"
+msgstr "Nouvelle connexion"
+
+#: crates/cachemire/ui/components/connection-picker.slint:655
+#: crates/cachemire/ui/components/connection-picker.slint:655
+#: crates/cachemire/ui/components/connection-picker.slint:655
+msgid "Name"
+msgstr "Nom"
+
+#: crates/cachemire/ui/components/connection-picker.slint:658
+msgid "Connection URL"
+msgstr "URL de connexion"
+
+#: crates/cachemire/ui/components/connection-picker.slint:665
+msgid "Username (optional)"
+msgstr "Nom d'utilisateur (facultatif)"
+
+#: crates/cachemire/ui/components/connection-picker.slint:668
+msgid "Password"
+msgstr "Mot de passe"
+
+#: crates/cachemire/ui/components/connection-picker.slint:677
+msgid "Enable SSH Tunnel"
+msgstr "Activer le tunnel SSH"
+
+#: crates/cachemire/ui/components/connection-picker.slint:696
+msgid "Add a connection profile"
+msgstr "Ajouter un profil de connexion"
+
+#: crates/cachemire/ui/components/connection-picker.slint:743
+#: crates/cachemire/ui/components/connection-picker.slint:743
+#: crates/cachemire/ui/components/connection-picker.slint:743
+msgid "Click again to delete"
+msgstr "Cliquez à nouveau pour supprimer"
+
+#: crates/cachemire/ui/components/connection-picker.slint:743
+#: crates/cachemire/ui/components/connection-picker.slint:743
+#: crates/cachemire/ui/components/connection-picker.slint:743
+msgid "Delete"
+msgstr "Supprimer"
+
+#: crates/cachemire/ui/components/connection-picker.slint:756
+msgid "Testing…"
+msgstr "Test en cours…"
+
+#: crates/cachemire/ui/components/connection-picker.slint:756
+msgid "Test connection"
+msgstr "Tester la connexion"
+
+#: crates/cachemire/ui/components/connection-transfer.slint:160
+msgid "Import / Export connections"
+msgstr "Importer / Exporter des connexions"
+
+#: crates/cachemire/ui/components/connection-transfer.slint:168
+msgid "Import"
+msgstr "Importer"
+
+#: crates/cachemire/ui/components/connection-transfer.slint:168
+#: crates/cachemire/ui/components/connection-transfer.slint:168
+msgid "Export"
+msgstr "Exporter"
+
+#: crates/cachemire/ui/components/connection-transfer.slint:190
+msgid "Choose a file…"
+msgstr "Choisir un fichier…"
+
+#: crates/cachemire/ui/components/connection-transfer.slint:192
+msgid "A file exported by Cachemire"
+msgstr "Un fichier exporté par Cachemire"
+
+#: crates/cachemire/ui/components/connection-transfer.slint:214
+msgid "Include the passwords"
+msgstr "Inclure les mots de passe"
+
+#: crates/cachemire/ui/components/connection-transfer.slint:219
+msgid "The passwords are written in clear text in the file."
+msgstr "Les mots de passe sont écrits en clair dans le fichier."
+
+#: crates/cachemire/ui/components/connection-transfer.slint:240
+#: crates/cachemire/ui/components/connection-transfer.slint:240
+#: crates/cachemire/ui/components/connection-transfer.slint:240
+msgid "Select all"
+msgstr "Tout sélectionner"
+
+#: crates/cachemire/ui/components/connection-transfer.slint:241
+msgid "Unselect all"
+msgstr "Tout désélectionner"
+
+#: crates/cachemire/ui/components/connection-transfer.slint:243
+#: crates/cachemire/ui/components/connection-transfer.slint:243
+msgid "Close"
+msgstr "Fermer"
+
+#: crates/cachemire/ui/components/connection-transfer.slint:245
+msgid "Import ({})"
+msgstr "Importer ({})"
+
+#: crates/cachemire/ui/components/connection-transfer.slint:250
+msgid "Export ({})"
+msgstr "Exporter ({})"
+
+#: crates/cachemire/ui/components/content-header.slint:412
+msgid "Copy selection"
+msgstr "Copier"
+
+#: crates/cachemire/ui/components/content-header.slint:440
+msgid "Close other tabs"
+msgstr "Fermer les autres onglets"
+
+#: crates/cachemire/ui/components/content-header.slint:441
+msgid "Close all tabs"
+msgstr "Fermer tous les onglets"
+
+#: crates/cachemire/ui/components/content-header.slint:469
+msgid "Export…"
+msgstr "Exporter…"
+
+#: crates/cachemire/ui/components/content-header.slint:470
+msgid "Select for export"
+msgstr "Sélectionner pour l'export"
+
+#: crates/cachemire/ui/components/content-header.slint:471
+msgid "Export {} selected…"
+msgstr "Exporter {} sélectionné(s)…"
+
+#: crates/cachemire/ui/components/key-detail-row.slint:71
+msgid "Find in value..."
+msgstr "Rechercher dans la valeur..."
+
+#: crates/cachemire/ui/components/key-detail-row.slint:466
+msgid "Value too long ({})"
+msgstr "Valeur trop longue ({})"
+
+#: crates/cachemire/ui/components/key-detail-row.slint:530
+msgid "Formatting..."
+msgstr "Mise en forme..."
+
+#. Redisql query's row number, say)
+#: crates/cachemire/ui/components/key-detail-table.slint:184
+#: crates/cachemire/ui/components/key-detail-table.slint:184
+#: crates/cachemire/ui/components/key-detail-table.slint:184
+msgid "Field"
+msgstr "Champ"
+
+#: crates/cachemire/ui/components/key-detail-values.slint:307
+#: crates/cachemire/ui/components/key-detail-values.slint:307
+#: crates/cachemire/ui/components/key-detail-values.slint:307
+msgid "Value"
+msgstr "Valeur"
+
+#: crates/cachemire/ui/components/key-detail-widgets.slint:75
+#: crates/cachemire/ui/components/key-detail-widgets.slint:75
+msgid "JSON"
+msgstr "JSON"
+
+#: crates/cachemire/ui/components/key-detail-widgets.slint:75
+msgid "Escaped"
+msgstr "Échappé"
+
+#: crates/cachemire/ui/components/key-detail-widgets.slint:266
+msgid "Everywhere"
+msgstr "Partout"
+
+#: crates/cachemire/ui/components/key-detail-widgets.slint:267
+#: crates/cachemire/ui/components/key-detail-widgets.slint:267
+msgid "Fields"
+msgstr "Champs"
+
+#: crates/cachemire/ui/components/key-detail.slint:48
+msgid "Table"
+msgstr "Tableau"
+
+#: crates/cachemire/ui/components/key-detail.slint:214
+msgid "Show active tab's key"
+msgstr "Afficher la clé de l'onglet actif"
+
+#: crates/cachemire/ui/components/key-detail.slint:237
+msgid "Select a key"
+msgstr "Sélectionnez une clé"
+
+#: crates/cachemire/ui/components/key-detail.slint:266
+msgid "Refresh value"
+msgstr "Actualiser la valeur"
+
+#: crates/cachemire/ui/components/key-detail.slint:297
+#: crates/cachemire/ui/components/key-detail.slint:297
+msgid "{} selected"
+msgstr "{} sélectionné(s)"
+
+#: crates/cachemire/ui/components/key-detail.slint:333
+msgid "More options"
+msgstr "Plus d'options"
+
+#: crates/cachemire/ui/components/key-detail.slint:367
+msgid "Match case"
+msgstr "Respecter la casse"
+
+#: crates/cachemire/ui/components/key-detail.slint:391
+msgid "Search field names..."
+msgstr "Rechercher dans les noms de champs..."
+
+#: crates/cachemire/ui/components/key-detail.slint:392
+msgid "Search values..."
+msgstr "Rechercher dans les valeurs..."
+
+#: crates/cachemire/ui/components/key-detail.slint:392
+msgid "Search fields and values..."
+msgstr "Rechercher dans les champs et les valeurs..."
+
+#: crates/cachemire/ui/components/key-detail.slint:427
+msgid "Filter the JSON, e.g. records.*.label"
+msgstr "Filtrer le JSON, p. ex. records.*.label"
+
+#. the ticked rows only, when there are any
+#: crates/cachemire/ui/components/key-detail.slint:462
+msgid "Export CSV"
+msgstr "Exporter en CSV"
+
+#: crates/cachemire/ui/components/key-detail.slint:489
+msgid "No field matches this filter"
+msgstr "Aucun champ ne correspond à ce filtre"
+
+#: crates/cachemire/ui/components/key-detail.slint:489
+msgid "Nothing to show as a table: no rows, or the rows share no top-level keys"
+msgstr ""
+"Rien à afficher en tableau : aucune ligne, ou les lignes n'ont aucune clé "
+"de premier niveau en commun"
+
+#: crates/cachemire/ui/components/keyspace-panel.slint:205
+msgid "Clear"
+msgstr "Effacer"
+
+#: crates/cachemire/ui/components/keyspace-panel.slint:216
+msgid "Group by folder"
+msgstr "Grouper par dossier"
+
+#: crates/cachemire/ui/components/keyspace-panel.slint:508
+msgid "Keyspace"
+msgstr "Espace de clés"
+
+#: crates/cachemire/ui/components/keyspace-panel.slint:513
+msgid "Query"
+msgstr "Requête"
+
+#: crates/cachemire/ui/components/keyspace-panel.slint:550
+msgid "Search everything: keys, fields and values (Ctrl+F)"
+msgstr "Tout rechercher : clés, champs et valeurs (Ctrl+F)"
+
+#: crates/cachemire/ui/components/keyspace-panel.slint:568
+msgid "Hide sidebar"
+msgstr "Masquer le panneau latéral"
+
+#: crates/cachemire/ui/components/keyspace-panel.slint:610
+msgid "Search keys, e.g. user:*"
+msgstr "Rechercher, p. ex. user:*"
+
+#: crates/cachemire/ui/components/keyspace-panel.slint:674
+msgid "Export keys"
+msgstr "Exporter des clés"
+
+#: crates/cachemire/ui/components/keyspace-panel.slint:682
+msgid "Refresh"
+msgstr "Actualiser"
+
+#: crates/cachemire/ui/components/keyspace-panel.slint:786
+msgid "{} used"
+msgstr "{} utilisés"
+
+#: crates/cachemire/ui/components/keyspace-panel.slint:812
+msgid "New query"
+msgstr "Nouvelle requête"
+
+#: crates/cachemire/ui/components/keyspace-panel.slint:843
+msgid "Filter saved queries"
+msgstr "Filtrer les requêtes enregistrées"
+
+#: crates/cachemire/ui/components/keyspace-panel.slint:938
+msgid "Saved queries"
+msgstr "Requêtes enregistrées"
+
+#: crates/cachemire/ui/components/keyspace-panel.slint:956
+msgid "Global queries"
+msgstr "Requêtes globales"
+
+#: crates/cachemire/ui/components/query-panel.slint:45
+msgid "Save query as..."
+msgstr "Enregistrer la requête sous..."
+
+#: crates/cachemire/ui/components/query-panel.slint:93
+msgid "Global (all connections)"
+msgstr "Globale (toutes les connexions)"
+
+#: crates/cachemire/ui/components/query-panel.slint:154
+msgid "Nothing run on this connection yet"
+msgstr "Rien d'exécuté sur cette connexion pour l'instant"
+
+#: crates/cachemire/ui/components/query-panel.slint:225
+msgid "Clear history"
+msgstr "Effacer l'historique"
+
+#: crates/cachemire/ui/components/query-panel.slint:345
+msgid ""
+"FROM KEY 'my:key' AS x\nSELECT *\nLIMIT 100\n\n(Ctrl+Enter runs the "
+"statement, Ctrl+Shift+Enter the whole script)"
+msgstr ""
+"FROM KEY 'ma:cle' AS x\nSELECT *\nLIMIT 100\n\n(Ctrl+Entrée exécute "
+"l'instruction, Ctrl+Maj+Entrée tout le script)"
+
+#: crates/cachemire/ui/components/query-panel.slint:621
+msgid "Undo (Ctrl+Z)"
+msgstr "Annuler (Ctrl+Z)"
+
+#: crates/cachemire/ui/components/query-panel.slint:629
+msgid "Redo (Ctrl+Y)"
+msgstr "Rétablir (Ctrl+Y)"
+
+#: crates/cachemire/ui/components/query-panel.slint:637
+msgid "History"
+msgstr "Historique"
+
+#: crates/cachemire/ui/components/query-panel.slint:701
+msgid "Run all"
+msgstr "Tout exécuter"
+
+#: crates/cachemire/ui/components/query-panel.slint:744
+#: crates/cachemire/ui/components/query-panel.slint:744
+msgid "Run"
+msgstr "Exécuter"
+
+#: crates/cachemire/ui/components/search-panel.slint:135
+msgid "Search the whole instance: keys, fields and values"
+msgstr "Rechercher dans toute l'instance : clés, champs et valeurs"
+
+#: crates/cachemire/ui/components/search-panel.slint:177
+msgid "Type a word and press Enter to search every key of the instance."
+msgstr ""
+"Tapez un mot et appuyez sur Entrée pour chercher dans toutes les clés de "
+"l'instance."
+
+#: crates/cachemire/ui/components/search-panel.slint:195
+msgid "Paused: {}"
+msgstr "En pause : {}"
+
+#: crates/cachemire/ui/components/search-panel.slint:222
+msgid "Resume"
+msgstr "Reprendre"
+
+#: crates/cachemire/ui/components/search-panel.slint:222
+msgid "Pause"
+msgstr "Pause"
+
+#: crates/cachemire/ui/components/search-panel.slint:238
+msgid "Key"
+msgstr "Clé"
+
+#: crates/cachemire/ui/components/settings.slint:100
+msgid "Active"
+msgstr "Actif"
+
+#: crates/cachemire/ui/components/settings.slint:326
+msgid "New connection profile"
+msgstr "Nouveau profil de connexion"
+
+#: crates/cachemire/ui/components/settings.slint:326
+msgid "Edit connection profile"
+msgstr "Modifier le profil de connexion"
+
+#: crates/cachemire/ui/components/settings.slint:327
+#: crates/cachemire/ui/components/settings.slint:327
+msgid "Settings"
+msgstr "Paramètres"
+
+#: crates/cachemire/ui/components/settings.slint:327
+msgid "New SSH profile"
+msgstr "Nouveau profil SSH"
+
+#: crates/cachemire/ui/components/settings.slint:327
+msgid "Edit SSH profile"
+msgstr "Modifier le profil SSH"
+
+#: crates/cachemire/ui/components/settings.slint:342
+msgid "Language"
+msgstr "Langue"
+
+#: crates/cachemire/ui/components/settings.slint:352
+msgid "Automatic"
+msgstr "Automatique"
+
+#: crates/cachemire/ui/components/settings.slint:361
+msgid "Export format"
+msgstr "Format d'export"
+
+#: crates/cachemire/ui/components/settings.slint:371
+msgid "Escaped JSON"
+msgstr "JSON échappé"
+
+#: crates/cachemire/ui/components/settings.slint:378
+msgid "Search depth"
+msgstr "Profondeur de recherche"
+
+#: crates/cachemire/ui/components/settings.slint:391
+msgid ""
+"How many entries of each key (hash fields, list items, set members...) the "
+"global search reads. Fewer is faster, but a match deeper inside a big key is "
+"missed."
+msgstr ""
+"Combien d'entrées de chaque clé (champs d'un hash, éléments d'une liste, "
+"membres d'un set...) la recherche globale lit. Moins, c'est plus rapide, "
+"mais une correspondance plus profonde dans une grosse clé est manquée."
+
+#: crates/cachemire/ui/components/settings.slint:402
+msgid "Experimental"
+msgstr "Expérimental"
+
+#: crates/cachemire/ui/components/settings.slint:408
+msgid "Search on the server (Lua script)"
+msgstr "Recherche sur le serveur (script Lua)"
+
+#: crates/cachemire/ui/components/settings.slint:413
+msgid ""
+"The global search lets Redis filter the data itself, so far less of it "
+"travels. It uses the server's CPU while it runs, needs permission to run "
+"scripts, and goes back to the normal search if the server refuses."
+msgstr ""
+"La recherche globale laisse Redis filtrer lui-même les données, ce qui en "
+"fait circuler bien moins. Elle utilise le processeur du serveur pendant son "
+"exécution, demande l'autorisation d'exécuter des scripts, et revient à la "
+"recherche normale si le serveur refuse."
+
+#: crates/cachemire/ui/components/settings.slint:426
+msgid "SSH profiles"
+msgstr "Profils SSH"
+
+#: crates/cachemire/ui/components/settings.slint:433
+#: crates/cachemire/ui/components/settings.slint:433
+msgid "Add profile"
+msgstr "Ajouter un profil"
+
+#: crates/cachemire/ui/components/settings.slint:436
+msgid ""
+"The active profile logs in to the SSH tunnels that have no username of their "
+"own. A connection that fills in its own username and password uses those "
+"instead."
+msgstr ""
+"Le profil actif sert à se connecter aux tunnels SSH qui n'ont pas "
+"d'utilisateur propre. Une connexion qui renseigne son propre utilisateur et "
+"mot de passe utilise ceux-ci à la place."
+
+#: crates/cachemire/ui/components/settings.slint:454
+msgid "No SSH profiles yet"
+msgstr "Aucun profil SSH pour l'instant"
+
+#: crates/cachemire/ui/components/settings.slint:492
+msgid "Connection profiles"
+msgstr "Profils de connexion"
+
+#: crates/cachemire/ui/components/settings.slint:502
+msgid ""
+"A connection that has one of these profiles tints the app's background while "
+"you are connected to it, to tell environments apart."
+msgstr ""
+"Une connexion qui a l'un de ces profils teinte l'arrière-plan de "
+"l'application tant que vous y êtes connecté, pour distinguer les "
+"environnements."
+
+#: crates/cachemire/ui/components/settings.slint:518
+msgid "No connection profiles yet"
+msgstr "Aucun profil de connexion pour l'instant"
+
+#: crates/cachemire/ui/components/settings.slint:570
+msgid "Work bastion"
+msgstr "Bastion de travail"
+
+#: crates/cachemire/ui/components/settings.slint:622
+msgid "Color"
+msgstr "Couleur"
+
+#: crates/cachemire/ui/components/title-bar.slint:224
+msgid "Connected through an SSH tunnel via {}"
+msgstr "Connecté par un tunnel SSH via {}"
+
+#: crates/cachemire/ui/components/title-bar.slint:279
+msgid "Copy connection string"
+msgstr "Copier la chaîne de connexion"
+
+#: crates/cachemire/ui/components/title-bar.slint:377
+msgid "Cloud"
+msgstr "Cloud"
+
+#: crates/cachemire/ui/components/title-bar.slint:418
+msgid "Select Profile"
+msgstr "Choisir un profil"
+
+#: crates/cachemire/ui/components/title-bar.slint:478
+msgid "Connecting..."
+msgstr "Connexion..."
+
+#: crates/cachemire/ui/components/title-bar.slint:478
+msgid "No connection"
+msgstr "Aucune connexion"
+
+#: crates/cachemire/ui/components/widgets.slint:146
+#: crates/cachemire/ui/components/widgets.slint:146
+msgid "Paste"
+msgstr "Coller"
+
+#: crates/cachemire/ui/components/widgets.slint:201
+msgid "Cut"
+msgstr "Couper"
+
+#: crates/cachemire/ui/components/widgets.slint:202
+msgid "Copy"
+msgstr "Copier"

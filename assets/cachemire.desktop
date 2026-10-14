@@ -1,9 +1,0 @@
-[Desktop Entry]
-Type=Application
-Name=Cachemire
-Comment=Redis key explorer
-Exec=cachemire
-Icon=cachemire
-Terminal=false
-Categories=Development;Database;
-StartupWMClass=cachemire

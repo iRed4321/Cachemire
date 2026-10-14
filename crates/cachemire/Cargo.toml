@@ -1,0 +1,73 @@
+[package]
+name = "cachemire"
+version = "0.0.0-dev"
+edition = "2024"
+authors.workspace = true
+build = "build.rs"
+description = "Knit-pick your cache!"
+license = "GPL-3.0-only"
+
+[dependencies]
+tokio = { version = "1", features = ["rt-multi-thread", "sync", "time"] }
+redis = { version = "1", default-features = false, features = ["script", "tokio-comp", "connection-manager", "tokio-rustls-comp", "tls-rustls-webpki-roots"] }
+serde = { version = "1.0", features = ["derive"] }
+serde_json = { version = "1.0", features = ["preserve_order"] }
+uuid = { version = "1", features = ["v4"] }
+url = "2"
+percent-encoding = "2"
+arboard = { version = "3", default-features = false, features = ["wayland-data-control"] }
+# only the portal: dialogs are never attached to a parent window, so no Wayland support is needed
+rfd = { version = "0.17", default-features = false, features = ["xdg-portal"] }
+# SSH tunnels to the Redis server; `ring` rather than the default aws-lc-rs,
+# which needs a C toolchain (cmake/nasm) to build on Windows
+dirs = "7"
+rustc-hash = "2"
+keyring = "4"
+russh = { version = "0.63", default-features = false, features = ["ring", "flate2", "rsa"] }
+rayon = "1.12.0"
+natord = "1"
+# AWS (ElastiCache listing, SSO login). The TLS stack is rustls on `ring`, set on
+# each client by hand (see backend/aws.rs), like russh above
+aws-config = { version = "1", default-features = false, features = ["behavior-version-latest", "rt-tokio", "sso"] }
+aws-credential-types = "1"
+aws-sdk-elasticache = { version = "1", default-features = false, features = ["rt-tokio"] }
+aws-sdk-sso = { version = "1", default-features = false, features = ["rt-tokio"] }
+aws-sdk-sts = { version = "1", default-features = false, features = ["rt-tokio"] }
+aws-sdk-ssooidc = { version = "1", default-features = false, features = ["rt-tokio"] }
+aws-runtime = "1"
+aws-smithy-http-client = { version = "1", features = ["rustls-ring"] }
+aws-smithy-runtime-api = "1"
+aws-types = "1"
+open = "5"
+ureq = { version = "3", default-features = false, features = ["rustls"] }
+semver = "1"
+# the fork's patched/1.18.1 branch at a fixed commit (also for slint-build): move both `rev`s to update
+slint = { git = "https://github.com/iRed4321/SlintFork.git", rev = "56377498bbb0f835237307b7901427e61fd27412", default-features = false, features = ["std", "backend-winit", "renderer-software", "compat-1-2", "unstable-winit-030"] }
+rust-i18n = "4"
+sys-locale = "0.3"
+# the log: a daily file in the data directory (see logging.rs), and stderr in debug builds
+tracing = { version = "0.1", default-features = false, features = ["std"] }
+tracing-appender = "0.2"
+tracing-subscriber = { version = "0.3", default-features = false, features = ["fmt", "std", "ansi"] }
+futures-util = { version = "0.3", default-features = false, features = ["std"] }
+
+[build-dependencies]
+slint-build = { git = "https://github.com/iRed4321/SlintFork.git", rev = "56377498bbb0f835237307b7901427e61fd27412" }
+
+# embeds resources/icon.ico (+ version info) into the Windows executable
+[target.'cfg(windows)'.build-dependencies]
+winresource = "0.1"
+
+# `cargo xtask build-deb` (cargo-deb): the .deb layout
+[package.metadata.deb]
+maintainer = "Léo Parent <leoparentperso@gmail.com>"
+section = "database"
+extended-description = "Made for Redis hashes full of JSON: read each value as colored JSON, filter them all with a JSON path, and lay the matches out as a table you can export to CSV. Redisql, a small SQL-like query language, pulls rows out of several keys and joins them together. Works through SSH tunnels and with AWS ElastiCache."
+depends = "libc6, libgcc-s1, libfontconfig1, libfreetype6"
+recommends = "gnome-keyring | kwalletmanager, libwayland-client0, libxkbcommon0, libx11-6, libxkbcommon-x11-0"
+assets = [
+    ["target/release/cachemire", "usr/bin/", "755"],
+    ["../../resources/cachemire.desktop", "usr/share/applications/", "644"],
+    ["../../resources/icon.svg", "usr/share/icons/hicolor/scalable/apps/cachemire.svg", "644"],
+    ["../../resources/icon.png", "usr/share/icons/hicolor/256x256/apps/cachemire.png", "644"],
+]

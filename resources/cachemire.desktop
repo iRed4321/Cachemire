@@ -1,0 +1,12 @@
+[Desktop Entry]
+Type=Application
+Name=Cachemire
+GenericName=Redis Explorer
+Comment=Knit-pick your Redis keys!
+Comment[fr]=Votre cache Redis sous toutes les coutures !
+Keywords=redis;cache;json;database;key;value;
+Exec=cachemire
+Icon=cachemire
+Terminal=false
+Categories=Development;Database;
+StartupWMClass=cachemire
