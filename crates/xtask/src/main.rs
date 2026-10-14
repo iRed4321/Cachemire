@@ -133,6 +133,12 @@ enum Task {
     ReportBuild {
         /// The step's name in the report (e.g. "Tests")
         step: String,
+        /// A test run's results, from its nextest JUnit file: `NAME=FILE`, repeatable (a missing file is skipped)
+        #[arg(long = "tests", value_name = "NAME=FILE")]
+        tests: Vec<String>,
+        /// The coverage, from `cargo llvm-cov report --json --summary-only` (a missing file is skipped)
+        #[arg(long, value_name = "FILE")]
+        coverage: Option<std::path::PathBuf>,
     },
     /// Merge the saved reports into one summary comparing the systems, also the GitHub job summary
     Report {
@@ -163,7 +169,10 @@ fn main() {
         Task::BuildAppimage { fast, stable, as_version, with_zip, reported } => appimage::run_task(fast, stable, as_version.as_deref(), with_zip, reported),
         Task::BuildDeb { fast, stable, as_version, with_zip } => deb::run_task(fast, stable, as_version.as_deref(), with_zip),
         Task::BuildLinux { fast, stable, as_version, with_zip, reported } => linux::run_task(fast, stable, as_version.as_deref(), with_zip, reported),
-        Task::ReportBuild { step } => report::save(&step, &[]),
+        Task::ReportBuild { step, tests, coverage } => {
+            let tests: Vec<(&str, &std::path::Path)> = tests.iter().filter_map(|t| t.split_once('=')).map(|(name, file)| (name, std::path::Path::new(file))).collect();
+            report::save(&step, &[], &tests, coverage.as_deref())
+        }
         Task::Report { title, dir } => report::run_task(&title, dir),
         Task::Install { skip_binary } => install::run_task(skip_binary),
     };

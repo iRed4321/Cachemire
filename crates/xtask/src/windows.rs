@@ -52,7 +52,7 @@ fn build(fast: bool, clean: bool, skip_installer: bool, with_zip: bool, reported
         }
     }
     if reported {
-        report::save("Release build", &[Some(zip_path.as_path()), msi.as_deref()].into_iter().flatten().collect::<Vec<_>>())?;
+        report::save("Release build", &[Some(zip_path.as_path()), msi.as_deref()].into_iter().flatten().collect::<Vec<_>>(), &[], None)?;
     }
     Ok(())
 }

@@ -18,7 +18,7 @@ pub fn run_task(fast: bool, stable: bool, as_version: Option<&str>, with_zip: bo
         compile(fast, reported)?;
         let appimage = package(fast, with_zip)?;
         if reported {
-            report::save("Release build", &[&appimage])?;
+            report::save("Release build", &[&appimage], &[], None)?;
         }
         Ok(())
     })

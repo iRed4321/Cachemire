@@ -1,6 +1,6 @@
-//! CI reports. `report-build` saves what the last `cargo … --timings` build compiled (and the packages
-//! made from it) as JSON in `target/reports/`; `report` merges the saved ones, from every job of a run,
-//! into a single Markdown summary comparing the operating systems.
+//! CI reports. `report-build` saves what the last `cargo … --timings` build compiled (with the packages
+//! made from it, or the results of the tests run from it) as JSON in `target/reports/`; `report` merges
+//! the saved ones, from every job of a run, into a single Markdown summary comparing the operating systems.
 
 use std::path::{Path, PathBuf};
 
@@ -15,8 +15,10 @@ const MAX_SLOW: usize = 10;
 /// The operating systems in the order of the report's columns, with their emoji.
 const SYSTEMS: [(&str, &str); 3] = [("linux", "🐧 Linux"), ("windows", "🪟 Windows"), ("macos", "🍎 macOS")];
 
-/// Saves the last timed build as `step` of this OS in `target/reports/`, with the `packages` made from it.
-pub fn save(step: &str, packages: &[&Path]) -> Result<()> {
+/// Saves the last timed build as `step` of this OS in `target/reports/`, with the `packages` made from it,
+/// the results of the test runs of `tests` (name and nextest JUnit file) and the summary of `cargo llvm-cov
+/// report --json --summary-only` in `coverage`; a missing test or coverage file is skipped.
+pub fn save(step: &str, packages: &[&Path], tests: &[(&str, &Path)], coverage: Option<&Path>) -> Result<()> {
     let path = repo_root().join("target/cargo-timings/cargo-timing.html");
     let html = std::fs::read_to_string(&path).map_err(|e| format!("{}: {e} (build with --timings first)", path.display()))?;
     let number = |key: &str| info(&html, key).and_then(|v| v.split(['s', ' ']).next()?.parse::<f64>().ok()).unwrap_or(0.0);
@@ -29,6 +31,8 @@ pub fn save(step: &str, packages: &[&Path]) -> Result<()> {
         "time": number("Total time"),
         "units": unit_data(&html)?,
         "packages": packages,
+        "tests": test_results(tests),
+        "coverage": coverage.filter(|file| file.is_file()).map(coverage_summary).transpose()?,
     });
     let dir = repo_root().join("target/reports");
     std::fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
@@ -37,6 +41,68 @@ pub fn save(step: &str, packages: &[&Path]) -> Result<()> {
     std::fs::write(&file, report.to_string()).map_err(|e| format!("{}: {e}", file.display()))?;
     println!("Report saved: {}", file.display());
     Ok(())
+}
+
+/// The value of attribute `key` in the tag text `tag` (`name="…"`), as written.
+fn attribute<'a>(tag: &'a str, key: &str) -> Option<&'a str> {
+    let start = tag.find(&format!(" {key}=\""))? + key.len() + 3;
+    Some(&tag[start..start + tag[start..].find('"')?])
+}
+
+/// `text` with the XML entities a test name can hold turned back into characters.
+fn unescape(text: &str) -> String {
+    text.replace("&lt;", "<").replace("&gt;", ">").replace("&quot;", "\"").replace("&apos;", "'").replace("&amp;", "&")
+}
+
+/// A test run's results from nextest's JUnit file: the totals of its `<testsuites>` element and the names
+/// of the `<testcase>`s holding a `<failure>` or an `<error>`; `None` when it has no `<testsuites>`.
+fn parse_junit(xml: &str) -> Option<Value> {
+    let root = xml.split("<testsuites ").nth(1).map(|rest| &rest[..rest.find('>').unwrap_or(rest.len())])?;
+    let number = |key: &str| attribute(root, key).and_then(|v| v.parse::<f64>().ok()).unwrap_or(0.0);
+    let mut failures = Vec::new();
+    for case in xml.split("<testcase ").skip(1) {
+        let head = &case[..case.find('>').unwrap_or(case.len())];
+        let body = &case[..case.find("</testcase>").unwrap_or(case.len())];
+        if !head.ends_with('/') && (body.contains("<failure") || body.contains("<error")) {
+            failures.push(unescape(attribute(&format!(" {head}"), "name").unwrap_or("?")));
+        }
+    }
+    let failed = (number("failures") + number("errors")) as u64;
+    Some(json!({ "passed": (number("tests") as u64).saturating_sub(failed), "failed": failed, "time": number("time"), "failures": failures }))
+}
+
+/// The test runs of `tests` (name and JUnit file) as JSON; a run with no file is left out.
+fn test_results(tests: &[(&str, &Path)]) -> Value {
+    let mut results = Vec::new();
+    for (name, file) in tests {
+        let Ok(xml) = std::fs::read_to_string(file) else { continue };
+        let mut result = parse_junit(&xml).unwrap_or_else(|| json!({ "crashed": true }));
+        result["name"] = json!(name);
+        results.push(result);
+    }
+    Value::Array(results)
+}
+
+/// The totals of an llvm-cov JSON summary, and its lines by module of `crates/cachemire/src` (a folder,
+/// or a file at its top), each as `[covered, count]`.
+fn coverage_summary(file: &Path) -> Result<Value> {
+    let text = std::fs::read_to_string(file).map_err(|e| format!("{}: {e}", file.display()))?;
+    let summary: Value = serde_json::from_str(&text).map_err(|e| format!("{}: {e}", file.display()))?;
+    let data = &summary["data"][0];
+    let pair = |of: &Value, key: &str| [of[key]["covered"].as_u64().unwrap_or(0), of[key]["count"].as_u64().unwrap_or(0)];
+    let mut modules = std::collections::BTreeMap::<String, [u64; 2]>::new();
+    for entry in data["files"].as_array().map(Vec::as_slice).unwrap_or_default() {
+        let name = entry["filename"].as_str().unwrap_or_default().replace('\\', "/");
+        let module = match name.split_once("crates/cachemire/src/") {
+            Some((_, rest)) => rest.split_once('/').map_or(rest.to_string(), |(folder, _)| format!("{folder}/")),
+            None => "other".to_string(),
+        };
+        let [covered, count] = pair(&entry["summary"], "lines");
+        let total = modules.entry(module).or_default();
+        *total = [total[0] + covered, total[1] + count];
+    }
+    let totals = &data["totals"];
+    Ok(json!({ "lines": pair(totals, "lines"), "functions": pair(totals, "functions"), "regions": pair(totals, "regions"), "modules": modules }))
 }
 
 /// Merges the reports saved under `dir` (searched recursively) into one summary titled `title`:
@@ -56,6 +122,8 @@ struct Report {
     time: f64,
     units: Vec<(String, f64)>,
     packages: Vec<(String, u64)>,
+    tests: Vec<Value>,
+    coverage: Value,
 }
 
 fn collect(dir: &Path, reports: &mut Vec<Report>) -> Result<()> {
@@ -75,6 +143,8 @@ fn collect(dir: &Path, reports: &mut Vec<Report>) -> Result<()> {
                 time: value["time"].as_f64().unwrap_or(0.0),
                 units: pairs("units").map(|(name, secs)| (name, secs.as_f64().unwrap_or(0.0))).collect(),
                 packages: pairs("packages").map(|(name, size)| (name, size.as_u64().unwrap_or(0))).collect(),
+                tests: value["tests"].as_array().cloned().unwrap_or_default(),
+                coverage: value["coverage"].clone(),
             });
         }
     }
@@ -178,6 +248,9 @@ fn render(title: &str, reports: &[Report]) -> String {
         out += &format!("⚡ No crate took over {SLOW:.0} s to compile.\n\n");
     }
 
+    out += &test_section(reports, &systems);
+    out += &coverage_section(reports, &systems);
+
     // the packages
     let packages: Vec<_> = reports.iter().flat_map(|r| r.packages.iter().map(move |p| (&r.os, p))).collect();
     if !packages.is_empty() {
@@ -196,6 +269,100 @@ fn render(title: &str, reports: &[Report]) -> String {
         out += " · — no report: the job failed, was skipped or had nothing to build";
     }
     out + "</sub>\n"
+}
+
+/// The test results of every step, a row per test run and a column per OS, then the failed tests by name.
+fn test_section(reports: &[Report], systems: &[&(&str, &str)]) -> String {
+    let mut names: Vec<&str> = Vec::new();
+    for test in reports.iter().flat_map(|r| &r.tests) {
+        let name = test["name"].as_str().unwrap_or("Tests");
+        if !names.contains(&name) {
+            names.push(name);
+        }
+    }
+    if names.is_empty() {
+        return String::new();
+    }
+    let find = |name: &str, os: &str| reports.iter().rev().filter(|r| r.os == os).flat_map(|r| &r.tests).find(|t| t["name"] == name);
+    let mut out = "#### 🧪 Test results\n\n| Tests |".to_string();
+    for (_, label) in systems {
+        out += &format!(" {label} |");
+    }
+    out += "\n|---|";
+    out += &":-:|".repeat(systems.len());
+    out += "\n";
+    let mut failures = String::new();
+    for name in &names {
+        out += &format!("| **{name}** |");
+        for (os, label) in systems {
+            let count = |test: &Value, key: &str| test[key].as_u64().unwrap_or(0);
+            out += &match find(name, os) {
+                None => " — |".to_string(),
+                Some(test) if test["crashed"] == true => " 💥 no result |".to_string(),
+                Some(test) if count(test, "failed") > 0 => {
+                    let names: Vec<String> = test["failures"].as_array().into_iter().flatten().filter_map(|n| Some(format!("`{}`", n.as_str()?))).collect();
+                    failures += &format!("- **{name}** on {label}: {}\n", names.join(", "));
+                    format!(" ❌ **{} failed** · {} passed |", count(test, "failed"), count(test, "passed"))
+                }
+                Some(test) => format!(" ✅ {} passed · {} |", count(test, "passed"), duration(test["time"].as_f64().unwrap_or(0.0))),
+            };
+        }
+        out += "\n";
+    }
+    out += "\n";
+    if !failures.is_empty() {
+        out += &format!("**Failed tests**\n\n{failures}\n");
+    }
+    out
+}
+
+/// `[covered, count]` as a percentage, `None` when there's nothing to cover.
+fn percent(pair: &Value) -> Option<f64> {
+    let count = pair[1].as_f64().filter(|count| *count > 0.0)?;
+    Some(100.0 * pair[0].as_f64().unwrap_or(0.0) / count)
+}
+
+/// The coverage measured on each OS: lines, functions and regions, then the lines by module, folded.
+fn coverage_section(reports: &[Report], systems: &[&(&str, &str)]) -> String {
+    let find = |os: &str| reports.iter().rev().find(|r| r.os == os && r.coverage.is_object()).map(|r| &r.coverage);
+    if systems.iter().all(|(os, _)| find(os).is_none()) {
+        return String::new();
+    }
+    let header = |first: &str, align: &str| {
+        let mut out = format!("| {first} |");
+        for (_, label) in systems {
+            out += &format!(" {label} |");
+        }
+        out + "\n|---|" + &align.repeat(systems.len()) + "\n"
+    };
+    let dot = |p: f64| if p >= 80.0 { "🟢" } else if p >= 60.0 { "🟡" } else if p >= 40.0 { "🟠" } else { "🔴" };
+    let mut out = "#### 🎯 Coverage of cachemire\n\n".to_string() + &header("", ":-:|");
+    for (key, label) in [("lines", "Lines"), ("functions", "Functions"), ("regions", "Regions")] {
+        out += &format!("| **{label}** |");
+        for (os, _) in systems {
+            out += &match find(os).and_then(|c| Some((percent(&c[key])?, &c[key]))) {
+                Some((p, pair)) => format!(" {} **{p:.1}%** <sub>{}/{}</sub> |", dot(p), pair[0], pair[1]),
+                None => " — |".to_string(),
+            };
+        }
+        out += "\n";
+    }
+    let mut modules: Vec<&String> = systems.iter().filter_map(|(os, _)| find(os)?["modules"].as_object()).flat_map(|m| m.keys()).collect();
+    modules.sort();
+    modules.dedup();
+    out += "\n<details><summary>Lines by module</summary>\n\n";
+    out += &header("Module", "--:|");
+    for module in modules {
+        out += &format!("| `{module}` |");
+        for (os, _) in systems {
+            out += &match find(os).and_then(|c| percent(&c["modules"][module])) {
+                Some(p) => format!(" {} {p:.1}% |", dot(p)),
+                None => " — |".to_string(),
+            };
+        }
+        out += "\n";
+    }
+    out + "\n</details>\n\n"
 }
 
 /// The emoji of a step, from its name.

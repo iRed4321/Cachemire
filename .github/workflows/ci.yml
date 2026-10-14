@@ -18,6 +18,11 @@ env:
   CARGO_TERM_PROGRESS_WHEN: never
   CARGO_PROFILE_DEV_DEBUG: line-tables-only
 
+# bash on Windows too: the test steps pipe their output into files
+defaults:
+  run:
+    shell: bash
+
 jobs:
   test:
     name: Test (${{ matrix.os }})
@@ -51,16 +56,58 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y pkg-config libfontconfig1-dev libfreetype6-dev \
             libxkbcommon-dev libxkbcommon-x11-dev libwayland-dev libx11-dev libxcb1-dev
+      # nextest runs the tests, cargo-llvm-cov measures their coverage with rustup's LLVM tools
+      - name: Install cargo-nextest and cargo-llvm-cov
+        uses: taiki-e/install-action@v2
+        with:
+          tool: cargo-nextest,cargo-llvm-cov
+      - name: Install the LLVM tools
+        run: rustup component add llvm-tools-preview
       # --timings + `report-build`: what was built, for the summary job
       - name: Clippy
         run: cargo clippy --all-targets --timings -- -D warnings
       - name: Save the report (clippy)
         run: cargo xtask report-build Clippy
-      - name: Test
-        run: cargo test --timings
+      # the test steps load cargo-llvm-cov's environment: it instruments cachemire alone, its
+      # dependencies are built as usual. cachemire is always built here: the cache never holds
+      # it, and clippy only checks it
+      - name: Build the tests
+        id: build
+        run: |
+          eval "$(cargo llvm-cov show-env --sh)"
+          cargo nextest run --no-run --timings
+      # each run's JUnit file is kept for the report; the UI tests and the report still go on
+      # when a unit test fails, as long as the tests were built
+      - name: Unit tests
+        run: |
+          eval "$(cargo llvm-cov show-env --sh)"
+          mkdir -p target/test-output
+          rm -f target/nextest/ci/junit.xml
+          cargo nextest run --profile ci || failed=1
+          if [[ -f target/nextest/ci/junit.xml ]]; then cp target/nextest/ci/junit.xml target/test-output/unit.xml; fi
+          exit ${failed:-0}
+      # the #[ignore]d headless UI tests: the real window on Slint's software renderer
+      - name: UI tests
+        if: ${{ !cancelled() && steps.build.outcome == 'success' }}
+        run: |
+          eval "$(cargo llvm-cov show-env --sh)"
+          rm -f target/nextest/ci/junit.xml
+          cargo nextest run --profile ci --run-ignored only || failed=1
+          if [[ -f target/nextest/ci/junit.xml ]]; then cp target/nextest/ci/junit.xml target/test-output/ui.xml; fi
+          exit ${failed:-0}
+      # the coverage of both runs together, the test-only files left out
+      - name: Coverage
+        if: ${{ !cancelled() && steps.build.outcome == 'success' }}
+        run: |
+          eval "$(cargo llvm-cov show-env --sh)"
+          cargo llvm-cov report --json --summary-only --ignore-filename-regex 'headless_ui_tests|test_support' --output-path target/test-output/coverage.json
       - name: Save the report (tests)
-        run: cargo xtask report-build Tests
+        if: ${{ !cancelled() && steps.build.outcome == 'success' }}
+        run: |
+          cargo xtask report-build Tests --coverage target/test-output/coverage.json \
+            --tests "Unit tests=target/test-output/unit.xml" --tests "UI tests=target/test-output/ui.xml"
       - uses: actions/upload-artifact@v7
+        if: ${{ !cancelled() }}
         with:
           name: report-${{ matrix.os }}
           path: target/reports/

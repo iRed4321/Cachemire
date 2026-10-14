@@ -1,0 +1,7 @@
+# `cargo nextest run --profile ci`: every test runs, failures or not, and the results go to
+# target/nextest/ci/junit.xml for the CI report (`cargo xtask report-build --tests`)
+[profile.ci]
+fail-fast = false
+
+[profile.ci.junit]
+path = "junit.xml"

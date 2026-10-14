@@ -14,7 +14,7 @@ pub fn run_task(fast: bool, stable: bool, as_version: Option<&str>, with_zip: bo
         let appimage = appimage::package(fast, with_zip)?;
         let deb = deb::build(fast, with_zip, true)?;
         if reported {
-            report::save("Release build", &[&appimage, &deb])?;
+            report::save("Release build", &[&appimage, &deb], &[], None)?;
         }
         Ok(())
     })
