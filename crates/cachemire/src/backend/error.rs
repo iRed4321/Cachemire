@@ -102,3 +102,38 @@ impl From<tokio::task::JoinError> for AppError {
         Self::system(t!("A background task failed: %{error}", error = error.to_string()))
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::io;
+
+    fn kind_of(error: redis::RedisError) -> ErrorKind {
+        AppError::from(error).kind
+    }
+
+    #[test]
+    fn redis_errors_are_sorted_by_what_the_user_can_do_about_them() {
+        let server = |code: &str| redis::make_extension_error(code.to_string(), Some("detail".into()));
+        assert_eq!(kind_of(server("WRONGPASS")), ErrorKind::Auth);
+        assert_eq!(kind_of(server("NOAUTH")), ErrorKind::Auth);
+        assert_eq!(kind_of(redis::RedisError::from((redis::ErrorKind::AuthenticationFailed, "bad password"))), ErrorKind::Auth);
+        assert_eq!(kind_of(server("NOPERM")), ErrorKind::Denied);
+        assert_eq!(kind_of(server("WRONGTYPE")), ErrorKind::Redis);
+    }
+
+    #[test]
+    fn network_failures_and_timeouts_are_told_apart() {
+        let io_error = |kind: io::ErrorKind| redis::RedisError::from(io::Error::new(kind, "x"));
+        assert_eq!(kind_of(io_error(io::ErrorKind::TimedOut)), ErrorKind::Timeout);
+        assert_eq!(kind_of(io_error(io::ErrorKind::ConnectionRefused)), ErrorKind::Network);
+        assert_eq!(kind_of(io_error(io::ErrorKind::ConnectionReset)), ErrorKind::Network);
+        assert_eq!(kind_of(io_error(io::ErrorKind::BrokenPipe)), ErrorKind::Network);
+    }
+
+    #[test]
+    fn context_goes_before_the_message_and_keeps_the_kind() {
+        let error = AppError::auth("wrong password").context("prod: ");
+        assert_eq!((error.kind, error.to_string()), (ErrorKind::Auth, "prod: wrong password".to_string()));
+    }
+}

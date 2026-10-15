@@ -84,3 +84,6 @@ impl Index {
         self.levels.iter().flat_map(|(folder, level)| level.keys.iter().map(move |(label, leaf)| (format!("{folder}{label}"), *leaf)))
     }
 }
+
+#[cfg(test)]
+mod tests;

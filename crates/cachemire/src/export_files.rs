@@ -57,11 +57,12 @@ fn file_safe(value: &str) -> String {
     if out.is_empty() { "export".to_string() } else { out }
 }
 
-/// `stem` plus `.json`, numbered when another file of this export already has that name.
+/// `stem` plus `.json`, numbered when another file of this export already has that name,
+/// whatever its case (Windows' and macOS' file names ignore it).
 fn unique_name(used: &mut FxHashSet<String>, stem: String) -> String {
     let mut name = format!("{stem}.json");
     let mut n = 2;
-    while !used.insert(name.clone()) {
+    while !used.insert(name.to_lowercase()) {
         name = format!("{stem}-{n}.json");
         n += 1;
     }
@@ -112,6 +113,15 @@ fn item(key: &str, read: &ExportedKey) -> Value {
     item
 }
 
+/// Creates `path` and writes the start of `output`'s file into it.
+fn start_file(path: &Path, output: &Output) -> Result<BufWriter<File>, AppError> {
+    let mut writer = BufWriter::new(File::create(path).map_err(io_error)?);
+    if let Output::Items { prefix, .. } = output {
+        write!(writer, "{{\n  \"prefix\": {},\n  \"items\": [", Value::from(prefix.as_str())).map_err(io_error)?;
+    }
+    Ok(writer)
+}
+
 /// Writes `plan`'s files into `dir`, reading each key off `connection_id`'s server; `progress` gets
 /// the keys done so far and the total after each one. Stops at once, leaving the file it was writing
 /// out, if `cancel` is set.
@@ -133,36 +143,46 @@ pub async fn run(
             Output::Single { file, key } => (file, std::slice::from_ref(key)),
         };
         let path = dir.join(file);
-        let mut writer = BufWriter::new(File::create(&path).map_err(io_error)?);
-        match &output {
-            Output::Items { prefix, .. } => write!(writer, "{{\n  \"prefix\": {},\n  \"items\": [", Value::from(prefix.as_str())).map_err(io_error)?,
-            Output::Single { .. } => {}
-        }
+        let mut writer: Option<BufWriter<File>> = None;
         let mut written = 0;
         for key in keys {
             if cancel.load(Ordering::Relaxed) {
-                drop(writer);
-                let _ = std::fs::remove_file(&path);
+                if writer.take().is_some() {
+                    let _ = std::fs::remove_file(&path);
+                }
                 return Ok(Outcome { keys: done, cancelled: true });
             }
-            if let Some(read) = explorer::read_for_export(&mut session, &KeyName::from_id(key)).await? {
-                let json = item(key, &read);
-                if matches!(output, Output::Single { .. }) {
-                    serde_json::to_writer_pretty(&mut writer, &json).map_err(|e| AppError::file(e.to_string()))?;
-                } else {
-                    let text = serde_json::to_string_pretty(&json).map_err(|e| AppError::file(e.to_string()))?;
-                    writer.write_all(if written == 0 { b"\n    " } else { b",\n    " }).map_err(io_error)?;
-                    writer.write_all(text.replace('\n', "\n    ").as_bytes()).map_err(io_error)?;
+            match explorer::read_for_export(&mut session, &KeyName::from_id(key)).await? {
+                Some(read) => {
+                    let writer = match &mut writer {
+                        Some(writer) => writer,
+                        None => writer.insert(start_file(&path, &output)?),
+                    };
+                    let json = item(key, &read);
+                    if matches!(output, Output::Single { .. }) {
+                        serde_json::to_writer_pretty(&mut *writer, &json).map_err(|e| AppError::file(e.to_string()))?;
+                    } else {
+                        let text = serde_json::to_string_pretty(&json).map_err(|e| AppError::file(e.to_string()))?;
+                        writer.write_all(if written == 0 { b"\n    " } else { b",\n    " }).map_err(io_error)?;
+                        writer.write_all(text.replace('\n', "\n    ").as_bytes()).map_err(io_error)?;
+                    }
+                    written += 1;
                 }
-                written += 1;
+                None => tracing::warn!(key = %KeyName::display_id(key), "key gone before it could be exported; left out"),
             }
             done += 1;
             progress(done, total);
         }
-        if matches!(output, Output::Items { .. }) {
-            write!(writer, "\n  ],\n  \"totalKeys\": {written}\n}}").map_err(io_error)?;
+        // no file at all when every key of it was gone
+        if let Some(mut writer) = writer {
+            if matches!(output, Output::Items { .. }) {
+                write!(writer, "\n  ],\n  \"totalKeys\": {written}\n}}").map_err(io_error)?;
+            }
+            writer.flush().map_err(io_error)?;
         }
-        writer.flush().map_err(io_error)?;
     }
     Ok(Outcome { keys: done, cancelled: false })
 }
+
+#[cfg(test)]
+mod tests;

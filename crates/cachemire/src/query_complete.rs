@@ -76,7 +76,8 @@ fn token_bounds(text: &str, cursor: usize) -> (usize, usize, Option<char>) {
 /// The key each alias of the query names: `KEY 'key' AS alias`, or `KEY 'key' alias`.
 fn alias_keys(text: &str) -> FxHashMap<String, String> {
     const NOT_ALIASES: [&str; 11] = ["from", "join", "key", "as", "on", "where", "select", "limit", "and", "or", "in"];
-    let lower = text.to_lowercase();
+    // ASCII only: the offsets found in it must be the same in `text`
+    let lower = text.to_ascii_lowercase();
     let mut aliases = FxHashMap::default();
     let mut from = 0;
     while let Some(found) = lower[from..].find("key") {
@@ -218,3 +219,6 @@ impl Completion {
         Some((next, self.start + replacement.len()))
     }
 }
+
+#[cfg(test)]
+mod tests;

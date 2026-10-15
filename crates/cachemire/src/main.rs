@@ -34,6 +34,7 @@ mod server_stats;
 mod settings;
 mod table_text;
 mod tabs;
+mod test_support;
 mod theme_colors;
 mod toast;
 mod updates;

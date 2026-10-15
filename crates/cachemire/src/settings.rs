@@ -83,6 +83,7 @@ pub fn init(window: &MainWindow, state: Arc<AppState>, rt: Handle) {
     refresh(window, &state);
     window.global::<Preferences>().set_language(to_setting(state.settings.lock_recover().language()));
     window.global::<Preferences>().set_server_search(state.settings.lock_recover().server_search());
+    window.global::<Preferences>().set_check_updates_at_startup(state.settings.lock_recover().check_updates_at_startup());
     let export_escaped = state.settings.lock_recover().export_escaped();
     window.global::<Preferences>().set_export_escaped(export_escaped);
     window.global::<ExportPrefs>().set_escaped(export_escaped);
@@ -119,6 +120,17 @@ pub fn init(window: &MainWindow, state: Arc<AppState>, rt: Handle) {
             let Some(window) = weak.upgrade() else { return };
             let result = state.settings.lock_recover().set_server_search(enabled);
             saved(&window, result, |window| window.global::<Preferences>().set_server_search(enabled));
+        }
+    });
+
+    // the update check at startup: saved, and done from the next start on
+    window.global::<Preferences>().on_check_updates_at_startup_toggled({
+        let weak = window.as_weak();
+        let state = state.clone();
+        move |enabled| {
+            let Some(window) = weak.upgrade() else { return };
+            let result = state.settings.lock_recover().set_check_updates_at_startup(enabled);
+            saved(&window, result, |window| window.global::<Preferences>().set_check_updates_at_startup(enabled));
         }
     });
 

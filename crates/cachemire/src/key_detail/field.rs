@@ -164,3 +164,6 @@ impl PrettyRenderings {
 
 /// The renderings, shared with the background tasks that fill them.
 pub(super) type PrettyCache = Arc<Mutex<PrettyRenderings>>;
+
+#[cfg(test)]
+mod tests;

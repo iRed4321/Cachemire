@@ -291,32 +291,4 @@ pub(super) fn init(window: &MainWindow, ctx: &Ctx) {
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-    use super::super::highlight::head_chars;
-    use super::super::pretty_text::{COMPACT_PREVIEW_CHAR_BUDGET, colored_paragraphs_for};
-    use serde_json::{Value, json};
-
-    #[test]
-    fn a_text_field_serializes_as_a_json_string_and_previews_only_its_head() {
-        let text = "x".repeat(1000);
-        let field = Field::new("f".into(), text.clone(), None);
-        assert_eq!(pretty_json(&field), format!("\"{text}\""));
-        assert_eq!(escaped_json(&Field::new("f".into(), "a\"b".into(), None)), r#""\"a\\\"b\"""#);
-
-        let preview = colored_paragraphs_for(&FieldValue::Text(head_chars(&text, COMPACT_PREVIEW_CHAR_BUDGET)), false, COMPACT_PREVIEW_CHAR_BUDGET);
-        assert_eq!(preview.len(), 1);
-        assert_eq!(preview[0].0.chars().count(), COMPACT_PREVIEW_CHAR_BUDGET);
-        assert_eq!(head_chars("héllo", 2), "hé");
-    }
-
-    #[test]
-    fn every_field_is_exported_as_one_array() {
-        let fields: Fields = vec![
-            Arc::new(Field::new("a".into(), "plain".into(), None)),
-            Arc::new(Field::new("b".into(), "{\"x\":1}".into(), serde_json::from_str("{\"x\":1}").ok())),
-        ];
-        let parsed: Value = serde_json::from_str(&all_fields_json(&fields, false)).unwrap();
-        assert_eq!(parsed, json!([{"field": "a", "value": "plain"}, {"field": "b", "value": {"x": 1}}]));
-    }
-}
+mod tests;

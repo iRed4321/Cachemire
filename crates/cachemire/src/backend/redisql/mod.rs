@@ -110,3 +110,6 @@ pub async fn run_script(state: &AppState, connection_id: Option<&str>, script: &
     results
 }
 
+
+#[cfg(test)]
+mod tests;

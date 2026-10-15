@@ -27,3 +27,19 @@ pub fn format_bytes(bytes: i64) -> String {
         format!("{value:.1} {}", UNITS[unit])
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::format_bytes;
+
+    #[test]
+    fn sizes_are_shown_in_the_largest_unit_under_1024() {
+        assert_eq!(format_bytes(0), "0 B");
+        assert_eq!(format_bytes(1023), "1023 B");
+        assert_eq!(format_bytes(1024), "1.0 KB");
+        assert_eq!(format_bytes(1536), "1.5 KB");
+        assert_eq!(format_bytes(4 * 1024 * 1024), "4.0 MB");
+        assert_eq!(format_bytes(3 * 1024_i64.pow(3) / 2), "1.5 GB");
+        assert_eq!(format_bytes(5 * 1024_i64.pow(5)), "5120.0 TB", "terabytes are the largest unit");
+    }
+}

@@ -243,6 +243,10 @@ export component SettingsModal inherits Rectangle {
     in property <bool> server-search: Preferences.server-search;
     callback server-search-toggled(enabled: bool);
     server-search-toggled(enabled) => { Preferences.server-search-toggled(enabled); }
+    // looks for an update each time the app starts
+    in property <bool> check-updates-at-startup: Preferences.check-updates-at-startup;
+    callback check-updates-at-startup-toggled(enabled: bool);
+    check-updates-at-startup-toggled(enabled) => { Preferences.check-updates-at-startup-toggled(enabled); }
     // the form is showing instead of the list
     in-out property <bool> editing <=> Preferences.ssh-profile-editing;
     in-out property <string> field-id <=> Preferences.ssh-profile-id;
@@ -389,6 +393,28 @@ export component SettingsModal inherits Rectangle {
                         }
                         Text {
                             text: @tr("How many entries of each key (hash fields, list items, set members...) the global search reads. Fewer is faster, but a match deeper inside a big key is missed.");
+                            height: Theme.pt(42px);
+                            font-size: Theme.pt(10.5px);
+                            color: Theme.text-tertiary;
+                            wrap: word-wrap;
+                        }
+                    }
+
+                    VerticalLayout {
+                        spacing: Theme.px(4px);
+                        Text {
+                            text: @tr("Updates");
+                            font-size: Theme.pt(12px);
+                            font-weight: 600;
+                            color: Theme.text-primary;
+                        }
+                        CheckRow {
+                            text: @tr("Check for Updates at startup");
+                            checked: root.check-updates-at-startup;
+                            toggled => { root.check-updates-at-startup-toggled(!root.check-updates-at-startup); }
+                        }
+                        Text {
+                            text: @tr("Each time Cachemire starts, it looks for a newer version on the channel picked in the info window (the i button of the title bar), and opens that window when there is one.");
                             height: Theme.pt(42px);
                             font-size: Theme.pt(10.5px);
                             color: Theme.text-tertiary;

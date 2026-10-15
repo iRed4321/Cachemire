@@ -379,3 +379,6 @@ fn write_export(state: &AppState, ids: &[String], passwords: bool, now: i64, pat
     persist::save(path, &json!({ "exportedAtUtc": exported_at, "includesPasswords": passwords, "count": count, "connections": items }))?;
     Ok(count)
 }
+
+#[cfg(test)]
+mod tests;

@@ -116,6 +116,9 @@ export global Preferences {
     // experimental: the global search lets Redis filter with a script
     in-out property <bool> server-search: false;
     callback server-search-toggled(enabled: bool);
+    // looks for an update on the About window's channel each time the app starts
+    in-out property <bool> check-updates-at-startup: false;
+    callback check-updates-at-startup-toggled(enabled: bool);
     // how many entries of a key the global search reads
     in-out property <int> search-depth: 1000;
     callback search-depth-selected(depth: int);

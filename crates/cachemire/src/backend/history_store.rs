@@ -74,3 +74,6 @@ impl HistoryStore {
         }
     }
 }
+
+#[cfg(test)]
+mod tests;

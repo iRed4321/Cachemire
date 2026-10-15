@@ -48,8 +48,12 @@ pub fn aws_dir() -> Option<PathBuf> {
 
 /// The profiles of the local `.aws` folder, as the SDK reads them, `default` first.
 pub async fn profiles() -> Vec<Profile> {
-    let (fs, env) = (Fs::real(), Env::real());
-    let Ok(set) = aws_config::profile::load(&fs, &env, &EnvConfigFiles::default(), None).await else { return Vec::new() };
+    profiles_in(&Fs::real(), &Env::real()).await
+}
+
+/// The profiles of the `.aws` files `fs` holds where `env` says they are, `default` first.
+async fn profiles_in(fs: &Fs, env: &Env) -> Vec<Profile> {
+    let Ok(set) = aws_config::profile::load(fs, env, &EnvConfigFiles::default(), None).await else { return Vec::new() };
     let mut profiles: Vec<Profile> = set
         .profiles()
         .filter_map(|name| {
@@ -307,3 +311,6 @@ pub async fn redis_connections(profile_name: &str) -> Result<Listing, AppError> 
     items.sort_by(|a, b| a.name.cmp(&b.name));
     Ok(Listing { account, region, items })
 }
+
+#[cfg(test)]
+mod tests;

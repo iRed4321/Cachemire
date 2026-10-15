@@ -81,6 +81,20 @@ impl AppState {
     }
 }
 
+#[cfg(test)]
+impl AppState {
+    /// A state whose files all live in `dir` and whose secrets stay in memory.
+    pub fn for_tests(dir: &Path) -> Self {
+        Self {
+            settings: Mutex::new(SettingsStore::in_memory(dir.join(SETTINGS_FILE))),
+            history: Mutex::new(HistoryStore::new(dir.join(HISTORY_FILE))),
+            connections: Mutex::new(ConnectionStore::in_memory(dir.join(DATA_FILE))),
+            redis_connections: ConnectionCache::new(dir.join(KNOWN_HOSTS_FILE)),
+            connect_attempt: AtomicU64::new(0),
+        }
+    }
+}
+
 /// Resolves an explicit connection id if provided, otherwise falls back to
 /// whichever connection is marked active. An SSH tunnel with no username of
 /// its own comes back completed with the active SSH profile.

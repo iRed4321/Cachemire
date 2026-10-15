@@ -10,6 +10,8 @@ use super::ast::{DEFAULT_LIMIT, Join, MAX_LIMIT, Query, Select, Source, WhereCon
 use super::lexer::{Tok, Token};
 
 const CLAUSES: [&str; 5] = ["from", "join", "where", "select", "limit"];
+/// The clauses a query may hold only one of (JOIN may come back).
+const SINGLE_CLAUSES: [&str; 4] = ["from", "where", "select", "limit"];
 
 struct Parser<'a> {
     src: &'a str,
@@ -255,16 +257,19 @@ impl<'a> Parser<'a> {
         }
         let mut base: Option<Source> = None;
         let (mut joins, mut wheres, mut selects, mut limit) = (Vec::new(), Vec::new(), Vec::new(), DEFAULT_LIMIT);
+        let mut seen: Vec<&str> = Vec::new();
         while let Some(clause) = self.next() {
-            if clause.is_keyword("from") {
-                if base.is_some() {
-                    return Err(Located::parse(t!("FROM can only appear once."), Some(clause.span.clone())));
+            if let Some(single) = SINGLE_CLAUSES.into_iter().find(|c| clause.is_keyword(c)) {
+                if seen.contains(&single) {
+                    return Err(Located::parse(t!("%{clause} can only appear once.", clause = single.to_uppercase()), Some(clause.span.clone())));
                 }
+                seen.push(single);
+            }
+            if clause.is_keyword("from") {
                 base = Some(self.from()?);
             } else if clause.is_keyword("join") {
                 joins.push(self.join()?);
             } else if clause.is_keyword("where") {
-                wheres.clear();
                 while !self.at_clause_end() {
                     wheres.push(self.condition()?);
                     if !self.eat_keyword("and") {
@@ -272,7 +277,6 @@ impl<'a> Parser<'a> {
                     }
                 }
             } else if clause.is_keyword("select") {
-                selects.clear();
                 while !self.at_clause_end() {
                     selects.push(self.select_item()?);
                     if !self.eat(&Tok::Comma) {
@@ -347,74 +351,4 @@ pub fn parse_declaration(src: &str, tokens: &[Token]) -> Result<(String, String)
 }
 
 #[cfg(test)]
-mod tests {
-    use super::super::ast::{DEFAULT_LIMIT, Query, WhereOp};
-    use super::super::parse_query;
-
-    #[test]
-    fn parses_a_join_query_whatever_order_the_clauses_come_in() {
-        let query = "FROM KEY 'orders:items' AS i\nJOIN KEY 'products' AS p ON i.productId = p.id\nWHERE i.qty IN [1,2,3]\nSELECT i.productId, p.label\nLIMIT 50";
-        let parsed = parse_query(query).unwrap();
-        assert_eq!(parsed.base.alias, "i");
-        assert_eq!(parsed.joins.len(), 1);
-        assert_eq!(parsed.joins[0].anchor_alias, "i");
-        assert_eq!(parsed.joins[0].anchor_field, "productId");
-        assert_eq!(parsed.joins[0].join_field, "id");
-        assert_eq!(parsed.wheres[0].op, WhereOp::In);
-        assert_eq!(parsed.wheres[0].values, vec!["1", "2", "3"]);
-        assert_eq!(parsed.selects.len(), 2);
-        assert_eq!(parsed.limit, 50);
-
-        // the same query, clauses in a different order, parses the same way (spans aside)
-        let reordered = "SELECT i.productId, p.label\nLIMIT 50\nFROM KEY 'orders:items' AS i\nWHERE i.qty IN [1,2,3]\nJOIN KEY 'products' AS p ON i.productId = p.id";
-        let shape = |q: &Query| format!("{} {} {:?} {:?} {:?} {}", q.base.key, q.base.alias, q.joins.iter().map(|j| (&j.key, &j.alias, &j.anchor_alias, &j.anchor_field, &j.join_field)).collect::<Vec<_>>(), q.wheres.iter().map(|w| (&w.alias, &w.field, w.op, &w.values)).collect::<Vec<_>>(), q.selects.iter().map(|s| (&s.alias, &s.field, s.explicit_alias)).collect::<Vec<_>>(), q.limit);
-        assert_eq!(shape(&parse_query(reordered).unwrap()), shape(&parsed));
-    }
-
-    #[test]
-    fn the_compact_one_liner_needs_no_separate_path() {
-        // "AS alias" is optional for a single-key query: it defaults to "src"
-        let parsed = parse_query("SELECT * FROM KEY 'orders:42'").unwrap();
-        assert_eq!(parsed.base.alias, "src");
-        assert_eq!(parsed.selects.iter().map(|s| (s.alias.as_str(), s.field.as_str(), s.explicit_alias)).collect::<Vec<_>>(), vec![("*", "*", true)]);
-        assert_eq!(parsed.limit, DEFAULT_LIMIT);
-
-        let parsed = parse_query("SELECT status, total FROM KEY 'orders:42' AS o WHERE status = 'paid' LIMIT 10").unwrap();
-        assert_eq!(parsed.selects[0].alias, "o");
-        let w = &parsed.wheres[0];
-        assert_eq!((w.alias.as_str(), w.field.as_str(), w.op, w.values.clone()), ("o", "status", WhereOp::Eq, vec!["paid".to_string()]));
-        assert_eq!(parsed.limit, 10);
-    }
-
-    #[test]
-    fn an_unqualified_field_means_the_from_keys_alias() {
-        let parsed = parse_query("FROM KEY 'a' AS x\nWHERE active = true\nSELECT name").unwrap();
-        assert_eq!(parsed.wheres[0].alias, "x");
-        assert_eq!(parsed.selects[0].alias, "x");
-    }
-
-    #[test]
-    fn rejects_a_join_to_an_unknown_alias() {
-        let err = parse_query("FROM KEY 'a' AS x\nJOIN KEY 'b' AS y ON z.id = y.refId\nSELECT *").unwrap_err();
-        assert!(err.message().contains("unknown alias"), "{err}");
-    }
-
-    #[test]
-    fn rejects_a_duplicate_alias() {
-        let err = parse_query("FROM KEY 'a' AS x\nJOIN KEY 'b' AS x ON q.id = x.refId\nSELECT *").unwrap_err();
-        assert!(err.message().contains("Duplicate alias"), "{err}");
-    }
-
-    #[test]
-    fn alias_matching_is_case_insensitive() {
-        let parsed = parse_query("FROM KEY 'a' AS Src\nWHERE SRC.id = 1\nSELECT src.id").unwrap();
-        assert_eq!(parsed.wheres[0].alias, "SRC");
-        assert_eq!(parsed.selects[0].alias, "src");
-    }
-
-    #[test]
-    fn parse_list_handles_quoted_and_numeric_values() {
-        assert_eq!(parse_query("FROM KEY 'k' WHERE x IN ['a', 'b', 42]").unwrap().wheres[0].values, vec!["a", "b", "42"]);
-        assert!(parse_query("FROM KEY 'k' WHERE x IN 1,2,3").is_err(), "needs [] or ()");
-    }
-}
+mod tests;

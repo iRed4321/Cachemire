@@ -73,8 +73,12 @@ pub fn newer_release(current: &Version, channel: Channel) -> Result<Option<Relea
     let url = format!("https://api.github.com/repos/{REPO}/releases?per_page=50");
     let body = agent().get(&url).header("Accept", "application/vnd.github+json").call().map_err(|e| e.to_string())?.body_mut().read_to_string().map_err(|e| e.to_string())?;
     let listed: Value = serde_json::from_str(&body).map_err(|e| e.to_string())?;
-    let releases = listed.as_array().map(Vec::as_slice).unwrap_or_default();
-    Ok(releases.iter().filter_map(parse_release).filter(|r| channel.offers(&r.version) && r.version > *current).max_by(|a, b| a.version.cmp(&b.version)))
+    Ok(newest_offered(listed.as_array().map(Vec::as_slice).unwrap_or_default(), current, channel))
+}
+
+/// The newest of GitHub's `releases` that `channel` offers and is newer than `current`.
+fn newest_offered(releases: &[Value], current: &Version, channel: Channel) -> Option<Release> {
+    releases.iter().filter_map(parse_release).filter(|r| channel.offers(&r.version) && r.version > *current).max_by(|a, b| a.version.cmp(&b.version))
 }
 
 fn parse_release(item: &Value) -> Option<Release> {
@@ -103,3 +107,6 @@ pub fn download_installer(url: &str) -> Result<std::path::PathBuf, String> {
 pub fn run_installer(path: &std::path::Path) -> Result<(), String> {
     std::process::Command::new("msiexec").arg("/i").arg(path).spawn().map(drop).map_err(|e| e.to_string())
 }
+
+#[cfg(test)]
+mod tests;

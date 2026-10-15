@@ -94,3 +94,6 @@ impl redis::FromRedisValue for KeyName {
     }
 }
 
+
+#[cfg(test)]
+mod tests;

@@ -57,11 +57,7 @@ async fn load_records(session: &mut Session, key: &str) -> Result<(Vec<Map<Strin
             loop {
                 let (next_cursor, fields) = session.hash_scan(&name, cursor, 500).await?;
                 for (field, raw) in &fields {
-                    match serde_json::from_str::<Value>(raw) {
-                        Ok(Value::Object(map)) => records.push(map),
-                        Ok(other) => return Err(AppError::invalid(t!("A non-object value was found in %{key} (field %{field}): %{kind}", key = key, field = field.as_str(), kind = json_kind(&other)))),
-                        Err(e) => return Err(AppError::invalid(t!("Invalid JSON in %{key} (field %{field}): %{error}", key = key, field = field.as_str(), error = e.to_string()))),
-                    }
+                    records.push(hash_record(key, field, raw)?);
                 }
                 cursor = next_cursor;
                 if cursor == 0 || records.len() >= MAX_SOURCE_FIELDS {
@@ -71,19 +67,31 @@ async fn load_records(session: &mut Session, key: &str) -> Result<(Vec<Map<Strin
             // the cursor not having come back to 0 is what "more was left" means
             Ok((records, cursor != 0))
         }
-        RedisValueType::String => {
-            let raw = session.get(&name).await?.unwrap_or_default();
-            if raw.trim().is_empty() {
-                return Ok((Vec::new(), false));
-            }
-            match serde_json::from_str::<Value>(&raw) {
-                Ok(Value::Object(map)) => Ok((vec![map], false)),
-                Ok(Value::Array(items)) => Ok((items.into_iter().filter_map(|item| if let Value::Object(map) = item { Some(map) } else { None }).collect(), false)),
-                Ok(other) => Err(AppError::invalid(t!("%{key} holds JSON, but not an object or an array of objects: %{kind}", key = key, kind = json_kind(&other)))),
-                Err(e) => Err(AppError::invalid(t!("Invalid JSON in %{key}: %{error}", key = key, error = e.to_string()))),
-            }
-        }
+        RedisValueType::String => Ok((string_records(key, &session.get(&name).await?.unwrap_or_default())?, false)),
         other => Err(AppError::invalid(t!("%{key} is a %{kind}: only a hash of JSON objects, or a string holding one, can be queried.", key = key, kind = other.to_string()))),
+    }
+}
+
+/// The row a hash field's value gives: its JSON, which must be an object.
+fn hash_record(key: &str, field: &str, raw: &str) -> Result<Map<String, Value>, AppError> {
+    match serde_json::from_str::<Value>(raw) {
+        Ok(Value::Object(map)) => Ok(map),
+        Ok(other) => Err(AppError::invalid(t!("A non-object value was found in %{key} (field %{field}): %{kind}", key = key, field = field, kind = json_kind(&other)))),
+        Err(e) => Err(AppError::invalid(t!("Invalid JSON in %{key} (field %{field}): %{error}", key = key, field = field, error = e.to_string()))),
+    }
+}
+
+/// The rows a string key's value gives: the object it holds, or the objects of its
+/// array (anything else in it is skipped); none for a blank value.
+fn string_records(key: &str, raw: &str) -> Result<Vec<Map<String, Value>>, AppError> {
+    if raw.trim().is_empty() {
+        return Ok(Vec::new());
+    }
+    match serde_json::from_str::<Value>(raw) {
+        Ok(Value::Object(map)) => Ok(vec![map]),
+        Ok(Value::Array(items)) => Ok(items.into_iter().filter_map(|item| if let Value::Object(map) = item { Some(map) } else { None }).collect()),
+        Ok(other) => Err(AppError::invalid(t!("%{key} holds JSON, but not an object or an array of objects: %{kind}", key = key, kind = json_kind(&other)))),
+        Err(e) => Err(AppError::invalid(t!("Invalid JSON in %{key}: %{error}", key = key, error = e.to_string()))),
     }
 }
 
@@ -168,7 +176,13 @@ pub async fn execute(session: &mut Session, query: &Query) -> Result<QueryOutput
         sources_truncated |= cut;
         datasets.insert(join.alias.to_lowercase(), records);
     }
+    let (rows, truncated) = run(query, &datasets);
+    Ok(QueryOutput { rows, truncated, sources_truncated })
+}
 
+/// Joins, filters and shapes the rows of `datasets` (each key's, by lowercased alias)
+/// as `query` says: the rows under its limit, and whether more matched.
+fn run(query: &Query, datasets: &FxHashMap<String, Vec<Map<String, Value>>>) -> (Vec<Map<String, Value>>, bool) {
     let mut rows: Vec<Row> = datasets[&query.base.alias.to_lowercase()].iter().map(|record| vec![(query.base.alias.clone(), record.clone())]).collect();
 
     for join in &query.joins {
@@ -210,8 +224,7 @@ pub async fn execute(session: &mut Session, query: &Query) -> Result<QueryOutput
     }
 
     let truncated = rows.len() > query.limit;
-    let rows = rows.into_iter().take(query.limit).map(|row| materialize_row(&row, &query.selects)).collect();
-    Ok(QueryOutput { rows, truncated, sources_truncated })
+    (rows.into_iter().take(query.limit).map(|row| materialize_row(&row, &query.selects)).collect(), truncated)
 }
 
 /// The most field names `field_names` lists.
@@ -249,40 +262,4 @@ pub async fn field_names(state: &AppState, connection_id: Option<&str>, key: &st
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-
-    fn obj(pairs: &[(&str, Value)]) -> Map<String, Value> {
-        pairs.iter().map(|(k, v)| (k.to_string(), v.clone())).collect()
-    }
-
-    fn row(pairs: &[(&str, Map<String, Value>)]) -> Row {
-        pairs.iter().map(|(a, r)| (a.to_string(), r.clone())).collect()
-    }
-
-    #[test]
-    fn select_star_preserves_key_order_for_one_source() {
-        let r = row(&[("src", obj(&[("id", Value::from(1)), ("label", Value::from("Widget"))]))]);
-        let materialized = materialize_row(&r, &[Select { alias: "*".to_string(), field: "*".to_string(), alias_span: 0..0, explicit_alias: true }]);
-        assert_eq!(materialized.keys().collect::<Vec<_>>(), vec!["id", "label"]);
-    }
-
-    #[test]
-    fn columns_are_prefixed_once_more_than_one_alias_is_involved() {
-        let r = row(&[("o", obj(&[("id", Value::from(1))])), ("p", obj(&[("label", Value::from("Widget"))]))]);
-        let selects = vec![
-            Select { alias: "o".to_string(), field: "id".to_string(), alias_span: 0..0, explicit_alias: true },
-            Select { alias: "p".to_string(), field: "label".to_string(), alias_span: 0..0, explicit_alias: true },
-        ];
-        let materialized = materialize_row(&r, &selects);
-        assert_eq!(materialized.get("o.id"), Some(&Value::from(1)));
-        assert_eq!(materialized.get("p.label"), Some(&Value::from("Widget")));
-    }
-
-    #[test]
-    fn a_missing_alias_in_select_becomes_a_null_column() {
-        let r = row(&[("o", obj(&[("id", Value::from(1))]))]);
-        let selects = vec![Select { alias: "p".to_string(), field: "label".to_string(), alias_span: 0..0, explicit_alias: true }];
-        assert_eq!(materialize_row(&r, &selects).get("p.label"), Some(&Value::Null));
-    }
-}
+mod tests;

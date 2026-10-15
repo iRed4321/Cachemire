@@ -242,3 +242,6 @@ impl Vault for MemoryVault {
         Ok(())
     }
 }
+
+#[cfg(test)]
+mod tests;

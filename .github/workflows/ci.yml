@@ -100,7 +100,7 @@ jobs:
         if: ${{ !cancelled() && steps.build.outcome == 'success' }}
         run: |
           eval "$(cargo llvm-cov show-env --sh)"
-          cargo llvm-cov report --json --summary-only --ignore-filename-regex 'headless_ui_tests|test_support' --output-path target/test-output/coverage.json
+          cargo llvm-cov report --json --summary-only --ignore-filename-regex 'headless_ui_tests|test_support|/tests\.rs$' --output-path target/test-output/coverage.json
       - name: Save the report (tests)
         if: ${{ !cancelled() && steps.build.outcome == 'success' }}
         run: |

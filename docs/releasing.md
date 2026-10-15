@@ -19,7 +19,7 @@ How versions work, how to ship a beta or a stable release, and how to build the 
 - **A release is a request**: `cargo ship` pushes the commit you're on (HEAD) as a `release/<request>` branch, like `release/beta` or `release/fix-stable`. Pushing that branch starts the **Release** workflow.
 - **The workflow does the rest**: it works out the version from the tags, runs the tests, builds the Windows and Linux packages as that version, and only if everything passed, tags the commit and publishes the GitHub release. It then deletes the request branch.
 - **Betas are pre-releases** with automatic notes. **Stable releases** get hand-written notes from [`CHANGELOG.md`](../CHANGELOG.md).
-- **The app updates itself from these releases**: the stable channel only sees stable releases, the beta channel sees both. On Windows the update installs in one click; on Linux the app opens the release page.
+- **The app updates itself from these releases**: the stable channel only sees stable releases, the beta channel sees both. On Windows the update installs in one click; on Linux the app opens the release page. The app looks when asked (the info window's button), or at each start once **Check for Updates at startup** is on in Settings.
 
 ```
 cargo ship stable

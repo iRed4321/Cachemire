@@ -313,3 +313,6 @@ impl SettingsStore {
         }
     }
 }
+
+#[cfg(test)]
+mod tests;

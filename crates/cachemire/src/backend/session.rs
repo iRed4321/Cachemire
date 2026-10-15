@@ -283,3 +283,6 @@ impl Session {
         Ok(cmd.query_async(&mut self.con).await?)
     }
 }
+
+#[cfg(test)]
+mod tests;

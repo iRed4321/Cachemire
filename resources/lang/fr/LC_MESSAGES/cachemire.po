@@ -59,6 +59,7 @@ msgid "GitHub repository"
 msgstr "Dépôt GitHub"
 
 #: crates/cachemire/ui/components/about.slint:78
+#: crates/cachemire/ui/components/about.slint:78
 msgid "Updates"
 msgstr "Mises à jour"
 
@@ -571,48 +572,48 @@ msgstr "Clé"
 msgid "Active"
 msgstr "Actif"
 
-#: crates/cachemire/ui/components/settings.slint:326
+#: crates/cachemire/ui/components/settings.slint:330
 msgid "New connection profile"
 msgstr "Nouveau profil de connexion"
 
-#: crates/cachemire/ui/components/settings.slint:326
+#: crates/cachemire/ui/components/settings.slint:330
 msgid "Edit connection profile"
 msgstr "Modifier le profil de connexion"
 
-#: crates/cachemire/ui/components/settings.slint:327
-#: crates/cachemire/ui/components/settings.slint:327
+#: crates/cachemire/ui/components/settings.slint:331
+#: crates/cachemire/ui/components/settings.slint:331
 msgid "Settings"
 msgstr "Paramètres"
 
-#: crates/cachemire/ui/components/settings.slint:327
+#: crates/cachemire/ui/components/settings.slint:331
 msgid "New SSH profile"
 msgstr "Nouveau profil SSH"
 
-#: crates/cachemire/ui/components/settings.slint:327
+#: crates/cachemire/ui/components/settings.slint:331
 msgid "Edit SSH profile"
 msgstr "Modifier le profil SSH"
 
-#: crates/cachemire/ui/components/settings.slint:342
+#: crates/cachemire/ui/components/settings.slint:346
 msgid "Language"
 msgstr "Langue"
 
-#: crates/cachemire/ui/components/settings.slint:352
+#: crates/cachemire/ui/components/settings.slint:356
 msgid "Automatic"
 msgstr "Automatique"
 
-#: crates/cachemire/ui/components/settings.slint:361
+#: crates/cachemire/ui/components/settings.slint:365
 msgid "Export format"
 msgstr "Format d'export"
 
-#: crates/cachemire/ui/components/settings.slint:371
+#: crates/cachemire/ui/components/settings.slint:375
 msgid "Escaped JSON"
 msgstr "JSON échappé"
 
-#: crates/cachemire/ui/components/settings.slint:378
+#: crates/cachemire/ui/components/settings.slint:382
 msgid "Search depth"
 msgstr "Profondeur de recherche"
 
-#: crates/cachemire/ui/components/settings.slint:391
+#: crates/cachemire/ui/components/settings.slint:395
 msgid ""
 "How many entries of each key (hash fields, list items, set members...) the "
 "global search reads. Fewer is faster, but a match deeper inside a big key is "
@@ -622,15 +623,29 @@ msgstr ""
 "membres d'un set...) la recherche globale lit. Moins, c'est plus rapide, "
 "mais une correspondance plus profonde dans une grosse clé est manquée."
 
-#: crates/cachemire/ui/components/settings.slint:402
+#: crates/cachemire/ui/components/settings.slint:412
+msgid "Check for Updates at startup"
+msgstr "Rechercher des mises à jour au démarrage"
+
+#: crates/cachemire/ui/components/settings.slint:417
+msgid ""
+"Each time Cachemire starts, it looks for a newer version on the channel "
+"picked in the info window (the i button of the title bar), and opens that "
+"window when there is one."
+msgstr ""
+"À chaque démarrage, Cachemire cherche une version plus récente sur le "
+"canal choisi dans la fenêtre d'informations (le bouton i de la barre de "
+"titre), et ouvre cette fenêtre s'il y en a une."
+
+#: crates/cachemire/ui/components/settings.slint:428
 msgid "Experimental"
 msgstr "Expérimental"
 
-#: crates/cachemire/ui/components/settings.slint:408
+#: crates/cachemire/ui/components/settings.slint:434
 msgid "Search on the server (Lua script)"
 msgstr "Recherche sur le serveur (script Lua)"
 
-#: crates/cachemire/ui/components/settings.slint:413
+#: crates/cachemire/ui/components/settings.slint:439
 msgid ""
 "The global search lets Redis filter the data itself, so far less of it "
 "travels. It uses the server's CPU while it runs, needs permission to run "
@@ -641,16 +656,16 @@ msgstr ""
 "exécution, demande l'autorisation d'exécuter des scripts, et revient à la "
 "recherche normale si le serveur refuse."
 
-#: crates/cachemire/ui/components/settings.slint:426
+#: crates/cachemire/ui/components/settings.slint:452
 msgid "SSH profiles"
 msgstr "Profils SSH"
 
-#: crates/cachemire/ui/components/settings.slint:433
-#: crates/cachemire/ui/components/settings.slint:433
+#: crates/cachemire/ui/components/settings.slint:459
+#: crates/cachemire/ui/components/settings.slint:459
 msgid "Add profile"
 msgstr "Ajouter un profil"
 
-#: crates/cachemire/ui/components/settings.slint:436
+#: crates/cachemire/ui/components/settings.slint:462
 msgid ""
 "The active profile logs in to the SSH tunnels that have no username of their "
 "own. A connection that fills in its own username and password uses those "
@@ -660,15 +675,15 @@ msgstr ""
 "d'utilisateur propre. Une connexion qui renseigne son propre utilisateur et "
 "mot de passe utilise ceux-ci à la place."
 
-#: crates/cachemire/ui/components/settings.slint:454
+#: crates/cachemire/ui/components/settings.slint:480
 msgid "No SSH profiles yet"
 msgstr "Aucun profil SSH pour l'instant"
 
-#: crates/cachemire/ui/components/settings.slint:492
+#: crates/cachemire/ui/components/settings.slint:518
 msgid "Connection profiles"
 msgstr "Profils de connexion"
 
-#: crates/cachemire/ui/components/settings.slint:502
+#: crates/cachemire/ui/components/settings.slint:528
 msgid ""
 "A connection that has one of these profiles tints the app's background while "
 "you are connected to it, to tell environments apart."
@@ -677,15 +692,15 @@ msgstr ""
 "l'application tant que vous y êtes connecté, pour distinguer les "
 "environnements."
 
-#: crates/cachemire/ui/components/settings.slint:518
+#: crates/cachemire/ui/components/settings.slint:544
 msgid "No connection profiles yet"
 msgstr "Aucun profil de connexion pour l'instant"
 
-#: crates/cachemire/ui/components/settings.slint:570
+#: crates/cachemire/ui/components/settings.slint:596
 msgid "Work bastion"
 msgstr "Bastion de travail"
 
-#: crates/cachemire/ui/components/settings.slint:622
+#: crates/cachemire/ui/components/settings.slint:648
 msgid "Color"
 msgstr "Couleur"
 

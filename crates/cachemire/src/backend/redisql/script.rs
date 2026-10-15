@@ -121,13 +121,4 @@ pub fn substitute_variables(tokens: &mut [Token], vars: &FxHashMap<String, Strin
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn strips_comments_but_keeps_quoted_dashes() {
-        let cleaned = strip_comments("FROM KEY 'a--b' AS x -- a trailing comment\nSELECT *");
-        assert!(cleaned.contains("'a--b'"));
-        assert!(!cleaned.contains("trailing comment"));
-    }
-}
+mod tests;

@@ -202,16 +202,4 @@ impl Drop for SshTunnel {
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn a_leading_tilde_is_the_home_directory() {
-        let home = dirs::home_dir().unwrap();
-        assert_eq!(expand_home("~"), home);
-        assert_eq!(expand_home("~/.ssh/id_ed25519"), home.join(".ssh/id_ed25519"));
-        assert_eq!(expand_home("/etc/key"), PathBuf::from("/etc/key"));
-        assert_eq!(expand_home("~other/key"), PathBuf::from("~other/key"));
-        assert_eq!(expand_home("relative/key"), PathBuf::from("relative/key"));
-    }
-}
+mod tests;

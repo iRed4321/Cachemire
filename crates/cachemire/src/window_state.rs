@@ -201,21 +201,23 @@ pub fn install(window: &MainWindow) -> impl Fn() + use<> {
 
 /// `rect`, or when it lies outside every screen (one was unplugged since), centered on the primary one.
 fn on_a_screen(window: &winit::window::Window, rect: Rect) -> Rect {
-    let screens: Vec<Rect> = window
-        .available_monitors()
-        .map(|m| Rect { x: m.position().x, y: m.position().y, width: m.size().width, height: m.size().height })
-        .collect();
+    let screen_of = |m: winit::monitor::MonitorHandle| Rect { x: m.position().x, y: m.position().y, width: m.size().width, height: m.size().height };
+    let screens: Vec<Rect> = window.available_monitors().map(screen_of).collect();
+    let primary = window.primary_monitor().map(screen_of).or_else(|| screens.first().copied());
+    place_on_screens(rect, &screens, primary)
+}
+
+/// `rect` as it is when a good part of it is on one of `screens` (or none can be told),
+/// otherwise centered on `primary`, shrunk to fit it.
+fn place_on_screens(rect: Rect, screens: &[Rect], primary: Option<Rect>) -> Rect {
     if screens.is_empty() || screens.iter().any(|screen| rect.overlaps(screen, 100, 40.min(rect.height as i64))) {
         return rect;
     }
-    let Some(primary) = window.primary_monitor().or_else(|| window.available_monitors().next()) else { return rect };
-    let (screen_size, screen_position) = (primary.size(), primary.position());
-    let width = rect.width.min(screen_size.width);
-    let height = rect.height.min(screen_size.height);
-    Rect {
-        x: screen_position.x + (screen_size.width - width) as i32 / 2,
-        y: screen_position.y + (screen_size.height - height) as i32 / 2,
-        width,
-        height,
-    }
+    let Some(primary) = primary else { return rect };
+    let width = rect.width.min(primary.width);
+    let height = rect.height.min(primary.height);
+    Rect { x: primary.x + (primary.width - width) as i32 / 2, y: primary.y + (primary.height - height) as i32 / 2, width, height }
 }
+
+#[cfg(test)]
+mod tests;

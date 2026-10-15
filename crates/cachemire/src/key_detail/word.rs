@@ -34,3 +34,35 @@ pub(super) fn word_range(text: &str, offset: usize) -> Option<(usize, usize)> {
     let end = text[offset..].char_indices().find(|(_, c)| !is_word_char(*c)).map_or(text.len(), |(i, _)| offset + i);
     Some((start, end))
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn word_at(text: &str, offset: usize) -> Option<&str> {
+        word_range(text, offset).map(|(start, end)| &text[start..end])
+    }
+
+    #[test]
+    fn a_double_click_selects_the_word_it_touches() {
+        let text = r#"{"user_id": 42, "name": "Zoë"}"#;
+        assert_eq!(word_at(text, text.find("user").unwrap() + 2), Some("user_id"));
+        assert_eq!(word_at(text, text.find("42").unwrap()), Some("42"), "the start of a word");
+        assert_eq!(word_at(text, text.find("42").unwrap() + 2), Some("42"), "right after its end");
+        assert_eq!(word_at(text, text.find("Zoë").unwrap() + 2), Some("Zoë"));
+        assert_eq!(word_at(text, text.find(": ").unwrap() + 1), None, "between punctuation and a blank");
+    }
+
+    #[test]
+    fn an_offset_outside_the_text_or_inside_a_character_selects_nothing() {
+        assert_eq!(word_at("é", 1), None);
+        assert_eq!(word_at("ab", 3), None);
+        assert_eq!(word_at("", 0), None);
+    }
+
+    #[test]
+    fn the_lines_join_as_the_styled_text_reports_its_offsets() {
+        let paragraphs = vec![("{".to_string(), Default::default()), ("  \"a\": 1".to_string(), Default::default()), ("}".to_string(), Default::default())];
+        assert_eq!(plain_text(&paragraphs), "{\n  \"a\": 1\n}");
+    }
+}

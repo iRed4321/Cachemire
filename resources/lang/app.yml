@@ -236,8 +236,8 @@ _version: 2
   fr: "La liste de IN est vide."
 "Invalid FROM clause. Example: FROM KEY 'my:key' AS src":
   fr: "Clause FROM invalide. Exemple : FROM KEY 'ma:cle' AS src"
-"FROM can only appear once.":
-  fr: "FROM ne peut apparaître qu'une seule fois."
+"%{clause} can only appear once.":
+  fr: "%{clause} ne peut apparaître qu'une seule fois."
 "Invalid JOIN clause. Example: JOIN KEY 'my:key' AS b ON a.id = b.refId":
   fr: "Clause JOIN invalide. Exemple : JOIN KEY 'ma:cle' AS b ON a.id = b.refId"
 "A JOIN's ON must link two different aliases.":

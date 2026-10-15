@@ -54,6 +54,7 @@ pub(super) fn glob_match(pattern: &[u8], text: &[u8]) -> bool {
 }
 
 /// The `[...]` class at `pattern[open]`: where the pattern goes on if `c` is in it.
+/// An unclosed class runs to the pattern's end.
 fn class_match(pattern: &[u8], open: usize, c: u8) -> Option<usize> {
     let mut i = open + 1;
     let negate = pattern.get(i) == Some(&b'^');
@@ -72,7 +73,7 @@ fn class_match(pattern: &[u8], open: usize, c: u8) -> Option<usize> {
             i += 1;
         }
     }
-    (found != negate).then_some(i + 1)
+    (found != negate).then_some((i + 1).min(pattern.len()))
 }
 
 /// Whether key `id` matches glob `pattern` (matched on the key's bytes).
@@ -135,16 +136,4 @@ pub(super) fn exit_search(ctx: &ScanContext) {
 }
 
 #[cfg(test)]
-mod tests {
-    use super::search_pattern;
-
-    #[test]
-    fn plain_text_searches_contain_globs_are_used_as_is() {
-        assert_eq!(search_pattern("session"), "*session*");
-        assert_eq!(search_pattern("user:42"), "*user:42*");
-        assert_eq!(search_pattern("user:*"), "user:*");
-        assert_eq!(search_pattern("h?llo"), "h?llo");
-        assert_eq!(search_pattern("id:[0-9]"), "id:[0-9]");
-        assert_eq!(search_pattern(r"a\*b"), r"a\*b");
-    }
-}
+mod tests;

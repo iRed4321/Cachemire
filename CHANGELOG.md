@@ -4,9 +4,18 @@ Every stable release of Cachemire; `Unreleased` is what the next one brings. Bet
 
 ## Unreleased
 
+### Added
+
+- **Check for Updates at startup** (Settings, off by default): when a newer version is out on the channel you picked, the info window opens at startup to offer it, with a one-click install on Windows and a link to the release page on Linux
+
 ### Fixes
 
 - **Windows**: the window now shows the Cachemire icon in the taskbar's hover preview
+- Typing a `[` without its closing `]` in the key tree's search no longer crashes the app
+- The query box's completion of `alias.` fields now finds the right key when a query holds letters like `ẞ` or `İ`
+- **Windows**: exporting keys whose names differ only by case (`User` and `user`) no longer writes one over the other
+- A Redisql query with a second `WHERE`, `SELECT` or `LIMIT` is now an error, instead of the first one being silently dropped
+- An export no longer leaves an empty file for a key deleted before it could be read
 
 ## 3.0.0 - 2026-10-15
 
