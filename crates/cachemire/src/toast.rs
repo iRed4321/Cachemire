@@ -8,7 +8,6 @@ use rust_i18n::t;
 
 use slint::ComponentHandle;
 use slint::winit_030::winit::event::WindowEvent;
-use slint::winit_030::{EventResult, WinitWindowAccessor};
 
 use crate::MainWindow;
 
@@ -18,25 +17,22 @@ thread_local! {
     static POINTER: Cell<(f32, f32)> = const { Cell::new((-1.0, -1.0)) };
 }
 
-/// Starts tracking the pointer. Everything Slint touches runs on the UI
-/// thread, which is also where `show_copied` reads the position back.
+/// Gives the UI its first copy of the display scale.
 pub fn init(window: &MainWindow) {
-    let weak = window.as_weak();
     window.set_device_scale(window.window().scale_factor());
-    window.window().on_winit_window_event(move |window, event| {
-        // (this hook is the only one a window has: it also keeps the UI's copy of the display scale current)
-        let device_scale = window.scale_factor();
-        if let Some(main) = weak.upgrade()
-            && main.get_device_scale() != device_scale
-        {
-            main.set_device_scale(device_scale);
-        }
-        if let WindowEvent::CursorMoved { position, .. } = event {
-            let scale = window.scale_factor();
-            POINTER.set((position.x as f32 / scale, position.y as f32 / scale));
-        }
-        EventResult::Propagate
-    });
+}
+
+/// Keeps the UI's copy of the display scale and the pointer position current, from the
+/// window's winit events (main.rs's hook). UI thread, where `show_copied` reads it back.
+pub fn on_window_event(main: &MainWindow, window: &slint::Window, event: &WindowEvent) {
+    let device_scale = window.scale_factor();
+    if main.get_device_scale() != device_scale {
+        main.set_device_scale(device_scale);
+    }
+    if let WindowEvent::CursorMoved { position, .. } = event {
+        let scale = window.scale_factor();
+        POINTER.set((position.x as f32 / scale, position.y as f32 / scale));
+    }
 }
 
 /// Raises the "Copied" toast at the pointer. UI thread only.

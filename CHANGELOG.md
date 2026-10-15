@@ -4,6 +4,10 @@ Every stable release of Cachemire; `Unreleased` is what the next one brings. Bet
 
 ## Unreleased
 
+### Fixes
+
+- **Windows**: the window now shows the Cachemire icon in the taskbar's hover preview
+
 ## 3.0.0 - 2026-10-15
 
 The first public release of Cachemire! Versions 1 and 2 were internal tools, never published. 3.0.0 is a complete rewrite in Rust: a fast, native app for Windows and Linux, polished to be shared.

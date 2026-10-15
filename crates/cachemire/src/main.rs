@@ -168,28 +168,39 @@ pub(crate) fn connect_active(window: &MainWindow, state: Arc<AppState>, rt: &tok
 const ICON_RESOURCE: u16 = 1;
 
 /// Gives the window the exe's own icon at the sizes Windows draws (16 and 32 times the scale),
-/// once it exists and again when its scale changes: Windows then picks the .ico's matching
-/// images instead of shrinking one bitmap itself.
+/// on its first event and again when its scale changes: Windows then picks the .ico's
+/// matching images instead of shrinking one bitmap itself.
 #[cfg(windows)]
-fn use_exe_icon(window: &MainWindow) {
+fn use_exe_icon(window: &slint::Window, event: &slint::winit_030::winit::event::WindowEvent, applied: &mut bool) {
     use slint::winit_030::winit::{dpi::PhysicalSize, event::WindowEvent, platform::windows::{IconExtWindows, WindowExtWindows}, window::Icon};
-    use slint::winit_030::{EventResult, WinitWindowAccessor};
 
-    let mut applied = false;
+    if !*applied || matches!(event, WindowEvent::ScaleFactorChanged { .. }) {
+        *applied = true;
+        window.with_winit_window(|winit_window| {
+            let scale = winit_window.scale_factor();
+            let icon = |logical: f64| {
+                let side = (logical * scale).round() as u32;
+                Icon::from_resource(ICON_RESOURCE, Some(PhysicalSize::new(side, side))).ok()
+            };
+            winit_window.set_window_icon(icon(16.0));
+            winit_window.set_taskbar_icon(icon(32.0));
+        });
+    }
+}
+
+/// The window's winit event hook. Slint keeps a single one per window, so everything
+/// that needs these events is called from here.
+fn install_window_events(window: &MainWindow) {
+    let weak = window.as_weak();
+    #[cfg(windows)]
+    let mut icon_applied = false;
     window.window().on_winit_window_event(move |window, event| {
-        if !applied || matches!(event, WindowEvent::ScaleFactorChanged { .. }) {
-            applied = true;
-            window.with_winit_window(|winit_window| {
-                let scale = winit_window.scale_factor();
-                let icon = |logical: f64| {
-                    let side = (logical * scale).round() as u32;
-                    Icon::from_resource(ICON_RESOURCE, Some(PhysicalSize::new(side, side))).ok()
-                };
-                winit_window.set_window_icon(icon(16.0));
-                winit_window.set_taskbar_icon(icon(32.0));
-            });
+        if let Some(main) = weak.upgrade() {
+            toast::on_window_event(&main, window, event);
         }
-        EventResult::Propagate
+        #[cfg(windows)]
+        use_exe_icon(window, event, &mut icon_applied);
+        slint::winit_030::EventResult::Propagate
     });
 }
 
@@ -218,10 +229,8 @@ fn main() -> Result<(), slint::PlatformError> {
     slint::set_xdg_app_id("cachemire")?;
     let window = MainWindow::new()?;
     let save_window_state = window_state::install(&window);
-    #[cfg(windows)]
-    use_exe_icon(&window);
-
     toast::init(&window);
+    install_window_events(&window);
 
     window.on_request_drag_window({
         let weak = window.as_weak();
