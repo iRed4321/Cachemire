@@ -1,10 +1,11 @@
 use super::*;
 use crate::test_support::block_on;
 
-/// The profiles of an `.aws/config` holding `config`.
+/// The profiles of an AWS config file holding `config`. Named by `AWS_CONFIG_FILE`, its path
+/// is read as written: `~/.aws/config` would be rebuilt with the OS's separators.
 fn profiles_of(config: &str) -> Vec<Profile> {
-    let fs = Fs::from_slice(&[("/home/u/.aws/config", config)]);
-    let env = Env::from_slice(&[("HOME", "/home/u")]);
+    let fs = Fs::from_slice(&[("aws-config", config)]);
+    let env = Env::from_slice(&[("AWS_CONFIG_FILE", "aws-config")]);
     block_on(profiles_in(&fs, &env))
 }
 
@@ -42,7 +43,7 @@ fn a_profile_missing_part_of_its_sso_settings_is_no_sso_profile() {
 
 #[test]
 fn no_aws_folder_means_no_profile() {
-    let env = Env::from_slice(&[("HOME", "/home/u")]);
+    let env = Env::from_slice(&[("AWS_CONFIG_FILE", "aws-config")]);
     assert!(block_on(profiles_in(&Fs::from_slice(&[]), &env)).is_empty());
 }
 
