@@ -4,6 +4,8 @@ Every stable release of Cachemire; `Unreleased` is what the next one brings. Bet
 
 ## Unreleased
 
+## 3.0.0 - 2026-10-15
+
 The first public release of Cachemire! Versions 1 and 2 were internal tools, never published. 3.0.0 is a complete rewrite in Rust: a fast, native app for Windows and Linux, polished to be shared.
 
 Cachemire is made for Redis hashes full of JSON: read each value as colored JSON, filter them all with a JSON path, and lay the matches out as a table.
@@ -44,3 +46,4 @@ Cachemire is made for Redis hashes full of JSON: read each value as colored JSON
 
 - Cluster mode isn't supported yet: such a server is refused with a clear message
 - Cachemire only reads: editing keys and values is planned
+
