@@ -6,7 +6,6 @@ use super::*;
 /// The translations are bundled inside the executable: French can be
 /// selected, a language it doesn't have can't.
 #[test]
-#[ignore = "slow: renders the real window; run with --ignored"]
 fn bundled_translations_select_and_reject_languages() {
     let mut h = Harness::new();
     assert!(slint::select_bundled_translation("fr").is_ok());
@@ -19,7 +18,6 @@ fn bundled_translations_select_and_reject_languages() {
 /// window (asking the compositor to move it on the press itself would end
 /// the move before the release ever reaches the app).
 #[test]
-#[ignore = "slow: renders the real window; run with --ignored"]
 fn status_pill_click_does_nothing_but_drag_moves_the_window() {
     let mut h = Harness::new();
     table_ready(&mut h, &hash_fields(60, "user"));
@@ -60,25 +58,9 @@ fn status_pill_click_does_nothing_but_drag_moves_the_window() {
 /// The left panel's tabs: Query shows the saved queries, whose box
 /// filters them as you type, and Keyspace brings the tree back.
 #[test]
-#[ignore = "slow: renders the real window; run with --ignored"]
 fn the_left_panel_switches_between_the_keyspace_and_the_saved_queries() {
-    use crate::backend::connection_cache::ConnectionCache;
-    use crate::backend::connection_store::ConnectionStore;
-    use crate::backend::settings_store::SettingsStore;
-    use crate::backend::state::AppState;
     use crate::SidebarView;
-    use std::sync::atomic::AtomicU64;
-    use std::sync::{Arc, Mutex};
-
-    let dir = std::env::temp_dir().join(format!("cachemire-queries-panel-test-{}", std::process::id()));
-    std::fs::create_dir_all(&dir).unwrap();
-    let state = Arc::new(AppState {
-        connections: Mutex::new(ConnectionStore::new(dir.join("databases.json"))),
-        settings: Mutex::new(SettingsStore::new(dir.join("settings.json"))),
-        history: Mutex::new(crate::backend::history_store::HistoryStore::new(dir.join("query_history.json"))),
-        redis_connections: ConnectionCache::new(dir.join("known_hosts")),
-        connect_attempt: AtomicU64::new(0),
-    });
+    let state = test_state();
     {
         let mut settings = state.settings.lock().unwrap();
         settings.create_saved_query("Stale locks", "SELECT * FROM KEY 'lock:*'", "").unwrap();
@@ -127,14 +109,12 @@ fn the_left_panel_switches_between_the_keyspace_and_the_saved_queries() {
     }
     assert_eq!(h.window.global::<SavedQueries>().get_filter(), "lock");
     assert_eq!(h.window.global::<SavedQueries>().get_global_queries().row_count(), 1, "only the queries matching the filter stay");
-    let _ = std::fs::remove_dir_all(&dir);
 }
 
 /// A search tab shows its box and hits in the main area: the box reports what is
 /// typed on Enter, the hits show their matches on a filled background, and a
 /// running search draws its loading bar.
 #[test]
-#[ignore = "slow: renders the real window; run with --ignored"]
 fn a_search_tab_shows_its_box_and_its_hits() {
     let mut h = Harness::new();
     h.window.global::<TabStrip>().set_tabs(ModelRc::new(VecModel::from(vec![crate::TabData {
@@ -227,7 +207,6 @@ fn a_search_tab_shows_its_box_and_its_hits() {
 /// A connection profile tints the app's own background a little, whatever its
 /// color, and nothing else: the panels keep theirs, and clearing it restores it.
 #[test]
-#[ignore = "slow: renders the real window; run with --ignored"]
 fn a_connection_profile_tints_the_apps_background_and_its_chrome_border() {
     let h = Harness::new();
     let theme = h.window.global::<crate::Theme>();
@@ -276,7 +255,6 @@ fn a_connection_profile_tints_the_apps_background_and_its_chrome_border() {
 /// A running search has a pause button under its box, which asks Rust to pause or
 /// resume it; one that isn't running has none.
 #[test]
-#[ignore = "slow: renders the real window; run with --ignored"]
 fn a_running_search_has_a_pause_button_and_a_finished_one_has_none() {
     let mut h = Harness::new();
     h.window.global::<TabStrip>().set_tabs(ModelRc::new(VecModel::from(vec![crate::TabData {
@@ -329,7 +307,6 @@ fn a_running_search_has_a_pause_button_and_a_finished_one_has_none() {
 /// paste (checked once, at the click — not kept live while the menu is open):
 /// nothing new is drawn if the clipboard is empty, but a popup shows if it isn't.
 #[test]
-#[ignore = "slow: renders the real window; run with --ignored"]
 fn right_click_offers_paste_only_when_the_clipboard_holds_text() {
     let mut h = Harness::new();
     h.frame();
@@ -355,7 +332,6 @@ fn right_click_offers_paste_only_when_the_clipboard_holds_text() {
 /// A query tab shows its box and, in the key panel under it, its result: a Run button of the
 /// panel's header reports exactly what was typed, and the rows fill the panel's table.
 #[test]
-#[ignore = "slow: renders the real window; run with --ignored"]
 fn a_query_tab_shows_its_box_and_its_result() {
     let mut h = Harness::new();
     h.window.global::<TabStrip>().set_tabs(ModelRc::new(VecModel::from(vec![crate::TabData {
@@ -402,24 +378,8 @@ fn a_query_tab_shows_its_box_and_its_result() {
 /// list right away, and the row's own × removes it — the system this replaces
 /// a placeholder list with (see queries.rs).
 #[test]
-#[ignore = "slow: renders the real window; run with --ignored"]
 fn a_saved_query_appears_in_the_sidebar_and_its_own_x_removes_it() {
-    use crate::backend::connection_cache::ConnectionCache;
-    use crate::backend::connection_store::ConnectionStore;
-    use crate::backend::settings_store::SettingsStore;
-    use crate::backend::state::AppState;
-    use std::sync::atomic::AtomicU64;
-    use std::sync::{Arc, Mutex};
-
-    let dir = std::env::temp_dir().join(format!("cachemire-saved-query-test-{}", std::process::id()));
-    std::fs::create_dir_all(&dir).unwrap();
-    let state = Arc::new(AppState {
-        connections: Mutex::new(ConnectionStore::new(dir.join("databases.json"))),
-        settings: Mutex::new(SettingsStore::new(dir.join("settings.json"))),
-        history: Mutex::new(crate::backend::history_store::HistoryStore::new(dir.join("query_history.json"))),
-        redis_connections: ConnectionCache::new(dir.join("known_hosts")),
-        connect_attempt: AtomicU64::new(0),
-    });
+    let state = test_state();
     let runtime = tokio::runtime::Builder::new_current_thread().enable_all().build().unwrap();
 
     let mut h = Harness::new();
@@ -500,5 +460,4 @@ fn a_saved_query_appears_in_the_sidebar_and_its_own_x_removes_it() {
         }
     }
     assert_eq!(h.window.global::<SavedQueries>().get_global_queries().row_count(), 0, "the row's own x removed it");
-    let _ = std::fs::remove_dir_all(&dir);
 }

@@ -49,6 +49,16 @@ fn segment(channel: Channel) -> i32 {
     i32::from(channel == Channel::Beta)
 }
 
+/// Offers `release` in the About window, which opens for it `at_startup`.
+pub(crate) fn show_found(about: &About, release: Release, at_startup: bool) {
+    say(about, t!("Version %{version} is available.", version = release.version.to_string()).into_owned(), false);
+    about.set_update_available(true);
+    FOUND.set(Some(release));
+    if at_startup {
+        about.set_open(true);
+    }
+}
+
 /// Looks for a newer release on `channel` off the UI thread, and shows what it found in the
 /// About window. `at_startup`, only a newer release is shown, and it opens the window.
 fn look_for_update(weak: slint::Weak<MainWindow>, rt: &tokio::runtime::Handle, channel: Channel, at_startup: bool) {
@@ -61,14 +71,7 @@ fn look_for_update(weak: slint::Weak<MainWindow>, rt: &tokio::runtime::Handle, c
             Err(error) => tracing::warn!(at_startup, "the update check failed: {error}"),
         }
         on_ui(weak, move |about| match found {
-            Ok(Some(release)) => {
-                say(about, t!("Version %{version} is available.", version = release.version.to_string()).into_owned(), false);
-                about.set_update_available(true);
-                FOUND.set(Some(release));
-                if at_startup {
-                    about.set_open(true);
-                }
-            }
+            Ok(Some(release)) => show_found(about, release, at_startup),
             // nothing to say unasked
             _ if at_startup => {}
             Ok(None) => say(about, t!("Cachemire is up to date.").into_owned(), false),

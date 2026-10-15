@@ -7,7 +7,6 @@ use super::*;
 /// right-click menu (StyledText leaves right-clicks to the TouchArea behind
 /// it — see AllValuesRow's `row-area` for the same pattern).
 #[test]
-#[ignore = "slow: renders the real window; run with --ignored"]
 fn header_key_name_can_be_selected_and_copied_via_right_click() {
     let mut h = Harness::new();
     table_ready(&mut h, &hash_fields(60, "user"));
@@ -47,7 +46,6 @@ fn header_key_name_can_be_selected_and_copied_via_right_click() {
 /// The switcher at the right of the key's header: its segments pick the view
 /// and tell Rust (`key-view-changed`).
 #[test]
-#[ignore = "slow: renders the real window; run with --ignored"]
 fn the_view_switcher_selects_the_view() {
     let mut h = Harness::new();
     h.frame();
@@ -81,7 +79,6 @@ fn the_view_switcher_selects_the_view() {
 /// properties, Enter turns the typed text into badges via Rust, and a badge's ×
 /// asks Rust to drop it.
 #[test]
-#[ignore = "slow: renders the real window; run with --ignored"]
 fn the_search_bar_wires_its_scope_case_toggle_and_badges() {
     let mut h = Harness::new();
     h.frame();
@@ -179,7 +176,6 @@ fn the_search_bar_wires_its_scope_case_toggle_and_badges() {
 /// Typing in the filter bar: a dot lists the keys under the path, typing
 /// narrows the list, the arrows choose and Enter writes the choice.
 #[test]
-#[ignore = "slow: renders the real window; run with --ignored"]
 fn the_filter_completes_paths_from_the_loaded_values() {
     let mut h = Harness::new();
     h.frame();

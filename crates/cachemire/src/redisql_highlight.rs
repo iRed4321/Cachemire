@@ -99,22 +99,34 @@ fn highlight_line(line: &str) -> Vec<(Range<usize>, Color)> {
     spans
 }
 
-/// `text` as one `StyledText`, one paragraph per line, each line's spans in its own
-/// byte offsets, with `error` (byte offsets into `text`) marked. A trailing `\r` is
-/// dropped from each line.
+/// A line, its color spans, and the part of an error on it.
+type HighlightedLine = (String, Vec<(Range<usize>, Color)>, Option<Range<usize>>);
+
+/// Each line of `text` with its color spans and the part of `error` (byte offsets into
+/// `text`) on it, all in the line's own byte offsets. A trailing `\r` is dropped from each line.
+fn highlighted_lines(text: &str, error: Option<Range<usize>>) -> Vec<HighlightedLine> {
+    let mut line_start = 0;
+    text.split('\n')
+        .map(|raw| {
+            let line = raw.strip_suffix('\r').unwrap_or(raw);
+            let marked = error
+                .as_ref()
+                .map(|e| e.start.max(line_start).saturating_sub(line_start)..e.end.min(line_start + line.len()).saturating_sub(line_start))
+                .filter(|r| r.start < r.end);
+            line_start += raw.len() + 1;
+            (line.to_string(), highlight_line(line), marked)
+        })
+        .collect()
+}
+
+/// `text` as one `StyledText`, one paragraph per line (see `highlighted_lines`), with
+/// `error` marked.
 pub fn highlight_query(text: &str, error: Option<Range<usize>>) -> StyledText {
     // translucent, behind the text where the last run's error is
     let error_background = theme_colors::ACCENT_RED.with_alpha(0.4);
-    let mut line_start = 0;
-    StyledText::from_highlighted_paragraphs(text.split('\n').map(|raw| {
-        let line = raw.strip_suffix('\r').unwrap_or(raw);
-        let marked = error
-            .as_ref()
-            .map(|e| e.start.max(line_start).saturating_sub(line_start)..e.end.min(line_start + line.len()).saturating_sub(line_start))
-            .filter(|r| r.start < r.end);
-        line_start += raw.len() + 1;
-        (line.to_string(), highlight_line(line), marked.map(|r| (r, error_background)).into_iter().collect())
-    }))
+    StyledText::from_highlighted_paragraphs(
+        highlighted_lines(text, error).into_iter().map(|(line, spans, marked)| (line, spans, marked.map(|r| (r, error_background)).into_iter().collect())),
+    )
 }
 
 /// Collapses `\r\n` and lone `\r` to `\n`, so the query box's buffer never holds a

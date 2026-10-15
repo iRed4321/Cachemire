@@ -6,7 +6,6 @@ use super::*;
 /// The checkbox column: clicking a row's cell ticks it, and the header's
 /// dash control (there only while something is ticked) clears them all.
 #[test]
-#[ignore = "slow: renders the real window; run with --ignored"]
 fn table_checkbox_selection_ticks_unticks_and_header_clears_all() {
     let mut h = Harness::new();
     table_ready(&mut h, &hash_fields(60, "user"));
@@ -39,7 +38,6 @@ fn table_checkbox_selection_ticks_unticks_and_header_clears_all() {
 /// elsewhere drops the selection, and a right-click with nothing selected
 /// offers nothing.
 #[test]
-#[ignore = "slow: renders the real window; run with --ignored"]
 fn table_cell_right_click_copies_the_selected_text() {
     let mut h = Harness::new();
     table_ready(&mut h, &hash_fields(60, "user"));
@@ -88,7 +86,6 @@ fn table_cell_right_click_copies_the_selected_text() {
 /// A double click on a table cell selects all of its text; a single click
 /// selects nothing.
 #[test]
-#[ignore = "slow: renders the real window; run with --ignored"]
 fn table_cell_double_click_selects_the_whole_cell() {
     let mut h = Harness::new();
     table_ready(&mut h, &hash_fields(60, "user"));
@@ -134,7 +131,6 @@ fn table_cell_double_click_selects_the_whole_cell() {
 /// "doesn't panic" check, since hit-testing under an unusual pointer path is
 /// where binding loops tend to surface.
 #[test]
-#[ignore = "slow: renders the real window; run with --ignored"]
 fn wheel_scroll_and_pointer_sweep_do_not_panic() {
     let mut h = Harness::new();
     table_ready(&mut h, &hash_fields(60, "user"));
@@ -160,7 +156,6 @@ fn wheel_scroll_and_pointer_sweep_do_not_panic() {
 /// Dragging the right edge of a column title (its resize handle) widens that
 /// column, and only that one; the table's reported total width follows.
 #[test]
-#[ignore = "slow: renders the real window; run with --ignored"]
 fn dragging_the_column_edge_resizes_only_that_column() {
     let mut h = Harness::new();
     table_ready(&mut h, &hash_fields(60, "user"));
@@ -187,7 +182,6 @@ fn dragging_the_column_edge_resizes_only_that_column() {
 /// coming back), even sideways; the strip under its left margin stays
 /// background rather than showing column content run to the panel's edge.
 #[test]
-#[ignore = "slow: renders the real window; run with --ignored"]
 fn table_scroll_restores_after_the_content_is_rebuilt() {
     let mut h = Harness::new();
     let fields = hash_fields(60, "user");
@@ -225,7 +219,6 @@ fn table_scroll_restores_after_the_content_is_rebuilt() {
 /// the tab is switched back to — same guarantee as the value list, checked
 /// through `apply_table` instead of `show_values`.
 #[test]
-#[ignore = "slow: renders the real window; run with --ignored"]
 fn table_scroll_restores_when_a_tab_is_switched_back_to() {
     let mut h = Harness::new();
     let (long, short) = (hash_fields(400, "long"), hash_fields(30, "short"));
@@ -251,7 +244,6 @@ fn table_scroll_restores_when_a_tab_is_switched_back_to() {
 
 /// Switching to the value list and back (which rebuilds the table) doesn't panic.
 #[test]
-#[ignore = "slow: renders the real window; run with --ignored"]
 fn switching_views_back_and_forth_rebuilds_the_table_without_panicking() {
     let mut h = Harness::new();
     let fields = hash_fields(60, "user");

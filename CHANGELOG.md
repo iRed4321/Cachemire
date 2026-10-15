@@ -16,6 +16,8 @@ Every stable release of Cachemire; `Unreleased` is what the next one brings. Bet
 - **Windows**: exporting keys whose names differ only by case (`User` and `user`) no longer writes one over the other
 - A Redisql query with a second `WHERE`, `SELECT` or `LIMIT` is now an error, instead of the first one being silently dropped
 - An export no longer leaves an empty file for a key deleted before it could be read
+- Connections to an IPv6 address (`redis://[::1]:6379`) now work, directly or through an SSH tunnel
+- Finding text in a value, and the highlighting of search matches, now ignore case on lines holding letters such as `İ` or `ẞ` too
 
 ## 3.0.0 - 2026-10-15
 

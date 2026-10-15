@@ -7,7 +7,7 @@ struct Sample {
 }
 
 fn temp_dir(name: &str) -> PathBuf {
-    std::env::temp_dir().join(format!("cachemire-persist-{name}-{}-{}", std::process::id(), super::super::now_ms()))
+    crate::test_support::temp_dir(&format!("persist-{name}"))
 }
 
 #[test]
@@ -38,4 +38,32 @@ fn a_file_that_cannot_be_used_is_kept_aside() {
     assert!(!file.exists());
     assert_eq!(fs::read_to_string(kept).unwrap(), r#"{"other": 1}"#);
     let _ = fs::remove_dir_all(&dir);
+}
+
+#[test]
+fn a_save_that_fails_leaves_the_saved_file_as_it_was() {
+    let dir = temp_dir("failed-save");
+    let file = dir.join("settings.json");
+    save(&file, &serde_json::json!({"kept": true})).unwrap();
+    // a map with keys JSON can't have: it fails to serialize
+    let unwritable: std::collections::BTreeMap<(i32, i32), i32> = [((1, 2), 3)].into_iter().collect();
+    assert!(save(&file, &unwritable).is_err());
+    assert!(matches!(load::<serde_json::Value>(&file), Loaded::Read(v) if v == serde_json::json!({"kept": true})));
+    assert_eq!(fs::read_dir(&dir).unwrap().count(), 1, "no temporary file is left behind");
+}
+
+#[test]
+fn a_save_replaces_the_whole_file() {
+    let file = temp_dir("replace").join("settings.json");
+    save(&file, &serde_json::json!({"long": "x".repeat(1000)})).unwrap();
+    save(&file, &serde_json::json!({"short": 1})).unwrap();
+    assert!(matches!(load::<serde_json::Value>(&file), Loaded::Read(v) if v == serde_json::json!({"short": 1})));
+}
+
+#[test]
+fn a_file_of_another_shape_is_unusable_not_missing() {
+    let file = temp_dir("shape").join("history.json");
+    fs::write(&file, r#"{"not": "a list"}"#).unwrap();
+    assert!(matches!(load::<Vec<String>>(&file), Loaded::Unusable(_)));
+    assert!(matches!(load::<Vec<String>>(&file.with_file_name("absent.json")), Loaded::Missing));
 }

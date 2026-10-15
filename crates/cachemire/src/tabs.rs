@@ -150,6 +150,39 @@ impl Tabs {
             self.view_state = back.view_state;
         }
     }
+
+    /// Closes `key`'s tab: whether it was the active one, and then the tab that is now (its left
+    /// neighbour, else the first one left). `None` when it has no tab.
+    fn close(&mut self, key: &str) -> Option<(bool, Option<String>)> {
+        let pos = self.open.iter().position(|k| k == key)?;
+        self.open.remove(pos);
+        self.view_state.remove(key);
+        if self.active.as_deref() != Some(key) {
+            return Some((false, None));
+        }
+        self.active = self.open.get(pos.saturating_sub(1)).cloned();
+        // the active tab changed: the tree highlight goes with the closed one
+        self.highlighted = false;
+        Some((true, self.active.clone()))
+    }
+
+    /// Closes every tab but `key`'s, which becomes the active one: the tabs closed, and whether
+    /// it was the active one already. `None` when it has no tab.
+    fn close_others(&mut self, key: &str) -> Option<(Vec<String>, bool)> {
+        if !self.open.iter().any(|k| k == key) {
+            return None;
+        }
+        let was_active = self.active.as_deref() == Some(key);
+        let closed = self.open.iter().filter(|k| *k != key).cloned().collect();
+        self.open.retain(|k| k == key);
+        self.view_state.retain(|k, _| k == key);
+        self.active = Some(key.to_string());
+        if !was_active {
+            // another tab became the active one: the tree highlight goes
+            self.highlighted = false;
+        }
+        Some((closed, was_active))
+    }
 }
 
 fn render(window: &MainWindow, tabs: &Tabs) {
@@ -385,23 +418,7 @@ fn on_connection_changed(app: &App, window: &MainWindow) {
 }
 
 fn on_tab_closed(app: &App, window: &MainWindow, key: String) {
-    let (next_active, was_active) = {
-        let mut tabs = app.tabs.borrow_mut();
-        let Some(pos) = tabs.open.iter().position(|k| k == &key) else {
-            return;
-        };
-        tabs.open.remove(pos);
-        tabs.view_state.remove(&key);
-        if tabs.active.as_deref() == Some(key.as_str()) {
-            let neighbor = if pos > 0 { pos - 1 } else { 0 };
-            tabs.active = tabs.open.get(neighbor).cloned();
-            // the active tab changed: the tree highlight goes with the closed one
-            tabs.highlighted = false;
-            (tabs.active.clone(), true)
-        } else {
-            (None, false)
-        }
-    };
+    let Some((was_active, next_active)) = app.tabs.borrow_mut().close(&key) else { return };
 
     app.key_detail.forget(window.connection_id().as_str(), Some(&key));
     forget_special(app, &key);
@@ -428,27 +445,19 @@ fn on_tab_closed(app: &App, window: &MainWindow, key: String) {
 fn on_close_other_tabs(app: &App, window: &MainWindow, key: String) {
     let needs_load = {
         let mut tabs = app.tabs.borrow_mut();
-        if !tabs.open.contains(&key) {
-            return;
-        }
         let mut scroll = ScrollPos::default();
-        let was_active = tabs.active.as_deref() == Some(key.as_str());
+        let Some((closed, was_active)) = tabs.close_others(&key) else { return };
         let connection = window.connection_id();
-        for closed in tabs.open.iter().filter(|k| **k != key) {
+        for closed in &closed {
             app.key_detail.forget(connection.as_str(), Some(closed));
             forget_special(app, closed);
         }
-        tabs.open.retain(|k| k == &key);
-        tabs.view_state.retain(|k, _| k == &key);
-        tabs.active = Some(key.clone());
         render(window, &tabs);
         // the kept tab already shows its own content if it was the
         // active one; otherwise switch the key panel over to it
         if !was_active {
             tabs.loaded_on = window.connection_id().to_string();
             scroll = restore_view_state(window, &tabs, &key);
-            // another tab became the active one: the tree highlight goes
-            tabs.highlighted = false;
             window.global::<KeyTree>().set_selected("".into());
         }
         (!was_active).then_some(scroll)

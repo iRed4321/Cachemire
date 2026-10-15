@@ -150,3 +150,16 @@ fn the_export_says_when_it_was_made() {
     let file: Value = serde_json::from_str(&std::fs::read_to_string(path).unwrap()).unwrap();
     assert_eq!(file["exportedAtUtc"], "2024-02-29T23:59:59.999Z");
 }
+
+#[test]
+fn an_ipv6_server_survives_an_export_and_an_import() {
+    let (state, ids) = state_with(vec![connection("Local v6", "redis://[::1]:6380/2")]);
+    let text = export_to_text(&state, &ids, false);
+    let file: Value = serde_json::from_str(&text).unwrap();
+    assert_eq!(file["connections"][0]["host"], "::1", "the host field holds the bare address");
+    let drafts = parse_drafts(&text).unwrap();
+    assert_eq!(drafts[0].connection_url, "redis://[::1]:6380/2");
+    // a file that only has the host, port and database
+    let old = parse_drafts(r#"[{"name": "v6", "host": "::1", "port": 6380, "db": 2}]"#).unwrap();
+    assert_eq!(old[0].connection_url, "redis://[::1]:6380/2");
+}

@@ -12,6 +12,7 @@ fn color_name(color: Color) -> &'static str {
         c if c == BOOL_COLOR => "bool",
         c if c == PUNCT_COLOR => "punct",
         c if c == COMMENT_COLOR => "comment",
+        c if c == VAR_COLOR => "variable",
         _ => "?",
     }
 }
@@ -86,4 +87,43 @@ fn crlf_and_lone_cr_both_collapse_to_lf() {
     assert_eq!(normalize_line_endings("FROM KEY 'k'\r\nSELECT *\r\nLIMIT 1"), "FROM KEY 'k'\nSELECT *\nLIMIT 1");
     assert_eq!(normalize_line_endings("a\rb"), "a\nb");
     assert_eq!(normalize_line_endings("no newlines here"), "no newlines here");
+}
+
+/// The text the error mark covers on each line it touches.
+fn marked(text: &str, error: Range<usize>) -> Vec<String> {
+    highlighted_lines(text, Some(error)).into_iter().filter_map(|(line, _, marked)| marked.map(|r| line[r].to_string())).collect()
+}
+
+#[test]
+fn the_error_is_marked_on_the_line_it_is_on() {
+    let text = "FROM KEY 'a'\nORDER BY x";
+    let at = text.find("ORDER").unwrap();
+    assert_eq!(marked(text, at..at + 5), ["ORDER"]);
+}
+
+#[test]
+fn an_error_over_several_lines_is_marked_on_each() {
+    let text = "FROM KEY 'a' AS a\nJOIN KEY 'b' AS b ON a.id\n= b.ref";
+    let (start, end) = (text.find("a.id").unwrap(), text.len());
+    assert_eq!(marked(text, start..end), ["a.id", "= b.ref"]);
+}
+
+#[test]
+fn a_carriage_return_moves_no_mark() {
+    let text = "FROM KEY 'a'\r\nLIMIT x";
+    let at = text.find('x').unwrap();
+    assert_eq!(marked(text, at..at + 1), ["x"]);
+}
+
+#[test]
+fn an_empty_error_marks_nothing() {
+    assert!(marked("FROM KEY 'a'", 3..3).is_empty());
+    assert!(highlighted_lines("a\nb", None).iter().all(|(_, _, marked)| marked.is_none()));
+}
+
+#[test]
+fn a_variable_inside_a_string_has_its_own_color() {
+    assert_eq!(kinds("'user:&id:x'"), [("'user:", "string"), ("&id", "variable"), (":x'", "string")]);
+    assert_eq!(kinds("'&id'"), [("'", "string"), ("&id", "variable"), ("'", "string")]);
+    assert_eq!(kinds("'a&id'"), [("'a&id'", "string")], "only a whole segment is a variable");
 }

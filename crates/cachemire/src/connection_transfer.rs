@@ -239,6 +239,12 @@ fn show_drafts(app: &Rc<App>, window: &MainWindow, parsed: Result<Vec<Draft>, Ap
     refresh_counts(window);
 }
 
+/// Lists the connections of an import file named `file` that holds `text`, as choosing it does.
+#[cfg(test)]
+pub(crate) fn show_file(app: &Rc<App>, window: &MainWindow, text: &str, file: &str) {
+    show_drafts(app, window, parse_drafts(text), file.to_string());
+}
+
 impl Draft {
     /// The draft as what saving a connection takes.
     fn payload(&self) -> ConnectionPayloadInput {

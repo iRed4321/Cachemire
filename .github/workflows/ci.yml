@@ -76,26 +76,17 @@ jobs:
         run: |
           eval "$(cargo llvm-cov show-env --sh)"
           cargo nextest run --no-run --timings
-      # each run's JUnit file is kept for the report; the UI tests and the report still go on
-      # when a unit test fails, as long as the tests were built
-      - name: Unit tests
+      # every test, the headless UI ones (the real window on Slint's software renderer) included;
+      # the JUnit file is kept for the report, which still goes on when a test fails
+      - name: Tests
         run: |
           eval "$(cargo llvm-cov show-env --sh)"
           mkdir -p target/test-output
           rm -f target/nextest/ci/junit.xml
           cargo nextest run --profile ci || failed=1
-          if [[ -f target/nextest/ci/junit.xml ]]; then cp target/nextest/ci/junit.xml target/test-output/unit.xml; fi
+          if [[ -f target/nextest/ci/junit.xml ]]; then cp target/nextest/ci/junit.xml target/test-output/tests.xml; fi
           exit ${failed:-0}
-      # the #[ignore]d headless UI tests: the real window on Slint's software renderer
-      - name: UI tests
-        if: ${{ !cancelled() && steps.build.outcome == 'success' }}
-        run: |
-          eval "$(cargo llvm-cov show-env --sh)"
-          rm -f target/nextest/ci/junit.xml
-          cargo nextest run --profile ci --run-ignored only || failed=1
-          if [[ -f target/nextest/ci/junit.xml ]]; then cp target/nextest/ci/junit.xml target/test-output/ui.xml; fi
-          exit ${failed:-0}
-      # the coverage of both runs together, the test-only files left out
+      # the tests' coverage, the test-only files left out
       - name: Coverage
         if: ${{ !cancelled() && steps.build.outcome == 'success' }}
         run: |
@@ -104,8 +95,7 @@ jobs:
       - name: Save the report (tests)
         if: ${{ !cancelled() && steps.build.outcome == 'success' }}
         run: |
-          cargo xtask report-build Tests --coverage target/test-output/coverage.json \
-            --tests "Unit tests=target/test-output/unit.xml" --tests "UI tests=target/test-output/ui.xml"
+          cargo xtask report-build Tests --coverage target/test-output/coverage.json --tests "Tests=target/test-output/tests.xml"
       - uses: actions/upload-artifact@v7
         if: ${{ !cancelled() }}
         with:

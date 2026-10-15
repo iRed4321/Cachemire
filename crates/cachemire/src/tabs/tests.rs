@@ -67,3 +67,65 @@ fn the_tree_highlight_is_remembered_per_connection() {
     tabs.switch_connection("a", true);
     assert!(!tabs.highlighted);
 }
+
+fn active(tabs: &Tabs) -> Option<&str> {
+    tabs.active.as_deref()
+}
+
+#[test]
+fn closing_the_active_tab_activates_its_left_neighbour() {
+    let mut tabs = Tabs::default();
+    open(&mut tabs, &["a", "b", "c"]);
+    tabs.active = Some("b".into());
+    tabs.highlighted = true;
+    assert_eq!(tabs.close("b"), Some((true, Some("a".into()))));
+    assert_eq!(tabs.open, ["a", "c"]);
+    assert!(!tabs.highlighted, "the tree highlight goes with the closed tab");
+}
+
+#[test]
+fn closing_the_first_tab_while_active_activates_the_next_one() {
+    let mut tabs = Tabs::default();
+    open(&mut tabs, &["a", "b"]);
+    tabs.active = Some("a".into());
+    assert_eq!(tabs.close("a"), Some((true, Some("b".into()))));
+    assert_eq!(tabs.close("b"), Some((true, None)), "the last tab closed: none is active");
+    assert!(tabs.open.is_empty());
+}
+
+#[test]
+fn closing_another_tab_keeps_the_active_one_and_its_highlight() {
+    let mut tabs = Tabs::default();
+    open(&mut tabs, &["a", "b", "c"]);
+    tabs.highlighted = true;
+    tabs.view_state.insert("a".into(), TabViewState::default());
+    assert_eq!(tabs.close("a"), Some((false, None)));
+    assert_eq!((active(&tabs), tabs.highlighted), (Some("c"), true));
+    assert!(!tabs.view_state.contains_key("a"), "a closed tab forgets its view");
+    assert_eq!(tabs.close("nope"), None);
+}
+
+#[test]
+fn closing_the_other_tabs_keeps_one_and_makes_it_active() {
+    let mut tabs = Tabs::default();
+    open(&mut tabs, &["a", "b", "c"]);
+    tabs.highlighted = true;
+    for key in ["a", "b", "c"] {
+        tabs.view_state.insert(key.into(), TabViewState::default());
+    }
+    let (closed, was_active) = tabs.close_others("b").unwrap();
+    assert_eq!((closed, was_active), (vec!["a".to_string(), "c".to_string()], false));
+    assert_eq!((tabs.open.as_slice(), active(&tabs)), (["b".to_string()].as_slice(), Some("b")));
+    assert_eq!(tabs.view_state.keys().collect::<Vec<_>>(), ["b"]);
+    assert!(!tabs.highlighted, "another tab became the active one");
+}
+
+#[test]
+fn closing_the_others_of_the_active_tab_keeps_its_highlight() {
+    let mut tabs = Tabs::default();
+    open(&mut tabs, &["a", "b"]);
+    tabs.highlighted = true;
+    assert_eq!(tabs.close_others("b"), Some((vec!["a".to_string()], true)));
+    assert!(tabs.highlighted);
+    assert_eq!(tabs.close_others("gone"), None);
+}

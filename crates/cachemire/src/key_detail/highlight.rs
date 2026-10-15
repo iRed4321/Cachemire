@@ -20,9 +20,23 @@ const HIGHLIGHT_TEXT: Color = BG_APP_BASE;
 /// One match: paragraph index plus byte range within that paragraph.
 type Match = (usize, Range<usize>);
 
-/// Non-overlapping occurrences of `needle` per paragraph, case-sensitively or
-/// not. Case-insensitively, offsets come from the lowercased text, trusted
-/// only when lowercasing kept the byte length (always true for ASCII).
+/// `text` lowercased, with the offset in `text` of each of its bytes that starts the
+/// lowercase of a character of `text` (and of its end): `None` inside one.
+fn lowercased_with_origins(text: &str) -> (String, Vec<Option<usize>>) {
+    let mut lower = String::with_capacity(text.len());
+    let mut origins = Vec::with_capacity(text.len() + 1);
+    for (at, c) in text.char_indices() {
+        origins.push(Some(at));
+        lower.extend(c.to_lowercase());
+        origins.resize(lower.len(), None);
+    }
+    origins.push(Some(text.len()));
+    (lower, origins)
+}
+
+/// Non-overlapping occurrences of `needle` per paragraph, case-sensitively or not:
+/// case-insensitively, they're found in the lowercased text and mapped back to the
+/// text, a match that would cover part of a character left out.
 pub(super) fn find_matches(paragraphs: &[ColoredParagraph], needle: &str, case_sensitive: bool) -> Vec<Match> {
     let mut out = Vec::new();
     if needle.is_empty() {
@@ -36,21 +50,28 @@ pub(super) fn find_matches(paragraphs: &[ColoredParagraph], needle: &str, case_s
         &needle_lower
     };
     for (i, (text, _)) in paragraphs.iter().enumerate() {
+        // (lowercasing ASCII keeps every offset where it was)
+        let mapped = (!case_sensitive && !text.is_ascii()).then(|| lowercased_with_origins(text));
         let lower;
-        let haystack: &str = if case_sensitive {
-            text
-        } else {
-            lower = text.to_lowercase();
-            if lower.len() == text.len() { &lower } else { text }
+        let haystack: &str = match &mapped {
+            Some((lowered, _)) => lowered,
+            None if case_sensitive => text,
+            None => {
+                lower = text.to_ascii_lowercase();
+                &lower
+            }
         };
         let mut from = 0;
         while let Some(pos) = haystack[from..].find(needle) {
-            let start = from + pos;
-            let end = start + needle.len();
-            if text.is_char_boundary(start) && text.is_char_boundary(end) {
-                out.push((i, start..end));
-            }
+            let (start, end) = (from + pos, from + pos + needle.len());
             from = end;
+            let range = match &mapped {
+                Some((_, origins)) => origins[start].zip(origins[end]).map(|(start, end)| start..end),
+                None => Some(start..end),
+            };
+            if let Some(range) = range {
+                out.push((i, range));
+            }
         }
     }
     out
@@ -215,18 +236,22 @@ fn slice_paragraph(paragraph: &ColoredParagraph, from: usize, keep: usize) -> Co
     (format!("{lead}{}", &text[from..to]), spans)
 }
 
-/// Marks every place `needle` (any case) occurs in a hit's text, and cuts the
-/// text down to a window that shows the first one.
-fn mark_hit(paragraph: ColoredParagraph, needle: &str) -> StyledText {
-    let needle = needle.to_lowercase();
-    let first = find_matches(std::slice::from_ref(&paragraph), &needle, false).first().map(|(_, r)| r.start);
+/// A hit's text cut down to a window that shows the first place `needle` (any case) occurs.
+fn hit_window(paragraph: &ColoredParagraph, needle: &str) -> ColoredParagraph {
+    let first = find_matches(std::slice::from_ref(paragraph), needle, false).first().map(|(_, r)| r.start);
     let from = first.map_or(0, |start| {
         let back = paragraph.0[..start].char_indices().rev().nth(HIT_LEAD_CHARS).map_or(0, |(n, _)| n);
         // a window only when the match would otherwise be far from the start
         if back > 0 { back } else { 0 }
     });
-    let paragraph = slice_paragraph(&paragraph, from, HIT_KEPT_CHARS);
-    let paragraphs = [paragraph];
+    slice_paragraph(paragraph, from, HIT_KEPT_CHARS)
+}
+
+/// Marks every place `needle` (any case) occurs in a hit's text, and cuts the
+/// text down to a window that shows the first one.
+fn mark_hit(paragraph: ColoredParagraph, needle: &str) -> StyledText {
+    let needle = needle.to_lowercase();
+    let paragraphs = [hit_window(&paragraph, &needle)];
     let color = HIGHLIGHT_FIND;
     let highlights: Vec<(usize, Range<usize>, Color)> =
         find_matches(&paragraphs, &needle, false).into_iter().map(|(p, r)| (p, r, color)).collect();

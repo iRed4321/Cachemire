@@ -6,7 +6,6 @@ use super::*;
 /// The text a value filter matches gets a filled background (the amber
 /// highlight), not just another text color.
 #[test]
-#[ignore = "slow: renders the real window; run with --ignored"]
 fn value_filter_matches_are_drawn_on_a_filled_background() {
     let mut h = Harness::new();
     // the value filter matches a field's raw text, which the test helper leaves empty
@@ -33,7 +32,6 @@ fn value_filter_matches_are_drawn_on_a_filled_background() {
 /// text scrolls under it; clicking it folds the row, whether it is the row's own
 /// or the fixed one.
 #[test]
-#[ignore = "slow: renders the real window; run with --ignored"]
 fn the_header_of_an_open_row_stays_fixed_while_its_text_scrolls() {
     let mut h = Harness::new();
     h.window.global::<KeyPanel>().set_view(KeyView::Fields);
@@ -113,7 +111,6 @@ fn the_header_of_an_open_row_stays_fixed_while_its_text_scrolls() {
 /// A row asked for (a click on a hit of a search tab) is built, opened and
 /// scrolled to, however far down the list it is.
 #[test]
-#[ignore = "slow: renders the real window; run with --ignored"]
 fn a_revealed_row_is_opened_and_scrolled_to() {
     let mut h = Harness::new();
     h.window.global::<KeyPanel>().set_view(KeyView::Fields);
@@ -158,7 +155,6 @@ fn a_revealed_row_is_opened_and_scrolled_to() {
 /// on switching back, even though rows must first be created around that
 /// spot — otherwise the Flickable would clamp to a momentarily shorter list.
 #[test]
-#[ignore = "slow: renders the real window; run with --ignored"]
 fn value_list_scroll_restores_when_a_tab_is_switched_back_to() {
     let mut h = Harness::new();
     let (long, short) = (hash_fields(400, "long"), hash_fields(30, "short"));
@@ -183,7 +179,6 @@ fn value_list_scroll_restores_when_a_tab_is_switched_back_to() {
 /// different key, then come back — the row reopens on its own (`changed
 /// expanded` fires from its own `init`, not just the bookkeeping agreeing).
 #[test]
-#[ignore = "slow: renders the real window; run with --ignored"]
 fn expanded_row_reopens_when_a_tab_is_switched_back_to() {
     let mut h = Harness::new();
     let (long, short) = (hash_fields(400, "long"), hash_fields(30, "short"));
@@ -237,7 +232,6 @@ fn expanded_row_reopens_when_a_tab_is_switched_back_to() {
 /// pretty text: `pretty-is-ready` has each row ask about its own field, so
 /// one shared "ready" pulse can wake several rows without racing.
 #[test]
-#[ignore = "slow: renders the real window; run with --ignored"]
 fn two_rows_opening_together_both_get_their_pretty_text() {
     let mut h = Harness::new();
     h.window.global::<KeyPanel>().set_view(KeyView::Fields);
@@ -296,7 +290,6 @@ fn two_rows_opening_together_both_get_their_pretty_text() {
 /// answer synchronously, inside its own `init` — a property write made
 /// during a row's own construction never fires that row's own `changed`.
 #[test]
-#[ignore = "slow: renders the real window; run with --ignored"]
 fn a_row_born_with_its_field_already_cached_loads_immediately() {
     let mut h = Harness::new();
     h.window.global::<KeyPanel>().set_view(KeyView::Fields);

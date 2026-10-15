@@ -3,11 +3,9 @@
 - Never add a test unless explicitly asked to. Do fix any test that fails
   because of a change you made — run `cargo test` after every change and
   resolve failures before finishing.
-- Never run the `--ignored` headless UI tests, render the app, or take a
-  screenshot to check your own work. No UI verification of any kind — the
-  user checks the UI themselves and will report back if something's off.
-  The one exception: when a new feature made you modify an `--ignored` test,
-  run all the `--ignored` tests afterwards and make them pass.
+- Never launch the app or take a screenshot to check your own work. No UI
+  verification of any kind beyond the tests — the user checks the UI
+  themselves and will report back if something's off.
 - Never run `git commit` (or push) unless explicitly asked.
 - Comments: 3 lines max, always — this counts every line of the comment
   block, doc comments (`///`) included, and applies to existing comments you

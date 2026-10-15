@@ -468,3 +468,6 @@ pub(super) fn init(app: &Rc<App>, window: &MainWindow) {
         move || app.keyspace.0.export_cancel.store(true, Ordering::Relaxed)
     });
 }
+
+#[cfg(test)]
+mod tests;
