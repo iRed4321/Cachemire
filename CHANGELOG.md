@@ -18,6 +18,7 @@ Every stable release of Cachemire; `Unreleased` is what the next one brings. Bet
 - An export no longer leaves an empty file for a key deleted before it could be read
 - Connections to an IPv6 address (`redis://[::1]:6379`) now work, directly or through an SSH tunnel
 - Finding text in a value, and the highlighting of search matches, now ignore case on lines holding letters such as `İ` or `ẞ` too
+- **AWS**: signing in through the browser no longer fails with "No access" when the first profile's role isn't granted to you: the sign-in succeeds, and only picking that profile reports it, naming the profile, role and account
 
 ## 3.0.0 - 2026-10-15
 

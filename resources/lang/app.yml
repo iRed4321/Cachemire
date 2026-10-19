@@ -288,6 +288,8 @@ _version: 2
   fr: "Aucun identifiant."
 "No usable credentials for the profile %{name}: %{error}":
   fr: "Aucun identifiant utilisable pour le profil %{name} : %{error}"
+"The profile %{name} can't take the role %{role} in the account %{account}: %{error}":
+  fr: "Le profil %{name} ne peut pas prendre le rôle %{role} dans le compte %{account} : %{error}"
 "No AWS profile found in the .aws folder.":
   fr: "Aucun profil AWS trouvé dans le dossier .aws."
 "AWS profile not found: %{name}":

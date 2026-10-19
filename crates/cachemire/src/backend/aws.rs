@@ -165,16 +165,25 @@ async fn sso_access_token(sso: &SsoSettings) -> Result<String, AppError> {
     }
 }
 
-/// A config for `profile` whose credentials work: the SDK's own chain first
-/// (keys, an assumed role, an existing `aws sso login`...), then an SSO sign-in.
-async fn sign_in(profile: &Profile) -> Result<SdkConfig, AppError> {
+/// The SDK's config for `profile` if its own chain (keys, an assumed role, an
+/// existing `aws sso login`...) yields credentials, else why it doesn't.
+async fn chain_config(profile: &Profile) -> Result<SdkConfig, String> {
     let config = aws_config::defaults(BehaviorVersion::latest()).profile_name(&profile.name).http_client(http_client()).load().await;
-    let chain_error = match config.credentials_provider() {
+    match config.credentials_provider() {
         Some(provider) => match provider.provide_credentials().await {
-            Ok(_) => return Ok(config),
-            Err(e) => describe_chain(&e),
+            Ok(_) => Ok(config),
+            Err(e) => Err(describe_chain(&e)),
         },
-        None => t!("No credentials.").into_owned(),
+        None => Err(t!("No credentials.").into_owned()),
+    }
+}
+
+/// A config for `profile` whose credentials work: the SDK's own chain first,
+/// then the profile's SSO role, signing in in the browser if need be.
+async fn sign_in(profile: &Profile) -> Result<SdkConfig, AppError> {
+    let chain_error = match chain_config(profile).await {
+        Ok(config) => return Ok(config),
+        Err(e) => e,
     };
     let Some(sso) = &profile.sso else {
         return Err(AppError::cloud(t!("No usable credentials for the profile %{name}: %{error}", name = profile.name.as_str(), error = chain_error)));
@@ -188,7 +197,11 @@ async fn sign_in(profile: &Profile) -> Result<SdkConfig, AppError> {
         .access_token(access_token)
         .send()
         .await
-        .map_err(|e| describe(&e))?;
+        .map_err(|e| {
+            let error = describe(&e);
+            let (name, role, account) = (profile.name.as_str(), sso.role_name.as_str(), sso.account_id.as_str());
+            AppError::cloud(t!("The profile %{name} can't take the role %{role} in the account %{account}: %{error}", name = name, role = role, account = account, error = error.message()))
+        })?;
     let role = granted.role_credentials().ok_or_else(|| AppError::cloud(t!("No credentials.")))?;
     let expires = UNIX_EPOCH + Duration::from_millis(role.expiration().max(0) as u64);
     let credentials = Credentials::new(incomplete(role.access_key_id())?, incomplete(role.secret_access_key())?, role.session_token().map(str::to_string), Some(expires), "cachemire-sso");
@@ -202,20 +215,22 @@ async fn sign_in(profile: &Profile) -> Result<SdkConfig, AppError> {
         .await)
 }
 
-/// Signs in like `aws login`: reuses a working session, else opens the browser.
-/// Profiles are tried in turn (the environment's, `default`, the rest); one
-/// lacking what it needs to sign in is skipped.
+/// Signs in like `aws sso login`: reuses a working session, else gets an SSO token
+/// in the browser; each profile's role is checked once it is picked. Profiles are
+/// tried in turn (the environment's, `default`, the rest), skipping those with neither.
 pub async fn login() -> Result<(), AppError> {
     let mut profiles = profiles().await;
     let wanted = std::env::var("AWS_PROFILE").ok();
     profiles.sort_by_key(|p| (Some(&p.name) != wanted.as_ref(), p.name != "default"));
     let mut last_error = AppError::not_found(t!("No AWS profile found in the .aws folder."));
     for profile in &profiles {
-        match sign_in(profile).await {
+        let chain_error = match chain_config(profile).await {
             Ok(_) => return Ok(()),
-            // no SSO settings and no working credentials: nothing to ask the user for
-            Err(e) if profile.sso.is_none() => last_error = e,
-            Err(e) => return Err(e),
+            Err(e) => e,
+        };
+        match &profile.sso {
+            Some(sso) => return sso_access_token(sso).await.map(drop),
+            None => last_error = AppError::cloud(t!("No usable credentials for the profile %{name}: %{error}", name = profile.name.as_str(), error = chain_error)),
         }
     }
     Err(last_error)
