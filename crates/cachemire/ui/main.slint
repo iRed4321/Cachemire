@@ -11,7 +11,7 @@ import { KeyDetail, KeyScroll, ExportPrefs, AllValuesRowData, FindResult, Select
 import { SearchPanel, SearchRowData } from "components/search-panel.slint";
 import { QueryEditor, QueryToolbar, ResultTabs, HistoryRow } from "components/query-panel.slint";
 import { TableRowData } from "components/key-detail-types.slint";
-import { FloatingCard, HResizeHandle, SquareIconButton } from "components/widgets.slint";
+import { FloatingCard, Hint, HResizeHandle, SquareIconButton } from "components/widgets.slint";
 import { IconSidebar } from "components/icons.slint";
 import { SettingsModal, SshProfileRowData, SshProfileForm, ConnProfileForm } from "components/settings.slint";
 import { ConnectionStatus, TreeRowKind, ExportFormat, ExportTarget, LanguageSetting, ProfileTint, KeyView, SidebarView, SearchScope } from "components/types.slint";
@@ -117,14 +117,6 @@ export component MainWindow inherits Window {
     property <length> tab-menu-x: 0px;
     property <length> tab-menu-y: 0px;
 
-    // Hover tooltip, positioned in window coordinates by whoever raises it:
-    // left edge at `tooltip-x`; `tooltip-anchor-y` is its bottom edge when
-    // `tooltip-above`, top edge otherwise. Drawn at window level to avoid clipping.
-    property <string> tooltip-text: "";
-    property <length> tooltip-x: 0px;
-    property <length> tooltip-anchor-y: 0px;
-    property <bool> tooltip-above: true;
-    property <bool> tooltip-visible: false;
 
     // Transient notice ("Copied") raised from Rust via `show-toast`.
     // `toast-tick` folds into the timer interval so a toast raised while one
@@ -239,14 +231,6 @@ export component MainWindow inherits Window {
                         root.aws-profiles-x = x;
                         root.aws-profiles-open = !root.aws-profiles-open;
                     }
-                    tooltip-show(text, x, top) => {
-                        root.tooltip-text = text;
-                        root.tooltip-x = x;
-                        root.tooltip-anchor-y = top;
-                        root.tooltip-above = false;
-                        root.tooltip-visible = true;
-                    }
-                    tooltip-hide => { root.tooltip-visible = false; }
                     settings-clicked => {
                         Preferences.error = "";
                         Preferences.ssh-profile-editing = false;
@@ -284,14 +268,6 @@ export component MainWindow inherits Window {
                         ctrl-held: root.ctrl-held;
                         clipboard-has-text() => { return root.clipboard-has-text(); }
                         memory: ConnectionState.view.connected ? ConnectionState.memory : "";
-                        tooltip-show(text, x, top) => {
-                            root.tooltip-text = text;
-                            root.tooltip-x = x;
-                            root.tooltip-anchor-y = top;
-                            root.tooltip-above = false;
-                            root.tooltip-visible = true;
-                        }
-                        tooltip-hide => { root.tooltip-visible = false; }
                         view <=> root.sidebar-view;
                         hide-sidebar-clicked => { root.sidebar-hidden = true; }
                         row-context-requested(name, x, y) => {
@@ -321,14 +297,6 @@ export component MainWindow inherits Window {
                             y: Theme.px(4px);
                             size: Theme.px(30px);
                             hint: @tr("Show sidebar");
-                            tooltip-show(text, x, top) => {
-                                root.tooltip-text = text;
-                                root.tooltip-x = x;
-                                root.tooltip-anchor-y = top;
-                                root.tooltip-above = false;
-                                root.tooltip-visible = true;
-                            }
-                            tooltip-hide => { root.tooltip-visible = false; }
                             clicked => { root.sidebar-hidden = false; }
                             IconSidebar { size: Theme.icon-md; tint: empty-show-button.hovered ? Theme.text-primary : Theme.text-secondary; }
                         }
@@ -386,14 +354,6 @@ export component MainWindow inherits Window {
                                 TabBar {
                                     sidebar-hidden: root.sidebar-hidden && root.connection-chosen;
                                     sidebar-show-requested => { root.sidebar-hidden = false; }
-                                    tab-tooltip-show(text, x, bottom) => {
-                                        root.tooltip-text = text;
-                                        root.tooltip-x = x;
-                                        root.tooltip-anchor-y = bottom;
-                                        root.tooltip-above = true;
-                                        root.tooltip-visible = true;
-                                    }
-                                    tab-tooltip-hide => { root.tooltip-visible = false; }
                                     tab-context-requested(key, x, y) => {
                                         root.tab-menu-key = key;
                                         // keep the menu inside the window if the click is near the right edge
@@ -433,23 +393,7 @@ export component MainWindow inherits Window {
                                             QueryTab.command-kind = kind;
                                             QueryTab.command-tick += 1;
                                         }
-                                        tooltip-show(text, x, top) => {
-                                            root.tooltip-text = text;
-                                            root.tooltip-x = x;
-                                            root.tooltip-anchor-y = top;
-                                            root.tooltip-above = false;
-                                            root.tooltip-visible = true;
-                                        }
-                                        tooltip-hide => { root.tooltip-visible = false; }
                                     }
-                                    tooltip-show(text, x, top) => {
-                                        root.tooltip-text = text;
-                                        root.tooltip-x = x;
-                                        root.tooltip-anchor-y = top;
-                                        root.tooltip-above = false;
-                                        root.tooltip-visible = true;
-                                    }
-                                    tooltip-hide => { root.tooltip-visible = false; }
                                 }
                             }
                         }
@@ -620,14 +564,13 @@ export component MainWindow inherits Window {
             }
         }
 
-        // hover tooltip: no TouchArea, so it never intercepts input; kept
-        // inside the window horizontally, eliding only if the key is wider
-        // than the whole window
-        if tooltip-visible: Rectangle {
-            x: max(Theme.px(4px), min(root.tooltip-x, root.width - self.width - Theme.px(4px)));
-            y: root.tooltip-above
-                ? max(Theme.px(4px), root.tooltip-anchor-y - self.height)
-                : min(root.tooltip-anchor-y, root.height - self.height - Theme.px(4px));
+        // the hover hint (see Hint), at window level so nothing clips it; no TouchArea, so it never
+        // intercepts input; kept inside the window, eliding only text wider than the window
+        if Hint.visible: Rectangle {
+            x: max(Theme.px(4px), min(Hint.x, root.width - self.width - Theme.px(4px)));
+            y: Hint.above
+                ? max(Theme.px(4px), Hint.anchor-y - self.height)
+                : min(Hint.anchor-y, root.height - self.height - Theme.px(4px));
             width: tooltip-label.width + Theme.px(16px);
             height: Theme.px(24px);
             background: Theme.bg-elevated;
@@ -642,7 +585,7 @@ export component MainWindow inherits Window {
                 x: Theme.px(8px);
                 y: (parent.height - self.height) / 2;
                 width: min(self.preferred-width, root.width - Theme.px(24px));
-                text: root.tooltip-text;
+                text: Hint.text;
                 font-size: Theme.pt(12px);
                 font-family: Theme.font-mono;
                 color: Theme.text-primary;

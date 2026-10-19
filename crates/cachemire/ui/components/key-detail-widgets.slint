@@ -1,10 +1,11 @@
 import { Theme } from "theme.slint";
-import { IconButton, PastePopup, SegmentedToggle } from "widgets.slint";
+import { Hint, IconButton, PastePopup, SegmentedToggle } from "widgets.slint";
 import { KeyView, SearchScope } from "types.slint";
 import { IconCopy, IconDownload, IconExternalLink, IconSearch, IconFunnel, IconClose, IconChevron } from "icons.slint";
 import { BadgeData, ExportPrefs, SuggestionRow } from "key-detail-types.slint";
 
 // The round button floating over a scrolled view's bottom right corner: it takes the view back to its start.
+// Its hover hint shows above it; a press hides it, as the button goes away with the scroll.
 export component ScrollTopButton inherits Rectangle {
     callback clicked <=> area.clicked;
     width: Theme.px(36px);
@@ -23,7 +24,32 @@ export component ScrollTopButton inherits Rectangle {
         x: (parent.width - self.width) / 2;
         y: (parent.height - self.height) / 2;
     }
-    area := TouchArea { mouse-cursor: pointer; }
+
+    property <bool> hovered: area.has-hover;
+    property <bool> hint-shown: false;
+    function hide-hint() {
+        if hint-shown {
+            hint-shown = false;
+            Hint.hide();
+        }
+    }
+    changed hovered => { if !hovered { hide-hint(); } }
+    Timer {
+        interval: 500ms;
+        running: root.hovered && !area.pressed && !root.hint-shown;
+        triggered => {
+            root.hint-shown = true;
+            Hint.show-above(@tr("Back to the top"), area.absolute-position.x, area.absolute-position.y - Theme.px(6px));
+        }
+    }
+    area := TouchArea {
+        mouse-cursor: pointer;
+        pointer-event(event) => {
+            if event.kind == PointerEventKind.down {
+                root.hide-hint();
+            }
+        }
+    }
 }
 
 // the color of each scope the field/value search bar can look in: the 3-way
@@ -78,9 +104,24 @@ export component ExportGroup inherits Rectangle {
             picked(index) => { root.escaped = index == 1; }
         }
         if format-toggle: Rectangle { horizontal-stretch: 1; }
-        IconButton { box-size: Theme.px(26px); clicked => { open(); } IconExternalLink { size: Theme.icon-lg; tint: Theme.text-secondary; } }
-        IconButton { box-size: Theme.px(26px); clicked => { download(); } IconDownload { size: Theme.icon-lg; tint: Theme.text-secondary; } }
-        IconButton { box-size: Theme.px(26px); clicked => { copy(); } IconCopy { size: Theme.icon-lg; tint: Theme.text-secondary; } }
+        IconButton {
+            box-size: Theme.px(26px);
+            hint: @tr("Open in a text editor");
+            clicked => { open(); }
+            IconExternalLink { size: Theme.icon-lg; tint: Theme.text-secondary; }
+        }
+        IconButton {
+            box-size: Theme.px(26px);
+            hint: @tr("Download");
+            clicked => { download(); }
+            IconDownload { size: Theme.icon-lg; tint: Theme.text-secondary; }
+        }
+        IconButton {
+            box-size: Theme.px(26px);
+            hint: @tr("Copy");
+            clicked => { copy(); }
+            IconCopy { size: Theme.icon-lg; tint: Theme.text-secondary; }
+        }
     }
 }
 

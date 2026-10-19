@@ -8,6 +8,7 @@ Every stable release of Cachemire; `Unreleased` is what the next one brings. Bet
 
 - **Check for Updates at startup** (Settings, off by default): when a newer version is out on the channel you picked, the info window opens at startup to offer it, with a one-click install on Windows and a link to the release page on Linux
 - **AWS**: the SSO sign-in is remembered between launches and shared with the AWS CLI (in `~/.aws/sso/cache`), so the browser only opens again once it has run out; it also uses the CLI's current browser sign-in, which comes back to Cachemire by itself
+- **Hints** on every icon button, saying what it does when hovered
 
 ### Fixes
 

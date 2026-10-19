@@ -1,15 +1,38 @@
 import { Theme } from "theme.slint";
 
+// The window's hover hint, drawn by main.slint: any component raises it here with its text and
+// where it goes (left edge at `x`; `anchor-y` is its bottom edge when `above`, its top otherwise).
+export global Hint {
+    out property <string> text;
+    out property <length> x;
+    out property <length> anchor-y;
+    out property <bool> above;
+    out property <bool> visible;
+    public function show-below(label: string, left: length, top: length) {
+        text = label;
+        x = left;
+        anchor-y = top;
+        above = false;
+        visible = true;
+    }
+    public function show-above(label: string, left: length, bottom: length) {
+        text = label;
+        x = left;
+        anchor-y = bottom;
+        above = true;
+        visible = true;
+    }
+    public function hide() {
+        visible = false;
+    }
+}
+
 export component IconButton inherits Rectangle {
     in property <length> box-size: 24px;
     in property <bool> active: false;
-    // Short hover hint ("" for none), raised as a request once the pointer
-    // rests here a moment: the window draws it (see main.slint), so the
-    // host forwards `hint-show` / `hint-hide` to its tooltip.
+    // short hover hint ("" for none), shown below the button (see Hint) once the pointer rests here
     in property <string> hint: "";
     callback clicked <=> area.clicked;
-    callback hint-show(text: string, x: length, top: length);
-    callback hint-hide();
     width: box-size;
     height: box-size;
     border-radius: Theme.radius-sm;
@@ -24,7 +47,7 @@ export component IconButton inherits Rectangle {
     function hide-hint() {
         if hint-shown {
             hint-shown = false;
-            hint-hide();
+            Hint.hide();
         }
     }
     changed hovered => {
@@ -44,7 +67,7 @@ export component IconButton inherits Rectangle {
         running: root.hint != "" && root.hovered && !root.hint-shown && !root.hint-suppressed;
         triggered => {
             root.hint-shown = true;
-            root.hint-show(root.hint, area.absolute-position.x, area.absolute-position.y + area.height + Theme.px(6px));
+            Hint.show-below(root.hint, area.absolute-position.x, area.absolute-position.y + area.height + Theme.px(6px));
         }
     }
 
@@ -576,13 +599,12 @@ export component CheckRow inherits Rectangle {
 }
 
 // A square bordered icon button (the icon is its child), as the sidebar's header has them. Its hover
-// hint is drawn by the window: `tooltip-show` asks for it once the pointer rests here a moment.
+// hint (see Hint) shows below it once the pointer rests here, or above it with `hint-above`.
 export component SquareIconButton inherits Rectangle {
     in property <length> size: Theme.px(25px);
     in property <string> hint: "";
+    in property <bool> hint-above: false;
     callback clicked <=> area.clicked;
-    callback tooltip-show(text: string, x: length, top: length);
-    callback tooltip-hide();
 
     width: size;
     height: size;
@@ -596,7 +618,7 @@ export component SquareIconButton inherits Rectangle {
     function hide-hint() {
         if hint-shown {
             hint-shown = false;
-            tooltip-hide();
+            Hint.hide();
         }
     }
     changed hovered => { if !hovered { hide-hint(); } }
@@ -605,7 +627,11 @@ export component SquareIconButton inherits Rectangle {
         running: root.hovered && root.hint != "" && !area.pressed && !root.hint-shown;
         triggered => {
             root.hint-shown = true;
-            root.tooltip-show(root.hint, area.absolute-position.x, area.absolute-position.y + area.height + Theme.px(6px));
+            if root.hint-above {
+                Hint.show-above(root.hint, area.absolute-position.x, area.absolute-position.y);
+            } else {
+                Hint.show-below(root.hint, area.absolute-position.x, area.absolute-position.y + area.height + Theme.px(6px));
+            }
         }
     }
 

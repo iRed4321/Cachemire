@@ -3,6 +3,7 @@ import { ConnectionStatus } from "types.slint";
 import { IconCloud, IconSpinner, IconChevron, IconMinimize, IconMaximize, IconClose, IconDot, IconCopy, IconSettings } from "icons.slint";
 import { ConnectionState, AwsAccount } from "../globals.slint";
 import { About } from "about.slint";
+import { Hint } from "widgets.slint";
 
 // The connection's status, at the start of the middle pill: a dot colored
 // by connection health. Clicking it opens the connection picker; hovering
@@ -43,8 +44,6 @@ component SshBadge inherits Rectangle {
     in property <color> tunnel-color: Theme.text-tertiary;
     in property <string> hint: "";
     callback clicked <=> area.clicked;
-    callback tooltip-show(text: string, x: length, top: length);
-    callback tooltip-hide();
 
     height: Theme.px(20px);
     width: label.preferred-width + Theme.px(16px);
@@ -56,7 +55,7 @@ component SshBadge inherits Rectangle {
     function hide-tooltip() {
         if tooltip-shown {
             tooltip-shown = false;
-            tooltip-hide();
+            Hint.hide();
         }
     }
     changed hovered => { if !hovered { hide-tooltip(); } }
@@ -66,7 +65,7 @@ component SshBadge inherits Rectangle {
         running: root.hovered && root.hint != "" && !root.tooltip-shown;
         triggered => {
             root.tooltip-shown = true;
-            root.tooltip-show(root.hint, area.absolute-position.x, area.absolute-position.y + area.height + Theme.px(6px));
+            Hint.show-below(root.hint, area.absolute-position.x, area.absolute-position.y + area.height + Theme.px(6px));
         }
     }
 
@@ -201,10 +200,6 @@ export component TitleBar inherits Rectangle {
     // copy pill right of the connection pill
     callback copy-connection-string();
     copy-connection-string => { ConnectionState.copy-connection-string(); }
-    // status glyph tooltip, drawn at window level (see main.slint): anchored
-    // by its left edge and its top edge, just below the glyph
-    callback tooltip-show(text: string, x: length, top: length);
-    callback tooltip-hide();
 
     background: Theme.bg-app;
     vertical-stretch: 0;
@@ -227,7 +222,7 @@ export component TitleBar inherits Rectangle {
     function hide-status-tooltip() {
         if status-tooltip-shown {
             status-tooltip-shown = false;
-            tooltip-hide();
+            Hint.hide();
         }
     }
     changed status-hovered => {
@@ -242,7 +237,7 @@ export component TitleBar inherits Rectangle {
         running: root.status-hovered && root.status-hint != "" && !root.status-tooltip-shown;
         triggered => {
             root.status-tooltip-shown = true;
-            root.tooltip-show(root.status-hint, status-glyph.absolute-position.x,
+            Hint.show-below(root.status-hint, status-glyph.absolute-position.x,
                 status-glyph.absolute-position.y + status-glyph.height + Theme.px(6px));
         }
     }
@@ -256,7 +251,7 @@ export component TitleBar inherits Rectangle {
     function hide-copy-tooltip() {
         if copy-tooltip-shown {
             copy-tooltip-shown = false;
-            tooltip-hide();
+            Hint.hide();
         }
     }
     changed copy-hovered => {
@@ -276,7 +271,7 @@ export component TitleBar inherits Rectangle {
         running: root.copy-hovered && !root.copy-tooltip-shown && !root.copy-tooltip-suppressed;
         triggered => {
             root.copy-tooltip-shown = true;
-            root.tooltip-show(@tr("Copy connection string"), copy-area.absolute-position.x,
+            Hint.show-below(@tr("Copy connection string"), copy-area.absolute-position.x,
                 copy-area.absolute-position.y + copy-area.height + Theme.px(6px));
         }
     }
@@ -290,7 +285,7 @@ export component TitleBar inherits Rectangle {
     function hide-settings-tooltip() {
         if settings-tooltip-shown {
             settings-tooltip-shown = false;
-            tooltip-hide();
+            Hint.hide();
         }
     }
     changed settings-hovered => {
@@ -310,7 +305,7 @@ export component TitleBar inherits Rectangle {
         running: root.settings-hovered && !root.settings-tooltip-shown && !root.settings-tooltip-suppressed;
         triggered => {
             root.settings-tooltip-shown = true;
-            root.tooltip-show(@tr("Settings"), settings-area.absolute-position.x,
+            Hint.show-below(@tr("Settings"), settings-area.absolute-position.x,
                 settings-area.absolute-position.y + settings-area.height + Theme.px(6px));
         }
     }
@@ -436,7 +431,7 @@ export component TitleBar inherits Rectangle {
     pill := Rectangle {
         x: snap((parent.width - self.width) / 2);
         y: snap((parent.height - self.height) / 2);
-        width: snap(Theme.px(root.compact ? 140px : 420px));
+        width: snap(Theme.px(root.compact ? 180px : 420px));
         height: snap(Theme.px(30px));
         background: pill-area.has-hover ? Theme.bg-hover : Theme.bg-elevated;
         border-radius: Theme.radius-md;
@@ -458,8 +453,6 @@ export component TitleBar inherits Rectangle {
             if root.has-ssh: SshBadge {
                 tunnel-color: root.ssh-color;
                 hint: root.status-hint;
-                tooltip-show(text, x, top) => { root.tooltip-show(text, x, top); }
-                tooltip-hide => { root.tooltip-hide(); }
                 clicked => { root.bar-clicked(); }
             }
             status-glyph := ConnectionStatusGlyph {

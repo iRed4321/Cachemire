@@ -1,6 +1,6 @@
 import { Theme } from "theme.slint";
 import { TreeRowKind, SidebarView, KeyspaceRowData, SavedQueryRowData } from "types.slint";
-import { IconButton, HDivider, FloatingCard, VScrollBar, WheelScroller, PastePopup, SquareIconButton } from "widgets.slint";
+import { Hint, IconButton, HDivider, FloatingCard, VScrollBar, WheelScroller, PastePopup, SquareIconButton } from "widgets.slint";
 import { IconSearch, IconFilter, IconRefresh, IconDownload, IconChevron, IconFolder, IconKey, IconSpinner, IconClose, IconPlus, IconQuery, IconSidebar } from "icons.slint";
 import { KeyTree, SavedQueries, TabStrip } from "../globals.slint";
 export { KeyspaceRowData, SavedQueryRowData }
@@ -450,9 +450,6 @@ export component KeyspacePanel inherits FloatingCard {
     refresh-requested => { KeyTree.refresh-requested(); }
     // right-click on a tree row, at the pointer's window position
     callback row-context-requested(name: string, x: length, y: length);
-    // header button hints, drawn by the window (see main.slint)
-    callback tooltip-show(text: string, x: length, top: length);
-    callback tooltip-hide();
     // the search box's text, and Enter / clear in it ("" = back to browsing)
     in-out property <string> search-text <=> KeyTree.search-text;
     callback search-submitted(text: string);
@@ -539,7 +536,7 @@ export component KeyspacePanel inherits FloatingCard {
                     changed hovered => {
                         if !hovered && hint-shown {
                             hint-shown = false;
-                            root.tooltip-hide();
+                            Hint.hide();
                         }
                     }
                     Timer {
@@ -547,7 +544,7 @@ export component KeyspacePanel inherits FloatingCard {
                         running: search-new-area.has-hover && !search-new-area.pressed && !hint-shown;
                         triggered => {
                             hint-shown = true;
-                            root.tooltip-show(@tr("Search everything: keys, fields and values (Ctrl+F)"), search-new-area.absolute-position.x,
+                            Hint.show-below(@tr("Search everything: keys, fields and values (Ctrl+F)"), search-new-area.absolute-position.x,
                                 search-new-area.absolute-position.y + search-new-area.height + Theme.px(6px));
                         }
                     }
@@ -558,7 +555,7 @@ export component KeyspacePanel inherits FloatingCard {
                         clicked => {
                             if hint-shown {
                                 hint-shown = false;
-                                root.tooltip-hide();
+                                Hint.hide();
                             }
                             root.new-search-clicked();
                         }
@@ -566,8 +563,6 @@ export component KeyspacePanel inherits FloatingCard {
                 }
                 hide-button := SquareIconButton {
                     hint: @tr("Hide sidebar");
-                    tooltip-show(text, x, top) => { root.tooltip-show(text, x, top); }
-                    tooltip-hide => { root.tooltip-hide(); }
                     clicked => { root.hide-sidebar-clicked(); }
                     IconSidebar { size: Theme.icon-md; tint: hide-button.hovered ? Theme.text-primary : Theme.text-secondary; }
                 }
@@ -660,6 +655,7 @@ export component KeyspacePanel inherits FloatingCard {
                             if root.search-text != "": IconButton {
                                 box-size: Theme.px(20px);
                                 y: (parent.height - self.height) / 2;
+                                hint: @tr("Clear search");
                                 clicked => {
                                     root.search-text = "";
                                     root.search-submitted("");
@@ -672,16 +668,12 @@ export component KeyspacePanel inherits FloatingCard {
                         box-size: Theme.btn-md;
                         active: KeyTree.export-mode;
                         hint: @tr("Export keys");
-                        hint-show(text, x, top) => { root.tooltip-show(text, x, top); }
-                        hint-hide => { root.tooltip-hide(); }
                         clicked => { KeyTree.export-mode-toggled(); }
                         IconDownload { size: Theme.icon-md; }
                     }
                     IconButton {
                         box-size: Theme.btn-md;
                         hint: @tr("Refresh");
-                        hint-show(text, x, top) => { root.tooltip-show(text, x, top); }
-                        hint-hide => { root.tooltip-hide(); }
                         clicked => { refresh-requested(); }
                         IconRefresh { size: Theme.icon-md; }
                     }
@@ -893,6 +885,7 @@ export component KeyspacePanel inherits FloatingCard {
                         if root.queries-filter != "": IconButton {
                             box-size: Theme.px(20px);
                             y: (parent.height - self.height) / 2;
+                            hint: @tr("Clear filter");
                             clicked => {
                                 root.queries-filter = "";
                                 root.queries-filter-changed("");

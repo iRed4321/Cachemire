@@ -1,5 +1,5 @@
 import { Theme } from "theme.slint";
-import { IconButton } from "widgets.slint";
+import { Hint, IconButton } from "widgets.slint";
 import { IconChevron, IconCopy, IconDownload, IconExternalLink, IconSpinner } from "icons.slint";
 import { ExportGroup, SearchField } from "key-detail-widgets.slint";
 import { KeyScroll, ExportPrefs } from "key-detail-types.slint";
@@ -84,11 +84,13 @@ export component RowHeader inherits Rectangle {
         // only once the search has found something to step through
         if root.find-count > 0: IconButton {
             box-size: Theme.px(26px);
+            hint: @tr("Previous match");
             clicked => { root.find-step(-1); }
             IconChevron { size: Theme.icon-sm; up: true; tint: Theme.text-tertiary; }
         }
         if root.find-count > 0: IconButton {
             box-size: Theme.px(26px);
+            hint: @tr("Next match");
             clicked => { root.find-step(1); }
             IconChevron { size: Theme.icon-sm; down: true; tint: Theme.text-tertiary; }
         }
@@ -473,16 +475,19 @@ export component AllValuesRow inherits Rectangle {
                     // read from the server on click, as the row's JSON/Escaped choice says
                     IconButton {
                         box-size: collapsed-height;
+                        hint: @tr("Open in a text editor");
                         clicked => { KeyPanel.open-value(root.field, root.escaped); }
                         IconExternalLink { size: Theme.icon-sm; tint: Theme.text-secondary; }
                     }
                     IconButton {
                         box-size: collapsed-height;
+                        hint: @tr("Download");
                         clicked => { KeyPanel.download-value(root.field, root.escaped); }
                         IconDownload { size: Theme.icon-sm; tint: Theme.text-secondary; }
                     }
                     IconButton {
                         box-size: collapsed-height;
+                        hint: @tr("Copy");
                         clicked => { KeyPanel.copy-value(root.field, root.escaped); }
                         IconCopy { size: Theme.icon-sm; tint: Theme.text-secondary; }
                     }

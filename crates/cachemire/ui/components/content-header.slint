@@ -1,6 +1,6 @@
 import { Theme } from "theme.slint";
 import { IconKey, IconClose, IconSearch, IconQuery, IconSidebar } from "icons.slint";
-import { SquareIconButton } from "widgets.slint";
+import { Hint, SquareIconButton } from "widgets.slint";
 import { TabData } from "types.slint";
 import { TabStrip } from "../globals.slint";
 export { TabData }
@@ -25,11 +25,6 @@ component Tab inherits Rectangle {
     // right-click, with the pointer's window-relative position so the
     // caller can place a context menu there
     callback context-requested(x: length, y: length);
-    // Hover tooltip with the full key, raised as a request with a
-    // window-relative anchor (`x`/`bottom`): drawn at window level since
-    // the tab bar clips its own content.
-    callback tooltip-show(x: length, bottom: length);
-    callback tooltip-hide();
 
     // Shown once the pointer has rested on the tab, so sweeping across the bar
     // doesn't flash tooltips, and never for the drag overlay copy. A press
@@ -40,7 +35,7 @@ component Tab inherits Rectangle {
     function hide-tooltip() {
         if tooltip-shown {
             tooltip-shown = false;
-            tooltip-hide();
+            Hint.hide();
         }
     }
     changed hovered => {
@@ -57,7 +52,7 @@ component Tab inherits Rectangle {
             // measured from `area`, which fills the tab, not from `root`: on a
             // component root instantiated by a repeater, `absolute-position`
             // counts the element's own x twice. The context menu does the same.
-            root.tooltip-show(area.absolute-position.x, area.absolute-position.y - Theme.px(6px));
+            Hint.show-above(root.label, area.absolute-position.x, area.absolute-position.y - Theme.px(6px));
         }
     }
 
@@ -148,7 +143,7 @@ component Tab inherits Rectangle {
         if querying: IconQuery { size: Theme.icon-sm; tint: active ? Theme.accent-purple : Theme.text-tertiary; }
         // Shows the end of the key (the part that tells keys apart): natural
         // width in a clipping box, right-aligned on overflow, no ellipsis —
-        // the full key is on hover (see `tooltip-show`).
+        // the full key shows in the tab's hover hint.
         label-box := Rectangle {
             horizontal-stretch: 1;
             min-width: 0px;
@@ -201,9 +196,6 @@ export component TabBar inherits Rectangle {
     tab-reordered(key, index) => { TabStrip.reordered(key, index); }
     // right-click on a tab: its key plus the window-relative pointer position
     callback tab-context-requested(key: string, x: length, y: length);
-    // hover tooltip with a tab's full key, drawn by the window (see Tab)
-    callback tab-tooltip-show(text: string, x: length, bottom: length);
-    callback tab-tooltip-hide();
     // index of the active tab (-1 if none); the row scrolls it into view
     // whenever it changes, so a freshly opened tab is never off-screen
     in property <int> active-index: TabStrip.active-index;
@@ -260,7 +252,7 @@ export component TabBar inherits Rectangle {
     changed tabs => {
         // the tab instances are rebuilt with the model, so one that showed a
         // tooltip may be gone without ever seeing the pointer leave
-        tab-tooltip-hide();
+        Hint.hide();
         scroll-to-slot(active-index);
     }
 
@@ -272,8 +264,7 @@ export component TabBar inherits Rectangle {
         y: (parent.height - self.height) / 2;
         size: row-h;
         hint: @tr("Show sidebar");
-        tooltip-show(text, x, top) => { root.tab-tooltip-show(text, x, top - self.height - Theme.px(6px)); }
-        tooltip-hide => { root.tab-tooltip-hide(); }
+        hint-above: true;
         clicked => { root.sidebar-show-requested(); }
         IconSidebar { size: Theme.icon-md; tint: show-button.hovered ? Theme.text-primary : Theme.text-secondary; }
     }
@@ -285,7 +276,7 @@ export component TabBar inherits Rectangle {
         height: row-h;
         scroll-event(event) => {
             // a shown tooltip would be left anchored to where its tab used to be
-            tab-tooltip-hide();
+            Hint.hide();
             if event.modifiers.control || event.delta-y == 0 || tabs-flick.content-width <= tabs-flick.width {
                 return reject;
             }
@@ -327,8 +318,6 @@ export component TabBar inherits Rectangle {
                 clicked => { tab-clicked(t.key); }
                 closed => { tab-closed(t.key); }
                 context-requested(x, y) => { tab-context-requested(t.key, x, y); }
-                tooltip-show(x, y) => { tab-tooltip-show(t.label, x, y); }
-                tooltip-hide => { tab-tooltip-hide(); }
                 drag-started => {
                     drag-from = i;
                     drag-to = i;

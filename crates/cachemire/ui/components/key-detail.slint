@@ -164,9 +164,6 @@ export component KeyDetail inherits Rectangle {
     // only shows what was fetched when the tab was first opened)
     callback refresh-key();
     refresh-key => { KeyPanel.refresh-key(); }
-    // hover hint of the buttons of the header, drawn by the window (see IconButton.hint)
-    callback tooltip-show(text: string, x: length, top: length);
-    callback tooltip-hide();
     // right-click on selectable text in this panel (see AllValuesRow)
     callback context-requested(x: length, y: length, selected: string);
     // a value-list row opened or folded — see AllValuesRow.expanded-changed
@@ -212,8 +209,6 @@ export component KeyDetail inherits Rectangle {
                         if loaded && !root.query-mode: IconButton {
                             box-size: Theme.btn-sm;
                             hint: @tr("Show active tab's key");
-                            hint-show(text, x, top) => { root.tooltip-show(text, x, top); }
-                            hint-hide => { root.tooltip-hide(); }
                             clicked => { KeyTree.reveal-active-tab(); }
                             IconHash { size: Theme.icon-sm; tint: Theme.text-tertiary; }
                         }
@@ -258,14 +253,13 @@ export component KeyDetail inherits Rectangle {
                         }
                         if loaded && !root.query-mode: IconButton {
                             box-size: Theme.btn-sm;
+                            hint: @tr("Copy key name");
                             clicked => { root.copy-key-name(); }
                             IconCopy { size: Theme.icon-sm; tint: Theme.text-tertiary; }
                         }
                         if key-name != "" && !root.query-mode: IconButton {
                             box-size: Theme.btn-sm;
                             hint: @tr("Refresh value");
-                            hint-show(text, x, top) => { root.tooltip-show(text, x, top); }
-                            hint-hide => { root.tooltip-hide(); }
                             clicked => { root.refresh-key(); }
                             IconRefresh { size: Theme.icon-sm; tint: Theme.text-tertiary; }
                         }
@@ -331,8 +325,6 @@ export component KeyDetail inherits Rectangle {
                         box-size: Theme.px(32px);
                         active: root.more-open;
                         hint: @tr("More options");
-                        hint-show(text, x, top) => { root.tooltip-show(text, x, top); }
-                        hint-hide => { root.tooltip-hide(); }
                         clicked => { root.more-open = !root.more-open; }
                         IconChevron { size: Theme.icon-sm; down: root.more-open; tint: root.more-open ? Theme.accent-blue : Theme.text-tertiary; }
                     }
@@ -365,8 +357,6 @@ export component KeyDetail inherits Rectangle {
                         box-size: Theme.px(32px);
                         active: root.filter-case-sensitive;
                         hint: @tr("Match case");
-                        hint-show(text, x, top) => { root.tooltip-show(text, x, top); }
-                        hint-hide => { root.tooltip-hide(); }
                         clicked => {
                             root.filter-case-sensitive = !root.filter-case-sensitive;
                             root.filter-case-sensitivity-changed();

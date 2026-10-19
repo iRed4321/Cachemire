@@ -607,8 +607,6 @@ export component QueryToolbar inherits HorizontalLayout {
     callback history-cleared();
     history-cleared => { QueryTab.history-cleared(); }
     // hover hints of the buttons, drawn by the window (see IconButton.hint)
-    callback tooltip-show(text: string, x: length, top: length);
-    callback tooltip-hide();
     // the query is saved under `name`, in the sidebar's Search/Query list
     callback save-requested(name: string, global: bool);
     save-requested(name, global) => { QueryTab.save-requested(name, global); }
@@ -619,24 +617,18 @@ export component QueryToolbar inherits HorizontalLayout {
                     IconButton {
                         box-size: Theme.px(26px);
                         hint: @tr("Undo (Ctrl+Z)");
-                        hint-show(text, x, top) => { root.tooltip-show(text, x, top); }
-                        hint-hide => { root.tooltip-hide(); }
                         clicked => { root.command(0); }
                         IconUndo { size: Theme.icon-sm; tint: Theme.text-secondary; }
                     }
                     IconButton {
                         box-size: Theme.px(26px);
                         hint: @tr("Redo (Ctrl+Y)");
-                        hint-show(text, x, top) => { root.tooltip-show(text, x, top); }
-                        hint-hide => { root.tooltip-hide(); }
                         clicked => { root.command(1); }
                         IconRedo { size: Theme.icon-sm; tint: Theme.text-secondary; }
                     }
                     IconButton {
                         box-size: Theme.px(26px);
                         hint: @tr("History");
-                        hint-show(text, x, top) => { root.tooltip-show(text, x, top); }
-                        hint-hide => { root.tooltip-hide(); }
                         clicked => {
                             root.history-requested();
                             history-popup.show();

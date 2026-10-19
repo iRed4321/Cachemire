@@ -122,6 +122,7 @@ component ConnectionRow inherits Rectangle {
             }
             if root.editable: IconButton {
                 box-size: Theme.px(24px);
+                hint: @tr("Edit connection");
                 clicked => { root.modify-clicked(); }
                 IconPencil { size: Theme.icon-sm; tint: Theme.text-tertiary; }
             }
