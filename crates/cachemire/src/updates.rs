@@ -9,9 +9,9 @@ use rust_i18n::t;
 use semver::Version;
 use slint::ComponentHandle;
 
-use crate::backend::LockExt;
-use crate::backend::state::AppState;
-use crate::backend::updates::{self, Channel, Release};
+use cachemire_core::LockExt;
+use cachemire_core::state::AppState;
+use cachemire_core::updates::{self, Channel, Release};
 use crate::{About, MainWindow};
 
 thread_local! {

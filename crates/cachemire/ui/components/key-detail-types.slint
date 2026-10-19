@@ -1,7 +1,7 @@
 import { SearchScope } from "types.slint";
 
 // Whether the export buttons act on escaped JSON rather than plain JSON. `header-escaped` is the
-// shown tab's choice (tabs.rs keeps one per tab); it sets `escaped`, what a row starts with, and,
+// shown tab's choice (tabs/mod.rs keeps one per tab); it sets `escaped`, what a row starts with, and,
 // by bumping `rows-tick`, every open row's.
 export global ExportPrefs {
     in-out property <bool> escaped: false;

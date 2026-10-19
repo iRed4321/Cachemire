@@ -268,7 +268,7 @@ export global QueryTab {
     callback save-requested(name: string, global: bool);
     pure callback lines(text: string) -> [string];
     // colors the box's text, recomputed on every edit, and marks the error's spot
-    // (see src/redisql_highlight.rs)
+    // (see src/redisql/highlight/mod.rs)
     pure callback highlight(text: string, error-start: int, error-end: int, error-text: string) -> styled-text;
     // strips a pasted `\r` out of the box's text
     pure callback sanitize(text: string) -> string;
@@ -277,7 +277,7 @@ export global QueryTab {
 // The key panel: the key's header, its fields as a list or a table, the filter
 // bar and the search bar. Rust rebuilds it when a key loads or a filter changes.
 export global KeyPanel {
-    // the shown key's id (see src/backend/key_name.rs), what Rust fetches it by;
+    // the shown key's id (see cachemire-core/src/key_name/mod.rs), what Rust fetches it by;
     // `name` is how it reads
     in-out property <string> key-id: "";
     in-out property <string> badge: "";

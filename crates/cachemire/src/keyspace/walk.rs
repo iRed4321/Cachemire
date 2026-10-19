@@ -10,9 +10,9 @@ use super::index::Index;
 use super::search::glob_match;
 use super::{DELIMITER, LeafKind, ScanContext, Tree, continue_pending_expand, continue_reveal, selection, show_additions, with_model};
 use crate::KeyTree;
-use crate::backend::LockExt;
-use crate::backend::explorer::{self, WalkBatch};
-use crate::backend::session::TypedKey;
+use cachemire_core::LockExt;
+use cachemire_core::explorer::{self, WalkBatch};
+use cachemire_core::session::TypedKey;
 use crate::MainWindow;
 
 /// The walk stops after this many keys: the index holds every key name, so a

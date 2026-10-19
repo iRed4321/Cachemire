@@ -1,4 +1,4 @@
-//! Bridges `backend::explorer::get_key_details` to the key panel. Split by
+//! Bridges `cachemire_core::explorer::get_key_details` to the key panel. Split by
 //! concern across submodules ([`field`], [`pretty_text`]/[`highlight`],
 //! [`table`]/[`value_list`], [`export`], [`scroll`]); this wires them together.
 
@@ -10,19 +10,17 @@ use rayon::prelude::*;
 use slint::{ComponentHandle, Model, ModelRc, VecModel, Weak};
 use tokio::runtime::Handle;
 
-use crate::backend::LockExt;
-use crate::backend::key_name::KeyName;
-use crate::backend::redis_value_type::RedisValueType;
-use crate::backend::state::AppState;
-use crate::json_path::JsonPath;
+use cachemire_core::LockExt;
+use cachemire_core::key_name::KeyName;
+use cachemire_core::redis_value_type::RedisValueType;
+use cachemire_core::state::AppState;
+use cachemire_core::json_path::JsonPath;
 use crate::{AllValuesRowData, CompletionEdit, KeyPanel, KeyView, MainWindow, SuggestionRow};
 
 mod color;
 mod export;
 mod field;
 mod filtering;
-#[cfg(test)]
-mod headless_ui_tests;
 mod highlight;
 mod load;
 mod paging;
@@ -32,6 +30,8 @@ mod scroll;
 mod search_filter;
 mod suggest;
 mod table;
+#[cfg(test)]
+pub(crate) mod tests;
 #[cfg(test)]
 mod test_support;
 mod value_list;
@@ -95,7 +95,7 @@ impl FetchedKey {
 }
 
 /// Fetched keys by (saved-connection id, key name). Filled by every
-/// successful fetch; `tabs.rs` decides when an entry may be shown instead of
+/// successful fetch; `tabs/mod.rs` decides when an entry may be shown instead of
 /// fetching (`reuse`) and drops entries when their tab closes.
 type FetchedCache = Arc<Mutex<FxHashMap<(String, String), FetchedKey>>>;
 
@@ -362,7 +362,7 @@ pub fn init(window: &MainWindow, state: Arc<AppState>, rt: Handle) -> KeyDetail 
     panel.on_view_changed(with_ctx(Ctx::on_view_changed));
 
     // a value-list row opened or folded: kept in KeyScroll.all-values-expanded,
-    // for tabs.rs to save when the tab is left and restore when it's shown again
+    // for tabs/mod.rs to save when the tab is left and restore when it's shown again
     panel.on_field_expanded_changed({
         let weak = window.as_weak();
         move |field, expanded| {
@@ -397,7 +397,7 @@ pub fn init(window: &MainWindow, state: Arc<AppState>, rt: Handle) -> KeyDetail 
     KeyDetail(ctx)
 }
 
-/// What `init` hands `tabs.rs` and the query tabs: show a key or a query's rows,
+/// What `init` hands `tabs/mod.rs` and the query tabs: show a key or a query's rows,
 /// and drop what was fetched for a connection's keys.
 pub struct KeyDetail(Ctx);
 

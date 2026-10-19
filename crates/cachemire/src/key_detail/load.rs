@@ -7,10 +7,10 @@ use std::sync::atomic::Ordering;
 use rust_i18n::t;
 use slint::{ComponentHandle, ModelRc, VecModel};
 
-use crate::backend::LockExt;
-use crate::backend::explorer;
-use crate::backend::key_name::KeyName;
-use crate::backend::redis_value_type::RedisValueType;
+use cachemire_core::LockExt;
+use cachemire_core::explorer;
+use cachemire_core::key_name::KeyName;
+use cachemire_core::redis_value_type::RedisValueType;
 use crate::{AllValuesRowData, KeyPanel, KeyTree};
 
 use super::field::{Fields, build_fields, single_value_field};
@@ -57,7 +57,7 @@ impl Ctx {
         pretty_cache.lock_recover().clear();
         content.lock_recover().key.clone_from(&key);
 
-        // read on the UI thread, before spawning: on a tab switch `tabs.rs`
+        // read on the UI thread, before spawning: on a tab switch `tabs/mod.rs`
         // writes the target tab's saved filter/expanded fields into these
         // properties just before calling us, so this is that tab's own state.
         let (filter, path, expanded) = weak
@@ -78,7 +78,7 @@ impl Ctx {
                         path
                     }
                     Err(error) => {
-                        window.global::<KeyPanel>().set_json_filter_error(error.into());
+                        window.global::<KeyPanel>().set_json_filter_error(error.message().into());
                         None
                     }
                 };

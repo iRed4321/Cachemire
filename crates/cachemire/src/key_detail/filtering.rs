@@ -7,7 +7,7 @@ use rust_i18n::t;
 use rustc_hash::FxHashSet;
 use slint::{ComponentHandle, Model, ModelRc, VecModel};
 
-use crate::backend::LockExt;
+use cachemire_core::LockExt;
 use crate::{BadgeData, KeyPanel, SearchScope};
 
 use super::field::Fields;
@@ -93,7 +93,7 @@ impl Ctx {
         let path = match parse_filter(&window.global::<KeyPanel>().get_json_filter()) {
             Ok(path) => path,
             Err(error) => {
-                window.global::<KeyPanel>().set_json_filter_error(error.into());
+                window.global::<KeyPanel>().set_json_filter_error(error.message().into());
                 return;
             }
         };

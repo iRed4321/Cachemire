@@ -1,17 +1,17 @@
-//! Wires the settings window (SSH profiles) to `backend::settings_store`,
+//! Wires the settings window (SSH profiles) to `cachemire_core::settings`,
 //! which handles persistence and the credential store. This is UI glue:
 //! keep the list in sync, switch/save/remove a profile.
 
-use crate::backend::LockExt;
-use crate::backend::error::AppError;
-use crate::backend::secret_vault::staged;
+use cachemire_core::LockExt;
+use cachemire_core::error::AppError;
+use cachemire_core::secret_vault::staged;
 use std::sync::Arc;
 
 use slint::{ComponentHandle, ModelRc, VecModel};
 use tokio::runtime::Handle;
 
-use crate::backend::state::AppState;
-use crate::i18n::Language;
+use cachemire_core::state::AppState;
+use cachemire_core::i18n::Language;
 use crate::{ExportPrefs, LanguageSetting, MainWindow, Preferences, SshProfileForm, SshProfileRowData};
 
 /// The UI's enum for a language setting, and back: matches, so a language added
@@ -75,7 +75,7 @@ fn saved(window: &MainWindow, result: Result<(), AppError>, apply: impl FnOnce(&
             window.global::<Preferences>().set_error("".into());
             apply(window);
         }
-        Err(e) => window.global::<Preferences>().set_error(e.into()),
+        Err(e) => window.global::<Preferences>().set_error(e.message().into()),
     }
 }
 
@@ -163,7 +163,7 @@ pub fn init(window: &MainWindow, state: Arc<AppState>, rt: Handle) {
             if result.is_ok() {
                 drop_profile_pools(&state);
             }
-            window.global::<Preferences>().set_error(result.err().map(Into::into).unwrap_or_default());
+            window.global::<Preferences>().set_error(result.err().map(|e| e.message().into()).unwrap_or_default());
             refresh(&window, &state);
         }
     });
@@ -190,7 +190,7 @@ pub fn init(window: &MainWindow, state: Arc<AppState>, rt: Handle) {
                             window.global::<Preferences>().set_ssh_profile_editing(false);
                             refresh(&window, &state);
                         }
-                        Err(e) => window.global::<Preferences>().set_error(e.into()),
+                        Err(e) => window.global::<Preferences>().set_error(e.message().into()),
                     }
                 });
             });
@@ -213,7 +213,7 @@ pub fn init(window: &MainWindow, state: Arc<AppState>, rt: Handle) {
                     window.global::<Preferences>().set_ssh_profile_editing(false);
                     refresh(&window, &state);
                 }
-                Err(e) => window.global::<Preferences>().set_error(e.into()),
+                Err(e) => window.global::<Preferences>().set_error(e.message().into()),
             }
         }
     });

@@ -83,8 +83,8 @@ fn test_results(tests: &[(&str, &Path)]) -> Value {
     Value::Array(results)
 }
 
-/// The totals of an llvm-cov JSON summary, and its lines by module of `crates/cachemire/src` (a folder,
-/// or a file at its top), each as `[covered, count]`.
+/// The totals of an llvm-cov JSON summary, and its lines by module of the app and of its core
+/// (`core/` before the name), a module being a folder or a file at the top of `src`, each as `[covered, count]`.
 fn coverage_summary(file: &Path) -> Result<Value> {
     let text = std::fs::read_to_string(file).map_err(|e| format!("{}: {e}", file.display()))?;
     let summary: Value = serde_json::from_str(&text).map_err(|e| format!("{}: {e}", file.display()))?;
@@ -93,8 +93,11 @@ fn coverage_summary(file: &Path) -> Result<Value> {
     let mut modules = std::collections::BTreeMap::<String, [u64; 2]>::new();
     for entry in data["files"].as_array().map(Vec::as_slice).unwrap_or_default() {
         let name = entry["filename"].as_str().unwrap_or_default().replace('\\', "/");
-        let module = match name.split_once("crates/cachemire/src/") {
-            Some((_, rest)) => rest.split_once('/').map_or(rest.to_string(), |(folder, _)| format!("{folder}/")),
+        let crate_path = [("crates/cachemire/src/", ""), ("crates/cachemire-core/src/", "core/")]
+            .into_iter()
+            .find_map(|(src, label)| Some((name.split_once(src)?.1, label)));
+        let module = match crate_path {
+            Some((rest, label)) => rest.split_once('/').map_or(format!("{label}{rest}"), |(folder, _)| format!("{label}{folder}/")),
             None => "other".to_string(),
         };
         let [covered, count] = pair(&entry["summary"], "lines");

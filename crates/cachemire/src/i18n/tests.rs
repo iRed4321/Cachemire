@@ -1,15 +1,4 @@
-use super::*;
-
-#[test]
-fn a_locale_name_is_reduced_to_its_language() {
-    assert_eq!(supported("fr"), Some("fr"));
-    assert_eq!(supported("fr-FR"), Some("fr"));
-    assert_eq!(supported("fr_CA.UTF-8"), Some("fr"));
-    assert_eq!(supported("FR"), Some("fr"));
-    assert_eq!(supported("en-US"), Some("en"));
-    assert_eq!(supported("de-DE"), None);
-    assert_eq!(supported(""), None);
-}
+use cachemire_core::i18n::{FALLBACK, LANGUAGES};
 
 /// `(msgid, msgstr)` of every message of a gettext file (the header, whose
 /// msgid is empty, left out).
@@ -96,7 +85,7 @@ fn every_message_built_in_rust_is_translated() {
 
     // and every message a `t!("...")` of the sources asks for is in the file
     let mut sources = Vec::new();
-    let mut folders = vec![root.join("src")];
+    let mut folders = vec![root.join("src"), root.join("../cachemire-core/src")];
     while let Some(folder) = folders.pop() {
         for entry in std::fs::read_dir(folder).unwrap().flatten() {
             let path = entry.path();
@@ -140,15 +129,4 @@ fn english_is_what_a_missing_translation_shows() {
     assert_eq!(t!("Copied", locale = "en"), "Copied");
     assert_eq!(t!("%{count} keys scanned", locale = "fr", count = 3), "3 clés analysées");
     assert_eq!(t!("A message nobody translated", locale = "fr"), "A message nobody translated");
-}
-
-#[test]
-fn a_setting_is_saved_as_a_code_and_read_back() {
-    for language in [Language::Automatic, Language::English, Language::French] {
-        assert_eq!(Language::from_code(language.code()), language);
-    }
-    assert_eq!(Language::from_code("de"), Language::Automatic, "a language we don't know follows the system");
-    assert_eq!(Language::French.resolve(), "fr");
-    assert!(LANGUAGES.iter().any(|(code, _)| *code == Language::Automatic.resolve()), "the system's language is one we speak");
-    assert!(LANGUAGES.iter().all(|(code, _)| Language::from_code(code).resolve() == *code), "every language has a setting");
 }

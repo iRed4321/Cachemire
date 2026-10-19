@@ -3,15 +3,15 @@
 //! app just sits there.
 
 use crate::{ConnectionState};
-use crate::backend::LockExt;
+use cachemire_core::LockExt;
 use std::sync::Arc;
 use std::time::Duration;
 
 use slint::ComponentHandle;
 use tokio::runtime::Handle;
 
-use crate::backend::server_info::{self, format_bytes};
-use crate::backend::state::AppState;
+use cachemire_core::server_info::{self, format_bytes};
+use cachemire_core::state::AppState;
 use crate::MainWindow;
 
 const REFRESH_INTERVAL: Duration = Duration::from_secs(3);

@@ -2,7 +2,7 @@
 // GUI; debug builds keep it so the log on stderr stays visible.
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
-use crate::backend::LockExt;
+use cachemire_core::LockExt;
 use rust_i18n::t;
 use std::sync::Arc;
 use std::sync::atomic::Ordering;
@@ -13,36 +13,28 @@ use slint::winit_030::WinitWindowAccessor;
 rust_i18n::i18n!("../../resources/lang", fallback = "en");
 
 mod app;
-mod backend;
 mod cloud;
-mod cloud_settings;
-mod connection_transfer;
-mod export_files;
 mod i18n;
-mod connection_profiles;
 mod connections;
-mod json_path;
 mod logging;
 mod key_detail;
 mod keyspace;
-mod queries;
-mod query_complete;
 mod redisql;
-mod redisql_highlight;
 mod search;
 mod server_stats;
 mod settings;
 mod table_text;
 mod tabs;
-mod test_support;
 mod theme_colors;
 mod toast;
+#[cfg(test)]
+mod ui_tests;
 mod updates;
 mod value_actions;
 mod window_state;
 
-use backend::error::{AppError, ErrorKind};
-use backend::state::AppState;
+use cachemire_core::error::{AppError, ErrorKind};
+use cachemire_core::state::AppState;
 
 slint::include_modules!();
 
@@ -50,13 +42,6 @@ impl MainWindow {
     /// The saved-connection id of the connection in use ("" when none is).
     pub fn connection_id(&self) -> slint::SharedString {
         self.global::<ConnectionState>().get_view().connection_id
-    }
-}
-
-/// An error as the message a window property shows.
-impl From<AppError> for slint::SharedString {
-    fn from(error: AppError) -> Self {
-        error.message().into()
     }
 }
 
@@ -78,7 +63,7 @@ pub(crate) fn connect_to(
     connection.set_view(ConnectionView { connecting: true, ..connection.get_view() });
     let weak = window.as_weak();
     rt.spawn(async move {
-        let outcome = match tokio::time::timeout(CONNECT_TIMEOUT, backend::connection_service::connect_connection(&state, &connection_id)).await {
+        let outcome = match tokio::time::timeout(CONNECT_TIMEOUT, cachemire_core::connection::connect_connection(&state, &connection_id)).await {
             Ok(outcome) => outcome,
             Err(_) => Err(AppError::timeout(t!("Connection timed out after %{seconds} seconds.", seconds = CONNECT_TIMEOUT.as_secs()))),
         };
@@ -131,7 +116,7 @@ pub(crate) fn connect_to(
             };
             let connected = view.connected;
             window.global::<ConnectionState>().set_view(view);
-            connection_profiles::apply_tint(&window, &state);
+            connections::profiles::apply_tint(&window, &state);
             if connected && announce {
                 window.global::<ConnectionState>().invoke_established();
             }
@@ -140,7 +125,7 @@ pub(crate) fn connect_to(
 }
 
 /// `user@host` (with `:port` when it isn't 22) of an SSH tunnel's server.
-fn ssh_server_label(ssh: &backend::models::SshSettings) -> String {
+fn ssh_server_label(ssh: &cachemire_core::connection::SshSettings) -> String {
     match ssh.port {
         22 => format!("{}@{}", ssh.username, ssh.host),
         port => format!("{}@{}:{port}", ssh.username, ssh.host),
@@ -159,7 +144,7 @@ pub(crate) fn connect_active(window: &MainWindow, state: Arc<AppState>, rt: &tok
             state.connect_attempt.fetch_add(1, Ordering::SeqCst);
             let view = ConnectionView { status: ConnectionStatus::None, status_detail: t!("No saved connection").as_ref().into(), ..Default::default() };
             window.global::<ConnectionState>().set_view(view);
-            connection_profiles::apply_tint(window, &state);
+            connections::profiles::apply_tint(window, &state);
         }
     }
 }
@@ -223,7 +208,7 @@ fn select_backend() -> Result<(), slint::PlatformError> {
 }
 
 fn main() -> Result<(), slint::PlatformError> {
-    let _log = logging::init(&backend::state::resolve_data_file().with_file_name("logs"));
+    let _log = logging::init(&cachemire_core::state::resolve_data_file().with_file_name("logs"));
     // Wayland has no per-window icon: the shell finds it through the app id,
     // as the icon of the cachemire.desktop entry (resources/cachemire.desktop)
     select_backend()?;
@@ -258,10 +243,10 @@ fn main() -> Result<(), slint::PlatformError> {
         }
     });
 
-    let state = Arc::new(AppState::new());
+    let state = Arc::new(AppState::load());
     // the interface language: needs the window (Slint) and the settings
     i18n::apply(state.settings.lock_recover().language());
-    let rt = backend::runtime::spawn();
+    let rt = cachemire_core::runtime::spawn();
     updates::init(&window, state.clone(), rt.clone());
     // no auto-connect here — the title bar and keyspace panel both start
     // empty until the user picks a connection from the title bar's picker
@@ -285,13 +270,13 @@ fn main() -> Result<(), slint::PlatformError> {
     redisql::init(&app, &window);
     connections::init(&app, &window);
     cloud::init(&app, &window);
-    connection_transfer::init(&window);
-    cloud_settings::init(&window);
-    connection_profiles::init(&app, &window);
+    connections::transfer::init(&window);
+    cloud::settings::init(&window);
+    connections::profiles::init(&app, &window);
 
     // what only needs the stores and the runtime
     server_stats::init(&window, state.clone(), rt.clone());
-    queries::init(&window, state.clone());
+    redisql::saved::init(&window, state.clone());
     settings::init(&window, state, rt);
 
     let outcome = window.run();

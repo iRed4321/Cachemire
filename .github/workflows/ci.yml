@@ -68,9 +68,9 @@ jobs:
         run: cargo clippy --all-targets --timings -- -D warnings
       - name: Save the report (clippy)
         run: cargo xtask report-build Clippy
-      # the test steps load cargo-llvm-cov's environment: it instruments cachemire alone, its
-      # dependencies are built as usual. cachemire is always built here: the cache never holds
-      # it, and clippy only checks it
+      # the test steps load cargo-llvm-cov's environment: it instruments the workspace's crates
+      # alone, their dependencies are built as usual. cachemire and cachemire-core are always
+      # built here: the cache never holds them, and clippy only checks them
       - name: Build the tests
         id: build
         run: |
@@ -91,7 +91,7 @@ jobs:
         if: ${{ !cancelled() && steps.build.outcome == 'success' }}
         run: |
           eval "$(cargo llvm-cov show-env --sh)"
-          cargo llvm-cov report --json --summary-only --ignore-filename-regex 'headless_ui_tests|test_support|[/\\]tests\.rs$' --output-path target/test-output/coverage.json
+          cargo llvm-cov report --json --summary-only --ignore-filename-regex 'test_support|ui_tests|[/\\]tests([/\\]|\.rs$)' --output-path target/test-output/coverage.json
       - name: Save the report (tests)
         if: ${{ !cancelled() && steps.build.outcome == 'success' }}
         run: |

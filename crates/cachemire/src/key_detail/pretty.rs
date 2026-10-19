@@ -7,7 +7,7 @@ use std::sync::atomic::Ordering;
 use slint::ComponentHandle;
 use slint::private_unstable_api::re_exports::StyledText;
 
-use crate::backend::LockExt;
+use cachemire_core::LockExt;
 use crate::{FindResult, KeyPanel, MainWindow, SelectionRange};
 
 use super::highlight::{find_matches, pretty_styled_text_with_highlights};

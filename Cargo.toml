@@ -1,7 +1,7 @@
 [workspace]
 members = ["crates/*"]
-# `cargo build`, `run` and `test` at the root act on the app alone
-default-members = ["crates/cachemire"]
+# `cargo build`, `run` and `test` at the root act on the app and its core alone
+default-members = ["crates/cachemire", "crates/cachemire-core"]
 resolver = "3"
 
 # inherited by every crate (`authors.workspace = true`)

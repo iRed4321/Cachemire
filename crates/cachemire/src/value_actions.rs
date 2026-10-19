@@ -2,8 +2,8 @@
 //! toolbar: open in the system's default editor for the file type, or copy
 //! to the clipboard. None of this is Redis-specific.
 
-use crate::backend::error::AppError;
-use crate::backend::now_ms;
+use cachemire_core::error::AppError;
+use cachemire_core::now_ms;
 
 /// Writes `text` to a temp file and opens it in a real editor — not via
 /// `xdg-open`: MIME sniffing often routes JSON-looking content to a

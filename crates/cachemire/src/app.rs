@@ -8,9 +8,9 @@ use std::sync::Arc;
 
 use tokio::runtime::Handle;
 
-use crate::backend::state::AppState;
+use cachemire_core::state::AppState;
 use crate::cloud::Cloud;
-use crate::connection_transfer::TransferLists;
+use crate::connections::transfer::TransferLists;
 use crate::key_detail::KeyDetail;
 use crate::keyspace::Keyspace;
 use crate::redisql::QueryTabs;

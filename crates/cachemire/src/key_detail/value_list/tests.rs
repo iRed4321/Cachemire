@@ -59,7 +59,7 @@ fn a_string_key_holding_json_can_be_filtered_like_a_hash_field() {
 
 #[test]
 fn the_header_gives_each_types_size_and_its_ttl() {
-    use crate::backend::redis_value_type::RedisValueType as T;
+    use cachemire_core::redis_value_type::RedisValueType as T;
     assert_eq!(meta_text(&T::Hash, -1, 12, false, None), "12 fields · no ttl");
     assert_eq!(meta_text(&T::List, 30, 5000, true, None), "5000+ items · ttl 30s", "a + says the list was cut");
     assert_eq!(meta_text(&T::Zset, 0, 3, false, None), "3 items · ttl 0s");

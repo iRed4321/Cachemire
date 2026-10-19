@@ -64,7 +64,7 @@ fn with_no_screen_known_nothing_is_moved() {
 
 #[test]
 fn the_saved_state_reads_back_as_written() {
-    let file = crate::test_support::temp_dir("window").join("window.json");
+    let file = cachemire_core::test_support::temp_dir("window").join("window.json");
     let state = WindowState { normal: Some(rect(-5, 7, 900, 700)), maximized: true, maximized_rect: Some(LEFT_MONITOR) };
     persist::save(&file, &state).unwrap();
     assert!(matches!(persist::load::<WindowState>(&file), Loaded::Read(read) if read == state));

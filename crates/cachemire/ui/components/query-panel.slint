@@ -264,7 +264,7 @@ export component QueryEditor inherits Rectangle {
     // Ctrl+Up / Ctrl+Down step through the runs before on this connection
     callback history-step(direction: int, current: string) -> CompletionEdit;
     history-step(direction, current) => { return QueryTab.history-step(direction, current); }
-    // colors the box's text as it's typed (see src/redisql_highlight.rs);
+    // colors the box's text as it's typed (see src/redisql/highlight/mod.rs);
     // `pure` so it can be called straight from the overlay's `text:` binding
     // below and stay live as `query` changes, with no imperative wiring
     pure callback highlight-query(text: string) -> styled-text;
@@ -723,7 +723,7 @@ export component QueryToolbar inherits HorizontalLayout {
                             }
                         }
                         // a white pulse on every click, snapping on then easing out: the loading spinner
-                        // is delayed (see LOADING_DELAY in redisql.rs), so a fast query shows nothing else
+                        // is delayed (see LOADING_DELAY in redisql/mod.rs), so a fast query shows nothing else
                         property <bool> click-flash: false;
                         property <int> click-flash-tick: 0;
                         Rectangle {
