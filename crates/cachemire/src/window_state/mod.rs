@@ -14,7 +14,8 @@ use crate::MainWindow;
 use cachemire_core::persist::{self, Loaded};
 
 const FILE: &str = "window.json";
-const MIN_SIZE: (u32, u32) = (400, 300);
+/// The smallest size a saved window comes back at; its width is main.slint's `min-width`.
+const MIN_SIZE: (u32, u32) = (720, 300);
 /// How often the window's place is looked at.
 const POLL_INTERVAL: Duration = Duration::from_millis(100);
 /// How many looks the window gets to settle into its saved place.

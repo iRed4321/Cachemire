@@ -38,6 +38,8 @@ export component MainWindow inherits Window {
     icon: Platform.os == OperatingSystemType.windows ? @image-url("") : @image-url("../../../resources/icon.png");
     preferred-width: 1360px;
     preferred-height: 860px;
+    // the narrowest the layout holds up at: the OS stops a resize there, on every platform
+    min-width: 720px;
     background: Theme.bg-app;
     default-font-family: Theme.font-ui;
     no-frame: true;
