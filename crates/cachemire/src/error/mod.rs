@@ -209,6 +209,8 @@ impl Localize for AwsError {
             AwsError::NoRegion(name) => t!("The profile %{name} has no region.", name = name),
             AwsError::SignInTimedOut => t!("The sign-in in the browser took too long."),
             AwsError::Browser(error) => t!("Couldn't open the browser: %{error}", error = error),
+            AwsError::SignInRefused(reason) => t!("The sign-in was refused in the browser: %{error}", error = reason),
+            AwsError::Callback(error) => t!("Couldn't wait for the browser's answer: %{error}", error = error),
         }
         .into_owned()
     }

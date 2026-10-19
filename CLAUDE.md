@@ -24,7 +24,9 @@
   changed behavior or limit), add or update its line under `## Unreleased` in
   `CHANGELOG.md`, in the subsection it belongs to; create `## Unreleased` at the
   top if it's missing. Write for users: what changed for them, not how it's built.
-  Internal work (refactors, CI, tooling) gets no line. Never rename `## Unreleased`
+  Internal work (refactors, CI, tooling) gets no line, except a dependency update
+  that fixes a security advisory: give it a **Security** line under Fixes, naming
+  what it protects and the advisory IDs. Never rename `## Unreleased`
   or write a version heading: a stable `cargo ship` does that, and commits it.
 
 # Environment

@@ -9,33 +9,32 @@ license = "GPL-3.0-only"
 
 [dependencies]
 cachemire-core = { path = "../cachemire-core" }
-tokio = { version = "1", features = ["rt-multi-thread", "sync", "time"] }
-serde = { version = "1.0", features = ["derive"] }
-serde_json = { version = "1.0", features = ["preserve_order"] }
-uuid = { version = "1", features = ["v4"] }
+tokio.workspace = true
+serde.workspace = true
+serde_json = { workspace = true, features = ["preserve_order"] }
+uuid.workspace = true
 arboard = { version = "3", default-features = false, features = ["wayland-data-control"] }
 # only the portal: dialogs are never attached to a parent window, so no Wayland support is needed
 rfd = { version = "0.17", default-features = false, features = ["xdg-portal"] }
-dirs = "7"
-rustc-hash = "2"
-# mutexes without poisoning: a task that panics holding one leaves it usable
-parking_lot = "0.12"
-rayon = "1.12.0"
-open = "5"
-semver = "1"
+dirs.workspace = true
+rustc-hash.workspace = true
+parking_lot.workspace = true
+rayon.workspace = true
+open.workspace = true
+semver.workspace = true
 # the fork's patched/1.18.1 branch at a fixed commit (also for slint-build): move both `rev`s to update
 slint = { git = "https://github.com/iRed4321/SlintFork.git", rev = "56377498bbb0f835237307b7901427e61fd27412", default-features = false, features = ["std", "backend-winit", "renderer-software", "compat-1-2", "unstable-winit-030"] }
 rust-i18n = "4"
-thiserror = "2"
+thiserror.workspace = true
 # the log: a daily file in the data directory (see logging.rs), and stderr in debug builds
-tracing = { version = "0.1", default-features = false, features = ["std"] }
+tracing.workspace = true
 tracing-appender = "0.2"
 tracing-subscriber = { version = "0.3", default-features = false, features = ["fmt", "std", "ansi"] }
 
 [dev-dependencies]
 cachemire-core = { path = "../cachemire-core", features = ["test-support"] }
 # the SSH errors a tunnel error holds, for the tests that build one
-russh = { version = "0.63", default-features = false, features = ["ring", "flate2", "rsa"] }
+russh.workspace = true
 
 [build-dependencies]
 slint-build = { git = "https://github.com/iRed4321/SlintFork.git", rev = "56377498bbb0f835237307b7901427e61fd27412" }

@@ -274,6 +274,14 @@ _version: 2
   fr: "Impossible d'ouvrir le navigateur : %{error}"
 "The sign-in in the browser took too long.":
   fr: "La connexion dans le navigateur a pris trop de temps."
+"The sign-in was refused in the browser: %{error}":
+  fr: "La connexion a été refusée dans le navigateur : %{error}"
+"Couldn't wait for the browser's answer: %{error}":
+  fr: "Impossible d'attendre la réponse du navigateur : %{error}"
+"You're signed in to AWS. You can close this tab and go back to Cachemire.":
+  fr: "Vous êtes connecté à AWS. Vous pouvez fermer cet onglet et revenir à Cachemire."
+"The AWS sign-in didn't go through. You can close this tab and try again from Cachemire.":
+  fr: "La connexion à AWS n'a pas abouti. Vous pouvez fermer cet onglet et réessayer depuis Cachemire."
 "No credentials.":
   fr: "Aucun identifiant."
 "No usable credentials for the profile %{name}: %{error}":

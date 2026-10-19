@@ -7,6 +7,7 @@ Every stable release of Cachemire; `Unreleased` is what the next one brings. Bet
 ### Added
 
 - **Check for Updates at startup** (Settings, off by default): when a newer version is out on the channel you picked, the info window opens at startup to offer it, with a one-click install on Windows and a link to the release page on Linux
+- **AWS**: the SSO sign-in is remembered between launches and shared with the AWS CLI (in `~/.aws/sso/cache`), so the browser only opens again once it has run out; it also uses the CLI's current browser sign-in, which comes back to Cachemire by itself
 
 ### Fixes
 
@@ -19,6 +20,7 @@ Every stable release of Cachemire; `Unreleased` is what the next one brings. Bet
 - Connections to an IPv6 address (`redis://[::1]:6379`) now work, directly or through an SSH tunnel
 - Finding text in a value, and the highlighting of search matches, now ignore case on lines holding letters such as `İ` or `ẞ` too
 - **AWS**: signing in through the browser no longer fails with "No access" when the first profile's role isn't granted to you: the sign-in succeeds, and only picking that profile reports it, naming the profile, role and account
+- **Security**: the TLS library behind `rediss://` connections and AWS is updated, fixing four vulnerabilities (RUSTSEC-2026-0346 to 0349)
 
 ## 3.0.0 - 2026-10-15
 

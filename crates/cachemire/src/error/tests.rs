@@ -81,6 +81,8 @@ fn core_errors() -> Vec<CoreError> {
         AwsError::NoRegion("prod".into()),
         AwsError::SignInTimedOut,
         AwsError::Browser(io()),
+        AwsError::SignInRefused("access_denied".into()),
+        AwsError::Callback(io()),
     ];
     let query = [
         QueryError::UnterminatedQuote("'users".into()),

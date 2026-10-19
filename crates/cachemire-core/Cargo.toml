@@ -12,26 +12,24 @@ publish = false
 test-support = []
 
 [dependencies]
-tokio = { version = "1", features = ["rt-multi-thread", "sync", "time"] }
+tokio.workspace = true
 redis = { version = "1", default-features = false, features = ["script", "tokio-comp", "connection-manager", "tokio-rustls-comp", "tls-rustls-webpki-roots"] }
-serde = { version = "1.0", features = ["derive"] }
-serde_json = { version = "1.0", features = ["preserve_order"] }
-uuid = { version = "1", features = ["v4"] }
+serde.workspace = true
+serde_json = { workspace = true, features = ["preserve_order"] }
+uuid.workspace = true
 url = "2"
 percent-encoding = "2"
-dirs = "7"
-rustc-hash = "2"
-# mutexes without poisoning: a task that panics holding one leaves it usable
-parking_lot = "0.12"
-keyring = "4"
-# SSH tunnels to the Redis server; `ring` rather than the default aws-lc-rs,
-# which needs a C toolchain (cmake/nasm) to build on Windows
-russh = { version = "0.63", default-features = false, features = ["ring", "flate2", "rsa"] }
-rayon = "1.12.0"
+dirs.workspace = true
+rustc-hash.workspace = true
+parking_lot.workspace = true
+# the OS credential store (see src/secret_vault): keyring-core, and each platform's store below
+keyring-core = "1"
+russh.workspace = true
+rayon.workspace = true
 natord = "1"
 # AWS (ElastiCache listing, SSO login). The TLS stack is rustls on `ring`, set on
-# each client by hand (see src/aws/mod.rs), like russh above
-aws-config = { version = "1", default-features = false, features = ["behavior-version-latest", "rt-tokio", "sso"] }
+# each client by hand (see src/aws/mod.rs), like russh (see the workspace manifest)
+aws-config = { version = "1", default-features = false, features = ["rt-tokio", "sso"] }
 aws-credential-types = "1"
 aws-sdk-elasticache = { version = "1", default-features = false, features = ["rt-tokio"] }
 aws-sdk-sso = { version = "1", default-features = false, features = ["rt-tokio"] }
@@ -41,10 +39,22 @@ aws-runtime = "1"
 aws-smithy-http-client = { version = "1", features = ["rustls-ring"] }
 aws-smithy-runtime-api = "1"
 aws-types = "1"
-open = "5"
+aws-smithy-types = "1"
+# the SSO sign-in's PKCE challenge and the name of its token's cache file (see src/aws/sso.rs)
+base64 = "0.23"
+getrandom = { version = "0.3", features = ["std"] }
+sha1 = "0.11"
+sha2 = "0.11"
+open.workspace = true
 ureq = { version = "3", default-features = false, features = ["rustls"] }
-semver = "1"
-thiserror = "2"
+semver.workspace = true
+thiserror.workspace = true
 sys-locale = "0.3"
-tracing = { version = "0.1", default-features = false, features = ["std"] }
+tracing.workspace = true
 futures-util = { version = "0.3", default-features = false, features = ["std"] }
+
+[target.'cfg(all(unix, not(any(target_os = "macos", target_os = "ios", target_os = "android"))))'.dependencies]
+zbus-secret-service-keyring-store = { version = "1", features = ["crypto-rust"] }
+
+[target.'cfg(windows)'.dependencies]
+windows-native-keyring-store = "1"

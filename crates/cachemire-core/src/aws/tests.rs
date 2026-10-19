@@ -9,8 +9,15 @@ fn profiles_of(config: &str) -> Vec<Profile> {
     block_on(profiles_in(&fs, &env))
 }
 
-fn sso(start_url: &str, region: &str, account_id: &str, role_name: &str) -> Option<SsoSettings> {
-    Some(SsoSettings { start_url: start_url.into(), region: region.into(), account_id: account_id.into(), role_name: role_name.into() })
+fn sso(session: Option<&str>, start_url: &str, region: &str, account_id: &str, role_name: &str) -> Option<SsoSettings> {
+    Some(SsoSettings {
+        session: session.map(str::to_string),
+        start_url: start_url.into(),
+        region: region.into(),
+        scopes: Vec::new(),
+        account_id: account_id.into(),
+        role_name: role_name.into(),
+    })
 }
 
 #[test]
@@ -27,14 +34,14 @@ fn an_sso_profile_takes_its_start_url_and_region_from_its_session() {
     let config = "[profile dev]\nsso_session = corp\nsso_account_id = 111\nsso_role_name = ReadOnly\nregion = eu-west-3\n\
                   [sso-session corp]\nsso_start_url = https://corp.awsapps.com/start\nsso_region = eu-west-1\n";
     let dev = &profiles_of(config)[0];
-    assert_eq!(dev.sso, sso("https://corp.awsapps.com/start", "eu-west-1", "111", "ReadOnly"));
+    assert_eq!(dev.sso, sso(Some("corp"), "https://corp.awsapps.com/start", "eu-west-1", "111", "ReadOnly"));
     assert_eq!(dev.region.as_deref(), Some("eu-west-3"), "where its caches are, not where SSO signs in");
 }
 
 #[test]
 fn a_legacy_sso_profile_holds_its_settings_itself() {
     let config = "[profile old]\nsso_start_url = https://old.awsapps.com/start\nsso_region = us-east-1\nsso_account_id = 222\nsso_role_name = Admin\n";
-    assert_eq!(profiles_of(config)[0].sso, sso("https://old.awsapps.com/start", "us-east-1", "222", "Admin"));
+    assert_eq!(profiles_of(config)[0].sso, sso(None, "https://old.awsapps.com/start", "us-east-1", "222", "Admin"));
 }
 
 #[test]

@@ -4,14 +4,14 @@
 use parking_lot::Mutex;
 use rustc_hash::FxHashMap;
 use serde::{Deserialize, Serialize};
-use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::{Arc, LazyLock};
 
 /// The credential store failed; cloneable, since `staged` replays its answers.
 #[derive(Debug, Clone, thiserror::Error)]
 pub enum VaultError {
     #[error(transparent)]
-    Keyring(Arc<keyring::Error>),
+    Keyring(Arc<keyring_core::Error>),
     #[error("the saved secrets can't be read: {0}")]
     Json(Arc<serde_json::Error>),
     #[error("no credential store")]
@@ -175,8 +175,34 @@ pub fn staged<S: VaultBacked, R>(store: &Mutex<S>, op: impl Fn(&mut S) -> R) -> 
     result
 }
 
-fn keyring_error(error: keyring::Error) -> VaultError {
+fn keyring_error(error: keyring_core::Error) -> VaultError {
     VaultError::Keyring(Arc::new(error))
+}
+
+/// The platform's store, the one `keyring` 4 used, so what it saved is found again:
+/// the Credential Manager on Windows, the Secret Service on Linux.
+#[cfg(windows)]
+fn platform_store() -> keyring_core::Result<Arc<keyring_core::CredentialStore>> {
+    Ok(windows_native_keyring_store::Store::new()?)
+}
+
+#[cfg(all(unix, not(any(target_os = "macos", target_os = "ios", target_os = "android"))))]
+fn platform_store() -> keyring_core::Result<Arc<keyring_core::CredentialStore>> {
+    Ok(zbus_secret_service_keyring_store::Store::new()?)
+}
+
+#[cfg(not(any(windows, all(unix, not(any(target_os = "macos", target_os = "ios", target_os = "android"))))))]
+fn platform_store() -> keyring_core::Result<Arc<keyring_core::CredentialStore>> {
+    Err(keyring_core::Error::NoDefaultStore)
+}
+
+/// Made `keyring-core`'s default store the first time an entry is needed; why not, if it can't be.
+static STORE: LazyLock<Result<(), Arc<keyring_core::Error>>> =
+    LazyLock::new(|| platform_store().map(keyring_core::set_default_store).map_err(Arc::new));
+
+fn entry(service: &str, id: &str) -> Result<keyring_core::Entry, VaultError> {
+    STORE.as_ref().map_err(|e| VaultError::Keyring(e.clone()))?;
+    keyring_core::Entry::new(service, id).map_err(keyring_error)
 }
 
 fn json_error(error: serde_json::Error) -> VaultError {
@@ -188,17 +214,16 @@ pub struct OsVault;
 
 impl OsVault {
     fn read(service: &str, id: &str) -> Result<Option<Secrets>, VaultError> {
-        let entry = keyring::Entry::new(service, id).map_err(keyring_error)?;
-        match entry.get_password() {
+        match entry(service, id)?.get_password() {
             Ok(json) => serde_json::from_str(&json).map(Some).map_err(json_error),
-            Err(keyring::Error::NoEntry) => Ok(None),
+            Err(keyring_core::Error::NoEntry) => Ok(None),
             Err(e) => Err(keyring_error(e)),
         }
     }
 
     fn remove(service: &str, id: &str) -> Result<(), VaultError> {
-        match keyring::Entry::new(service, id).and_then(|entry| entry.delete_credential()) {
-            Ok(()) | Err(keyring::Error::NoEntry) => Ok(()),
+        match entry(service, id)?.delete_credential() {
+            Ok(()) | Err(keyring_core::Error::NoEntry) => Ok(()),
             Err(e) => Err(keyring_error(e)),
         }
     }
@@ -221,7 +246,7 @@ impl Vault for OsVault {
 
     fn set(&self, id: &str, secrets: &Secrets) -> Result<(), VaultError> {
         let json = serde_json::to_string(secrets).map_err(json_error)?;
-        keyring::Entry::new(SERVICE, id).and_then(|entry| entry.set_password(&json)).map_err(keyring_error)
+        entry(SERVICE, id)?.set_password(&json).map_err(keyring_error)
     }
 
     fn delete(&self, id: &str) -> Result<(), VaultError> {

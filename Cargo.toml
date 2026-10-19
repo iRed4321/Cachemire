@@ -8,6 +8,26 @@ resolver = "3"
 [workspace.package]
 authors = ["Léo Parent <leoparentperso@gmail.com>"]
 
+# the dependencies more than one crate takes (`tokio.workspace = true`); a crate
+# adds the features only it needs
+[workspace.dependencies]
+dirs = "7"
+open = "5"
+# mutexes without poisoning: a task that panics holding one leaves it usable
+parking_lot = "0.12"
+rayon = "1.12.0"
+# SSH tunnels to the Redis server; `ring` rather than the default aws-lc-rs,
+# which needs a C toolchain (cmake/nasm) to build on Windows
+russh = { version = "0.64", default-features = false, features = ["ring", "flate2", "rsa"] }
+rustc-hash = "2"
+semver = "1"
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+thiserror = "2"
+tokio = { version = "1", features = ["rt-multi-thread", "sync", "time", "net", "io-util"] }
+tracing = { version = "0.1", default-features = false, features = ["std"] }
+uuid = { version = "1", features = ["v4"] }
+
 # smaller, leaner binary; panic stays "unwind" so a panic in one background
 # task doesn't take the whole app down
 [profile.release]

@@ -1,12 +1,10 @@
 //! The AWS side of the cloud account: the local `~/.aws` profiles, signing in
-//! (browser authorization for SSO, the SDK's chain otherwise) and the ElastiCache
+//! (SSO in the browser, see [`sso`], or the SDK's chain) and the ElastiCache
 //! Redis groups.
 
-use parking_lot::Mutex;
-use rustc_hash::{FxHashMap, FxHashSet};
+use rustc_hash::FxHashSet;
 use std::path::PathBuf;
-use std::sync::OnceLock;
-use std::time::{Duration, Instant, UNIX_EPOCH};
+use std::time::{Duration, UNIX_EPOCH};
 
 use aws_config::{BehaviorVersion, Region, SdkConfig};
 use aws_credential_types::Credentials;
@@ -21,13 +19,21 @@ use crate::connection::ConnectionItem;
 use crate::connection::store::build_connection_string;
 use crate::error::{Error, ErrorKind};
 
+mod sso;
+
+pub use sso::SignInPage;
+
 /// Prefix of a cloud connection's id: `aws:<profile>:<name>`.
 pub const ID_PREFIX: &str = "aws:";
 
 #[derive(Debug, Clone, PartialEq)]
 struct SsoSettings {
+    /// the `sso-session` the settings come from; none for a profile that holds them itself
+    session: Option<String>,
     start_url: String,
     region: String,
+    /// what the session's `sso_registration_scopes` asks for
+    scopes: Vec<String>,
     account_id: String,
     role_name: String,
 }
@@ -58,12 +64,20 @@ async fn profiles_in(fs: &Fs, env: &Env) -> Vec<Profile> {
         .filter_map(|name| {
             let values = set.get_profile(name)?;
             // the start URL and region live in the `sso-session` the profile names, or in the profile itself
-            let session = values.get("sso_session").and_then(|s| set.sso_session(s));
+            let session_name = values.get("sso_session");
+            let session = session_name.and_then(|s| set.sso_session(s));
             let pick = |key: &str| session.and_then(|s| s.get(key)).or_else(|| values.get(key)).map(str::to_string);
+            let scopes = pick("sso_registration_scopes")
+                .map_or_else(Vec::new, |scopes| scopes.split(',').map(str::trim).filter(|s| !s.is_empty()).map(str::to_string).collect());
             let sso = match (pick("sso_start_url"), pick("sso_region"), values.get("sso_account_id"), values.get("sso_role_name")) {
-                (Some(start_url), Some(region), Some(account_id), Some(role_name)) => {
-                    Some(SsoSettings { start_url, region, account_id: account_id.to_string(), role_name: role_name.to_string() })
-                }
+                (Some(start_url), Some(region), Some(account_id), Some(role_name)) => Some(SsoSettings {
+                    session: session_name.filter(|_| session.is_some()).map(str::to_string),
+                    start_url,
+                    region,
+                    scopes,
+                    account_id: account_id.to_string(),
+                    role_name: role_name.to_string(),
+                }),
                 _ => None,
             };
             Some(Profile { region: values.get("region").map(str::to_string), name: name.to_string(), sso })
@@ -100,6 +114,11 @@ pub enum AwsError {
     NoRegion(String),
     #[error("The sign-in in the browser took too long.")]
     SignInTimedOut,
+    /// what the browser said, when the user or the identity provider said no
+    #[error("The sign-in was refused in the browser: {0}")]
+    SignInRefused(String),
+    #[error("Couldn't wait for the browser's answer: {0}")]
+    Callback(#[source] std::io::Error),
     #[error("Couldn't open the browser: {0}")]
     Browser(#[source] std::io::Error),
 }
@@ -109,7 +128,7 @@ impl AwsError {
         match self {
             AwsError::NoProfile | AwsError::ProfileNotFound(_) => ErrorKind::NotFound,
             AwsError::SignInTimedOut => ErrorKind::Timeout,
-            AwsError::Browser(_) => ErrorKind::System,
+            AwsError::Browser(_) | AwsError::Callback(_) => ErrorKind::System,
             _ => ErrorKind::Cloud,
         }
     }
@@ -143,75 +162,6 @@ async fn anonymous_config(region: &str) -> SdkConfig {
         .await
 }
 
-struct SsoToken {
-    access_token: String,
-    expires: Instant,
-}
-
-/// The access tokens of the SSO sign-ins made during this run, by start URL and region.
-fn tokens() -> &'static Mutex<FxHashMap<String, SsoToken>> {
-    static TOKENS: OnceLock<Mutex<FxHashMap<String, SsoToken>>> = OnceLock::new();
-    TOKENS.get_or_init(Default::default)
-}
-
-/// An SSO access token: the one already held, or a new one the user grants in
-/// the browser (OAuth device authorization, the flow `aws sso login` runs).
-async fn sso_access_token(sso: &SsoSettings) -> Result<String, Error> {
-    let key = format!("{}|{}", sso.start_url, sso.region);
-    if let Some(token) = tokens().lock().get(&key).filter(|t| t.expires > Instant::now() + Duration::from_secs(60)) {
-        return Ok(token.access_token.clone());
-    }
-
-    let client = aws_sdk_ssooidc::Client::new(&anonymous_config(&sso.region).await);
-    let registration = client.register_client().client_name("cachemire").client_type("public").send().await.map_err(describe)?;
-    let (client_id, client_secret) =
-        (incomplete(registration.client_id())?.to_string(), incomplete(registration.client_secret())?.to_string());
-    let authorization = client
-        .start_device_authorization()
-        .client_id(&client_id)
-        .client_secret(&client_secret)
-        .start_url(&sso.start_url)
-        .send()
-        .await
-        .map_err(describe)?;
-
-    let url = incomplete(authorization.verification_uri_complete().or(authorization.verification_uri()))?;
-    open::that(url).map_err(AwsError::Browser)?;
-
-    let deadline = Instant::now() + Duration::from_secs(authorization.expires_in().max(60) as u64);
-    let mut interval = Duration::from_secs(authorization.interval().max(1) as u64);
-    loop {
-        tokio::time::sleep(interval).await;
-        let created = client
-            .create_token()
-            .client_id(&client_id)
-            .client_secret(&client_secret)
-            .grant_type("urn:ietf:params:oauth:grant-type:device_code")
-            .device_code(incomplete(authorization.device_code())?)
-            .send()
-            .await;
-        match created {
-            Ok(token) => {
-                let held = SsoToken {
-                    access_token: incomplete(token.access_token())?.to_string(),
-                    expires: Instant::now() + Duration::from_secs(token.expires_in().max(0) as u64),
-                };
-                let access_token = held.access_token.clone();
-                tokens().lock().insert(key, held);
-                return Ok(access_token);
-            }
-            Err(e) => match e.as_service_error() {
-                Some(service) if service.is_authorization_pending_exception() => {}
-                Some(service) if service.is_slow_down_exception() => interval += Duration::from_secs(5),
-                _ => return Err(describe(e).into()),
-            },
-        }
-        if Instant::now() > deadline {
-            return Err(AwsError::SignInTimedOut.into());
-        }
-    }
-}
-
 /// The SDK's config for `profile` if its own chain (keys, an assumed role, an
 /// existing `aws sso login`...) yields credentials, else the SDK's reason, if it gave one.
 async fn chain_config(profile: &Profile) -> Result<SdkConfig, Option<String>> {
@@ -227,7 +177,7 @@ async fn chain_config(profile: &Profile) -> Result<SdkConfig, Option<String>> {
 
 /// A config for `profile` whose credentials work: the SDK's own chain first,
 /// then the profile's SSO role, signing in in the browser if need be.
-async fn sign_in(profile: &Profile) -> Result<SdkConfig, Error> {
+async fn sign_in(profile: &Profile, page: &SignInPage) -> Result<SdkConfig, Error> {
     let chain_error = match chain_config(profile).await {
         Ok(config) => return Ok(config),
         Err(e) => e,
@@ -236,7 +186,7 @@ async fn sign_in(profile: &Profile) -> Result<SdkConfig, Error> {
         return Err(AwsError::NoUsableCredentials { profile: profile.name.clone(), reason: chain_error }.into());
     };
 
-    let access_token = sso_access_token(sso).await?;
+    let access_token = sso::access_token(sso, page).await?;
     let granted = aws_sdk_sso::Client::new(&anonymous_config(&sso.region).await)
         .get_role_credentials()
         .role_name(&sso.role_name)
@@ -272,7 +222,7 @@ async fn sign_in(profile: &Profile) -> Result<SdkConfig, Error> {
 /// Signs in like `aws sso login`: reuses a working session, else gets an SSO token
 /// in the browser; each profile's role is checked once it is picked. Profiles are
 /// tried in turn (the environment's, `default`, the rest), skipping those with neither.
-pub async fn login() -> Result<(), Error> {
+pub async fn login(page: &SignInPage) -> Result<(), Error> {
     let mut profiles = profiles().await;
     let wanted = std::env::var("AWS_PROFILE").ok();
     profiles.sort_by_key(|p| (Some(&p.name) != wanted.as_ref(), p.name != "default"));
@@ -283,7 +233,7 @@ pub async fn login() -> Result<(), Error> {
             Err(e) => e,
         };
         match &profile.sso {
-            Some(sso) => return sso_access_token(sso).await.map(drop),
+            Some(sso) => return sso::access_token(sso, page).await.map(drop),
             None => last_error = AwsError::NoUsableCredentials { profile: profile.name.clone(), reason: chain_error },
         }
     }
@@ -305,10 +255,10 @@ pub struct Listing {
 
 /// The ElastiCache Redis groups and standalone nodes that `profile` sees, as
 /// connections. Memcached (and Valkey) clusters are left out.
-pub async fn redis_connections(profile_name: &str) -> Result<Listing, Error> {
+pub async fn redis_connections(profile_name: &str, page: &SignInPage) -> Result<Listing, Error> {
     let profile =
         profiles().await.into_iter().find(|p| p.name == profile_name).ok_or_else(|| AwsError::ProfileNotFound(profile_name.to_string()))?;
-    let config = sign_in(&profile).await?;
+    let config = sign_in(&profile, page).await?;
     if config.region().is_none() {
         return Err(AwsError::NoRegion(profile_name.to_string()).into());
     }

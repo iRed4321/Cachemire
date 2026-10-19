@@ -14,6 +14,7 @@ use crate::AwsAccount;
 use crate::MainWindow;
 use crate::app::App;
 use cachemire_core::aws;
+use rust_i18n::t;
 
 pub mod settings;
 
@@ -36,6 +37,15 @@ fn bring_to_front(window: &MainWindow) {
             winit_window.request_user_attention(Some(UserAttentionType::Informational));
         }
     });
+}
+
+/// The page the browser shows once an AWS sign-in there is over.
+fn sign_in_page() -> aws::SignInPage {
+    aws::SignInPage {
+        title: "Cachemire".to_string(),
+        signed_in: t!("You're signed in to AWS. You can close this tab and go back to Cachemire.").into_owned(),
+        refused: t!("The AWS sign-in didn't go through. You can close this tab and try again from Cachemire.").into_owned(),
+    }
 }
 
 /// Forgets the account's connections, dropping the one in use if it is one of them.
@@ -73,8 +83,9 @@ pub fn init(app: &Rc<App>, window: &MainWindow) {
 
             window.global::<AwsAccount>().set_error("".into());
             window.global::<AwsAccount>().set_busy(true);
+            let page = sign_in_page();
             app.rt.spawn(async move {
-                let result = aws::login().await;
+                let result = aws::login(&page).await;
                 let names: Vec<slint::SharedString> = aws::profiles().await.into_iter().map(|p| p.name.into()).collect();
                 crate::app::later(move |app, window| {
                     window.global::<AwsAccount>().set_busy(false);
@@ -115,8 +126,9 @@ pub fn init(app: &Rc<App>, window: &MainWindow) {
             window.global::<AwsAccount>().set_error("".into());
             window.global::<AwsAccount>().set_busy(true);
 
+            let page = sign_in_page();
             app.rt.spawn(async move {
-                let result = aws::redis_connections(&name).await;
+                let result = aws::redis_connections(&name, &page).await;
                 crate::app::later(move |app, window| {
                     if app.cloud.borrow().generation != generation {
                         return;
