@@ -20,7 +20,11 @@ fn matches_checks_every_term_against_its_own_scope_anded_together() {
     // the `field()` test helper leaves `raw` empty, so a real value needs
     // `Field::from_value` instead, like a loaded key's fields get built
     let f = Field::from_value("hello".into(), json!("a needle in a haystack"));
-    let name_term = |text: &str, scope: SearchScope| SearchFilter { terms: vec![SearchTerm { text: text.into(), scope }], case_sensitive: false, ..Default::default() };
+    let name_term = |text: &str, scope: SearchScope| SearchFilter {
+        terms: vec![SearchTerm { text: text.into(), scope }],
+        case_sensitive: false,
+        ..Default::default()
+    };
 
     assert!(name_term("hel", SearchScope::Fields).matches(&f));
     assert!(!name_term("needle", SearchScope::Fields).matches(&f));
@@ -32,13 +36,19 @@ fn matches_checks_every_term_against_its_own_scope_anded_together() {
 
     // AND across terms
     let both = SearchFilter {
-        terms: vec![SearchTerm { text: "needle".into(), scope: SearchScope::Value }, SearchTerm { text: "hel".into(), scope: SearchScope::Fields }],
+        terms: vec![
+            SearchTerm { text: "needle".into(), scope: SearchScope::Value },
+            SearchTerm { text: "hel".into(), scope: SearchScope::Fields },
+        ],
         case_sensitive: false,
         ..Default::default()
     };
     assert!(both.matches(&f));
     let mismatch = SearchFilter {
-        terms: vec![SearchTerm { text: "needle".into(), scope: SearchScope::Value }, SearchTerm { text: "zzz".into(), scope: SearchScope::Fields }],
+        terms: vec![
+            SearchTerm { text: "needle".into(), scope: SearchScope::Value },
+            SearchTerm { text: "zzz".into(), scope: SearchScope::Fields },
+        ],
         case_sensitive: false,
         ..Default::default()
     };
@@ -51,11 +61,23 @@ fn matches_checks_every_term_against_its_own_scope_anded_together() {
 #[test]
 fn case_sensitivity_is_one_setting_for_every_term() {
     let f = Field::from_value("Hello".into(), json!("A Needle"));
-    let insensitive = SearchFilter { terms: vec![SearchTerm { text: "needle".into(), scope: SearchScope::Value }], case_sensitive: false, ..Default::default() };
-    let sensitive = SearchFilter { terms: vec![SearchTerm { text: "needle".into(), scope: SearchScope::Value }], case_sensitive: true, ..Default::default() };
+    let insensitive = SearchFilter {
+        terms: vec![SearchTerm { text: "needle".into(), scope: SearchScope::Value }],
+        case_sensitive: false,
+        ..Default::default()
+    };
+    let sensitive = SearchFilter {
+        terms: vec![SearchTerm { text: "needle".into(), scope: SearchScope::Value }],
+        case_sensitive: true,
+        ..Default::default()
+    };
     assert!(insensitive.matches(&f));
     assert!(!sensitive.matches(&f));
-    let sensitive_match = SearchFilter { terms: vec![SearchTerm { text: "Needle".into(), scope: SearchScope::Value }], case_sensitive: true, ..Default::default() };
+    let sensitive_match = SearchFilter {
+        terms: vec![SearchTerm { text: "Needle".into(), scope: SearchScope::Value }],
+        case_sensitive: true,
+        ..Default::default()
+    };
     assert!(sensitive_match.matches(&f));
 }
 

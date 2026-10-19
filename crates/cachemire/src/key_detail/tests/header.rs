@@ -154,7 +154,10 @@ fn the_search_bar_wires_its_scope_case_toggle_and_badges() {
     // the Value badge's text and × are drawn solid accent-purple; only the key's
     // header is checked, since the scope switch's chosen "Value" segment below is
     // purple too
-    let purple = { let (r, g, b) = (0xb3_u16, 0x89_u16, 0xf9_u16); ((r >> 3) << 11) | ((g >> 2) << 5) | (b >> 3) };
+    let purple = {
+        let (r, g, b) = (0xb3_u16, 0x89_u16, 0xf9_u16);
+        ((r >> 3) << 11) | ((g >> 2) << 5) | (b >> 3)
+    };
     let mut min_y = usize::MAX;
     let mut max_y = 0;
     let mut max_x = 0;
@@ -188,7 +191,11 @@ fn the_filter_completes_paths_from_the_loaded_values() {
             let rows: Vec<SuggestionRow> = completion
                 .iter()
                 .flat_map(|c| &c.items)
-                .map(|i| SuggestionRow { before: i.key[..i.matched.0].into(), matched: i.key[i.matched.0..i.matched.1].into(), after: i.key[i.matched.1..].into() })
+                .map(|i| SuggestionRow {
+                    before: i.key[..i.matched.0].into(),
+                    matched: i.key[i.matched.0..i.matched.1].into(),
+                    after: i.key[i.matched.1..].into(),
+                })
                 .collect();
             let any = !rows.is_empty();
             weak.upgrade().unwrap().global::<KeyPanel>().set_suggestions(ModelRc::new(VecModel::from(rows)));
@@ -247,7 +254,11 @@ fn the_filter_completes_paths_from_the_loaded_values() {
     press(&h, slint::platform::Key::DownArrow);
     press(&h, slint::platform::Key::Return);
     h.frame();
-    assert_eq!((applied.get(), h.window.global::<KeyPanel>().get_json_filter().as_str()), (1, "address.zip"), "the choice is written, not applied");
+    assert_eq!(
+        (applied.get(), h.window.global::<KeyPanel>().get_json_filter().as_str()),
+        (1, "address.zip"),
+        "the choice is written, not applied"
+    );
 
     // and the caret is after it: typing goes on from there
     type_text(&h, ".");

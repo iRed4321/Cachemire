@@ -43,7 +43,11 @@ fn every_message_of_the_interface_is_translated() {
                 panic!("{code}: no entry for {id:?}; run cargo xtask i18n");
             };
             assert!(!string.is_empty(), "{code}: {id:?} is not translated");
-            assert_eq!(id.matches("{}").count(), string.matches("{}").count(), "{code}: {id:?} and its translation take different arguments");
+            assert_eq!(
+                id.matches("{}").count(),
+                string.matches("{}").count(),
+                "{code}: {id:?} and its translation take different arguments"
+            );
         }
     }
 }
@@ -117,7 +121,11 @@ fn every_message_built_in_rust_is_translated() {
             if path.ends_with("i18n/tests.rs") {
                 continue;
             }
-            assert!(messages.iter().any(|(known, _)| *known == key), "{}: t!({key:?}) has no entry in resources/lang/app.yml", path.display());
+            assert!(
+                messages.iter().any(|(known, _)| *known == key),
+                "{}: t!({key:?}) has no entry in resources/lang/app.yml",
+                path.display()
+            );
         }
     }
 }

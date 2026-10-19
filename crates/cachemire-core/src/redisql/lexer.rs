@@ -3,7 +3,6 @@
 
 use std::ops::Range;
 
-
 use super::{Located, QueryError};
 
 #[derive(Debug, Clone, PartialEq)]

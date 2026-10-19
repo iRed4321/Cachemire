@@ -10,10 +10,9 @@ use rust_i18n::t;
 use semver::Version;
 use slint::ComponentHandle;
 
-use cachemire_core::LockExt;
+use crate::{About, MainWindow};
 use cachemire_core::state::AppState;
 use cachemire_core::updates::{self, Channel, Release};
-use crate::{About, MainWindow};
 
 thread_local! {
     // the newer release the last check found; UI thread only
@@ -39,7 +38,7 @@ fn current_version() -> Version {
 
 /// The channel the check follows: the one picked, else the running build's (stable for a dev build).
 fn channel(state: &AppState) -> Channel {
-    state.settings.lock_recover().update_channel().unwrap_or(match Channel::of(&current_version()) {
+    state.settings.lock().update_channel().unwrap_or(match Channel::of(&current_version()) {
         Channel::Beta => Channel::Beta,
         Channel::Stable | Channel::Dev => Channel::Stable,
     })
@@ -65,7 +64,10 @@ pub(crate) fn show_found(about: &About, release: Release, at_startup: bool) {
 fn look_for_update(weak: slint::Weak<MainWindow>, rt: &tokio::runtime::Handle, channel: Channel, at_startup: bool) {
     let current = current_version();
     rt.spawn(async move {
-        let found = tokio::task::spawn_blocking(move || updates::newer_release(&current, channel)).await.map_err(|e| e.to_string()).and_then(|r| r.map_err(|e| e.to_string()));
+        let found = tokio::task::spawn_blocking(move || updates::newer_release(&current, channel))
+            .await
+            .map_err(|e| e.to_string())
+            .and_then(|r| r.map_err(|e| e.to_string()));
         match &found {
             Ok(Some(release)) => tracing::info!(version = %release.version, at_startup, "an update is available"),
             Ok(None) => tracing::info!(at_startup, "no update available"),
@@ -87,7 +89,7 @@ pub fn init(window: &MainWindow, state: Arc<AppState>, rt: tokio::runtime::Handl
     about.set_channel(segment(channel(&state)));
     about.set_download_label(if cfg!(windows) { t!("Download and install") } else { t!("Open the release page") }.as_ref().into());
 
-    if state.settings.lock_recover().check_updates_at_startup() && Channel::of(&current_version()) != Channel::Dev {
+    if state.settings.lock().check_updates_at_startup() && Channel::of(&current_version()) != Channel::Dev {
         look_for_update(window.as_weak(), &rt, channel(&state), true);
     }
 
@@ -102,7 +104,7 @@ pub fn init(window: &MainWindow, state: Arc<AppState>, rt: tokio::runtime::Handl
             let Some(window) = weak.upgrade() else { return };
             let about = window.global::<About>();
             let picked = if index == 1 { Channel::Beta } else { Channel::Stable };
-            if let Err(e) = state.settings.lock_recover().set_update_channel(picked) {
+            if let Err(e) = state.settings.lock().set_update_channel(picked) {
                 return say(&about, e.localized(), false);
             }
             tracing::info!(channel = picked.code(), "update channel picked");

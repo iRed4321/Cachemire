@@ -1,11 +1,11 @@
 //! Where saved connections' passwords/passphrases live: the OS credential
 //! store (Windows Credential Manager, or Secret Service on Linux), so `databases.json` doesn't hold them in clear text.
 
-use crate::LockExt;
-use serde::{Deserialize, Serialize};
+use parking_lot::Mutex;
 use rustc_hash::FxHashMap;
+use serde::{Deserialize, Serialize};
+use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::{Arc, Mutex};
 
 /// The credential store failed; cloneable, since `staged` replays its answers.
 #[derive(Debug, Clone, thiserror::Error)]
@@ -30,7 +30,6 @@ pub enum KeyringError {
     #[error("Couldn't read the SSH tunnel's secrets from the system keyring: {0}")]
     TunnelSecrets(#[source] VaultError),
 }
-
 
 /// The name the entries are filed under in the credential store.
 const SERVICE: &str = "Cachemire";
@@ -109,7 +108,7 @@ impl Recorded {
     /// Makes the writes noted while rehearsing, up to the first that fails
     /// (the store makes no more attempts after one).
     fn write_out(&self) {
-        let mut writes = self.writes.lock_recover();
+        let mut writes = self.writes.lock();
         for (id, secrets, result) in writes.iter_mut() {
             let done = self.real.set(id, secrets);
             let failed = done.is_err();
@@ -124,18 +123,18 @@ impl Recorded {
 
 impl Vault for Recorded {
     fn get(&self, id: &str) -> Result<Option<Secrets>, VaultError> {
-        if let Some(read) = self.reads.lock_recover().get(id) {
+        if let Some(read) = self.reads.lock().get(id) {
             return read.clone();
         }
         let read = self.real.get(id);
         if self.rehearsing.load(Ordering::SeqCst) {
-            self.reads.lock_recover().insert(id.to_string(), read.clone());
+            self.reads.lock().insert(id.to_string(), read.clone());
         }
         read
     }
 
     fn set(&self, id: &str, secrets: &Secrets) -> Result<(), VaultError> {
-        let mut writes = self.writes.lock_recover();
+        let mut writes = self.writes.lock();
         if self.rehearsing.load(Ordering::SeqCst) {
             writes.push((id.to_string(), secrets.clone(), None));
             return Ok(());
@@ -156,7 +155,7 @@ impl Vault for Recorded {
 /// is free: `op` is rehearsed on a copy first, then run for real, replaying
 /// what the vault answered. `op` must do the same thing both times (no fresh ids).
 pub fn staged<S: VaultBacked, R>(store: &Mutex<S>, op: impl Fn(&mut S) -> R) -> R {
-    let mut rehearsal = store.lock_recover().clone();
+    let mut rehearsal = store.lock().clone();
     let recorded = Arc::new(Recorded {
         real: rehearsal.vault_mut().clone(),
         rehearsing: AtomicBool::new(true),
@@ -169,7 +168,7 @@ pub fn staged<S: VaultBacked, R>(store: &Mutex<S>, op: impl Fn(&mut S) -> R) -> 
     drop(rehearsal);
     recorded.write_out();
 
-    let mut store = store.lock_recover();
+    let mut store = store.lock();
     let real = std::mem::replace(store.vault_mut(), recorded);
     let result = op(&mut store);
     *store.vault_mut() = real;
@@ -236,7 +235,7 @@ impl Vault for OsVault {
 #[cfg(any(test, feature = "test-support"))]
 #[derive(Clone, Default)]
 pub struct MemoryVault {
-    pub entries: std::sync::Arc<std::sync::Mutex<rustc_hash::FxHashMap<String, Secrets>>>,
+    pub entries: std::sync::Arc<parking_lot::Mutex<rustc_hash::FxHashMap<String, Secrets>>>,
     pub broken: std::sync::Arc<std::sync::atomic::AtomicBool>,
     /// how many times the vault was asked for something
     pub reads: std::sync::Arc<std::sync::atomic::AtomicUsize>,
@@ -254,18 +253,18 @@ impl Vault for MemoryVault {
     fn get(&self, id: &str) -> Result<Option<Secrets>, VaultError> {
         self.reads.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
         self.check()?;
-        Ok(self.entries.lock_recover().get(id).cloned())
+        Ok(self.entries.lock().get(id).cloned())
     }
 
     fn set(&self, id: &str, secrets: &Secrets) -> Result<(), VaultError> {
         self.check()?;
-        self.entries.lock_recover().insert(id.to_string(), secrets.clone());
+        self.entries.lock().insert(id.to_string(), secrets.clone());
         Ok(())
     }
 
     fn delete(&self, id: &str) -> Result<(), VaultError> {
         self.check()?;
-        self.entries.lock_recover().remove(id);
+        self.entries.lock().remove(id);
         Ok(())
     }
 }

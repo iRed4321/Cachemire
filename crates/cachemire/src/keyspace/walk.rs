@@ -11,10 +11,9 @@ use super::index::Index;
 use super::search::glob_match;
 use super::{DELIMITER, LeafKind, ScanContext, Tree, continue_pending_expand, continue_reveal, selection, show_additions, with_model};
 use crate::KeyTree;
-use cachemire_core::LockExt;
+use crate::MainWindow;
 use cachemire_core::explorer::{self, WalkBatch};
 use cachemire_core::session::TypedKey;
-use crate::MainWindow;
 
 /// The walk stops after this many keys: the index holds every key name, so a
 /// keyspace past this would cost too much memory to list whole.
@@ -39,9 +38,13 @@ pub(super) fn show_footer(window: &MainWindow, tree: &Tree) {
             (true, 1) => t!("1 matching key").into_owned(),
             (true, n) => t!("%{count} matching keys", count = n).into_owned(),
         },
-        None if walk.capped => t!("stopped after %{count} keys: the keyspace is too large to list whole, search it instead", count = walk.scanned).into_owned(),
+        None if walk.capped => {
+            t!("stopped after %{count} keys: the keyspace is too large to list whole, search it instead", count = walk.scanned).into_owned()
+        }
         None if walk.done => t!("%{count} keys scanned", count = walk.scanned).into_owned(),
-        None if walk.total > 0 => t!("scanning... %{count} of %{total} keys", count = walk.scanned.min(walk.total), total = walk.total).into_owned(),
+        None if walk.total > 0 => {
+            t!("scanning... %{count} of %{total} keys", count = walk.scanned.min(walk.total), total = walk.total).into_owned()
+        }
         None => t!("scanning... %{count} keys", count = walk.scanned).into_owned(),
     };
     window.global::<KeyTree>().set_footer(text.into());
@@ -94,7 +97,7 @@ pub(super) fn start_walk(ctx: &ScanContext) {
                         if latest.load(Ordering::Relaxed) != generation {
                             return;
                         }
-                        apply_walk_batch(&window, &mut tree.lock_recover(), batch);
+                        apply_walk_batch(&window, &mut tree.lock(), batch);
                         continue_reveal(&reveal_ctx);
                         continue_pending_expand(&reveal_ctx);
                     });
@@ -117,7 +120,7 @@ pub(super) fn start_walk(ctx: &ScanContext) {
 /// `keep_search` stays, its matches found again as the walk goes.
 pub(super) fn load_root(ctx: &ScanContext, keep_search: bool) {
     {
-        let mut tree = ctx.tree.lock_recover();
+        let mut tree = ctx.tree.lock();
         // shallowest first, so a folder is never looked for before the parent that reveals it
         let mut reexpand: Vec<String> = Vec::new();
         if tree.search.is_none() {

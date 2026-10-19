@@ -2,18 +2,17 @@
 //! which handles persistence and the credential store. This is UI glue:
 //! keep the list in sync, switch/save/remove a profile.
 
-use cachemire_core::LockExt;
-use cachemire_core::error::Error;
 use crate::error::Localize;
+use cachemire_core::error::Error;
 use cachemire_core::secret_vault::staged;
 use std::sync::Arc;
 
 use slint::{ComponentHandle, ModelRc, VecModel};
 use tokio::runtime::Handle;
 
-use cachemire_core::state::AppState;
-use cachemire_core::i18n::Language;
 use crate::{ExportPrefs, LanguageSetting, MainWindow, Preferences, SshProfileForm, SshProfileRowData};
+use cachemire_core::i18n::Language;
+use cachemire_core::state::AppState;
 
 /// The UI's enum for a language setting, and back: matches, so a language added
 /// to one and not the other doesn't compile.
@@ -37,7 +36,6 @@ fn refresh(window: &MainWindow, state: &Arc<AppState>) {
     let rows: Vec<SshProfileRowData> = state
         .settings
         .lock()
-        .unwrap()
         .ssh_profiles()
         .into_iter()
         .map(|p| SshProfileRowData { id: p.id.into(), name: p.name.into(), username: p.username.into(), active: p.active })
@@ -62,7 +60,7 @@ fn save_profile(state: &AppState, form: &SshProfileForm) -> Result<(), Error> {
 /// Drops the open pools of the connections whose SSH tunnel logs in with the
 /// active profile: they'd go on using the profile as it was.
 fn drop_profile_pools(state: &AppState) {
-    let connections = state.connections.lock_recover().list_state().connections;
+    let connections = state.connections.lock().list_state().connections;
     for connection in connections.iter().filter(|c| c.ssh.as_ref().is_some_and(|ssh| ssh.username.is_empty())) {
         state.redis_connections.invalidate(&connection.id);
     }
@@ -82,10 +80,10 @@ fn saved(window: &MainWindow, result: Result<(), Error>, apply: impl FnOnce(&Mai
 
 pub fn init(window: &MainWindow, state: Arc<AppState>, rt: Handle) {
     refresh(window, &state);
-    window.global::<Preferences>().set_language(to_setting(state.settings.lock_recover().language()));
-    window.global::<Preferences>().set_server_search(state.settings.lock_recover().server_search());
-    window.global::<Preferences>().set_check_updates_at_startup(state.settings.lock_recover().check_updates_at_startup());
-    let export_escaped = state.settings.lock_recover().export_escaped();
+    window.global::<Preferences>().set_language(to_setting(state.settings.lock().language()));
+    window.global::<Preferences>().set_server_search(state.settings.lock().server_search());
+    window.global::<Preferences>().set_check_updates_at_startup(state.settings.lock().check_updates_at_startup());
+    let export_escaped = state.settings.lock().export_escaped();
     window.global::<Preferences>().set_export_escaped(export_escaped);
     window.global::<ExportPrefs>().set_escaped(export_escaped);
     window.global::<ExportPrefs>().set_header_escaped(export_escaped);
@@ -96,11 +94,11 @@ pub fn init(window: &MainWindow, state: Arc<AppState>, rt: Handle) {
         let state = state.clone();
         move |escaped| {
             let Some(window) = weak.upgrade() else { return };
-            let result = state.settings.lock_recover().set_export_escaped(escaped);
+            let result = state.settings.lock().set_export_escaped(escaped);
             saved(&window, result, |window| window.global::<Preferences>().set_export_escaped(escaped));
         }
     });
-    window.global::<Preferences>().set_search_depth(state.settings.lock_recover().search_depth() as i32);
+    window.global::<Preferences>().set_search_depth(state.settings.lock().search_depth() as i32);
 
     // how deep into a key the global search reads: saved, and used by the next search
     window.global::<Preferences>().on_search_depth_selected({
@@ -108,7 +106,7 @@ pub fn init(window: &MainWindow, state: Arc<AppState>, rt: Handle) {
         let state = state.clone();
         move |depth| {
             let Some(window) = weak.upgrade() else { return };
-            let result = state.settings.lock_recover().set_search_depth(depth as u32);
+            let result = state.settings.lock().set_search_depth(depth as u32);
             saved(&window, result, |window| window.global::<Preferences>().set_search_depth(depth));
         }
     });
@@ -119,7 +117,7 @@ pub fn init(window: &MainWindow, state: Arc<AppState>, rt: Handle) {
         let state = state.clone();
         move |enabled| {
             let Some(window) = weak.upgrade() else { return };
-            let result = state.settings.lock_recover().set_server_search(enabled);
+            let result = state.settings.lock().set_server_search(enabled);
             saved(&window, result, |window| window.global::<Preferences>().set_server_search(enabled));
         }
     });
@@ -130,7 +128,7 @@ pub fn init(window: &MainWindow, state: Arc<AppState>, rt: Handle) {
         let state = state.clone();
         move |enabled| {
             let Some(window) = weak.upgrade() else { return };
-            let result = state.settings.lock_recover().set_check_updates_at_startup(enabled);
+            let result = state.settings.lock().set_check_updates_at_startup(enabled);
             saved(&window, result, |window| window.global::<Preferences>().set_check_updates_at_startup(enabled));
         }
     });
@@ -142,7 +140,7 @@ pub fn init(window: &MainWindow, state: Arc<AppState>, rt: Handle) {
         move |setting| {
             let Some(window) = weak.upgrade() else { return };
             let language = from_setting(setting);
-            let result = state.settings.lock_recover().set_language(language);
+            let result = state.settings.lock().set_language(language);
             saved(&window, result, |window| {
                 window.global::<Preferences>().set_language(setting);
                 crate::i18n::apply(language);
@@ -157,7 +155,7 @@ pub fn init(window: &MainWindow, state: Arc<AppState>, rt: Handle) {
         move |id| {
             let Some(window) = weak.upgrade() else { return };
             let result = {
-                let mut settings = state.settings.lock_recover();
+                let mut settings = state.settings.lock();
                 let next = if settings.active_ssh_profile() == id.as_str() { "" } else { id.as_str() };
                 settings.set_active_ssh_profile(next)
             };
@@ -185,14 +183,12 @@ pub fn init(window: &MainWindow, state: Arc<AppState>, rt: Handle) {
                 if result.is_ok() {
                     drop_profile_pools(&state);
                 }
-                let _ = weak.upgrade_in_event_loop(move |window| {
-                    match result {
-                        Ok(()) => {
-                            window.global::<Preferences>().set_ssh_profile_editing(false);
-                            refresh(&window, &state);
-                        }
-                        Err(e) => window.global::<Preferences>().set_error(e.localized().into()),
+                let _ = weak.upgrade_in_event_loop(move |window| match result {
+                    Ok(()) => {
+                        window.global::<Preferences>().set_ssh_profile_editing(false);
+                        refresh(&window, &state);
                     }
+                    Err(e) => window.global::<Preferences>().set_error(e.localized().into()),
                 });
             });
         }
@@ -203,7 +199,7 @@ pub fn init(window: &MainWindow, state: Arc<AppState>, rt: Handle) {
         let state = state.clone();
         move |id| {
             let Some(window) = weak.upgrade() else { return };
-            let removed = state.settings.lock_recover().remove_ssh_profile(&id);
+            let removed = state.settings.lock().remove_ssh_profile(&id);
             match removed {
                 Ok(cleanup) => {
                     drop_profile_pools(&state);

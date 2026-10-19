@@ -11,13 +11,13 @@ use serde_json::{Value, json};
 use slint::{ComponentHandle, Model, ModelRc, VecModel};
 
 use crate::app::App;
-use cachemire_core::connection::store::build_connection_string;
 use crate::error::{Error, Localize};
+use crate::{ConnectionTransfer, MainWindow, TransferRow};
 use cachemire_core::connection::ConnectionPayloadInput;
+use cachemire_core::connection::store::build_connection_string;
 use cachemire_core::secret_vault::staged;
 use cachemire_core::state::AppState;
-use cachemire_core::{LockExt, now_ms, persist};
-use crate::{ConnectionTransfer, MainWindow, TransferRow};
+use cachemire_core::{now_ms, persist};
 
 /// The SSH tunnel of an imported connection: `privateKey` is the path of the key file.
 struct SshDraft {
@@ -51,7 +51,14 @@ fn ssh_draft_of(item: &Value) -> Option<SshDraft> {
     let secret = |key: &str| ssh.get(key).and_then(Value::as_str).filter(|s| !s.is_empty()).map(str::to_string);
     let host = text("host");
     let port = ssh.get("port").and_then(Value::as_u64).and_then(|p| u16::try_from(p).ok()).filter(|p| *p > 0).unwrap_or(22);
-    (!host.is_empty()).then(|| SshDraft { host, port, username: text("username"), private_key: text("privateKey"), password: secret("password"), passphrase: secret("passphrase") })
+    (!host.is_empty()).then(|| SshDraft {
+        host,
+        port,
+        username: text("username"),
+        private_key: text("privateKey"),
+        password: secret("password"),
+        passphrase: secret("passphrase"),
+    })
 }
 
 fn draft_of(item: &Value) -> Option<Draft> {
@@ -63,7 +70,13 @@ fn draft_of(item: &Value) -> Option<Draft> {
     let port = item.get("port").and_then(Value::as_u64).and_then(|p| u16::try_from(p).ok()).filter(|p| *p > 0).unwrap_or(6379);
     let db = item.get("db").and_then(Value::as_u64).and_then(|d| u32::try_from(d).ok()).unwrap_or(0);
     let connection_url = if connection_url.is_empty() { build_connection_string(&host, port, db, "", "") } else { connection_url };
-    Some(Draft { name, connection_url, username: text("username"), password: item.get("password").and_then(Value::as_str).map(str::to_string), ssh: ssh_draft_of(item) })
+    Some(Draft {
+        name,
+        connection_url,
+        username: text("username"),
+        password: item.get("password").and_then(Value::as_str).map(str::to_string),
+        ssh: ssh_draft_of(item),
+    })
 }
 
 /// The connections of a file: its `connections` list, or the file itself when it is a list.
@@ -132,7 +145,7 @@ pub fn init(window: &MainWindow) {
 
 /// Opens the window: every saved connection listed for export, all ticked, and nothing to import yet.
 fn open(app: &Rc<App>, window: &MainWindow) {
-    let connections = app.state.connections.lock_recover().list_state().connections;
+    let connections = app.state.connections.lock().list_state().connections;
     {
         let mut lists = app.transfer.borrow_mut();
         lists.exportable = connections.iter().map(|c| c.id.clone()).collect();
@@ -198,7 +211,11 @@ fn set_all(window: &MainWindow, tab: i32, all: bool) {
 /// "Choose a file…": reads it off the UI thread and lists its connections, all ticked.
 fn choose_file(app: &Rc<App>) {
     app.rt.spawn(async move {
-        let Some(file) = rfd::AsyncFileDialog::new().set_title(t!("Select a connections file")).add_filter("JSON", &["json"]).pick_file().await else { return };
+        let Some(file) =
+            rfd::AsyncFileDialog::new().set_title(t!("Select a connections file")).add_filter("JSON", &["json"]).pick_file().await
+        else {
+            return;
+        };
         let path = file.path();
         let parsed = std::fs::read_to_string(path).map_err(Error::ReadFile).and_then(|text| parse_drafts(&text));
         let file = path.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default();
@@ -211,13 +228,16 @@ fn show_drafts(app: &Rc<App>, window: &MainWindow, parsed: Result<Vec<Draft>, Er
     let global = window.global::<ConnectionTransfer>();
     match parsed {
         Ok(drafts) => {
-            let taken: FxHashSet<String> = app.state.connections.lock_recover().list_state().connections.iter().map(|c| c.name.to_lowercase()).collect();
+            let taken: FxHashSet<String> =
+                app.state.connections.lock().list_state().connections.iter().map(|c| c.name.to_lowercase()).collect();
             let rows: Vec<TransferRow> = drafts
                 .iter()
                 .map(|d| TransferRow {
                     name: d.name.as_str().into(),
                     detail: match &d.ssh {
-                        Some(ssh) => t!("%{address} via SSH %{host}", address = d.connection_url.as_str(), host = ssh.host).into_owned().into(),
+                        Some(ssh) => {
+                            t!("%{address} via SSH %{host}", address = d.connection_url.as_str(), host = ssh.host).into_owned().into()
+                        }
                         None => d.connection_url.as_str().into(),
                     },
                     ticked: true,
@@ -279,7 +299,8 @@ fn run_import(app: &Rc<App>, window: &MainWindow) {
     let state = app.state.clone();
     app.rt.spawn_blocking(move || {
         // the names are chosen once, so the rehearsal and the real run save the same thing
-        let mut taken: FxHashSet<String> = state.connections.lock_recover().list_state().connections.iter().map(|c| c.name.to_lowercase()).collect();
+        let mut taken: FxHashSet<String> =
+            state.connections.lock().list_state().connections.iter().map(|c| c.name.to_lowercase()).collect();
         let items: Vec<(String, ConnectionPayloadInput)> = chosen
             .into_iter()
             .map(|mut payload| {
@@ -287,7 +308,8 @@ fn run_import(app: &Rc<App>, window: &MainWindow) {
                 (uuid::Uuid::new_v4().to_string(), payload)
             })
             .collect();
-        let result = staged(&state.connections, |store| items.iter().try_for_each(|(id, payload)| store.import_with_id(id, payload.clone())));
+        let result =
+            staged(&state.connections, |store| items.iter().try_for_each(|(id, payload)| store.import_with_id(id, payload.clone())));
         let count = items.len();
         tracing::info!(count, ok = result.is_ok(), "imported connections");
         crate::app::later(move |app, window| {
@@ -312,7 +334,8 @@ fn run_import(app: &Rc<App>, window: &MainWindow) {
 fn run_export(app: &Rc<App>, window: &MainWindow) {
     let global = window.global::<ConnectionTransfer>();
     let ticks: Vec<bool> = global.get_export_rows().iter().map(|row| row.ticked).collect();
-    let ids: Vec<String> = app.transfer.borrow().exportable.iter().zip(&ticks).filter(|(_, ticked)| **ticked).map(|(id, _)| id.clone()).collect();
+    let ids: Vec<String> =
+        app.transfer.borrow().exportable.iter().zip(&ticks).filter(|(_, ticked)| **ticked).map(|(id, _)| id.clone()).collect();
     if ids.is_empty() {
         return;
     }
@@ -342,7 +365,11 @@ fn run_export(app: &Rc<App>, window: &MainWindow) {
             match outcome {
                 Ok((path, count)) => {
                     tracing::info!(count, file = %path.display(), "exported connections");
-                    set_message(window, t!("Exported %{count} connection(s) to %{file}.", count = count, file = path.display()).into_owned(), true);
+                    set_message(
+                        window,
+                        t!("Exported %{count} connection(s) to %{file}.", count = count, file = path.display()).into_owned(),
+                        true,
+                    );
                 }
                 Err(e) => set_message(window, e.localized(), false),
             }
@@ -358,7 +385,7 @@ fn write_export(state: &AppState, ids: &[String], passwords: bool, now: i64, pat
         staged(&state.connections, |store| ids.iter().try_for_each(|id| store.unlock_secrets(id)))?;
     }
     let items: Vec<Value> = {
-        let store = state.connections.lock_recover();
+        let store = state.connections.lock();
         ids.iter()
             .filter_map(|id| store.get(id))
             .map(|c| {

@@ -7,9 +7,9 @@ use std::collections::BTreeMap;
 use serde::{Deserialize, Serialize};
 
 use super::{SettingsStore, StoredSettings};
-use crate::secret_vault::KeyringError;
-use crate::error::{Error, Invalid, NotFound};
 use crate::connection::{CloudKey, ConnectionItem, SshSettings};
+use crate::error::{Error, Invalid, NotFound};
+use crate::secret_vault::KeyringError;
 use crate::secret_vault::{Secrets, SecretsCleanup};
 
 /// An SSH tunnel set for cloud endpoints, as `settings.json` keeps it.
@@ -34,7 +34,16 @@ pub struct CloudSsh {
 impl CloudSsh {
     /// The tunnel that turns one off.
     pub fn none() -> Self {
-        Self { enabled: false, host: String::new(), port: 22, username: String::new(), private_key: String::new(), password: String::new(), passphrase: String::new(), in_vault: false }
+        Self {
+            enabled: false,
+            host: String::new(),
+            port: 22,
+            username: String::new(),
+            private_key: String::new(),
+            password: String::new(),
+            passphrase: String::new(),
+            in_vault: false,
+        }
     }
 }
 
@@ -131,7 +140,10 @@ impl SettingsStore {
     pub(super) fn cloud_effective(&self, key: &CloudKey) -> (String, Option<(CloudScope, &CloudSsh)>) {
         let endpoint = self.state.cloud.endpoints.get(&key.endpoint_id());
         let account = self.state.cloud.accounts.get(&key.account);
-        let profile = endpoint.and_then(|e| e.connection_profile.clone()).or_else(|| account.and_then(|a| a.connection_profile.clone())).unwrap_or_default();
+        let profile = endpoint
+            .and_then(|e| e.connection_profile.clone())
+            .or_else(|| account.and_then(|a| a.connection_profile.clone()))
+            .unwrap_or_default();
         // a profile that no longer exists counts as none
         let profile = if self.state.connection_profiles.iter().any(|p| p.id == profile) { profile } else { String::new() };
         let ssh = match (endpoint.and_then(|e| e.ssh.as_ref()), account.and_then(|a| a.ssh.as_ref())) {
@@ -175,10 +187,7 @@ impl SettingsStore {
         if !self.unloaded.contains(&vault_key) {
             return Ok(());
         }
-        let stored = self
-            .vault
-            .get(&vault_key)
-            .map_err(KeyringError::TunnelSecrets)?;
+        let stored = self.vault.get(&vault_key).map_err(KeyringError::TunnelSecrets)?;
         if let Some(ssh) = Self::cloud_entry_mut(&mut self.state.cloud, scope).and_then(|entry| entry.ssh.as_mut()) {
             match stored {
                 Some(secrets) => {
@@ -202,7 +211,13 @@ impl SettingsStore {
     /// Sets what is set for `scope`: `profile` is `None` to inherit, "" for none; `ssh` is `None`
     /// to inherit. A blank password or passphrase keeps the stored one while the tunnel stays on.
     /// What it leaves in the credential store is for the caller to clear (the returned cleanup).
-    pub fn set_cloud_scope(&mut self, scope: &CloudScope, label: &str, profile: Option<String>, ssh: Option<CloudSsh>) -> Result<Option<SecretsCleanup>, Error> {
+    pub fn set_cloud_scope(
+        &mut self,
+        scope: &CloudScope,
+        label: &str,
+        profile: Option<String>,
+        ssh: Option<CloudSsh>,
+    ) -> Result<Option<SecretsCleanup>, Error> {
         if profile.as_ref().is_some_and(|id| !id.is_empty() && !self.state.connection_profiles.iter().any(|p| &p.id == id)) {
             return Err(NotFound::ConnectionProfile.into());
         }
@@ -242,7 +257,8 @@ impl SettingsStore {
             CloudScope::Account(account) => account.clone(),
             CloudScope::Endpoint(key) => key.endpoint_id(),
         };
-        let entry = CloudEntry { label: if label.is_empty() { old.label } else { label.to_string() }, connection_profile: profile, ssh, missed: 0 };
+        let entry =
+            CloudEntry { label: if label.is_empty() { old.label } else { label.to_string() }, connection_profile: profile, ssh, missed: 0 };
         if entry.is_empty() {
             map.remove(&id);
         } else {
@@ -257,7 +273,12 @@ impl SettingsStore {
     /// Counts the endpoints of `account` and `region` that this complete listing didn't
     /// have: one missing from the third in a row loses its settings. The clean-ups of what
     /// it had in the credential store are returned.
-    pub fn observe_cloud_listing(&mut self, account: &str, region: &str, present: &FxHashSet<String>) -> Result<Vec<SecretsCleanup>, Error> {
+    pub fn observe_cloud_listing(
+        &mut self,
+        account: &str,
+        region: &str,
+        present: &FxHashSet<String>,
+    ) -> Result<Vec<SecretsCleanup>, Error> {
         let prefix = format!("{account}/{region}/");
         let mut next = self.state.clone();
         let (mut changed, mut cleanups, mut pruned) = (false, Vec::new(), Vec::new());
@@ -304,7 +325,10 @@ impl SettingsStore {
                 ssh.in_vault = false;
                 continue;
             }
-            let unchanged = ssh.in_vault && before.get(&key).is_some_and(|(password, passphrase, in_vault)| *in_vault && *password == ssh.password && *passphrase == ssh.passphrase);
+            let unchanged = ssh.in_vault
+                && before.get(&key).is_some_and(|(password, passphrase, in_vault)| {
+                    *in_vault && *password == ssh.password && *passphrase == ssh.passphrase
+                });
             if unchanged {
                 continue;
             }

@@ -5,11 +5,11 @@ use crate::test_support::{block_on, temp_dir};
 /// and `fields` (by key), so nothing is asked of a server.
 fn setup(levels: &[(&str, &[&str])], fields: &[(&str, &[&str])]) -> (Arc<AppState>, Caches) {
     let state = Arc::new(AppState::for_tests(&temp_dir("complete")));
-    let connection = state.connections.lock_recover().active_connection_id().to_string();
+    let connection = state.connections.lock().active_connection_id().to_string();
     let caches = Caches::default();
     let fill = |map: &Listed, entries: &[(&str, &[&str])]| {
         for (at, names) in entries {
-            map.lock_recover().insert((connection.clone(), at.to_string()), (Instant::now(), names.iter().map(|n| n.to_string()).collect()));
+            map.lock().insert((connection.clone(), at.to_string()), (Instant::now(), names.iter().map(|n| n.to_string()).collect()));
         }
     };
     fill(&caches.levels, levels);

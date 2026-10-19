@@ -9,7 +9,15 @@ use crate::report;
 use crate::tools::{APP_MANIFEST, Result, cargo, repo_root, run, works, zip_file};
 use crate::version::{in_release, msi_version, read_version};
 
-pub fn run_task(fast: bool, stable: bool, as_version: Option<&str>, clean: bool, skip_installer: bool, with_zip: bool, reported: bool) -> Result<()> {
+pub fn run_task(
+    fast: bool,
+    stable: bool,
+    as_version: Option<&str>,
+    clean: bool,
+    skip_installer: bool,
+    with_zip: bool,
+    reported: bool,
+) -> Result<()> {
     in_release(fast, stable, as_version, || build(fast, clean, skip_installer, with_zip, reported))
 }
 
@@ -66,7 +74,10 @@ pub fn build_installer_test(version: &str) -> Result<()> {
     let version = semver::Version::parse(version).map_err(|e| format!("{version} is not a version: {e}"))?.to_string();
     let root = repo_root();
     println!("Building the installer test of Cachemire {version}...");
-    run(cargo().current_dir(&root).args(["build", "--release", "--locked", "--package", "installer-test"]).env("CACHEMIRE_VERSION", &version))?;
+    run(cargo()
+        .current_dir(&root)
+        .args(["build", "--release", "--locked", "--package", "installer-test"])
+        .env("CACHEMIRE_VERSION", &version))?;
     let exe = root.join("target/release").join(format!("installer-test{}", std::env::consts::EXE_SUFFIX));
     let out = root.join("target/installer-test");
     std::fs::create_dir_all(&out).map_err(|e| e.to_string())?;

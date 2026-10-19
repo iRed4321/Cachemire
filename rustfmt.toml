@@ -1,0 +1,4 @@
+# `cargo fmt` (CI checks it): wider lines than the default 100, and short
+# expressions kept on one line up to that width
+max_width = 140
+use_small_heuristics = "Max"

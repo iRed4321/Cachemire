@@ -1,15 +1,30 @@
 use super::*;
 
 fn connection(url: &str) -> ConnectionItem {
-    ConnectionItem { id: "c".into(), name: "c".into(), connection_url: url.into(), username: " app ".into(), password: "pw".into(), ssh: None, profile_id: String::new() }
+    ConnectionItem {
+        id: "c".into(),
+        name: "c".into(),
+        connection_url: url.into(),
+        username: " app ".into(),
+        password: "pw".into(),
+        ssh: None,
+        profile_id: String::new(),
+    }
 }
 
 #[test]
 fn the_url_fills_in_the_endpoint_and_the_fields_what_it_leaves_out() {
     let endpoint = connection("rediss://cache.example/3").endpoint().unwrap();
-    assert_eq!(endpoint, Endpoint { host: "cache.example".into(), port: 6379, db: 3, tls: true, username: Some("app".into()), password: Some("pw".into()) });
+    assert_eq!(
+        endpoint,
+        Endpoint { host: "cache.example".into(), port: 6379, db: 3, tls: true, username: Some("app".into()), password: Some("pw".into()) }
+    );
     let own = connection("redis://url-user:url-pw@h:0").endpoint().unwrap();
-    assert_eq!((own.port, own.username.as_deref(), own.password.as_deref()), (6379, Some("url-user"), Some("url-pw")), "port 0 means the default");
+    assert_eq!(
+        (own.port, own.username.as_deref(), own.password.as_deref()),
+        (6379, Some("url-user"), Some("url-pw")),
+        "port 0 means the default"
+    );
     assert!(connection("redis://:6379").endpoint().is_err(), "a URL with no host can't be used");
 }
 

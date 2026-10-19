@@ -15,7 +15,10 @@ fn sso(start_url: &str, region: &str, account_id: &str, role_name: &str) -> Opti
 
 #[test]
 fn default_comes_first_then_the_others_by_name() {
-    let names: Vec<String> = profiles_of("[profile zeta]\nregion = eu-west-1\n[profile alpha]\n[default]\nregion = us-east-1\n").into_iter().map(|p| p.name).collect();
+    let names: Vec<String> = profiles_of("[profile zeta]\nregion = eu-west-1\n[profile alpha]\n[default]\nregion = us-east-1\n")
+        .into_iter()
+        .map(|p| p.name)
+        .collect();
     assert_eq!(names, ["default", "alpha", "zeta"]);
 }
 

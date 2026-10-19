@@ -166,11 +166,16 @@ fn main() {
             windows::run_task(fast, stable, as_version.as_deref(), clean, skip_installer, with_zip, reported)
         }
         Task::BuildInstallerTest { version } => windows::build_installer_test(&version),
-        Task::BuildAppimage { fast, stable, as_version, with_zip, reported } => appimage::run_task(fast, stable, as_version.as_deref(), with_zip, reported),
+        Task::BuildAppimage { fast, stable, as_version, with_zip, reported } => {
+            appimage::run_task(fast, stable, as_version.as_deref(), with_zip, reported)
+        }
         Task::BuildDeb { fast, stable, as_version, with_zip } => deb::run_task(fast, stable, as_version.as_deref(), with_zip),
-        Task::BuildLinux { fast, stable, as_version, with_zip, reported } => linux::run_task(fast, stable, as_version.as_deref(), with_zip, reported),
+        Task::BuildLinux { fast, stable, as_version, with_zip, reported } => {
+            linux::run_task(fast, stable, as_version.as_deref(), with_zip, reported)
+        }
         Task::ReportBuild { step, tests, coverage } => {
-            let tests: Vec<(&str, &std::path::Path)> = tests.iter().filter_map(|t| t.split_once('=')).map(|(name, file)| (name, std::path::Path::new(file))).collect();
+            let tests: Vec<(&str, &std::path::Path)> =
+                tests.iter().filter_map(|t| t.split_once('=')).map(|(name, file)| (name, std::path::Path::new(file))).collect();
             report::save(&step, &[], &tests, coverage.as_deref())
         }
         Task::Report { title, dir } => report::run_task(&title, dir),

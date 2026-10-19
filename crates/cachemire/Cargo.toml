@@ -18,6 +18,8 @@ arboard = { version = "3", default-features = false, features = ["wayland-data-c
 rfd = { version = "0.17", default-features = false, features = ["xdg-portal"] }
 dirs = "7"
 rustc-hash = "2"
+# mutexes without poisoning: a task that panics holding one leaves it usable
+parking_lot = "0.12"
 rayon = "1.12.0"
 open = "5"
 semver = "1"
@@ -32,6 +34,8 @@ tracing-subscriber = { version = "0.3", default-features = false, features = ["f
 
 [dev-dependencies]
 cachemire-core = { path = "../cachemire-core", features = ["test-support"] }
+# the SSH errors a tunnel error holds, for the tests that build one
+russh = { version = "0.63", default-features = false, features = ["ring", "flate2", "rsa"] }
 
 [build-dependencies]
 slint-build = { git = "https://github.com/iRed4321/SlintFork.git", rev = "56377498bbb0f835237307b7901427e61fd27412" }

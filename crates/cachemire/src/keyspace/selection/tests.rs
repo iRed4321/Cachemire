@@ -250,7 +250,13 @@ fn any_series_of_ticks_in_a_search_ends_on_the_keys_a_user_would_expect() {
             for folder in ids.iter().filter(|id| id.ends_with(DELIMITER)) {
                 let under: Vec<&&str> = shown_keys.iter().filter(|k| k.starts_with(folder.as_str())).collect();
                 let ticked = under.iter().filter(|k| expected.contains(***k)).count();
-                let want = if ticked == under.len() { 1 } else if ticked > 0 { 2 } else { 0 };
+                let want = if ticked == under.len() {
+                    1
+                } else if ticked > 0 {
+                    2
+                } else {
+                    0
+                };
                 assert_eq!(s.check_of(folder, true), want, "{folder}'s box, shown: {shown_keys:?}, ticked: {expected:?}");
             }
         }

@@ -30,16 +30,19 @@ fn a_word_that_only_starts_with_a_keyword_is_not_one() {
 
 #[test]
 fn strings_numbers_and_booleans_are_colored() {
-    assert_eq!(kinds("WHERE x.qty = 3 AND x.ok = true"), vec![
-        ("WHERE", "keyword"),
-        (".", "punct"),
-        ("=", "punct"),
-        ("3", "number"),
-        ("AND", "keyword"),
-        (".", "punct"),
-        ("=", "punct"),
-        ("true", "bool"),
-    ]);
+    assert_eq!(
+        kinds("WHERE x.qty = 3 AND x.ok = true"),
+        vec![
+            ("WHERE", "keyword"),
+            (".", "punct"),
+            ("=", "punct"),
+            ("3", "number"),
+            ("AND", "keyword"),
+            (".", "punct"),
+            ("=", "punct"),
+            ("true", "bool"),
+        ]
+    );
     assert_eq!(kinds("x.label = 'a,b'"), vec![(".", "punct"), ("=", "punct"), ("'a,b'", "string")]);
 }
 
@@ -51,18 +54,21 @@ fn a_double_dash_comment_runs_to_end_of_line_but_not_inside_a_string() {
 
 #[test]
 fn an_in_list_colors_its_brackets_and_values() {
-    assert_eq!(kinds("WHERE x.id IN [1, 2, 'c']"), vec![
-        ("WHERE", "keyword"),
-        (".", "punct"),
-        ("IN", "keyword"),
-        ("[", "punct"),
-        ("1", "number"),
-        (",", "punct"),
-        ("2", "number"),
-        (",", "punct"),
-        ("'c'", "string"),
-        ("]", "punct"),
-    ]);
+    assert_eq!(
+        kinds("WHERE x.id IN [1, 2, 'c']"),
+        vec![
+            ("WHERE", "keyword"),
+            (".", "punct"),
+            ("IN", "keyword"),
+            ("[", "punct"),
+            ("1", "number"),
+            (",", "punct"),
+            ("2", "number"),
+            (",", "punct"),
+            ("'c'", "string"),
+            ("]", "punct"),
+        ]
+    );
 }
 
 #[test]

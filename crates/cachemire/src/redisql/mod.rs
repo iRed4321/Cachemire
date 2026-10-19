@@ -5,23 +5,23 @@
 use rustc_hash::FxHashMap;
 use std::ops::Range;
 use std::rc::Rc;
-use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Arc;
+use std::sync::atomic::{AtomicU64, Ordering};
 
-use rust_i18n::t;
-use serde_json::{Map, Value};
-use slint::{ModelRc, VecModel};
 use crate::app::App;
-use cachemire_core::error::Error;
 use crate::error::Localize;
+use crate::key_detail::ScrollPos;
+use crate::{CompletionEdit, HistoryRow, MainWindow, QueryTab, SuggestionRow};
+use cachemire_core::error::Error;
+use cachemire_core::now_ms;
+use cachemire_core::redisql::complete::{Caches, Completion, complete};
 use cachemire_core::redisql::history::HistoryEntry;
-use cachemire_core::{LockExt, now_ms};
 use cachemire_core::redisql::{QueryOutput, is_declaration, run_script, split_statements};
 use cachemire_core::state::AppState;
-use crate::key_detail::ScrollPos;
-use cachemire_core::redisql::complete::{Caches, Completion, complete};
+use rust_i18n::t;
+use serde_json::{Map, Value};
 use slint::ComponentHandle;
-use crate::{CompletionEdit, HistoryRow, MainWindow, QueryTab, SuggestionRow};
+use slint::{ModelRc, VecModel};
 
 pub mod highlight;
 pub mod saved;
@@ -153,7 +153,8 @@ pub fn enter(app: &App, window: &MainWindow, id: &str, scroll: ScrollPos) {
 
 /// Puts the tab's shown result into the key panel (and the tabs to pick another into the window).
 fn show_results(app: &App, window: &MainWindow, id: &str, tab: &TabQuery, scroll: ScrollPos) {
-    let labels: Vec<slint::SharedString> = if tab.results.len() > 1 { tab.results.iter().map(|r| r.label.as_str().into()).collect() } else { Vec::new() };
+    let labels: Vec<slint::SharedString> =
+        if tab.results.len() > 1 { tab.results.iter().map(|r| r.label.as_str().into()).collect() } else { Vec::new() };
     window.global::<QueryTab>().set_results(ModelRc::new(VecModel::from(labels)));
     window.global::<QueryTab>().set_result_active(tab.active as i32);
     let rows = tab.shown().filter(|shown| !shown.status_is_error).map(|shown| shown.rows.clone());
@@ -192,10 +193,14 @@ fn script_to_run(text: &str, cursor: usize, anchor: usize, whole: bool) -> Optio
     let (target, before) = if low != high {
         (text.get(low..high)?.to_string(), low)
     } else {
-        let at = statements.iter().find(|s| s.range.start <= low && low <= s.range.end).or_else(|| statements.iter().rev().find(|s| s.range.end <= low))?;
+        let at = statements
+            .iter()
+            .find(|s| s.range.start <= low && low <= s.range.end)
+            .or_else(|| statements.iter().rev().find(|s| s.range.end <= low))?;
         (text[at.range.clone()].to_string(), at.range.start)
     };
-    let mut script: String = statements.iter().filter(|s| s.range.end <= before && is_declaration(&s.text)).map(|s| format!("{};\n", s.text)).collect();
+    let mut script: String =
+        statements.iter().filter(|s| s.range.end <= before && is_declaration(&s.text)).map(|s| format!("{};\n", s.text)).collect();
     let in_script = script.len();
     script.push_str(&target);
     Some(ScriptToRun { script, in_script, in_box: before })
@@ -258,7 +263,7 @@ fn run(app: &App, window: &MainWindow, query: String, cursor: usize, anchor: usi
     }
 
     app.queries.borrow_mut().navigation = Navigation::default();
-    let connection_id = state.connections.lock_recover().active_connection_id().to_string();
+    let connection_id = state.connections.lock().active_connection_id().to_string();
     let state = state.clone();
     rt.spawn(async move {
         let started = std::time::Instant::now();
@@ -268,8 +273,9 @@ fn run(app: &App, window: &MainWindow, query: String, cursor: usize, anchor: usi
         done.store(true, Ordering::Relaxed);
         if !results.is_empty() && !connection_id.is_empty() {
             let ok = results.iter().all(|result| result.output.is_ok());
-            let entry = HistoryEntry { connection_id, text: script, executed_at: now_ms(), duration_ms: started.elapsed().as_millis() as u64, ok };
-            state.history.lock_recover().record(entry);
+            let entry =
+                HistoryEntry { connection_id, text: script, executed_at: now_ms(), duration_ms: started.elapsed().as_millis() as u64, ok };
+            state.history.lock().record(entry);
         }
         let count = results.len();
         let built: Vec<ResultTable> = results.into_iter().enumerate().map(|(i, result)| result_of(i, count, result.output)).collect();
@@ -299,7 +305,7 @@ fn ago(now: i64, then: i64) -> String {
 /// The earlier runs on the connection in use, newest first.
 fn history_of(window: &MainWindow, state: &AppState) -> Vec<HistoryEntry> {
     let connection_id = window.connection_id().to_string();
-    state.history.lock_recover().for_connection(&connection_id)
+    state.history.lock().for_connection(&connection_id)
 }
 
 /// The `index`th of `count` results, from what its statement gave.
@@ -409,7 +415,11 @@ fn suggest(app: &App, caches: &Arc<Caches>, text: String, cursor: usize, force: 
                     found
                         .items
                         .iter()
-                        .map(|(item, hit)| SuggestionRow { before: item[..hit.start].into(), matched: item[hit.clone()].into(), after: item[hit.end..].into() })
+                        .map(|(item, hit)| SuggestionRow {
+                            before: item[..hit.start].into(),
+                            matched: item[hit.clone()].into(),
+                            after: item[hit.end..].into(),
+                        })
                         .collect()
                 })
                 .unwrap_or_default();
@@ -424,7 +434,9 @@ fn suggest(app: &App, caches: &Arc<Caches>, text: String, cursor: usize, force: 
 pub fn init(app: &Rc<App>, window: &MainWindow) {
     let caches = Arc::new(Caches::default());
     // the query's lines, to number them
-    window.global::<QueryTab>().on_lines(|text| ModelRc::new(VecModel::from(text.split('\n').map(slint::SharedString::from).collect::<Vec<_>>())));
+    window
+        .global::<QueryTab>()
+        .on_lines(|text| ModelRc::new(VecModel::from(text.split('\n').map(slint::SharedString::from).collect::<Vec<_>>())));
     window.global::<QueryTab>().on_suggest({
         let (app, caches) = (app.clone(), caches.clone());
         move |text, cursor, force| suggest(&app, &caches, text.to_string(), cursor.max(0) as usize, force)
@@ -434,7 +446,12 @@ pub fn init(app: &Rc<App>, window: &MainWindow) {
         let (app, caches) = (app.clone(), caches);
         move |text, cursor, index| {
             let index = index.max(0) as usize;
-            let accepted = app.queries.borrow().offered.as_ref().and_then(|found| found.accept(&text, index).map(|edit| (edit, found.items[index].0.ends_with(':'))));
+            let accepted = app
+                .queries
+                .borrow()
+                .offered
+                .as_ref()
+                .and_then(|found| found.accept(&text, index).map(|edit| (edit, found.items[index].0.ends_with(':'))));
             let Some(((next, caret), folder)) = accepted else { return CompletionEdit { text, cursor: -1 } };
             let _ = cursor;
             if folder {
@@ -502,7 +519,7 @@ pub fn init(app: &Rc<App>, window: &MainWindow) {
         move || {
             let Some(window) = app.window.upgrade() else { return };
             let connection_id = window.connection_id().to_string();
-            app.state.history.lock_recover().clear(&connection_id);
+            app.state.history.lock().clear(&connection_id);
             app.queries.borrow_mut().history_shown.clear();
             window.global::<QueryTab>().set_history(ModelRc::new(VecModel::from(Vec::<HistoryRow>::new())));
         }
@@ -558,7 +575,7 @@ pub fn init(app: &Rc<App>, window: &MainWindow) {
             let state = &app.state;
             let text = window.global::<QueryTab>().get_text().to_string();
             let connection_id = if global { String::new() } else { window.connection_id().to_string() };
-            let saved = state.settings.lock_recover().create_saved_query(&name, &text, &connection_id);
+            let saved = state.settings.lock().create_saved_query(&name, &text, &connection_id);
             match saved {
                 Ok(_) => crate::redisql::saved::refresh(&window, state),
                 Err(e) => tracing::error!("save query failed: {e}"),

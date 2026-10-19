@@ -8,11 +8,10 @@ use std::sync::atomic::Ordering;
 use rust_i18n::t;
 use slint::{ComponentHandle, ModelRc, VecModel};
 
-use cachemire_core::LockExt;
+use crate::{AllValuesRowData, KeyPanel, KeyTree};
 use cachemire_core::explorer;
 use cachemire_core::key_name::KeyName;
 use cachemire_core::redis_value_type::RedisValueType;
-use crate::{AllValuesRowData, KeyPanel, KeyTree};
 
 use super::field::{Fields, build_fields, single_value_field};
 use super::paging::holds_field;
@@ -49,14 +48,16 @@ impl Ctx {
             scroll.get_reveal_pending().then(|| scroll.get_reveal_field().to_string())
         });
         let descending = weak.upgrade().is_some_and(|w| w.global::<KeyPanel>().get_sort_descending());
-        let cached = if reuse { fetched.lock_recover().get(&cache_slot).cloned() } else { None };
-        let cached = cached.filter(|fetch| (fetch.all_names.is_none() || fetch.descending == descending) && focus.as_ref().is_none_or(|f| holds_field(fetch, f)));
+        let cached = if reuse { fetched.lock().get(&cache_slot).cloned() } else { None };
+        let cached = cached.filter(|fetch| {
+            (fetch.all_names.is_none() || fetch.descending == descending) && focus.as_ref().is_none_or(|f| holds_field(fetch, f))
+        });
 
         // field names can collide across keys, so the previous key's pretty text
         // must not be served for this one; renderings still in flight are dropped
         // on completion by comparing against the content's key
-        pretty_cache.lock_recover().clear();
-        content.lock_recover().key.clone_from(&key);
+        pretty_cache.lock().clear();
+        content.lock().key.clone_from(&key);
 
         // read on the UI thread, before spawning: on a tab switch `tabs/mod.rs`
         // writes the target tab's saved filter/expanded fields into these
@@ -86,14 +87,24 @@ impl Ctx {
                 (current_search_filter(&window), path, current_expanded_fields(&window))
             })
             .unwrap_or_default();
-        content.lock_recover().search = filter.clone();
+        content.lock().search = filter.clone();
         let pretty_cache_for_restore = pretty_cache.clone();
         let applied = path.clone();
 
         self.rt.spawn(async move {
             let fetch = match cached {
                 Some(fetch) => Ok(fetch),
-                None => explorer::get_key_details(&ctx.state, None, &KeyName::from_id(&key), MAX_ITEMS, HASH_PAGE_SIZE, focus.as_deref(), descending).await.map(|details| {
+                None => explorer::get_key_details(
+                    &ctx.state,
+                    None,
+                    &KeyName::from_id(&key),
+                    MAX_ITEMS,
+                    HASH_PAGE_SIZE,
+                    focus.as_deref(),
+                    descending,
+                )
+                .await
+                .map(|details| {
                     let fields: Fields = if details.key_type == RedisValueType::Hash {
                         let names = details.all_field_names.as_deref().unwrap_or_default();
                         let page = &names[details.page_start.min(names.len())..(details.page_start + HASH_PAGE_SIZE).min(names.len())];
@@ -120,7 +131,7 @@ impl Ctx {
                     } else {
                         meta_text(&details.key_type, details.ttl, fetch.fields.len(), details.truncated, None)
                     };
-                    fetched.lock_recover().insert(cache_slot, fetch.clone());
+                    fetched.lock().insert(cache_slot, fetch.clone());
                     fetch
                 }),
             };
@@ -135,7 +146,7 @@ impl Ctx {
                 // on this same task, instead of on first ask — otherwise a restored
                 // row flashes "Formatting..." then grows
                 {
-                    let mut cache = pretty_cache_for_restore.lock_recover();
+                    let mut cache = pretty_cache_for_restore.lock();
                     for f in shown.iter().filter(|f| expanded.contains(&f.name)) {
                         cache.plain_or_insert_with(&f.name, || paragraphs_for(&f.value(), false));
                     }
@@ -185,7 +196,7 @@ impl Ctx {
                         window.global::<KeyPanel>().set_all_values_rows(ModelRc::new(VecModel::from(av_rows)));
 
                         {
-                            let mut content = content.lock_recover();
+                            let mut content = content.lock();
                             content.loaded = fields;
                             content.current = shown;
                             content.path = AppliedPath { path: applied, matches };
@@ -209,7 +220,7 @@ impl Ctx {
                         window.global::<KeyPanel>().set_all_values_rows(ModelRc::new(VecModel::from(Vec::<AllValuesRowData>::new())));
                         window.global::<KeyPanel>().set_json_filter_status("".into());
                         {
-                            let mut content = content.lock_recover();
+                            let mut content = content.lock();
                             content.loaded = Vec::new();
                             content.current = Vec::new();
                         }

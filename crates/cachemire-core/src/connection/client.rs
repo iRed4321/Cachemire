@@ -1,7 +1,7 @@
 use redis::aio::{ConnectionManager, ConnectionManagerConfig};
 
-use crate::error::Error;
 use crate::connection::ConnectionItem;
+use crate::error::Error;
 
 /// Where the Redis server is, as the connection says (through an SSH tunnel,
 /// this is where the SSH server has to reach).
@@ -23,9 +23,7 @@ fn build_client(connection: &ConnectionItem, via_local_port: Option<u16>) -> Res
     // RESP2 on purpose: every server speaks it (RESP3 needs Redis 6+), the replies are
     // decoded in their RESP2 shapes (flat HSCAN and WITHSCORES arrays), and nothing
     // here needs RESP3's push messages
-    let mut redis_settings = redis::RedisConnectionInfo::default()
-        .set_db(endpoint.db)
-        .set_protocol(redis::ProtocolVersion::RESP2);
+    let mut redis_settings = redis::RedisConnectionInfo::default().set_db(endpoint.db).set_protocol(redis::ProtocolVersion::RESP2);
     if let Some(username) = endpoint.username {
         redis_settings = redis_settings.set_username(username);
     }
@@ -38,9 +36,7 @@ fn build_client(connection: &ConnectionItem, via_local_port: Option<u16>) -> Res
     } else {
         redis::ConnectionAddr::Tcp(endpoint.host, endpoint.port)
     };
-    let info = addr
-        .into_connection_info()?
-        .set_redis_settings(redis_settings);
+    let info = addr.into_connection_info()?.set_redis_settings(redis_settings);
 
     Ok(redis::Client::open(info)?)
 }

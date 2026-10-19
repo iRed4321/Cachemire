@@ -9,13 +9,10 @@ use super::*;
 fn value_filter_matches_are_drawn_on_a_filled_background() {
     let mut h = Harness::new();
     // the value filter matches a field's raw text, which the test helper leaves empty
-    let fields: Fields = hash_fields(20, "user").iter().map(|f| Arc::new(field::Field::from_value(f.name.clone(), f.json.clone().unwrap()))).collect();
-    let amber = |h: &Harness| {
-        h.buffer
-            .iter()
-            .filter(|p| (p.0 >> 11) >= 30 && (44..=50).contains(&((p.0 >> 5) & 63)) && (p.0 & 31) <= 8)
-            .count()
-    };
+    let fields: Fields =
+        hash_fields(20, "user").iter().map(|f| Arc::new(field::Field::from_value(f.name.clone(), f.json.clone().unwrap()))).collect();
+    let amber =
+        |h: &Harness| h.buffer.iter().filter(|p| (p.0 >> 11) >= 30 && (44..=50).contains(&((p.0 >> 5) & 63)) && (p.0 & 31) <= 8).count();
     h.frame();
     let before = amber(&h);
     let filter = SearchFilter::new(vec![SearchTerm { text: "person".into(), scope: SearchScope::Value }], false);
@@ -35,7 +32,8 @@ fn value_filter_matches_are_drawn_on_a_filled_background() {
 fn the_header_of_an_open_row_stays_fixed_while_its_text_scrolls() {
     let mut h = Harness::new();
     h.window.global::<KeyPanel>().set_view(KeyView::Fields);
-    let big: serde_json::Value = json!({"items": (0..300).map(|i| json!({"id": i, "name": format!("item number {i}")})).collect::<Vec<_>>()});
+    let big: serde_json::Value =
+        json!({"items": (0..300).map(|i| json!({"id": i, "name": format!("item number {i}")})).collect::<Vec<_>>()});
     let fields: Fields = (0..3).map(|i| Arc::new(field::Field::from_value(format!("row{i}"), big.clone()))).collect();
     h.window.global::<KeyPanel>().on_request_pretty_value({
         let fields = fields.clone();
@@ -59,10 +57,11 @@ fn the_header_of_an_open_row_stays_fixed_while_its_text_scrolls() {
     h.settle();
 
     // the badge's box (bg-elevated) in the header's band, under the key's header: its top edge
-    let elevated = { let (r, g, b) = (0x22_u16, 0x22_u16, 0x26_u16); ((r >> 3) << 11) | ((g >> 2) << 5) | (b >> 3) };
-    let badge_top = |h: &Harness| -> Option<usize> {
-        (LIST_TOP_Y..HEIGHT).find(|y| h.buffer[y * WIDTH + 380].0 == elevated)
+    let elevated = {
+        let (r, g, b) = (0x22_u16, 0x22_u16, 0x26_u16);
+        ((r >> 3) << 11) | ((g >> 2) << 5) | (b >> 3)
     };
+    let badge_top = |h: &Harness| -> Option<usize> { (LIST_TOP_Y..HEIGHT).find(|y| h.buffer[y * WIDTH + 380].0 == elevated) };
     let scroll_to = |h: &mut Harness, y: f32| {
         arm_all_scroll(&h.window, ScrollPos { all_y: y, ..Default::default() });
         h.settle();

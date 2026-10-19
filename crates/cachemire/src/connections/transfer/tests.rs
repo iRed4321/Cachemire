@@ -21,7 +21,7 @@ fn state_with(payloads: Vec<ConnectionPayloadInput>) -> (AppState, Vec<String>) 
     let state = AppState::for_tests(&temp_dir("transfer"));
     let ids: Vec<String> = (0..payloads.len()).map(|i| format!("c{i}")).collect();
     {
-        let mut store = state.connections.lock_recover();
+        let mut store = state.connections.lock();
         for (id, payload) in ids.iter().zip(payloads) {
             store.create_with_id(id, payload).unwrap();
         }
@@ -48,7 +48,10 @@ fn an_export_reads_back_as_the_same_connections() {
     assert_eq!(prod.connection_url.as_deref(), Some("redis://app@cache.example:6380/3"));
     assert_eq!(prod.password.as_deref(), Some("redis-secret"));
     assert_eq!(prod.ssh_enabled, Some(true));
-    assert_eq!((prod.ssh_host.as_deref(), prod.ssh_port, prod.ssh_username.as_deref()), (Some("bastion.example"), Some(2222), Some("deploy")));
+    assert_eq!(
+        (prod.ssh_host.as_deref(), prod.ssh_port, prod.ssh_username.as_deref()),
+        (Some("bastion.example"), Some(2222), Some("deploy"))
+    );
     assert_eq!(prod.ssh_private_key.as_deref(), Some("~/.ssh/id_ed25519"));
     assert_eq!((prod.ssh_password.as_deref(), prod.ssh_passphrase.as_deref()), (Some("ssh-secret"), Some("key-secret")));
     assert_eq!(local.ssh_enabled, Some(false));
@@ -80,7 +83,7 @@ fn an_exported_file_imports_into_a_store_as_new_connections() {
     let text = export_to_text(&state, &ids, true);
 
     let target = AppState::for_tests(&temp_dir("import"));
-    let mut store = target.connections.lock_recover();
+    let mut store = target.connections.lock();
     let active_before = store.active_connection_id().to_string();
     for draft in parse_drafts(&text).unwrap() {
         store.import_with_id("imported", draft.payload()).unwrap();

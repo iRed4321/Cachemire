@@ -8,7 +8,7 @@ use std::sync::Arc;
 
 use tokio::runtime::Handle;
 
-use cachemire_core::state::AppState;
+use crate::MainWindow;
 use crate::cloud::Cloud;
 use crate::connections::transfer::TransferLists;
 use crate::key_detail::KeyDetail;
@@ -16,7 +16,7 @@ use crate::keyspace::Keyspace;
 use crate::redisql::QueryTabs;
 use crate::search::SearchTabs;
 use crate::tabs::Tabs;
-use crate::MainWindow;
+use cachemire_core::state::AppState;
 
 pub struct App {
     pub window: slint::Weak<MainWindow>,

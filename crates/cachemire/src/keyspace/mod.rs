@@ -3,19 +3,19 @@
 //! take in each page the walk brings, and a search filters the index.
 
 use crate::app::App;
-use cachemire_core::LockExt;
+use parking_lot::Mutex;
 use rustc_hash::FxHashMap;
 use std::rc::Rc;
+use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, AtomicU64};
-use std::sync::{Arc, Mutex};
 
 use slint::{ComponentHandle, Model, ModelRc, VecModel, Weak};
 use tokio::runtime::Handle;
 
+use crate::{KeyTree, KeyspaceRowData, MainWindow, TreeRowKind};
 use cachemire_core::key_name::KeyName;
 use cachemire_core::redis_value_type::RedisValueType;
 use cachemire_core::state::AppState;
-use crate::{KeyTree, KeyspaceRowData, MainWindow, TreeRowKind};
 
 mod index;
 mod search;
@@ -131,11 +131,7 @@ impl Node {
 
     /// Sibling order: folders first, then by [`label_order`].
     fn cmp_sibling(&self, other: &Node) -> std::cmp::Ordering {
-        other
-            .is_folder
-            .cmp(&self.is_folder)
-            .then_with(|| self.order.cmp(&other.order))
-            .then_with(|| self.label().cmp(other.label()))
+        other.is_folder.cmp(&self.is_folder).then_with(|| self.order.cmp(&other.order)).then_with(|| self.label().cmp(other.label()))
     }
 
     fn row_data(&self) -> KeyspaceRowData {
@@ -376,7 +372,10 @@ fn advance_reveal(window: &MainWindow, tree: &mut Tree) {
             scroll_to_row(window, Some(pos));
             return;
         }
-        let closed = ancestor_folders(&target).into_iter().map(|folder| position_of(tree, &folder)).find(|pos| pos.is_none_or(|p| !tree.nodes[p].expanded));
+        let closed = ancestor_folders(&target)
+            .into_iter()
+            .map(|folder| position_of(tree, &folder))
+            .find(|pos| pos.is_none_or(|p| !tree.nodes[p].expanded));
         match closed {
             // opened, so deeper rows exist now: look again
             Some(Some(pos)) => expand(window, tree, pos),
@@ -389,14 +388,14 @@ fn advance_reveal(window: &MainWindow, tree: &mut Tree) {
 
 fn continue_reveal(ctx: &ScanContext) {
     let Some(window) = ctx.weak.upgrade() else { return };
-    advance_reveal(&window, &mut ctx.tree.lock_recover());
+    advance_reveal(&window, &mut ctx.tree.lock());
 }
 
 /// Re-opens the `pending_expand` folders that now have a row; a folder whose
 /// parent hasn't appeared yet stays queued for the next page.
 fn continue_pending_expand(ctx: &ScanContext) {
     let Some(window) = ctx.weak.upgrade() else { return };
-    let mut tree = ctx.tree.lock_recover();
+    let mut tree = ctx.tree.lock();
     for name in std::mem::take(&mut tree.pending_expand) {
         match position_of(&tree, &name) {
             Some(pos) if !tree.nodes[pos].expanded => expand(&window, &mut tree, pos),
@@ -413,7 +412,7 @@ fn focus_key(ctx: &ScanContext, full_name: String) {
     let Some(window) = ctx.weak.upgrade() else { return };
     window.global::<KeyTree>().set_selected(full_name.clone().into());
 
-    let mut tree = ctx.tree.lock_recover();
+    let mut tree = ctx.tree.lock();
     if tree.search.is_some() {
         let row = position_of(&tree, &full_name);
         scroll_to_row(&window, row);
@@ -432,7 +431,7 @@ fn on_row_clicked(app: &App, full_name: String) {
         crate::tabs::select_key(app, full_name);
         return;
     }
-    let mut tree = ctx.tree.lock_recover();
+    let mut tree = ctx.tree.lock();
     let Some(pos) = position_of(&tree, &full_name) else { return }; // e.g. a refresh raced the click
     if tree.nodes[pos].expanded {
         collapse(&window, &mut tree, pos);
@@ -451,8 +450,23 @@ impl Keyspace {
         // one persistent model, mutated incrementally (insert/remove/set_row_data)
         // so a batch of new rows never rebuilds the rows already on screen
         window.global::<KeyTree>().set_rows(ModelRc::new(VecModel::<KeyspaceRowData>::default()));
-        let tree = Tree { nodes: Vec::new(), index: Index::default(), walk: Walk::default(), pending_reveal: None, search: None, pending_expand: Vec::new(), export: Selection::default() };
-        Self(ScanContext { weak: window.as_weak(), state, rt, tree: Arc::new(Mutex::new(tree)), generation: Arc::new(AtomicU64::new(0)), export_cancel: Arc::new(AtomicBool::new(false)) })
+        let tree = Tree {
+            nodes: Vec::new(),
+            index: Index::default(),
+            walk: Walk::default(),
+            pending_reveal: None,
+            search: None,
+            pending_expand: Vec::new(),
+            export: Selection::default(),
+        };
+        Self(ScanContext {
+            weak: window.as_weak(),
+            state,
+            rt,
+            tree: Arc::new(Mutex::new(tree)),
+            generation: Arc::new(AtomicU64::new(0)),
+            export_cancel: Arc::new(AtomicBool::new(false)),
+        })
     }
 }
 
@@ -465,7 +479,7 @@ pub fn reload(app: &App) {
     }
     selection::reset(ctx);
     // no rows left to re-expand: another connection starts with its folders closed
-    ctx.tree.lock_recover().nodes.clear();
+    ctx.tree.lock().nodes.clear();
     load_root(ctx, false);
 }
 
@@ -499,7 +513,7 @@ pub fn init(app: &Rc<App>, window: &MainWindow) {
 
 #[cfg(test)]
 mod tests {
-    use super::{ancestor_folders, label_order, LeafKind, Node, TreeRowKind};
+    use super::{LeafKind, Node, TreeRowKind, ancestor_folders, label_order};
     use std::cmp::Ordering;
 
     #[test]
@@ -535,4 +549,3 @@ mod tests {
         assert_eq!(key("b").cmp_sibling(&key("b")), Ordering::Equal);
     }
 }
-

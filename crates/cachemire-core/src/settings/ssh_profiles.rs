@@ -4,9 +4,9 @@
 use serde::{Deserialize, Serialize};
 
 use super::{SettingsStore, StoredSettings};
-use crate::secret_vault::KeyringError;
-use crate::error::{Error, Invalid, NotFound};
 use crate::connection::SshSettings;
+use crate::error::{Error, Invalid, NotFound};
+use crate::secret_vault::KeyringError;
 use crate::secret_vault::{Secrets, SecretsCleanup};
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
@@ -146,10 +146,7 @@ impl SettingsStore {
         let id = self.state.active_ssh_profile.clone();
         let Some(position) = self.state.ssh_profiles.iter().position(|p| p.id == id) else { return Ok(()) };
         if self.unloaded.contains(&id) {
-            let stored = self
-                .vault
-                .get(&vault_key(&id))
-                .map_err(KeyringError::SshProfilePassword)?;
+            let stored = self.vault.get(&vault_key(&id)).map_err(KeyringError::SshProfilePassword)?;
             let profile = &mut self.state.ssh_profiles[position];
             match stored {
                 Some(secrets) => profile.password = secrets.ssh_password,
@@ -173,12 +170,7 @@ impl SettingsStore {
         if !ssh.username.is_empty() {
             return Ok(());
         }
-        let profile = self
-            .state
-            .ssh_profiles
-            .iter()
-            .find(|p| p.id == self.state.active_ssh_profile)
-            .ok_or(Invalid::SshCredentials)?;
+        let profile = self.state.ssh_profiles.iter().find(|p| p.id == self.state.active_ssh_profile).ok_or(Invalid::SshCredentials)?;
         ssh.username.clone_from(&profile.username);
         if ssh.password.is_empty() {
             ssh.password.clone_from(&profile.password);
@@ -201,7 +193,8 @@ impl SettingsStore {
             if unchanged {
                 continue;
             }
-            profile.in_vault = self.store_secret(&vault_key(&profile.id), &Secrets { ssh_password: profile.password.clone(), ..Default::default() });
+            profile.in_vault =
+                self.store_secret(&vault_key(&profile.id), &Secrets { ssh_password: profile.password.clone(), ..Default::default() });
         }
     }
 }

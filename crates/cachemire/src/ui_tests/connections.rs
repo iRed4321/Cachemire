@@ -1,7 +1,6 @@
 //! The connection form: saving a new connection or changes to one, and what it refuses.
 
 use super::*;
-use cachemire_core::LockExt;
 use crate::{ConnectionEditor, ConnectionState};
 
 /// The app with its connection form wired, the "Browse…" button kept from opening a dialog.
@@ -27,7 +26,7 @@ fn fill(h: &Harness, id: &str, name: &str, url: &str, password: &str) {
 }
 
 fn saved_names(app: &crate::app::App) -> Vec<String> {
-    app.state.connections.lock_recover().list_state().connections.into_iter().map(|c| c.name).collect()
+    app.state.connections.lock().list_state().connections.into_iter().map(|c| c.name).collect()
 }
 
 /// Clicks over the form until its Save button has been pressed and the save has landed (`done`).
@@ -58,7 +57,7 @@ fn saving_the_form_adds_the_connection_closes_the_form_and_lists_it() {
     let listed = h.window.global::<ConnectionState>().get_connections();
     let row = (0..listed.row_count()).filter_map(|i| listed.row_data(i)).find(|r| r.name == "Orders cache").expect("the list shows it");
     assert_eq!(row.connection_url, "redis://orders.example:6380/2");
-    let saved = app.state.connections.lock_recover().list_state().connections.into_iter().find(|c| c.name == "Orders cache").unwrap();
+    let saved = app.state.connections.lock().list_state().connections.into_iter().find(|c| c.name == "Orders cache").unwrap();
     assert_eq!(saved.password, "s3cret");
 }
 
@@ -71,12 +70,12 @@ fn editing_a_connection_with_a_blank_password_keeps_the_stored_one() {
         password: Some("kept".into()),
         ..Default::default()
     };
-    app.state.connections.lock_recover().create_with_id("prod", payload).unwrap();
+    app.state.connections.lock().create_with_id("prod", payload).unwrap();
     let form = ("prod", "Prod (renamed)", "redis://prod:6390", "");
     fill(&h, form.0, form.1, form.2, form.3);
     h.frame();
-    press_save(&mut h, form, || app.state.connections.lock_recover().get("prod").is_some_and(|c| c.name == "Prod (renamed)"));
-    let prod = app.state.connections.lock_recover().get("prod").unwrap();
+    press_save(&mut h, form, || app.state.connections.lock().get("prod").is_some_and(|c| c.name == "Prod (renamed)"));
+    let prod = app.state.connections.lock().get("prod").unwrap();
     assert_eq!((prod.connection_url.as_str(), prod.password.as_str()), ("redis://prod:6390", "kept"));
 }
 
@@ -102,4 +101,3 @@ fn a_form_that_cant_be_saved_says_why_and_stays_open() {
     assert!(editor.get_error().contains("SSH port"), "{}", editor.get_error());
     assert_eq!(saved_names(&app), before);
 }
-

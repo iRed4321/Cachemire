@@ -79,7 +79,9 @@ impl Localize for Invalid {
             Invalid::SshHost => t!("SSH host is required."),
             Invalid::SshPort => t!("SSH port must be a number between 1 and 65535."),
             Invalid::SshLogin => t!("Provide an SSH password or a private key."),
-            Invalid::SshCredentials => t!("This SSH connection has no username or password: fill them in, or make an SSH profile active in Settings."),
+            Invalid::SshCredentials => {
+                t!("This SSH connection has no username or password: fill them in, or make an SSH profile active in Settings.")
+            }
             Invalid::ProfileName => t!("The profile needs a name."),
             Invalid::ProfileUsername => t!("The profile needs an SSH username."),
             Invalid::ProfilePassword => t!("The profile needs an SSH password."),
@@ -141,9 +143,15 @@ impl Localize for KeyringError {
     fn localized(&self) -> String {
         match self {
             KeyringError::Vault(error) => error.localized(),
-            KeyringError::ConnectionPasswords(error) => t!("Couldn't read the saved passwords from the system keyring: %{error}", error = error.localized()).into_owned(),
-            KeyringError::SshProfilePassword(error) => t!("Couldn't read the SSH profile's password from the system keyring: %{error}", error = error.localized()).into_owned(),
-            KeyringError::TunnelSecrets(error) => t!("Couldn't read the SSH tunnel's secrets from the system keyring: %{error}", error = error.localized()).into_owned(),
+            KeyringError::ConnectionPasswords(error) => {
+                t!("Couldn't read the saved passwords from the system keyring: %{error}", error = error.localized()).into_owned()
+            }
+            KeyringError::SshProfilePassword(error) => {
+                t!("Couldn't read the SSH profile's password from the system keyring: %{error}", error = error.localized()).into_owned()
+            }
+            KeyringError::TunnelSecrets(error) => {
+                t!("Couldn't read the SSH tunnel's secrets from the system keyring: %{error}", error = error.localized()).into_owned()
+            }
         }
     }
 }
@@ -226,7 +234,9 @@ impl Localize for QueryError {
             QueryError::UnknownClause(clause) => t!("Unrecognized clause: %{clause}", clause = clause),
             QueryError::MissingFrom => t!("Missing FROM clause."),
             QueryError::DuplicateAlias(alias) => t!("Duplicate alias: %{alias}", alias = alias),
-            QueryError::UnknownJoinAlias { alias, other } => t!("JOIN %{alias} references an unknown alias: %{other}", alias = alias, other = other),
+            QueryError::UnknownJoinAlias { alias, other } => {
+                t!("JOIN %{alias} references an unknown alias: %{other}", alias = alias, other = other)
+            }
             QueryError::UnknownWhereAlias(alias) => t!("Unknown alias in WHERE: %{alias}", alias = alias),
             QueryError::UnknownSelectAlias(alias) => t!("Unknown alias in SELECT: %{alias}", alias = alias),
             QueryError::InvalidDeclaration => t!("Invalid variable declaration. Example: var companyId = 255;"),
@@ -234,9 +244,15 @@ impl Localize for QueryError {
             QueryError::NotQueryable { key, kind } => {
                 t!("%{key} is a %{kind}: only a hash of JSON objects, or a string holding one, can be queried.", key = key, kind = kind)
             }
-            QueryError::NonObjectField { key, field, kind } => t!("A non-object value was found in %{key} (field %{field}): %{kind}", key = key, field = field, kind = kind),
-            QueryError::FieldJson { key, field, source } => t!("Invalid JSON in %{key} (field %{field}): %{error}", key = key, field = field, error = source),
-            QueryError::NonObjectValue { key, kind } => t!("%{key} holds JSON, but not an object or an array of objects: %{kind}", key = key, kind = kind),
+            QueryError::NonObjectField { key, field, kind } => {
+                t!("A non-object value was found in %{key} (field %{field}): %{kind}", key = key, field = field, kind = kind)
+            }
+            QueryError::FieldJson { key, field, source } => {
+                t!("Invalid JSON in %{key} (field %{field}): %{error}", key = key, field = field, error = source)
+            }
+            QueryError::NonObjectValue { key, kind } => {
+                t!("%{key} holds JSON, but not an object or an array of objects: %{kind}", key = key, kind = kind)
+            }
             QueryError::ValueJson { key, source } => t!("Invalid JSON in %{key}: %{error}", key = key, error = source),
         }
         .into_owned()
@@ -249,7 +265,9 @@ impl Localize for ParseError {
             ParseError::ExpectedKey(found) => t!("expected a key, found %{found}", found = found_text(found)),
             ParseError::UnclosedQuote => t!("a quoted key is missing its closing quote"),
             ParseError::IndexTooBig(digits) => t!("'%{digits}' is too big an index", digits = digits),
-            ParseError::ExpectedInBrackets(found) => t!("expected *, an index or a quoted key after '[', found %{found}", found = found_text(found)),
+            ParseError::ExpectedInBrackets(found) => {
+                t!("expected *, an index or a quoted key after '[', found %{found}", found = found_text(found))
+            }
             ParseError::ExpectedClosingBracket(found) => t!("expected ']', found %{found}", found = found_text(found)),
             ParseError::ExpectedSeparator(found) => t!("expected '.' or '[', found %{found}", found = found_text(found)),
         }
@@ -264,3 +282,6 @@ fn found_text(found: &Found) -> String {
     }
     .into_owned()
 }
+
+#[cfg(test)]
+mod tests;

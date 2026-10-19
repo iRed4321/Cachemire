@@ -1,6 +1,6 @@
-use super::*;
 use super::super::highlight::head_chars;
 use super::super::pretty_text::{COMPACT_PREVIEW_CHAR_BUDGET, colored_paragraphs_for};
+use super::*;
 use serde_json::{Value, json};
 
 #[test]
@@ -10,7 +10,8 @@ fn a_text_field_serializes_as_a_json_string_and_previews_only_its_head() {
     assert_eq!(pretty_json(&field), format!("\"{text}\""));
     assert_eq!(escaped_json(&Field::new("f".into(), "a\"b".into(), None)), r#""\"a\\\"b\"""#);
 
-    let preview = colored_paragraphs_for(&FieldValue::Text(head_chars(&text, COMPACT_PREVIEW_CHAR_BUDGET)), false, COMPACT_PREVIEW_CHAR_BUDGET);
+    let preview =
+        colored_paragraphs_for(&FieldValue::Text(head_chars(&text, COMPACT_PREVIEW_CHAR_BUDGET)), false, COMPACT_PREVIEW_CHAR_BUDGET);
     assert_eq!(preview.len(), 1);
     assert_eq!(preview[0].0.chars().count(), COMPACT_PREVIEW_CHAR_BUDGET);
     assert_eq!(head_chars("héllo", 2), "hé");
@@ -35,7 +36,11 @@ fn an_export_reads_in_full_only_the_values_left_out_for_their_size() {
         Arc::new(Field::too_long("big".into(), 900_000)),
         Arc::new(Field::too_long("gone".into(), 800_000)),
     ];
-    let read = vec![("big".to_string(), Some("{\"huge\":true}".to_string())), ("gone".to_string(), None), ("small".to_string(), Some("changed".to_string()))];
+    let read = vec![
+        ("big".to_string(), Some("{\"huge\":true}".to_string())),
+        ("gone".to_string(), None),
+        ("small".to_string(), Some("changed".to_string())),
+    ];
     let full = with_full_values(fields, read);
     assert_eq!(full[0].raw, "1", "a value read with its page is kept as it was");
     assert_eq!(full[1].json, Some(json!({"huge": true})));

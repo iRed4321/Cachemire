@@ -4,8 +4,8 @@
 
 use std::ops::Range;
 
-use cachemire_core::redisql::variable_ranges;
 use crate::theme_colors;
+use cachemire_core::redisql::variable_ranges;
 use slint::Color;
 use slint::private_unstable_api::re_exports::StyledText;
 
@@ -125,7 +125,9 @@ pub fn highlight_query(text: &str, error: Option<Range<usize>>) -> StyledText {
     // translucent, behind the text where the last run's error is
     let error_background = theme_colors::ACCENT_RED.with_alpha(0.4);
     StyledText::from_highlighted_paragraphs(
-        highlighted_lines(text, error).into_iter().map(|(line, spans, marked)| (line, spans, marked.map(|r| (r, error_background)).into_iter().collect())),
+        highlighted_lines(text, error)
+            .into_iter()
+            .map(|(line, spans, marked)| (line, spans, marked.map(|r| (r, error_background)).into_iter().collect())),
     )
 }
 

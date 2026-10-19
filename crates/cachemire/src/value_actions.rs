@@ -15,10 +15,8 @@ pub fn open_in_external_editor(text: &str, extension: &str) -> Result<(), Error>
     #[cfg(target_os = "windows")]
     const EDITORS: &[&str] = &["code", "notepad++", "notepad"];
     #[cfg(unix)]
-    const EDITORS: &[&str] = &[
-        "code", "codium", "zed", "subl", "gedit", "kate", "gnome-text-editor", "xed", "featherpad", "mousepad",
-        "leafpad", "notepadqq",
-    ];
+    const EDITORS: &[&str] =
+        &["code", "codium", "zed", "subl", "gedit", "kate", "gnome-text-editor", "xed", "featherpad", "mousepad", "leafpad", "notepadqq"];
 
     for editor in EDITORS {
         if std::process::Command::new(editor).arg(&path).spawn().is_ok() {
@@ -33,11 +31,11 @@ pub fn open_in_external_editor(text: &str, extension: &str) -> Result<(), Error>
 /// uses arboard's `wayland-data-control` backend; other platforms need neither.
 #[cfg(unix)]
 pub fn copy_to_clipboard(text: &str) -> Result<(), Error> {
-    use std::sync::Mutex;
+    use parking_lot::Mutex;
 
     static CLIPBOARD: Mutex<Option<arboard::Clipboard>> = Mutex::new(None);
 
-    let mut guard = CLIPBOARD.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
+    let mut guard = CLIPBOARD.lock();
     if guard.is_none() {
         *guard = Some(arboard::Clipboard::new().map_err(Error::from)?);
     }
@@ -64,9 +62,7 @@ pub fn sanitize_filename(name: &str) -> String {
     const RESERVED: &[&str] = &["CON", "PRN", "AUX", "NUL"];
     let cleaned: String = name.chars().map(|c| if c.is_alphanumeric() || c == '-' || c == '_' { c } else { '_' }).collect();
     let upper = cleaned.to_ascii_uppercase();
-    let numbered = upper.len() == 4
-        && (upper.starts_with("COM") || upper.starts_with("LPT"))
-        && upper.as_bytes()[3].is_ascii_digit();
+    let numbered = upper.len() == 4 && (upper.starts_with("COM") || upper.starts_with("LPT")) && upper.as_bytes()[3].is_ascii_digit();
     if cleaned.is_empty() {
         "value".to_string()
     } else if RESERVED.contains(&upper.as_str()) || numbered {

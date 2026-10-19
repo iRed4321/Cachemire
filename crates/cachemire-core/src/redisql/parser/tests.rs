@@ -17,7 +17,17 @@ fn parses_a_join_query_whatever_order_the_clauses_come_in() {
 
     // the same query, clauses in a different order, parses the same way (spans aside)
     let reordered = "SELECT i.productId, p.label\nLIMIT 50\nFROM KEY 'orders:items' AS i\nWHERE i.qty IN [1,2,3]\nJOIN KEY 'products' AS p ON i.productId = p.id";
-    let shape = |q: &Query| format!("{} {} {:?} {:?} {:?} {}", q.base.key, q.base.alias, q.joins.iter().map(|j| (&j.key, &j.alias, &j.anchor_alias, &j.anchor_field, &j.join_field)).collect::<Vec<_>>(), q.wheres.iter().map(|w| (&w.alias, &w.field, w.op, &w.values)).collect::<Vec<_>>(), q.selects.iter().map(|s| (&s.alias, &s.field, s.explicit_alias)).collect::<Vec<_>>(), q.limit);
+    let shape = |q: &Query| {
+        format!(
+            "{} {} {:?} {:?} {:?} {}",
+            q.base.key,
+            q.base.alias,
+            q.joins.iter().map(|j| (&j.key, &j.alias, &j.anchor_alias, &j.anchor_field, &j.join_field)).collect::<Vec<_>>(),
+            q.wheres.iter().map(|w| (&w.alias, &w.field, w.op, &w.values)).collect::<Vec<_>>(),
+            q.selects.iter().map(|s| (&s.alias, &s.field, s.explicit_alias)).collect::<Vec<_>>(),
+            q.limit
+        )
+    };
     assert_eq!(shape(&parse_query(reordered).unwrap()), shape(&parsed));
 }
 
@@ -26,7 +36,10 @@ fn the_compact_one_liner_needs_no_separate_path() {
     // "AS alias" is optional for a single-key query: it defaults to "src"
     let parsed = parse_query("SELECT * FROM KEY 'orders:42'").unwrap();
     assert_eq!(parsed.base.alias, "src");
-    assert_eq!(parsed.selects.iter().map(|s| (s.alias.as_str(), s.field.as_str(), s.explicit_alias)).collect::<Vec<_>>(), vec![("*", "*", true)]);
+    assert_eq!(
+        parsed.selects.iter().map(|s| (s.alias.as_str(), s.field.as_str(), s.explicit_alias)).collect::<Vec<_>>(),
+        vec![("*", "*", true)]
+    );
     assert_eq!(parsed.limit, DEFAULT_LIMIT);
 
     let parsed = parse_query("SELECT status, total FROM KEY 'orders:42' AS o WHERE status = 'paid' LIMIT 10").unwrap();

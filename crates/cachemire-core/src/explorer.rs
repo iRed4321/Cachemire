@@ -1,12 +1,12 @@
-use rustc_hash::{FxHashMap, FxHashSet};
 use futures_util::stream::{FuturesOrdered, StreamExt};
+use rustc_hash::{FxHashMap, FxHashSet};
 
 use crate::error::{Error, Invalid, NotFound};
 use crate::key_name::KeyName;
 use serde_json::Value;
 
 use crate::redis_value_type::RedisValueType;
-use crate::session::{lossy, pairs, stream_fields, ScriptKey, Session, TypedKey};
+use crate::session::{ScriptKey, Session, TypedKey, lossy, pairs, stream_fields};
 use crate::state::AppState;
 
 /// One increment of a level listing from [`scan_namespaces`]. `folders`
@@ -48,11 +48,8 @@ pub async fn scan_namespaces(
     // server-side per trip; with no prefix a smaller COUNT bounds each reply.
     let prefix = prefix.as_bytes();
     let delimiter = delimiter.as_bytes();
-    let (match_pattern, count) = if prefix.is_empty() {
-        (b"*".to_vec(), 1000)
-    } else {
-        ([glob_escape(prefix), b"*".to_vec()].concat(), 10_000)
-    };
+    let (match_pattern, count) =
+        if prefix.is_empty() { (b"*".to_vec(), 1000) } else { ([glob_escape(prefix), b"*".to_vec()].concat(), 10_000) };
 
     let mut seen_folders: FxHashSet<Vec<u8>> = FxHashSet::default();
     let mut cursor: u64 = 0;
@@ -287,7 +284,12 @@ async fn read_entries_lua(session: &mut Session, names: &[KeyName], needle: &str
 /// Reads what `names` hold: through the search script when there is a server
 /// filter that works, otherwise (or if the server turns the script down) with a
 /// pipelined `TYPE` and a pipelined read.
-async fn read_chunk(mut session: Session, names: Vec<KeyName>, filter: Option<ServerFilter>, depth: usize) -> Result<Vec<KeyEntries>, Error> {
+async fn read_chunk(
+    mut session: Session,
+    names: Vec<KeyName>,
+    filter: Option<ServerFilter>,
+    depth: usize,
+) -> Result<Vec<KeyEntries>, Error> {
     if let Some(filter) = &filter
         && filter.working.load(std::sync::atomic::Ordering::Relaxed)
     {
@@ -314,7 +316,8 @@ pub async fn scan_entries(
 ) -> Result<(), Error> {
     let mut session = Session::open(state, connection_id).await?;
     let total = session.dbsize().await.unwrap_or(0);
-    let filter = server_filter.map(|needle| ServerFilter { needle: needle.into(), working: std::sync::Arc::new(std::sync::atomic::AtomicBool::new(true)) });
+    let filter = server_filter
+        .map(|needle| ServerFilter { needle: needle.into(), working: std::sync::Arc::new(std::sync::atomic::AtomicBool::new(true)) });
 
     let (sender, mut pages) = tokio::sync::mpsc::channel::<ScanPage>(SEARCH_PAGES_AHEAD);
     let _walk = AbortOnDrop(tokio::spawn(scan_pages(session.sibling(), sender)));
@@ -409,7 +412,12 @@ pub type HashValues = (serde_json::Map<String, Value>, FxHashMap<String, usize>)
 /// Fetches `field_names`' values via `HMGET` into a JSON object in that order (a field
 /// deleted since is skipped); with `max_bytes`, a pipelined `HSTRLEN` first leaves out
 /// any value past it. Needs serde_json's `preserve_order` for the order to reach the UI.
-async fn fetch_hash_fields_as_map(session: &mut Session, key: &KeyName, field_names: Vec<String>, max_bytes: Option<usize>) -> Result<HashValues, Error> {
+async fn fetch_hash_fields_as_map(
+    session: &mut Session,
+    key: &KeyName,
+    field_names: Vec<String>,
+    max_bytes: Option<usize>,
+) -> Result<HashValues, Error> {
     let mut oversized = FxHashMap::default();
     let field_names = match max_bytes {
         Some(max) => {
@@ -430,11 +438,7 @@ async fn fetch_hash_fields_as_map(session: &mut Session, key: &KeyName, field_na
     };
     let values = session.hash_values(key, &field_names).await?;
 
-    let map = field_names
-        .into_iter()
-        .zip(values)
-        .filter_map(|(field, value)| Some((field, Value::String(value?))))
-        .collect();
+    let map = field_names.into_iter().zip(values).filter_map(|(field, value)| Some((field, Value::String(value?)))).collect();
     Ok((map, oversized))
 }
 
@@ -495,10 +499,7 @@ async fn read_set_bounded(session: &mut Session, key: &KeyName, max_items: usize
         }
     }
 
-    Ok(ReadValueResult {
-        truncated: total > items.len(),
-        value: Value::Array(items.into_iter().map(Value::String).collect()),
-    })
+    Ok(ReadValueResult { truncated: total > items.len(), value: Value::Array(items.into_iter().map(Value::String).collect()) })
 }
 
 async fn read_value(session: &mut Session, key: &KeyName, value_type: &RedisValueType, max_items: usize) -> Result<ReadValueResult, Error> {
@@ -510,10 +511,7 @@ async fn read_value(session: &mut Session, key: &KeyName, value_type: &RedisValu
         RedisValueType::Hash => read_hash_bounded(session, key, max_items).await,
         RedisValueType::List => {
             let (total, items) = session.list_head(key, max_items).await?;
-            Ok(ReadValueResult {
-                truncated: total > max_items,
-                value: Value::Array(items.into_iter().map(Value::String).collect()),
-            })
+            Ok(ReadValueResult { truncated: total > max_items, value: Value::Array(items.into_iter().map(Value::String).collect()) })
         }
         RedisValueType::Set => read_set_bounded(session, key, max_items).await,
         RedisValueType::Zset => {
@@ -521,21 +519,14 @@ async fn read_value(session: &mut Session, key: &KeyName, value_type: &RedisValu
             Ok(ReadValueResult {
                 truncated: total > max_items,
                 value: Value::Array(
-                    items
-                        .into_iter()
-                        .map(|(member, score)| Value::Array(vec![Value::String(member), score_to_json(score)]))
-                        .collect(),
+                    items.into_iter().map(|(member, score)| Value::Array(vec![Value::String(member), score_to_json(score)])).collect(),
                 ),
             })
         }
-        RedisValueType::Stream => {
-            Ok(no_truncation(Value::Array(read_stream(session, key, Some(max_items)).await?)))
-        }
+        RedisValueType::Stream => Ok(no_truncation(Value::Array(read_stream(session, key, Some(max_items)).await?))),
         // (get_key_details answers a missing key before it reads anything)
         RedisValueType::Missing => Err(NotFound::Key.into()),
-        RedisValueType::Other(other) => {
-            Ok(no_truncation(Value::String(format!("[unsupported type: {other}]"))))
-        }
+        RedisValueType::Other(other) => Ok(no_truncation(Value::String(format!("[unsupported type: {other}]")))),
     }
 }
 
@@ -618,16 +609,42 @@ pub async fn get_key_details(
         let page: Vec<String> = names.iter().skip(page_start).take(hash_page_size).cloned().collect();
         let (map, oversized) = fetch_hash_fields_as_map(&mut session, key, page, Some(MAX_FIELD_BYTES)).await?;
         let names_cursor = (cursor != 0).then_some(cursor);
-        return Ok(KeyDetails { key_type, ttl, value: Value::Object(map), truncated: false, all_field_names: Some(names), oversized, page_start, field_count, names_cursor });
+        return Ok(KeyDetails {
+            key_type,
+            ttl,
+            value: Value::Object(map),
+            truncated: false,
+            all_field_names: Some(names),
+            oversized,
+            page_start,
+            field_count,
+            names_cursor,
+        });
     }
 
     let read = read_value(&mut session, key, &key_type, max_items).await?;
-    Ok(KeyDetails { key_type, ttl, value: read.value, truncated: read.truncated, all_field_names: None, oversized: FxHashMap::default(), page_start: 0, field_count: 0, names_cursor: None })
+    Ok(KeyDetails {
+        key_type,
+        ttl,
+        value: read.value,
+        truncated: read.truncated,
+        all_field_names: None,
+        oversized: FxHashMap::default(),
+        page_start: 0,
+        field_count: 0,
+        names_cursor: None,
+    })
 }
 
 /// The next batch of a hash's field names, from where the last one's scan stopped:
 /// sorted among themselves, and where the scan goes on (`None` at its end).
-pub async fn hash_more_names(state: &AppState, connection_id: Option<&str>, key: &KeyName, cursor: u64, descending: bool) -> Result<(Vec<String>, Option<u64>), Error> {
+pub async fn hash_more_names(
+    state: &AppState,
+    connection_id: Option<&str>,
+    key: &KeyName,
+    cursor: u64,
+    descending: bool,
+) -> Result<(Vec<String>, Option<u64>), Error> {
     let mut session = Session::open(state, connection_id).await?;
     let (mut names, next) = scan_field_names(&mut session, key, cursor, HASH_NAMES_BATCH).await?;
     sort_by_field_name(&mut names, |name| name.as_str(), descending);
@@ -647,7 +664,12 @@ pub async fn hash_field_page(state: &AppState, connection_id: Option<&str>, key:
 
 /// The values of `names` in a hash, whatever their size, in that order (`None` for
 /// a field that is gone).
-pub async fn hash_full_values(state: &AppState, connection_id: Option<&str>, key: &KeyName, names: &[String]) -> Result<Vec<Option<String>>, Error> {
+pub async fn hash_full_values(
+    state: &AppState,
+    connection_id: Option<&str>,
+    key: &KeyName,
+    names: &[String],
+) -> Result<Vec<Option<String>>, Error> {
     let mut session = Session::open(state, connection_id).await?;
     session.hash_values(key, names).await
 }

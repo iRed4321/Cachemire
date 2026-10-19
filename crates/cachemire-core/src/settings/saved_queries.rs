@@ -50,7 +50,12 @@ impl SettingsStore {
         }
         let mut next = self.state.clone();
         let id = Uuid::new_v4().to_string();
-        next.saved_queries.push(StoredSavedQuery { id: id.clone(), name: name.to_string(), text: text.to_string(), connection_id: connection_id.to_string() });
+        next.saved_queries.push(StoredSavedQuery {
+            id: id.clone(),
+            name: name.to_string(),
+            text: text.to_string(),
+            connection_id: connection_id.to_string(),
+        });
         self.commit(next, false)?;
         Ok(id)
     }

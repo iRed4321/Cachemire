@@ -2,24 +2,24 @@
 //! field of the key — each built off the UI thread, then opened, saved or
 //! copied.
 
-use std::sync::{Arc, Mutex};
+use parking_lot::Mutex;
+use std::sync::Arc;
 
 use rustc_hash::FxHashMap;
 use serde::Serialize;
 use slint::{Model, Weak};
 use tokio::runtime::Handle;
 
-use cachemire_core::LockExt;
+use crate::value_actions::sanitize_filename;
+use crate::{ExportFormat, ExportTarget, KeyPanel, MainWindow};
 use cachemire_core::explorer;
 use cachemire_core::key_name::KeyName;
 use cachemire_core::state::AppState;
-use crate::value_actions::sanitize_filename;
 use slint::ComponentHandle;
-use crate::{ExportFormat, ExportTarget, KeyPanel, MainWindow};
 
-use super::{Ctx, PanelContent};
 use super::field::{Field, FieldValue, Fields};
 use super::table::{selected_rows_json, table_csv};
+use super::{Ctx, PanelContent};
 
 /// A field's value as pretty (indented) JSON.
 pub(super) fn pretty_json(field: &Field) -> String {
@@ -43,8 +43,7 @@ struct FieldExportEntry<'a> {
 /// The whole key as one JSON array (`[{"field": ..., "value": ...}]`) for the key
 /// header's export pill; `escaped` gives it compact, as a JSON string literal.
 fn all_fields_json(fields: &[Arc<Field>], escaped: bool) -> String {
-    let entries: Vec<FieldExportEntry> =
-        fields.iter().map(|f| FieldExportEntry { field: &f.name, value: f.value() }).collect();
+    let entries: Vec<FieldExportEntry> = fields.iter().map(|f| FieldExportEntry { field: &f.name, value: f.value() }).collect();
     if escaped {
         serde_json::to_string(&serde_json::to_string(&entries).unwrap_or_default()).unwrap_or_default()
     } else {
@@ -96,7 +95,13 @@ fn with_full_values(fields: Fields, read: Vec<(String, Option<String>)>) -> Fiel
 /// Builds an export's text from `fields` on a blocking thread (serializing a big value
 /// would freeze the window), then opens, saves or copies it. A download asks where to
 /// save first; the values of `key` left out for their size are then read in full.
-fn run_export(exporter: &Exporter, key: String, fields: Fields, action: ExportAction, build: impl FnOnce(Fields) -> String + Send + 'static) {
+fn run_export(
+    exporter: &Exporter,
+    key: String,
+    fields: Fields,
+    action: ExportAction,
+    build: impl FnOnce(Fields) -> String + Send + 'static,
+) {
     let weak = exporter.weak.clone();
     let state = exporter.state.clone();
     exporter.rt.spawn(async move {
@@ -154,7 +159,7 @@ struct Exporter {
 impl Exporter {
     /// The fields shown, and their key.
     fn shown(&self) -> (Fields, String) {
-        let content = self.content.lock_recover();
+        let content = self.content.lock();
         (content.current.clone(), content.key.clone())
     }
 
@@ -162,7 +167,7 @@ impl Exporter {
     /// field's file-name-safe name to build a download name from.
     fn field(&self, name: &str, escaped: bool, action: impl FnOnce(String) -> ExportAction) {
         let (field, key) = {
-            let content = self.content.lock_recover();
+            let content = self.content.lock();
             let Some(field) = content.field(name) else { return };
             (field, content.key.clone())
         };
@@ -251,7 +256,8 @@ pub(super) fn init(window: &MainWindow, ctx: &Ctx) {
     panel.on_download_value({
         let exporter = exporter.clone();
         move |name, escaped| {
-            exporter.field(&name, escaped, |stem| ExportAction::Download(format!("{stem}.{}", if escaped { "escaped.txt" } else { "json" })))
+            exporter
+                .field(&name, escaped, |stem| ExportAction::Download(format!("{stem}.{}", if escaped { "escaped.txt" } else { "json" })))
         }
     });
     panel.on_export_selection({

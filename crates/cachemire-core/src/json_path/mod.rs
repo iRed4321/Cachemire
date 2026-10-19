@@ -25,7 +25,10 @@ pub enum ParseError {
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub enum Found {
     /// a character, at its position counted from 1
-    Char { c: char, position: usize },
+    Char {
+        c: char,
+        position: usize,
+    },
     End,
 }
 

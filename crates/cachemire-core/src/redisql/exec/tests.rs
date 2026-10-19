@@ -11,7 +11,8 @@ fn row(pairs: &[(&str, Map<String, Value>)]) -> Row {
 #[test]
 fn select_star_preserves_key_order_for_one_source() {
     let r = row(&[("src", obj(&[("id", Value::from(1)), ("label", Value::from("Widget"))]))]);
-    let materialized = materialize_row(&r, &[Select { alias: "*".to_string(), field: "*".to_string(), alias_span: 0..0, explicit_alias: true }]);
+    let materialized =
+        materialize_row(&r, &[Select { alias: "*".to_string(), field: "*".to_string(), alias_span: 0..0, explicit_alias: true }]);
     assert_eq!(materialized.keys().collect::<Vec<_>>(), vec!["id", "label"]);
 }
 
@@ -37,7 +38,8 @@ fn a_missing_alias_in_select_becomes_a_null_column() {
 /// `query` run on `keys` (each key's records, by key name), as the column-named rows it gives.
 fn query(text: &str, keys: &[(&str, Value)]) -> (Vec<Value>, bool) {
     let query = super::super::parse_query(text).unwrap();
-    let records = |key: &str| keys.iter().find(|(k, _)| *k == key).map(|(_, v)| string_records(key, &v.to_string()).unwrap()).unwrap_or_default();
+    let records =
+        |key: &str| keys.iter().find(|(k, _)| *k == key).map(|(_, v)| string_records(key, &v.to_string()).unwrap()).unwrap_or_default();
     let mut datasets = FxHashMap::default();
     datasets.insert(query.base.alias.to_lowercase(), records(&query.base.key));
     for join in &query.joins {
@@ -62,7 +64,10 @@ fn customers() -> Value {
 
 #[test]
 fn a_join_pairs_each_row_with_every_match_and_drops_the_rest() {
-    let (rows, _) = query("FROM KEY 'orders' AS o JOIN KEY 'customers' AS c ON o.customer = c.cid SELECT o.id, c.name", &[("orders", orders()), ("customers", customers())]);
+    let (rows, _) = query(
+        "FROM KEY 'orders' AS o JOIN KEY 'customers' AS c ON o.customer = c.cid SELECT o.id, c.name",
+        &[("orders", orders()), ("customers", customers())],
+    );
     assert_eq!(
         rows,
         [
@@ -105,7 +110,10 @@ fn where_keeps_the_rows_every_condition_holds_for() {
 
 #[test]
 fn where_on_a_joined_key_filters_after_the_join() {
-    let (rows, _) = query("FROM KEY 'orders' AS o JOIN KEY 'customers' AS c ON o.customer = c.cid WHERE c.name = Ada SELECT o.total", &[("orders", orders()), ("customers", customers())]);
+    let (rows, _) = query(
+        "FROM KEY 'orders' AS o JOIN KEY 'customers' AS c ON o.customer = c.cid WHERE c.name = Ada SELECT o.total",
+        &[("orders", orders()), ("customers", customers())],
+    );
     assert_eq!(rows, [serde_json::json!({"o.total": 10}), serde_json::json!({"o.total": 7})]);
 }
 
@@ -118,8 +126,14 @@ fn the_limit_cuts_the_rows_and_says_more_matched() {
 
 #[test]
 fn select_star_of_a_join_prefixes_every_column() {
-    let (rows, _) = query("FROM KEY 'orders' AS o JOIN KEY 'customers' AS c ON o.customer = c.cid WHERE o.id = 2", &[("orders", orders()), ("customers", customers())]);
-    assert_eq!(rows, [serde_json::json!({"o.id": 2, "o.customer": "c2", "o.status": "open", "o.total": 25, "c.cid": "c2", "c.name": "Linus"})]);
+    let (rows, _) = query(
+        "FROM KEY 'orders' AS o JOIN KEY 'customers' AS c ON o.customer = c.cid WHERE o.id = 2",
+        &[("orders", orders()), ("customers", customers())],
+    );
+    assert_eq!(
+        rows,
+        [serde_json::json!({"o.id": 2, "o.customer": "c2", "o.status": "open", "o.total": 25, "c.cid": "c2", "c.name": "Linus"})]
+    );
 }
 
 #[test]

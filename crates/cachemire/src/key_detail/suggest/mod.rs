@@ -2,11 +2,11 @@
 //! lists the keys under `records` (plus `*` and array indexes), what follows the dot
 //! narrows it, and `..` lists keys at any depth below.
 
-use std::sync::{Arc, Mutex};
+use parking_lot::Mutex;
+use std::sync::Arc;
 
 use serde_json::Value;
 
-use cachemire_core::LockExt;
 use cachemire_core::json_path::{self, JsonPath};
 
 use super::field::Field;
@@ -134,7 +134,7 @@ pub(super) struct Suggester {
 impl Suggester {
     /// The fields changed: what was kept is of the previous ones.
     pub(super) fn forget(&self) {
-        *self.kept.lock_recover() = None;
+        *self.kept.lock() = None;
     }
 
     pub(super) fn complete(&self, fields: &[Arc<Field>], text: &str, cursor: usize) -> Option<Completion> {
@@ -150,7 +150,7 @@ impl Suggester {
     }
 
     fn candidates(&self, fields: &[Arc<Field>], position: &Position) -> Option<Arc<Vec<String>>> {
-        let mut kept = self.kept.lock_recover();
+        let mut kept = self.kept.lock();
         if let Some((parent, descend, keys)) = kept.as_ref()
             && *parent == position.parent
             && *descend == position.descend

@@ -2,14 +2,14 @@
 //! else in `key_detail` reads from. The search bar applied to them lives in
 //! `search_filter` (`SearchFilter`/`SearchTerm`).
 
+use parking_lot::Mutex;
 use rustc_hash::FxHashMap;
-use std::sync::{Arc, Mutex, OnceLock};
+use std::sync::{Arc, OnceLock};
 
 use rayon::prelude::*;
 use rust_i18n::t;
 use serde::Serialize;
 use serde_json::Value;
-
 
 use super::pretty_text::ColoredParagraph;
 

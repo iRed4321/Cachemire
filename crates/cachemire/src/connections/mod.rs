@@ -3,7 +3,6 @@
 //! module is UI glue: keep the list in sync, connect on click, save the form.
 
 use crate::app::App;
-use cachemire_core::LockExt;
 use rust_i18n::t;
 use rustc_hash::FxHashMap;
 use std::rc::Rc;
@@ -11,13 +10,13 @@ use std::rc::Rc;
 use slint::{ComponentHandle, ModelRc, VecModel};
 use tokio::runtime::Handle;
 
-use cachemire_core::error::{Error, Invalid};
-use crate::error::Localize;
-use cachemire_core::connection::ConnectionPayloadInput;
-use cachemire_core::settings::ConnectionProfile;
-use cachemire_core::secret_vault::staged;
 use crate::connections::profiles::to_tint;
+use crate::error::Localize;
 use crate::{ConnectionEditor, ConnectionForm, ConnectionRowData, ConnectionState, ConnectionView, MainWindow, ProfileTint};
+use cachemire_core::connection::ConnectionPayloadInput;
+use cachemire_core::error::{Error, Invalid};
+use cachemire_core::secret_vault::staged;
+use cachemire_core::settings::ConnectionProfile;
 
 pub mod profiles;
 pub mod transfer;
@@ -25,13 +24,14 @@ pub mod transfer;
 pub(crate) fn refresh(app: &App, window: &MainWindow) {
     let state = &app.state;
     let (list, cloud) = {
-        let store = state.connections.lock_recover();
+        let store = state.connections.lock();
         (store.list_state(), store.cloud_connections().to_vec())
     };
     let active_id = list.active_connection_id;
     let background = app.tabs.borrow().parked_connections();
     // a profile that no longer exists counts as none
-    let profiles: FxHashMap<String, ConnectionProfile> = state.settings.lock_recover().connection_profiles().into_iter().map(|p| (p.id.clone(), p)).collect();
+    let profiles: FxHashMap<String, ConnectionProfile> =
+        state.settings.lock().connection_profiles().into_iter().map(|p| (p.id.clone(), p)).collect();
     let badge = |id: &str| {
         let profile = profiles.get(id);
         (profile.map_or_else(String::new, |p| p.name.clone()), profile.map_or(ProfileTint::Red, |p| to_tint(p.color)))
@@ -97,7 +97,7 @@ pub(crate) fn disconnect(app: &App, window: &MainWindow) {
     if !id.is_empty() {
         app.tabs.borrow_mut().discard_on_leave();
     }
-    if let Err(e) = state.connections.lock_recover().clear_active() {
+    if let Err(e) = state.connections.lock().clear_active() {
         tracing::error!("disconnect failed: {e}");
         return;
     }
@@ -119,7 +119,8 @@ pub fn init(app: &Rc<App>, window: &MainWindow) {
 
     let connection = window.global::<ConnectionState>();
     connection.on_copy_connection_string(|| crate::app::with(copy_connection_string));
-    connection.on_selected(|id| crate::app::with(|app, window| crate::connect_to(window, app.state.clone(), &app.rt, id.to_string(), true)));
+    connection
+        .on_selected(|id| crate::app::with(|app, window| crate::connect_to(window, app.state.clone(), &app.rt, id.to_string(), true)));
     connection.on_established(|| {
         crate::app::with(|app, window| {
             refresh(app, window);
@@ -136,7 +137,9 @@ pub fn init(app: &Rc<App>, window: &MainWindow) {
     editor.on_saved(|form| crate::app::with(|app, window| save_form(app, window, &form)));
     // "Browse…" beside the SSH private key
     editor.on_browse_key(|| {
-        crate::app::with(|app, window| browse_ssh_key(&app.rt, window.as_weak(), |window, path| window.global::<ConnectionEditor>().set_ssh_key(path.into())));
+        crate::app::with(|app, window| {
+            browse_ssh_key(&app.rt, window.as_weak(), |window, path| window.global::<ConnectionEditor>().set_ssh_key(path.into()))
+        });
     });
 }
 
@@ -147,7 +150,7 @@ fn copy_connection_string(app: &Rc<App>, window: &MainWindow) {
     if id.is_empty() {
         return;
     }
-    let Some(text) = app.state.connections.lock_recover().connection_string(&id) else { return };
+    let Some(text) = app.state.connections.lock().connection_string(&id) else { return };
     match crate::value_actions::copy_to_clipboard(&text) {
         Ok(()) => crate::toast::show_copied(window),
         Err(e) => tracing::warn!("copy failed: {e}"),
@@ -158,7 +161,7 @@ fn copy_connection_string(app: &Rc<App>, window: &MainWindow) {
 /// is the one in use.
 fn delete(app: &Rc<App>, window: &MainWindow, id: &str) {
     let (state, rt) = (&app.state, &app.rt);
-    let removed = state.connections.lock_recover().remove(id);
+    let removed = state.connections.lock().remove(id);
     match removed {
         Ok(cleanup) => {
             // drops its pooled connections and its SSH tunnel
@@ -166,7 +169,7 @@ fn delete(app: &Rc<App>, window: &MainWindow, id: &str) {
             if let Some(cleanup) = cleanup {
                 rt.spawn_blocking(move || cleanup.run());
             }
-            if let Err(e) = state.settings.lock_recover().remove_saved_queries_of(id) {
+            if let Err(e) = state.settings.lock().remove_saved_queries_of(id) {
                 tracing::error!("removing the connection's saved queries failed: {e}");
             }
             window.global::<ConnectionEditor>().set_open(false);
@@ -275,11 +278,7 @@ fn payload_from_form(form: &ConnectionForm) -> Result<ConnectionPayloadInput, Er
     let keep_if_blank = |text: &slint::SharedString| if text.is_empty() { None } else { Some(text.to_string()) };
     let ssh_port = match form.ssh_port.trim() {
         "" => 22,
-        text => text
-            .parse::<u16>()
-            .ok()
-            .filter(|port| *port > 0)
-            .ok_or(Invalid::SshPort)?,
+        text => text.parse::<u16>().ok().filter(|port| *port > 0).ok_or(Invalid::SshPort)?,
     };
     Ok(ConnectionPayloadInput {
         name: Some(form.name.to_string()),

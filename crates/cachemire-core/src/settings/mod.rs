@@ -2,16 +2,14 @@
 //! connection profiles, saved queries and what is set for cloud accounts and endpoints.
 //! Passwords live in the OS credential store.
 
-#[cfg(test)]
-use crate::LockExt;
 use rustc_hash::FxHashSet;
 use std::path::PathBuf;
 use std::sync::Arc;
 
 use serde::{Deserialize, Serialize};
 
-use crate::i18n::Language;
 use crate::error::{Error, Invalid};
+use crate::i18n::Language;
 use crate::persist::{self, Loaded};
 use crate::secret_vault::{OsVault, Secrets, Vault, VaultBacked};
 use crate::updates::Channel;
@@ -22,10 +20,10 @@ mod saved_queries;
 mod ssh_profiles;
 
 pub use cloud::{CloudScope, CloudSsh};
-pub use connection_profiles::{ConnectionProfile, ProfileColor};
-pub use saved_queries::SavedQuery;
 use cloud::{StoredCloud, cloud_entries};
+pub use connection_profiles::{ConnectionProfile, ProfileColor};
 use connection_profiles::{DEFAULT_PROFILE_ID, StoredConnectionProfile};
+pub use saved_queries::SavedQuery;
 use saved_queries::StoredSavedQuery;
 use ssh_profiles::StoredProfile;
 

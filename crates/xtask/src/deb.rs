@@ -21,7 +21,10 @@ pub fn build(fast: bool, with_zip: bool, no_build: bool) -> Result<PathBuf> {
     }
     let out = repo_root().join("target/debian");
     let profile = if fast { "fast" } else { "release" };
-    run(cargo().current_dir(repo_root()).args(["deb", "--package", "cachemire", "--locked", "--profile", profile]).args(no_build.then_some("--no-build")))?;
+    run(cargo()
+        .current_dir(repo_root())
+        .args(["deb", "--package", "cachemire", "--locked", "--profile", profile])
+        .args(no_build.then_some("--no-build")))?;
     println!("\nPackage written under {}", out.display());
     // the package cargo-deb just wrote: the newest .deb of the folder
     let newest = std::fs::read_dir(&out)

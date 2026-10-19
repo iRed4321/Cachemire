@@ -2,10 +2,10 @@
 //! area: [`table`], [`values`], [`header`], [`app`], [`dialogs`] and [`connections`].
 //! Each test builds its own [`Harness`] (thread-local Slint context).
 
-use slint::{ComponentHandle, Model, ModelRc, VecModel};
 use crate::{KeyPanel, MainWindow, QueryTab, SavedQueries, SearchTab, TabStrip};
 use slint::platform::software_renderer::{MinimalSoftwareWindow, RepaintBufferType, Rgb565Pixel};
 use slint::platform::{Platform, PlatformError, PointerEventButton, WindowAdapter, WindowEvent};
+use slint::{ComponentHandle, Model, ModelRc, VecModel};
 use slint::{LogicalPosition, PhysicalSize};
 use std::cell::RefCell;
 use std::rc::Rc;
@@ -16,7 +16,7 @@ mod dialogs;
 
 /// What other threads hand to the UI thread (`invoke_from_event_loop`). Slint keeps one proxy
 /// for the whole process, so this queue is shared by every test; see [`EventLoopTurn`].
-static HANDED: std::sync::Mutex<Vec<Box<dyn FnOnce() + Send>>> = std::sync::Mutex::new(Vec::new());
+static HANDED: parking_lot::Mutex<Vec<Box<dyn FnOnce() + Send>>> = parking_lot::Mutex::new(Vec::new());
 
 struct TestPlatform(Rc<MinimalSoftwareWindow>);
 impl Platform for TestPlatform {
@@ -38,32 +38,32 @@ impl slint::platform::EventLoopProxy for TestProxy {
     }
 
     fn invoke_from_event_loop(&self, event: Box<dyn FnOnce() + Send>) -> Result<(), slint::EventLoopError> {
-        HANDED.lock().unwrap_or_else(|e| e.into_inner()).push(event);
+        HANDED.lock().push(event);
         Ok(())
     }
 }
 
 /// The test whose thread runs what is handed to the UI thread: one at a time, since
 /// `crate::app::later` reaches the app of whichever thread runs it.
-static EVENT_LOOP: std::sync::Mutex<()> = std::sync::Mutex::new(());
-static EVENT_LOOP_THREAD: std::sync::Mutex<Option<std::thread::ThreadId>> = std::sync::Mutex::new(None);
+static EVENT_LOOP: parking_lot::Mutex<()> = parking_lot::Mutex::new(());
+static EVENT_LOOP_THREAD: parking_lot::Mutex<Option<std::thread::ThreadId>> = parking_lot::Mutex::new(None);
 
 /// This thread's turn to run what is handed to the UI thread, until dropped.
-struct EventLoopTurn(#[allow(dead_code)] std::sync::MutexGuard<'static, ()>);
+struct EventLoopTurn(#[allow(dead_code)] parking_lot::MutexGuard<'static, ()>);
 
 impl EventLoopTurn {
     fn take() -> Self {
-        let turn = EventLoopTurn(EVENT_LOOP.lock().unwrap_or_else(|e| e.into_inner()));
+        let turn = EventLoopTurn(EVENT_LOOP.lock());
         // what an earlier test left was for its own window
-        HANDED.lock().unwrap_or_else(|e| e.into_inner()).clear();
-        *EVENT_LOOP_THREAD.lock().unwrap_or_else(|e| e.into_inner()) = Some(std::thread::current().id());
+        HANDED.lock().clear();
+        *EVENT_LOOP_THREAD.lock() = Some(std::thread::current().id());
         turn
     }
 }
 
 impl Drop for EventLoopTurn {
     fn drop(&mut self) {
-        *EVENT_LOOP_THREAD.lock().unwrap_or_else(|e| e.into_inner()) = None;
+        *EVENT_LOOP_THREAD.lock() = None;
     }
 }
 
@@ -88,7 +88,13 @@ impl Harness {
         // the key panel only shows/accepts input once a connection is picked
         // and a tab is open — every test here interacts with that panel
         window.global::<crate::ConnectionState>().set_view(crate::ConnectionView { connected: true, ..Default::default() });
-        window.global::<TabStrip>().set_tabs(ModelRc::new(VecModel::from(vec![crate::TabData { key: "users".into(), active: true, label: "users".into(), search: false, query: false }])));
+        window.global::<TabStrip>().set_tabs(ModelRc::new(VecModel::from(vec![crate::TabData {
+            key: "users".into(),
+            active: true,
+            label: "users".into(),
+            search: false,
+            query: false,
+        }])));
         window.global::<TabStrip>().set_active_index(0);
         window.global::<KeyPanel>().set_badge("HASH".into());
         window.global::<KeyPanel>().set_loaded(true);
@@ -99,8 +105,8 @@ impl Harness {
     /// Runs what other threads handed to the UI thread when it's this test's turn (see
     /// [`EventLoopTurn`]), then renders what changed.
     pub(crate) fn frame(&mut self) {
-        if *EVENT_LOOP_THREAD.lock().unwrap_or_else(|e| e.into_inner()) == Some(std::thread::current().id()) {
-            let handed = std::mem::take(&mut *HANDED.lock().unwrap_or_else(|e| e.into_inner()));
+        if *EVENT_LOOP_THREAD.lock() == Some(std::thread::current().id()) {
+            let handed = std::mem::take(&mut *HANDED.lock());
             for job in handed {
                 job();
             }
@@ -141,7 +147,10 @@ fn test_state() -> std::sync::Arc<cachemire_core::state::AppState> {
 
 /// The app context the windows' callbacks reach through `crate::app::with`, made the thread's
 /// own, with its turn to run what comes back from other threads; keep the runtime and the turn.
-fn install_app(h: &Harness, state: &std::sync::Arc<cachemire_core::state::AppState>) -> (Rc<crate::app::App>, tokio::runtime::Runtime, EventLoopTurn) {
+fn install_app(
+    h: &Harness,
+    state: &std::sync::Arc<cachemire_core::state::AppState>,
+) -> (Rc<crate::app::App>, tokio::runtime::Runtime, EventLoopTurn) {
     let turn = EventLoopTurn::take();
     let runtime = tokio::runtime::Builder::new_current_thread().enable_all().build().unwrap();
     let rt = runtime.handle().clone();
@@ -162,7 +171,14 @@ fn install_app(h: &Harness, state: &std::sync::Arc<cachemire_core::state::AppSta
 
 /// Clicks each point of the `xs` by `ys` grid until `found` says the click did it, calling
 /// `between` after each miss (to reopen a window a click outside it closed); the point found.
-pub(crate) fn sweep(h: &mut Harness, xs: std::ops::Range<i32>, ys: std::ops::Range<i32>, step: usize, mut between: impl FnMut(&Harness), found: impl Fn(&Harness) -> bool) -> Option<(f32, f32)> {
+pub(crate) fn sweep(
+    h: &mut Harness,
+    xs: std::ops::Range<i32>,
+    ys: std::ops::Range<i32>,
+    step: usize,
+    mut between: impl FnMut(&Harness),
+    found: impl Fn(&Harness) -> bool,
+) -> Option<(f32, f32)> {
     for y in ys.step_by(step) {
         for x in xs.clone().step_by(step) {
             h.click(x as f32, y as f32);

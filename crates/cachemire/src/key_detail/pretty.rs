@@ -7,7 +7,6 @@ use std::sync::atomic::Ordering;
 use slint::ComponentHandle;
 use slint::private_unstable_api::re_exports::StyledText;
 
-use cachemire_core::LockExt;
 use crate::{FindResult, KeyPanel, MainWindow, SelectionRange};
 
 use super::highlight::{find_matches, pretty_styled_text_with_highlights};
@@ -32,12 +31,12 @@ pub(super) fn init(window: &MainWindow, ctx: &Ctx) {
         let content = shared.content.clone();
         let pretty_cache = shared.pretty_cache.clone();
         move |name: &str, escaped: bool| -> Option<Arc<Vec<ColoredParagraph>>> {
-            if let Some(cached) = pretty_cache.lock_recover().get(name, escaped) {
+            if let Some(cached) = pretty_cache.lock().get(name, escaped) {
                 return Some(cached.clone());
             }
-            let field = content.lock_recover().field(name)?;
+            let field = content.lock().field(name)?;
             let paragraphs = Arc::new(paragraphs_for(&field.value(), escaped));
-            pretty_cache.lock_recover().insert(name.to_string(), escaped, paragraphs.clone());
+            pretty_cache.lock().insert(name.to_string(), escaped, paragraphs.clone());
             Some(paragraphs)
         }
     };
@@ -47,7 +46,7 @@ pub(super) fn init(window: &MainWindow, ctx: &Ctx) {
     // (see that property's doc comment) instead of being told which field it was
     window.global::<KeyPanel>().on_pretty_is_ready({
         let pretty_cache = shared.pretty_cache.clone();
-        move |field, escaped| pretty_cache.lock_recover().contains(&field, escaped)
+        move |field, escaped| pretty_cache.lock().contains(&field, escaped)
     });
 
     window.global::<KeyPanel>().on_request_pretty_value({
@@ -55,8 +54,14 @@ pub(super) fn init(window: &MainWindow, ctx: &Ctx) {
         let content = shared.content.clone();
         move |field, query, current_match, escaped| {
             let Some(paragraphs) = cached_or_compute(field.as_str(), escaped) else { return StyledText::default() };
-            let filter = content.lock_recover().search.clone();
-            pretty_styled_text_with_highlights(&paragraphs, &filter.highlight_needles(), filter.case_sensitive, &query.trim().to_lowercase(), current_match)
+            let filter = content.lock().search.clone();
+            pretty_styled_text_with_highlights(
+                &paragraphs,
+                &filter.highlight_needles(),
+                filter.case_sensitive,
+                &query.trim().to_lowercase(),
+                current_match,
+            )
         }
     });
 
@@ -71,12 +76,7 @@ pub(super) fn init(window: &MainWindow, ctx: &Ctx) {
             }
             let count = matches.len() as i32;
             let index = current_match.rem_euclid(count);
-            FindResult {
-                count,
-                index,
-                line: matches[index as usize].0 as i32,
-                label: format!("{}/{count}", index + 1).into(),
-            }
+            FindResult { count, index, line: matches[index as usize].0 as i32, label: format!("{}/{count}", index + 1).into() }
         }
     });
 
@@ -105,14 +105,14 @@ pub(super) fn init(window: &MainWindow, ctx: &Ctx) {
         move |name, escaped| {
             let name = name.to_string();
             let shared = &ctx.shared;
-            if shared.pretty_cache.lock_recover().contains(&name, escaped) {
+            if shared.pretty_cache.lock().contains(&name, escaped) {
                 if let Some(window) = ctx.weak.upgrade() {
                     signal_pretty_ready(&window);
                 }
                 return;
             }
             let (field, key_at_request) = {
-                let content = shared.content.lock_recover();
+                let content = shared.content.lock();
                 let Some(field) = content.field(&name) else { return };
                 (field, content.key.clone())
             };
@@ -124,10 +124,10 @@ pub(super) fn init(window: &MainWindow, ctx: &Ctx) {
             ctx.rt.spawn_blocking(move || {
                 let paragraphs = Arc::new(paragraphs_for(&field.value(), escaped));
                 // the key changed, or a filter was applied, while rendering: this is for stale contents
-                if content.lock_recover().key != key_at_request || view_epoch.load(Ordering::Relaxed) != epoch_at_request {
+                if content.lock().key != key_at_request || view_epoch.load(Ordering::Relaxed) != epoch_at_request {
                     return;
                 }
-                pretty_cache.lock_recover().insert(name, escaped, paragraphs);
+                pretty_cache.lock().insert(name, escaped, paragraphs);
                 let _ = weak.upgrade_in_event_loop(move |window| {
                     signal_pretty_ready(&window);
                 });

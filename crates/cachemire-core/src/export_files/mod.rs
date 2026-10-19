@@ -106,7 +106,8 @@ fn io_error(e: std::io::Error) -> Error {
 
 /// The key as the `{key, type, ttl, value}` object a file holds.
 fn item(key: &str, read: &ExportedKey) -> Value {
-    let mut item = json!({ "key": KeyName::from_id(key).to_string_lossy(), "type": read.key_type.as_str(), "ttl": read.ttl, "value": read.value });
+    let mut item =
+        json!({ "key": KeyName::from_id(key).to_string_lossy(), "type": read.key_type.as_str(), "ttl": read.ttl, "value": read.value });
     if read.truncated {
         item["truncated"] = Value::Bool(true);
     }

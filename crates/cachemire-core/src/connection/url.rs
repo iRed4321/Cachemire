@@ -17,12 +17,7 @@ pub fn parse(value: &str) -> Option<UrlParts> {
     if value.is_empty() {
         return None;
     }
-    let uri = if value.contains("://") {
-        url::Url::parse(value)
-    } else {
-        url::Url::parse(&format!("redis://{value}"))
-    }
-    .ok()?;
+    let uri = if value.contains("://") { url::Url::parse(value) } else { url::Url::parse(&format!("redis://{value}")) }.ok()?;
 
     let decode = |s: &str| percent_decode_str(s).decode_utf8_lossy().into_owned();
     Some(UrlParts {
@@ -50,7 +45,10 @@ mod tests {
 
     #[test]
     fn every_part_of_a_full_url_is_read() {
-        assert_eq!(parts("rediss://app:s3cret@cache.example:6380/4"), (true, "cache.example".into(), Some(6380), Some(4), "app".into(), "s3cret".into()));
+        assert_eq!(
+            parts("rediss://app:s3cret@cache.example:6380/4"),
+            (true, "cache.example".into(), Some(6380), Some(4), "app".into(), "s3cret".into())
+        );
         assert_eq!(parts("  redis://cache.example  "), (false, "cache.example".into(), None, None, String::new(), String::new()));
     }
 

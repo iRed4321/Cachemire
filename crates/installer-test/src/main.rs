@@ -13,7 +13,9 @@ fn main() {
         let dir = std::path::Path::new(&app_data).join("Cachemire");
         let _ = std::fs::create_dir_all(&dir).and_then(|_| std::fs::write(dir.join("installer-test.txt"), VERSION));
     }
-    let text = format!("Installer test build of Cachemire {VERSION}.\n\nThis is not the real app: it only stands in for it, to try the installer.");
+    let text = format!(
+        "Installer test build of Cachemire {VERSION}.\n\nThis is not the real app: it only stands in for it, to try the installer."
+    );
     show(&text);
 }
 

@@ -12,7 +12,10 @@ fn a_leading_tilde_is_the_home_directory() {
 
 fn key(byte: u8) -> PublicKeyOrCertificate {
     use russh::keys::ssh_key::public::{Ed25519PublicKey, KeyData};
-    PublicKeyOrCertificate::PublicKey { key: russh::keys::PublicKey::new(KeyData::Ed25519(Ed25519PublicKey([byte; 32])), ""), hash_alg: None }
+    PublicKeyOrCertificate::PublicKey {
+        key: russh::keys::PublicKey::new(KeyData::Ed25519(Ed25519PublicKey([byte; 32])), ""),
+        hash_alg: None,
+    }
 }
 
 /// Whether `known_hosts` accepts `key` for `host:port`, and why not when it doesn't.
@@ -21,7 +24,7 @@ fn check(known_hosts: &Path, host: &str, port: u16, key: &PublicKeyOrCertificate
     let refusal = Arc::new(Mutex::new(None));
     let mut checker = HostKeyCheck { host: host.into(), port, known_hosts: known_hosts.to_path_buf(), refusal: refusal.clone() };
     let accepted = crate::test_support::block_on(checker.check_server_key(key)).unwrap();
-    (accepted, refusal.lock_recover().take().map(|why| why.to_string()))
+    (accepted, refusal.lock().take().map(|why| why.to_string()))
 }
 
 #[test]

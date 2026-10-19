@@ -103,7 +103,10 @@ type HighlightedParagraph = (String, ColorSpans, Vec<(Range<usize>, Color)>);
 /// Marks `highlights` (sorted, non-overlapping per paragraph) in `paragraphs`: each
 /// gets a background color and dark text, splitting the syntax-colored base spans
 /// around it while keeping the list flat and ordered.
-pub(super) fn overlay_highlights(paragraphs: &[ColoredParagraph], highlights: &[(usize, Range<usize>, Color)]) -> Vec<HighlightedParagraph> {
+pub(super) fn overlay_highlights(
+    paragraphs: &[ColoredParagraph],
+    highlights: &[(usize, Range<usize>, Color)],
+) -> Vec<HighlightedParagraph> {
     let text_color = HIGHLIGHT_TEXT;
     // highlights arrive in paragraph order, so one cursor walks them in step
     // with the paragraphs instead of rescanning the whole list for each
@@ -147,7 +150,13 @@ pub(super) fn overlay_highlights(paragraphs: &[ColoredParagraph], highlights: &[
 /// Builds the on-screen text for a cached pretty rendering: the search bar's
 /// active badges' matches in yellow, the find query's in orange, and the
 /// `current`-th find match in cyan.
-pub(super) fn pretty_styled_text_with_highlights(paragraphs: &[ColoredParagraph], filter_needles: &[String], filter_case_sensitive: bool, query: &str, current: i32) -> StyledText {
+pub(super) fn pretty_styled_text_with_highlights(
+    paragraphs: &[ColoredParagraph],
+    filter_needles: &[String],
+    filter_case_sensitive: bool,
+    query: &str,
+    current: i32,
+) -> StyledText {
     let filter_color = HIGHLIGHT_FILTER;
     let mut highlights: Vec<(usize, Range<usize>, Color)> = merge_overlapping(
         filter_needles
@@ -197,7 +206,10 @@ pub(super) fn highlight_needle_matches(paragraphs: Vec<ColoredParagraph>, needle
     }
     let color = HIGHLIGHT_FILTER;
     let highlights = merge_overlapping(
-        needles.iter().flat_map(|needle| find_matches(&paragraphs, needle, case_sensitive).into_iter().map(|(p, r)| (p, r, color))).collect(),
+        needles
+            .iter()
+            .flat_map(|needle| find_matches(&paragraphs, needle, case_sensitive).into_iter().map(|(p, r)| (p, r, color)))
+            .collect(),
     );
     StyledText::from_highlighted_paragraphs(overlay_highlights(&paragraphs, &highlights))
 }

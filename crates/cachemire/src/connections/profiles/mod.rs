@@ -9,11 +9,10 @@ use rust_i18n::t;
 use slint::{ComponentHandle, ModelRc, VecModel};
 
 use crate::app::App;
-use cachemire_core::LockExt;
+use crate::{ConnProfileRowData, MainWindow, Preferences, ProfileTint, Theme};
 use cachemire_core::connection::ConnectionItem;
 use cachemire_core::settings::ProfileColor;
 use cachemire_core::state::AppState;
-use crate::{ConnProfileRowData, MainWindow, Preferences, ProfileTint, Theme};
 
 /// The UI's enum for a profile color, and back: matches, so a color added to one
 /// and not the other doesn't compile.
@@ -48,7 +47,7 @@ fn from_tint(tint: ProfileTint) -> ProfileColor {
 pub(crate) fn refresh(window: &MainWindow, state: &AppState) {
     let rows: Vec<ConnProfileRowData> = state
         .settings
-        .lock_recover()
+        .lock()
         .connection_profiles()
         .into_iter()
         .map(|p| ConnProfileRowData { id: p.id.into(), name: p.name.into(), tint: to_tint(p.color) })
@@ -61,8 +60,8 @@ pub(crate) fn refresh(window: &MainWindow, state: &AppState) {
 /// changed: a connection made or lost, a connection or a profile edited.
 pub(crate) fn apply_tint(window: &MainWindow, state: &AppState) {
     let connection_id = window.connection_id();
-    let profile_id = (!connection_id.is_empty()).then(|| state.connections.lock_recover().get(&connection_id).map(|c| c.profile_id)).flatten();
-    let color = profile_id.filter(|id| !id.is_empty()).and_then(|id| state.settings.lock_recover().connection_profile(&id)).map(|p| p.color);
+    let profile_id = (!connection_id.is_empty()).then(|| state.connections.lock().get(&connection_id).map(|c| c.profile_id)).flatten();
+    let color = profile_id.filter(|id| !id.is_empty()).and_then(|id| state.settings.lock().connection_profile(&id)).map(|p| p.color);
     let theme = window.global::<Theme>();
     match color {
         Some(color) => {
@@ -99,7 +98,7 @@ pub fn init(app: &Rc<App>, window: &MainWindow) {
             let state = &app.state;
             let color = from_tint(form.tint);
             let saved = {
-                let mut settings = state.settings.lock_recover();
+                let mut settings = state.settings.lock();
                 if form.id.is_empty() {
                     settings.create_connection_profile(&form.name, color).map(|_| ())
                 } else {
@@ -125,12 +124,12 @@ pub fn init(app: &Rc<App>, window: &MainWindow) {
         let app = app.clone();
         move |id| {
             let Some(window) = app.window.upgrade() else { return };
-            let names = names_using(&state.connections.lock_recover().list_state().connections, &id);
+            let names = names_using(&state.connections.lock().list_state().connections, &id);
             if !names.is_empty() {
                 window.global::<Preferences>().set_error(in_use_message(&names).into());
                 return;
             }
-            let removed = state.settings.lock_recover().remove_connection_profile(&id);
+            let removed = state.settings.lock().remove_connection_profile(&id);
             match removed {
                 Ok(()) => {
                     window.global::<Preferences>().set_error("".into());

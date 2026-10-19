@@ -146,7 +146,12 @@ fn parse_query(text: &str) -> Result<ast::Query, Located> {
     parser::parse_query(text, &lexer::tokenize(text)?)
 }
 
-async fn run_statement(state: &AppState, connection_id: Option<&str>, text: &str, vars: &FxHashMap<String, String>) -> Result<QueryOutput, Located> {
+async fn run_statement(
+    state: &AppState,
+    connection_id: Option<&str>,
+    text: &str,
+    vars: &FxHashMap<String, String>,
+) -> Result<QueryOutput, Located> {
     let mut tokens = lexer::tokenize(text)?;
     script::substitute_variables(&mut tokens, vars)?;
     let query = parser::parse_query(text, &tokens)?;
@@ -184,7 +189,6 @@ pub async fn run_script(state: &AppState, connection_id: Option<&str>, script: &
     }
     results
 }
-
 
 #[cfg(test)]
 mod tests;

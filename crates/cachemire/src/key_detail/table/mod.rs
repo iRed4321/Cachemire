@@ -10,8 +10,8 @@ use slint::private_unstable_api::re_exports::StyledText;
 use slint::{Model, ModelRc, SharedString, VecModel};
 
 use crate::table_text::{cell_chars, cell_text, column_width, push_csv_row, uncapped_column_width};
-use slint::ComponentHandle;
 use crate::{KeyPanel, MainWindow, TableRowData};
+use slint::ComponentHandle;
 
 use super::color::color_for_kind;
 use super::field::Field;
@@ -158,12 +158,8 @@ pub(super) fn build_table(fields: &[Arc<Field>], needles: &[String], case_sensit
     widths.push(column_width(field_chars.max("Field".len())));
     wants.push(0.0);
     for column in &columns {
-        let lengths: Vec<usize> = rows
-            .iter()
-            .take(TABLE_WIDTH_ROWS)
-            .map(|(_, value)| cell_chars(column.cell(*value)))
-            .filter(|&chars| chars > 0)
-            .collect();
+        let lengths: Vec<usize> =
+            rows.iter().take(TABLE_WIDTH_ROWS).map(|(_, value)| cell_chars(column.cell(*value))).filter(|&chars| chars > 0).collect();
         let (width, want) = column_sizes(lengths, column.title().chars().count());
         widths.push(width);
         wants.push(want);
@@ -172,7 +168,11 @@ pub(super) fn build_table(fields: &[Arc<Field>], needles: &[String], case_sensit
     let mut titles = Vec::with_capacity(columns.len() + 1);
     titles.push(t!("Field").into_owned());
     titles.extend(columns.iter().map(|column| column.title().to_string()));
-    let note = if total_rows > rows.len() { t!("first %{shown} of %{total} rows", shown = rows.len(), total = total_rows).into_owned() } else { String::new() };
+    let note = if total_rows > rows.len() {
+        t!("first %{shown} of %{total} rows", shown = rows.len(), total = total_rows).into_owned()
+    } else {
+        String::new()
+    };
     TableData { columns: titles, widths, wants, rows: cells, note }
 }
 

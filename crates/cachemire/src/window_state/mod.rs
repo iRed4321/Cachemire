@@ -40,7 +40,8 @@ impl Rect {
     /// Whether at least a `w` by `h` part of this rect lies inside `other`.
     fn overlaps(&self, other: &Rect, w: i64, h: i64) -> bool {
         let overlap_w = (self.x as i64 + self.width as i64).min(other.x as i64 + other.width as i64) - (self.x as i64).max(other.x as i64);
-        let overlap_h = (self.y as i64 + self.height as i64).min(other.y as i64 + other.height as i64) - (self.y as i64).max(other.y as i64);
+        let overlap_h =
+            (self.y as i64 + self.height as i64).min(other.y as i64 + other.height as i64) - (self.y as i64).max(other.y as i64);
         overlap_w >= w && overlap_h >= h
     }
 }
@@ -201,7 +202,8 @@ pub fn install(window: &MainWindow) -> impl Fn() + use<> {
 
 /// `rect`, or when it lies outside every screen (one was unplugged since), centered on the primary one.
 fn on_a_screen(window: &winit::window::Window, rect: Rect) -> Rect {
-    let screen_of = |m: winit::monitor::MonitorHandle| Rect { x: m.position().x, y: m.position().y, width: m.size().width, height: m.size().height };
+    let screen_of =
+        |m: winit::monitor::MonitorHandle| Rect { x: m.position().x, y: m.position().y, width: m.size().width, height: m.size().height };
     let screens: Vec<Rect> = window.available_monitors().map(screen_of).collect();
     let primary = window.primary_monitor().map(screen_of).or_else(|| screens.first().copied());
     place_on_screens(rect, &screens, primary)

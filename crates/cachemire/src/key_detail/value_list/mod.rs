@@ -10,8 +10,8 @@ use rust_i18n::t;
 use serde_json::Value;
 
 use crate::AllValuesRowData;
-use cachemire_core::redis_value_type::RedisValueType;
 use cachemire_core::json_path::{self, JsonPath};
+use cachemire_core::redis_value_type::RedisValueType;
 
 use super::field::{Field, Fields};
 use super::highlight::compact_styled_texts_for;
@@ -106,10 +106,13 @@ pub(super) fn meta_text(key_type: &RedisValueType, ttl: i64, count: usize, trunc
             Some(loaded) => t!("%{count} fields · %{loaded} loaded, sorted among themselves", count = count, loaded = loaded),
             None => t!("%{count}%{suffix} fields", count = count, suffix = suffix),
         }),
-        RedisValueType::String if truncated => {
-            Some(t!("value cut at %{size}", size = cachemire_core::server_info::format_bytes(cachemire_core::explorer::MAX_STRING_BYTES as i64)))
+        RedisValueType::String if truncated => Some(t!(
+            "value cut at %{size}",
+            size = cachemire_core::server_info::format_bytes(cachemire_core::explorer::MAX_STRING_BYTES as i64)
+        )),
+        RedisValueType::List | RedisValueType::Set | RedisValueType::Zset => {
+            Some(t!("%{count}%{suffix} items", count = count, suffix = suffix))
         }
-        RedisValueType::List | RedisValueType::Set | RedisValueType::Zset => Some(t!("%{count}%{suffix} items", count = count, suffix = suffix)),
         RedisValueType::Stream => Some(t!("%{count}%{suffix} entries", count = count, suffix = suffix)),
         _ => None,
     };
@@ -127,7 +130,11 @@ const MAX_COL_CHARS: i32 = 200;
 /// One row per field/value pair. Only the collapsed preview is built here —
 /// the pretty rendering is built on demand via `request-pretty-value`, since
 /// most rows are never expanded. `expanded` names which should open right away.
-pub(super) fn build_all_values_table(fields: &[Arc<Field>], filter: &SearchFilter, expanded: &FxHashSet<String>) -> (i32, Vec<AllValuesRowData>) {
+pub(super) fn build_all_values_table(
+    fields: &[Arc<Field>],
+    filter: &SearchFilter,
+    expanded: &FxHashSet<String>,
+) -> (i32, Vec<AllValuesRowData>) {
     // spread across cores too: a big hash means a big scan, and each field's
     // `filter.matches` is now independent (memoized lowercasing lives on the
     // `Field`/`SearchFilter` instances, not in any shared mutable state)
@@ -154,7 +161,13 @@ pub(super) fn build_all_values_table(fields: &[Arc<Field>], filter: &SearchFilte
             let too_long = f.too_long.map(|size| cachemire_core::server_info::format_bytes(size as i64)).unwrap_or_default();
             // a value left out for its size has nothing to open: its row never starts open
             let initial_expanded = f.too_long.is_none() && expanded.contains(&f.name);
-            AllValuesRowData { field: f.name.as_str().into(), value_compact, value_compact_escaped, too_long: too_long.into(), initial_expanded }
+            AllValuesRowData {
+                field: f.name.as_str().into(),
+                value_compact,
+                value_compact_escaped,
+                too_long: too_long.into(),
+                initial_expanded,
+            }
         })
         .collect();
 

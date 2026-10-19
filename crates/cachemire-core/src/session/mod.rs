@@ -9,7 +9,7 @@ use crate::connection::pool::{ConnectionPool, RedisConnection};
 use crate::error::{Error, ErrorKind};
 use crate::key_name::KeyName;
 use crate::redis_value_type::RedisValueType;
-use crate::state::{resolve_connection, AppState};
+use crate::state::{AppState, resolve_connection};
 
 /// A key with its type, as `TYPE` tells it.
 pub struct TypedKey {
@@ -57,12 +57,12 @@ pub(super) fn stream_fields(fields: Vec<(String, String)>) -> serde_json::Value 
 /// a reply of the wrong shape (the key changed meanwhile) gives none.
 fn entries_of_reply(key_type: &RedisValueType, reply: redis::Value) -> Vec<(String, String)> {
     match key_type {
-        RedisValueType::String => redis::from_redis_value::<Option<Vec<u8>>>(reply)
-            .ok()
-            .flatten()
-            .map(|v| vec![(String::new(), lossy(v))])
-            .unwrap_or_default(),
-        RedisValueType::Hash => redis::from_redis_value::<(Vec<u8>, Vec<Vec<u8>>)>(reply).map(|(_, flat)| pairs(flat).collect()).unwrap_or_default(),
+        RedisValueType::String => {
+            redis::from_redis_value::<Option<Vec<u8>>>(reply).ok().flatten().map(|v| vec![(String::new(), lossy(v))]).unwrap_or_default()
+        }
+        RedisValueType::Hash => {
+            redis::from_redis_value::<(Vec<u8>, Vec<Vec<u8>>)>(reply).map(|(_, flat)| pairs(flat).collect()).unwrap_or_default()
+        }
         RedisValueType::List => redis::from_redis_value::<Vec<Vec<u8>>>(reply)
             .map(|items| items.into_iter().enumerate().map(|(i, v)| (format!("[{i}]"), lossy(v))).collect())
             .unwrap_or_default(),
@@ -172,11 +172,19 @@ impl Session {
     pub async fn entry_heads(&mut self, keys: &[TypedKey], limit: usize) -> Result<Vec<Vec<(String, String)>>, Error> {
         let mut pipe = redis::pipe();
         let read: Vec<bool> = keys.iter().map(|key| push_head_read(&mut pipe, key, limit)).collect();
-        let mut replies = if read.contains(&true) { pipe.query_async::<Vec<redis::Value>>(&mut self.con).await?.into_iter() } else { Vec::new().into_iter() };
+        let mut replies = if read.contains(&true) {
+            pipe.query_async::<Vec<redis::Value>>(&mut self.con).await?.into_iter()
+        } else {
+            Vec::new().into_iter()
+        };
         Ok(keys
             .iter()
             .zip(read)
-            .map(|(key, read)| if read { replies.next().map(|reply| entries_of_reply(&key.key_type, reply)).unwrap_or_default() } else { Vec::new() })
+            .map(
+                |(key, read)| {
+                    if read { replies.next().map(|reply| entries_of_reply(&key.key_type, reply)).unwrap_or_default() } else { Vec::new() }
+                },
+            )
             .collect())
     }
 
@@ -208,7 +216,8 @@ impl Session {
     /// the server knows it (Redis 7.4+), else reading the values too and dropping them.
     pub async fn hash_scan_names(&mut self, key: &KeyName, cursor: u64, count: usize) -> Result<(u64, Vec<String>), Error> {
         if self.pool.hscan_novalues.load(Ordering::Relaxed) {
-            let reply: Result<(u64, Vec<Vec<u8>>), _> = redis::cmd("HSCAN").arg(key).arg(cursor).arg("COUNT").arg(count).arg("NOVALUES").query_async(&mut self.con).await;
+            let reply: Result<(u64, Vec<Vec<u8>>), _> =
+                redis::cmd("HSCAN").arg(key).arg(cursor).arg("COUNT").arg(count).arg("NOVALUES").query_async(&mut self.con).await;
             match reply.map_err(Error::from) {
                 Ok((next, names)) => return Ok((next, names.into_iter().map(lossy).collect())),
                 Err(e) if e.kind() == ErrorKind::Redis => self.pool.hscan_novalues.store(false, Ordering::Relaxed),
@@ -243,7 +252,8 @@ impl Session {
 
     /// One `HSCAN` step from `cursor`: the next cursor and the field/value pairs found.
     pub async fn hash_scan(&mut self, key: &KeyName, cursor: u64, count: usize) -> Result<(u64, Vec<(String, String)>), Error> {
-        let (next, flat): (u64, Vec<Vec<u8>>) = redis::cmd("HSCAN").arg(key).arg(cursor).arg("COUNT").arg(count).query_async(&mut self.con).await?;
+        let (next, flat): (u64, Vec<Vec<u8>>) =
+            redis::cmd("HSCAN").arg(key).arg(cursor).arg("COUNT").arg(count).query_async(&mut self.con).await?;
         Ok((next, pairs(flat).collect()))
     }
 
@@ -253,22 +263,32 @@ impl Session {
 
     /// One `SSCAN` step from `cursor`: the next cursor and the members found.
     pub async fn set_scan(&mut self, key: &KeyName, cursor: u64, count: usize) -> Result<(u64, Vec<String>), Error> {
-        let (next, members): (u64, Vec<Vec<u8>>) = redis::cmd("SSCAN").arg(key).arg(cursor).arg("COUNT").arg(count).query_async(&mut self.con).await?;
+        let (next, members): (u64, Vec<Vec<u8>>) =
+            redis::cmd("SSCAN").arg(key).arg(cursor).arg("COUNT").arg(count).query_async(&mut self.con).await?;
         Ok((next, members.into_iter().map(lossy).collect()))
     }
 
     /// The list's length and its first `count` items.
     pub async fn list_head(&mut self, key: &KeyName, count: usize) -> Result<(usize, Vec<String>), Error> {
         let last = count.saturating_sub(1);
-        let (len, items): (usize, Vec<Vec<u8>>) = redis::pipe().cmd("LLEN").arg(key).cmd("LRANGE").arg(key).arg(0).arg(last).query_async(&mut self.con).await?;
+        let (len, items): (usize, Vec<Vec<u8>>) =
+            redis::pipe().cmd("LLEN").arg(key).cmd("LRANGE").arg(key).arg(0).arg(last).query_async(&mut self.con).await?;
         Ok((len, items.into_iter().map(lossy).collect()))
     }
 
     /// The sorted set's size and its first `count` members with their scores.
     pub async fn zset_head(&mut self, key: &KeyName, count: usize) -> Result<(usize, Vec<(String, f64)>), Error> {
         let last = count.saturating_sub(1);
-        let (len, members): (usize, Vec<(Vec<u8>, f64)>) =
-            redis::pipe().cmd("ZCARD").arg(key).cmd("ZRANGE").arg(key).arg(0).arg(last).arg("WITHSCORES").query_async(&mut self.con).await?;
+        let (len, members): (usize, Vec<(Vec<u8>, f64)>) = redis::pipe()
+            .cmd("ZCARD")
+            .arg(key)
+            .cmd("ZRANGE")
+            .arg(key)
+            .arg(0)
+            .arg(last)
+            .arg("WITHSCORES")
+            .query_async(&mut self.con)
+            .await?;
         Ok((len, members.into_iter().map(|(member, score)| (lossy(member), score)).collect()))
     }
 

@@ -21,6 +21,8 @@ url = "2"
 percent-encoding = "2"
 dirs = "7"
 rustc-hash = "2"
+# mutexes without poisoning: a task that panics holding one leaves it usable
+parking_lot = "0.12"
 keyring = "4"
 # SSH tunnels to the Redis server; `ring` rather than the default aws-lc-rs,
 # which needs a C toolchain (cmake/nasm) to build on Windows

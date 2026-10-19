@@ -22,7 +22,9 @@ impl KeyName {
             if let Some(after) = escape.strip_prefix('\\') {
                 bytes.push(b'\\');
                 rest = after;
-            } else if let Some(byte) = escape.strip_prefix('x').and_then(|hex| hex.get(..2)).and_then(|hex| u8::from_str_radix(hex, 16).ok()) {
+            } else if let Some(byte) =
+                escape.strip_prefix('x').and_then(|hex| hex.get(..2)).and_then(|hex| u8::from_str_radix(hex, 16).ok())
+            {
                 bytes.push(byte);
                 rest = &escape[3..];
             } else {
@@ -93,7 +95,6 @@ impl redis::FromRedisValue for KeyName {
         Ok(Self(Vec::<u8>::from_redis_value(value)?))
     }
 }
-
 
 #[cfg(test)]
 mod tests;

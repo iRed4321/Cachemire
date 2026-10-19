@@ -53,7 +53,17 @@ fn grouping_puts_lone_keys_together_by_parent_folder() {
 fn no_two_files_of_an_export_share_a_name() {
     // `a:b` and `a_b` make the same stem, and `User` and `user` the same file on Windows
     let names = file_names(plan(&[("", &["x"])], &["a:b", "a_b", "a?b", "User", "user"], false));
-    assert_eq!(names, ["redis-folder-root.json", "redis-key-a_b.json", "redis-key-a_b-2.json", "redis-key-a_b-3.json", "redis-key-User.json", "redis-key-user-2.json"]);
+    assert_eq!(
+        names,
+        [
+            "redis-folder-root.json",
+            "redis-key-a_b.json",
+            "redis-key-a_b-2.json",
+            "redis-key-a_b-3.json",
+            "redis-key-User.json",
+            "redis-key-user-2.json"
+        ]
+    );
 }
 
 #[test]

@@ -8,7 +8,6 @@ use rust_i18n::t;
 use rustc_hash::FxHashSet;
 use slint::{ComponentHandle, Model, ModelRc, VecModel};
 
-use cachemire_core::LockExt;
 use crate::{BadgeData, KeyPanel, SearchScope};
 
 use super::field::Fields;
@@ -27,7 +26,7 @@ impl Ctx {
         // a snapshot of the pointers, so the lock isn't held while building; the
         // expanded set is read off the window, since this doesn't touch which rows are open
         let fields: Fields = {
-            let mut content = self.shared.content.lock_recover();
+            let mut content = self.shared.content.lock();
             content.search = filter.clone();
             content.current.clone()
         };
@@ -80,7 +79,8 @@ impl Ctx {
     /// A badge's × was clicked: drops it and re-renders.
     pub(super) fn on_filter_badge_removed(&self, text: &str, scope: SearchScope) {
         let Some(window) = self.weak.upgrade() else { return };
-        let badges: Vec<BadgeData> = window.global::<KeyPanel>().get_filter_badges().iter().filter(|b| !(b.scope == scope && b.text.as_str() == text)).collect();
+        let badges: Vec<BadgeData> =
+            window.global::<KeyPanel>().get_filter_badges().iter().filter(|b| !(b.scope == scope && b.text.as_str() == text)).collect();
         window.global::<KeyPanel>().set_filter_badges(ModelRc::new(VecModel::from(badges)));
         window.global::<KeyPanel>().set_filter_limit_message("".into());
         self.on_search_changed();
@@ -102,7 +102,7 @@ impl Ctx {
         let filter = current_search_filter(&window);
 
         let epoch = self.shared.view_epoch.fetch_add(1, Ordering::Relaxed) + 1;
-        let loaded: Fields = self.shared.content.lock_recover().loaded.clone();
+        let loaded: Fields = self.shared.content.lock().loaded.clone();
         let expanded = current_expanded_fields(&window);
         let ctx = self.clone();
         self.rt.spawn_blocking(move || {
@@ -118,12 +118,12 @@ impl Ctx {
                 // a jump armed for the previous contents must not fire on these
                 disarm_scroll(&window);
                 {
-                    let mut content = shared.content.lock_recover();
+                    let mut content = shared.content.lock();
                     content.current = fields;
                     content.path = AppliedPath { path, matches };
                 }
                 // the cached renderings are of the previous contents
-                shared.pretty_cache.lock_recover().clear();
+                shared.pretty_cache.lock().clear();
                 window.global::<KeyPanel>().set_json_filter_status(status.into());
                 window.global::<KeyPanel>().set_all_values_field_chars(av_field_chars);
                 window.global::<KeyPanel>().set_all_values_rows(ModelRc::new(VecModel::from(av_rows)));

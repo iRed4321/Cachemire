@@ -6,9 +6,8 @@ use std::sync::Arc;
 
 use slint::{ComponentHandle, ModelRc, VecModel};
 
-use cachemire_core::LockExt;
-use cachemire_core::state::AppState;
 use crate::{MainWindow, SavedQueries, SavedQueryRowData};
+use cachemire_core::state::AppState;
 
 /// A one-line preview of a query's text: its first non-blank line, cut short.
 fn preview(text: &str) -> String {
@@ -27,7 +26,7 @@ fn matching(state: &AppState, filter: &str, connection_id: &str) -> Vec<SavedQue
     let filter = filter.trim().to_lowercase();
     state
         .settings
-        .lock_recover()
+        .lock()
         .saved_queries()
         .into_iter()
         .filter(|q| q.connection_id == connection_id)
@@ -41,7 +40,7 @@ fn show(window: &MainWindow, state: &AppState, filter: &str) {
     let connection = window.connection_id().to_string();
     let own = if connection.is_empty() { Vec::new() } else { matching(state, filter, &connection) };
     let any_shown = {
-        let settings = state.settings.lock_recover();
+        let settings = state.settings.lock();
         settings.saved_queries().iter().any(|q| q.connection_id.is_empty() || q.connection_id == connection)
     };
     window.global::<SavedQueries>().set_has_saved_queries(any_shown);
@@ -74,7 +73,7 @@ pub fn init(window: &MainWindow, state: Arc<AppState>) {
         let weak = window.as_weak();
         move |id| {
             let Some(window) = weak.upgrade() else { return };
-            if state.settings.lock_recover().remove_saved_query(&id).is_ok() {
+            if state.settings.lock().remove_saved_query(&id).is_ok() {
                 refresh(&window, &state);
             }
         }

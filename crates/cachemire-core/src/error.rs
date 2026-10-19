@@ -40,7 +40,9 @@ pub enum Error {
     JsonPath(#[from] json_path::ParseError),
     #[error(transparent)]
     System(#[from] SystemError),
-    #[error("This server runs in cluster mode, which Cachemire doesn't support yet. Connect to a server or endpoint with cluster mode disabled.")]
+    #[error(
+        "This server runs in cluster mode, which Cachemire doesn't support yet. Connect to a server or endpoint with cluster mode disabled."
+    )]
     ClusterMode,
 }
 

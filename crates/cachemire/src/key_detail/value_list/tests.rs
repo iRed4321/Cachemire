@@ -1,5 +1,5 @@
-use super::*;
 use super::super::test_support::{field, records_field};
+use super::*;
 use serde_json::json;
 
 #[test]

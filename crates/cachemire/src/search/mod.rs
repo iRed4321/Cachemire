@@ -15,13 +15,12 @@ use slint::{ModelRc, VecModel};
 use tokio::sync::watch;
 
 use crate::app::App;
-use cachemire_core::LockExt;
+use crate::key_detail::{search_plain_text, search_value_text};
+use crate::{MainWindow, SearchRowData, SearchTab};
 use cachemire_core::explorer::{self, EntriesBatch, KeyEntries};
 use cachemire_core::key_name::KeyName;
 use cachemire_core::redis_value_type::RedisValueType;
-use crate::key_detail::{search_plain_text, search_value_text};
 use slint::ComponentHandle;
-use crate::{MainWindow, SearchRowData, SearchTab};
 
 /// A search tab's id in `tabs/mod.rs`: it can't be a key's name, whatever the key is
 /// called, because of the control character.
@@ -51,7 +50,9 @@ struct Longest {
 impl Longest {
     /// (key column, field column) widths in zoom-independent px.
     fn widths(self) -> (f32, f32) {
-        let width = |chars: usize, bounds: std::ops::RangeInclusive<usize>| chars.clamp(*bounds.start(), *bounds.end()) as f32 * CHAR_PX + CELL_PAD_PX;
+        let width = |chars: usize, bounds: std::ops::RangeInclusive<usize>| {
+            chars.clamp(*bounds.start(), *bounds.end()) as f32 * CHAR_PX + CELL_PAD_PX
+        };
         (width(self.key, KEY_CHARS), width(self.field, FIELD_CHARS))
     }
 }
@@ -215,7 +216,13 @@ fn hits_in_key(KeyEntries { key, key_type, entries }: KeyEntries, needle: &str) 
 /// What a page of keys holds that matches `needle` (lowercase): a row per matching
 /// entry, or one for the key alone when only its name matches. Each key's scan
 /// (`hits_in_key`) is independent, so a batch is spread across cores.
-fn hits_in(batch_keys: Vec<KeyEntries>, needle: &str, room: usize, keys_with_hits: &mut usize, longest: &mut Longest) -> Vec<SearchRowData> {
+fn hits_in(
+    batch_keys: Vec<KeyEntries>,
+    needle: &str,
+    room: usize,
+    keys_with_hits: &mut usize,
+    longest: &mut Longest,
+) -> Vec<SearchRowData> {
     if room == 0 {
         return Vec::new();
     }
@@ -237,9 +244,13 @@ fn hits_in(batch_keys: Vec<KeyEntries>, needle: &str, room: usize, keys_with_hit
 
 fn status_text(query: &str, scanned: usize, total: usize, hits: usize, keys: usize, done: bool, capped: bool) -> String {
     match (done, hits) {
-        (false, _) if total > 0 => {
-            t!("searching... %{scanned} of %{total} keys scanned, %{hits} matches", scanned = scanned.min(total), total = total, hits = hits).into_owned()
-        }
+        (false, _) if total > 0 => t!(
+            "searching... %{scanned} of %{total} keys scanned, %{hits} matches",
+            scanned = scanned.min(total),
+            total = total,
+            hits = hits
+        )
+        .into_owned(),
         (false, _) => t!("searching... %{scanned} keys scanned, %{hits} matches", scanned = scanned, hits = hits).into_owned(),
         (true, 0) => t!("no match for “%{query}” in %{scanned} keys", query = query, scanned = scanned).into_owned(),
         (true, _) if capped => t!("first %{hits} matches, in %{keys} keys (search stopped)", hits = hits, keys = keys).into_owned(),
@@ -335,7 +346,7 @@ fn submit(app: &App, window: &MainWindow, query: &str) {
 
     // experimental: Redis itself leaves out what certainly doesn't match
     let (server_search, depth) = {
-        let settings = state.settings.lock_recover();
+        let settings = state.settings.lock();
         (settings.server_search(), settings.search_depth() as usize)
     };
     let (state, needle) = (state.clone(), query.to_lowercase());
@@ -370,13 +381,25 @@ fn submit(app: &App, window: &MainWindow, query: &str) {
                 report(
                     &id,
                     run,
-                    if finished { Report::Finished { rows, status, longest } } else { Report::Progress { rows, status, longest, progress: progress_of(scanned, total) } },
+                    if finished {
+                        Report::Finished { rows, status, longest }
+                    } else {
+                        Report::Progress { rows, status, longest, progress: progress_of(scanned, total) }
+                    },
                 );
             },
         )
         .await;
         if let Err(error) = result {
-            report(&id, run, Report::Finished { rows: Vec::new(), status: t!("search failed: %{error}", error = error.localized()).into_owned(), longest: Longest::default() });
+            report(
+                &id,
+                run,
+                Report::Finished {
+                    rows: Vec::new(),
+                    status: t!("search failed: %{error}", error = error.localized()).into_owned(),
+                    longest: Longest::default(),
+                },
+            );
         }
     });
 }

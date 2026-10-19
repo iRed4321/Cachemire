@@ -2,14 +2,14 @@
 //! and forwards connections through it to the Redis host — what
 //! `ssh -L port:redis-host:6379` does, without an `ssh` binary.
 
-use crate::LockExt;
+use parking_lot::Mutex;
 use std::path::{Path, PathBuf};
-use std::sync::{Arc, Mutex};
+use std::sync::Arc;
 use std::time::Duration;
 
 use russh::client::{self, Handle};
 use russh::keys::known_hosts::learn_known_hosts_path;
-use russh::keys::{check_known_hosts_path, HashAlg, PrivateKeyWithHashAlg, PublicKeyOrCertificate};
+use russh::keys::{HashAlg, PrivateKeyWithHashAlg, PublicKeyOrCertificate, check_known_hosts_path};
 use tokio::net::TcpListener;
 use tokio::task::{JoinHandle, JoinSet};
 
@@ -64,7 +64,7 @@ impl client::Handler for HostKeyCheck {
     async fn check_server_key(&mut self, key: &PublicKeyOrCertificate) -> Result<bool, Self::Error> {
         let key = key.public_key();
         let refuse = |why: TunnelError| {
-            *self.refusal.lock_recover() = Some(why);
+            *self.refusal.lock() = Some(why);
             Ok(false)
         };
         match check_known_hosts_path(&self.host, self.port, &key, &self.known_hosts) {
@@ -109,9 +109,7 @@ async fn authenticate(session: &mut Handle<HostKeyCheck>, ssh: &SshSettings) -> 
         })?;
         // RSA keys sign with whichever hash the server supports
         let hash: Option<HashAlg> = session.best_supported_rsa_hash().await?.flatten();
-        let result = session
-            .authenticate_publickey(&ssh.username, PrivateKeyWithHashAlg::new(Arc::new(key), hash))
-            .await?;
+        let result = session.authenticate_publickey(&ssh.username, PrivateKeyWithHashAlg::new(Arc::new(key), hash)).await?;
         if result.success() {
             return Ok(());
         }
@@ -145,7 +143,7 @@ async fn connect(ssh: &SshSettings, known_hosts: &Path) -> Result<Handle<HostKey
 
     let mut session = client::connect(config, (ssh.host.as_str(), ssh.port), handler).await.map_err(|source| {
         // a refused host key surfaces as a generic key error: say why instead
-        refusal.lock_recover().take().unwrap_or_else(|| TunnelError::Connect { host: ssh.host.clone(), port: ssh.port, source })
+        refusal.lock().take().unwrap_or_else(|| TunnelError::Connect { host: ssh.host.clone(), port: ssh.port, source })
     })?;
     authenticate(&mut session, ssh).await?;
     Ok(session)
@@ -161,7 +159,8 @@ async fn forward_loop(listener: TcpListener, session: Handle<HostKeyCheck>, host
         let session = session.clone();
         let host = host.clone();
         forwards.spawn(async move {
-            let Ok(channel) = session.channel_open_direct_tcpip(host, u32::from(port), peer.ip().to_string(), u32::from(peer.port())).await else {
+            let Ok(channel) = session.channel_open_direct_tcpip(host, u32::from(port), peer.ip().to_string(), u32::from(peer.port())).await
+            else {
                 return; // the client sees its connection closed
             };
             let mut stream = channel.into_stream();

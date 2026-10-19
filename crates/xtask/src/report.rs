@@ -23,7 +23,12 @@ pub fn save(step: &str, packages: &[&Path], tests: &[(&str, &Path)], coverage: O
     let html = std::fs::read_to_string(&path).map_err(|e| format!("{}: {e} (build with --timings first)", path.display()))?;
     let number = |key: &str| info(&html, key).and_then(|v| v.split(['s', ' ']).next()?.parse::<f64>().ok()).unwrap_or(0.0);
     let packages = (packages.iter())
-        .map(|file| Ok(json!([file.file_name().unwrap_or_default().to_string_lossy(), std::fs::metadata(file).map_err(|e| format!("{}: {e}", file.display()))?.len()])))
+        .map(|file| {
+            Ok(json!([
+                file.file_name().unwrap_or_default().to_string_lossy(),
+                std::fs::metadata(file).map_err(|e| format!("{}: {e}", file.display()))?.len()
+            ]))
+        })
         .collect::<Result<Vec<_>>>()?;
     let report = json!({
         "step": step,
@@ -68,7 +73,9 @@ fn parse_junit(xml: &str) -> Option<Value> {
         }
     }
     let failed = (number("failures") + number("errors")) as u64;
-    Some(json!({ "passed": (number("tests") as u64).saturating_sub(failed), "failed": failed, "time": number("time"), "failures": failures }))
+    Some(
+        json!({ "passed": (number("tests") as u64).saturating_sub(failed), "failed": failed, "time": number("time"), "failures": failures }),
+    )
 }
 
 /// The test runs of `tests` (name and JUnit file) as JSON; a run with no file is left out.
@@ -105,7 +112,9 @@ fn coverage_summary(file: &Path) -> Result<Value> {
         *total = [total[0] + covered, total[1] + count];
     }
     let totals = &data["totals"];
-    Ok(json!({ "lines": pair(totals, "lines"), "functions": pair(totals, "functions"), "regions": pair(totals, "regions"), "modules": modules }))
+    Ok(
+        json!({ "lines": pair(totals, "lines"), "functions": pair(totals, "functions"), "regions": pair(totals, "regions"), "modules": modules }),
+    )
 }
 
 /// Merges the reports saved under `dir` (searched recursively) into one summary titled `title`:
@@ -139,7 +148,14 @@ fn collect(dir: &Path, reports: &mut Vec<Report>) -> Result<()> {
         } else if path.extension().is_some_and(|ext| ext == "json") {
             let text = std::fs::read_to_string(&path).map_err(|e| format!("{}: {e}", path.display()))?;
             let value: Value = serde_json::from_str(&text).map_err(|e| format!("{}: {e}", path.display()))?;
-            let pairs = |key: &str| value[key].as_array().cloned().unwrap_or_default().into_iter().map(|pair| (pair[0].as_str().unwrap_or_default().to_string(), pair[1].clone()));
+            let pairs = |key: &str| {
+                value[key]
+                    .as_array()
+                    .cloned()
+                    .unwrap_or_default()
+                    .into_iter()
+                    .map(|pair| (pair[0].as_str().unwrap_or_default().to_string(), pair[1].clone()))
+            };
             reports.push(Report {
                 step: value["step"].as_str().unwrap_or("Build").to_string(),
                 os: value["os"].as_str().unwrap_or("?").to_string(),
@@ -303,7 +319,8 @@ fn test_section(reports: &[Report], systems: &[&(&str, &str)]) -> String {
                 None => " — |".to_string(),
                 Some(test) if test["crashed"] == true => " 💥 no result |".to_string(),
                 Some(test) if count(test, "failed") > 0 => {
-                    let names: Vec<String> = test["failures"].as_array().into_iter().flatten().filter_map(|n| Some(format!("`{}`", n.as_str()?))).collect();
+                    let names: Vec<String> =
+                        test["failures"].as_array().into_iter().flatten().filter_map(|n| Some(format!("`{}`", n.as_str()?))).collect();
                     failures += &format!("- **{name}** on {label}: {}\n", names.join(", "));
                     format!(" ❌ **{} failed** · {} passed |", count(test, "failed"), count(test, "passed"))
                 }
@@ -338,7 +355,17 @@ fn coverage_section(reports: &[Report], systems: &[&(&str, &str)]) -> String {
         }
         out + "\n|---|" + &align.repeat(systems.len()) + "\n"
     };
-    let dot = |p: f64| if p >= 80.0 { "🟢" } else if p >= 60.0 { "🟡" } else if p >= 40.0 { "🟠" } else { "🔴" };
+    let dot = |p: f64| {
+        if p >= 80.0 {
+            "🟢"
+        } else if p >= 60.0 {
+            "🟡"
+        } else if p >= 40.0 {
+            "🟠"
+        } else {
+            "🔴"
+        }
+    };
     let mut out = "#### 🎯 Coverage of cachemire\n\n".to_string() + &header("", ":-:|");
     for (key, label) in [("lines", "Lines"), ("functions", "Functions"), ("regions", "Regions")] {
         out += &format!("| **{label}** |");

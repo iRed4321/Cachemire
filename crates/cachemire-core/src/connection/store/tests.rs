@@ -1,5 +1,5 @@
-use crate::secret_vault::{MemoryVault, Secrets};
 use super::*;
+use crate::secret_vault::{MemoryVault, Secrets};
 use std::fs;
 use std::sync::atomic::Ordering;
 
@@ -50,18 +50,22 @@ fn an_ssh_tunnel_needs_a_host_a_username_and_a_way_to_log_in() {
 
     assert_eq!(with_ssh(&|p| p.ssh_host = Some("  ".into())).unwrap_err().to_string(), "SSH host is required.");
     // without a username the SSH profile from the settings is used at connect time
-    assert!(with_ssh(&|p| {
-        p.ssh_username = Some("".into());
-        p.ssh_password = Some("".into());
-    })
-    .is_ok());
+    assert!(
+        with_ssh(&|p| {
+            p.ssh_username = Some("".into());
+            p.ssh_password = Some("".into());
+        })
+        .is_ok()
+    );
     assert_eq!(with_ssh(&|p| p.ssh_port = Some(0)).unwrap_err().to_string(), "SSH port must be a number between 1 and 65535.");
     assert_eq!(with_ssh(&|p| p.ssh_password = Some("".into())).unwrap_err().to_string(), "Provide an SSH password or a private key.");
-    assert!(with_ssh(&|p| {
-        p.ssh_password = Some("".into());
-        p.ssh_private_key = Some("~/.ssh/id_ed25519".into());
-    })
-    .is_ok());
+    assert!(
+        with_ssh(&|p| {
+            p.ssh_password = Some("".into());
+            p.ssh_private_key = Some("~/.ssh/id_ed25519".into());
+        })
+        .is_ok()
+    );
 
     // switched off, the SSH fields aren't checked and there are no settings
     let off = with_ssh(&|p| {
@@ -140,7 +144,7 @@ fn secrets_go_to_the_vault_and_stay_out_of_the_file() {
     for secret in ["redis-secret", "ssh-secret", "phrase-secret"] {
         assert!(!saved.contains(secret), "{secret} leaked into the file");
     }
-    assert_eq!(vault.entries.lock_recover()[&id].ssh_passphrase, "phrase-secret");
+    assert_eq!(vault.entries.lock()[&id].ssh_passphrase, "phrase-secret");
     assert_eq!(store.get(&id).unwrap().password, "redis-secret");
 
     // unrelated changes keep the file clean
@@ -196,7 +200,7 @@ fn without_a_credential_store_the_secrets_stay_in_the_file_until_a_store_appears
     reopened.unlock_secrets(&id).unwrap();
     assert_eq!(reopened.get(&id).unwrap().password, "redis-secret");
     assert!(!fs::read_to_string(&file).unwrap().contains("redis-secret"));
-    assert_eq!(vault.entries.lock_recover()[&id].password, "redis-secret");
+    assert_eq!(vault.entries.lock()[&id].password, "redis-secret");
 }
 
 #[test]
@@ -213,13 +217,14 @@ fn a_vault_that_cannot_be_read_never_costs_the_stored_secrets() {
     // everything that doesn't need the secrets still works, and they stay put
     locked.set_active(&id).unwrap();
     locked.update(&id, payload("renamed", "redis://cache:6379")).unwrap();
-    assert!(locked.update(&id, ConnectionPayloadInput { password: Some("new".into()), ..payload("renamed", "redis://cache:6379") }).is_err());
+    assert!(
+        locked.update(&id, ConnectionPayloadInput { password: Some("new".into()), ..payload("renamed", "redis://cache:6379") }).is_err()
+    );
     vault.broken.store(false, Ordering::SeqCst);
-    assert_eq!(vault.entries.lock_recover()[&id], Secrets {
-        password: "redis-secret".into(),
-        ssh_password: "ssh-secret".into(),
-        ssh_passphrase: "phrase-secret".into(),
-    });
+    assert_eq!(
+        vault.entries.lock()[&id],
+        Secrets { password: "redis-secret".into(), ssh_password: "ssh-secret".into(), ssh_passphrase: "phrase-secret".into() }
+    );
     locked.unlock_secrets(&id).unwrap();
     assert_eq!(locked.get(&id).unwrap().password, "redis-secret");
 }
@@ -235,8 +240,11 @@ fn changing_one_secret_keeps_the_others() {
     let mut reopened = ConnectionStore::with_vault(file, Arc::new(vault.clone()));
     let edit = ConnectionPayloadInput { password: Some("new".into()), ..payload("t", "redis://cache:6379") };
     reopened.update(&id, edit).unwrap();
-    let stored = vault.entries.lock_recover()[&id].clone();
-    assert_eq!((stored.password.as_str(), stored.ssh_password.as_str(), stored.ssh_passphrase.as_str()), ("new", "ssh-secret", "phrase-secret"));
+    let stored = vault.entries.lock()[&id].clone();
+    assert_eq!(
+        (stored.password.as_str(), stored.ssh_password.as_str(), stored.ssh_passphrase.as_str()),
+        ("new", "ssh-secret", "phrase-secret")
+    );
 }
 
 #[test]
@@ -268,16 +276,16 @@ fn removing_a_connection_forgets_it_and_its_secrets() {
     let keep = store.active_connection_id().to_string();
     store.create(with_secrets()).unwrap();
     let gone = store.active_connection_id().to_string();
-    assert!(vault.entries.lock_recover().contains_key(&gone));
+    assert!(vault.entries.lock().contains_key(&gone));
 
     // even with the vault unreachable the connection goes; clearing its entry comes after
     let cleanup = store.remove(&gone).unwrap().expect("it had secrets in the vault");
     assert!(store.get(&gone).is_none());
     assert_eq!(store.active_connection_id(), "", "the active connection was removed");
     assert!(store.get(&keep).is_some());
-    assert!(vault.entries.lock_recover().contains_key(&gone));
+    assert!(vault.entries.lock().contains_key(&gone));
     cleanup.run();
-    assert!(!vault.entries.lock_recover().contains_key(&gone));
+    assert!(!vault.entries.lock().contains_key(&gone));
 
     // gone from the file too, and removing a plain one has nothing to clean
     assert!(store.remove(&keep).unwrap().is_none());

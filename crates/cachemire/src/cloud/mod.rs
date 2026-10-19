@@ -10,11 +10,10 @@ use slint::winit_030::WinitWindowAccessor;
 use slint::winit_030::winit::window::UserAttentionType;
 use slint::{ComponentHandle, ModelRc, VecModel};
 
-use crate::{AwsAccount};
+use crate::AwsAccount;
+use crate::MainWindow;
 use crate::app::App;
 use cachemire_core::aws;
-use cachemire_core::LockExt;
-use crate::MainWindow;
 
 pub mod settings;
 
@@ -44,7 +43,7 @@ fn clear_connections(app: &App, window: &MainWindow) {
     if window.connection_id().starts_with(aws::ID_PREFIX) {
         crate::connections::disconnect(app, window);
     }
-    app.state.connections.lock_recover().set_cloud_connections("", "", Vec::new());
+    app.state.connections.lock().set_cloud_connections("", "", Vec::new());
     window.global::<AwsAccount>().set_account_known(false);
     crate::connections::refresh(app, window);
 }
@@ -131,7 +130,7 @@ pub fn init(app: &Rc<App>, window: &MainWindow) {
                             // a complete listing: counts the endpoints with settings that it lacks
                             let present: FxHashSet<String> = items.iter().map(|item| item.name.clone()).collect();
                             let cleanups = {
-                                let mut settings = state.settings.lock_recover();
+                                let mut settings = state.settings.lock();
                                 let cleanups = settings.observe_cloud_listing(&account, &region, &present).unwrap_or_else(|e| {
                                     tracing::error!("pruning the cloud settings failed: {e}");
                                     Vec::new()
@@ -140,7 +139,7 @@ pub fn init(app: &Rc<App>, window: &MainWindow) {
                                 cleanups
                             };
                             app.rt.spawn_blocking(move || cleanups.into_iter().for_each(|cleanup| cleanup.run()));
-                            state.connections.lock_recover().set_cloud_connections(&account, &region, items);
+                            state.connections.lock().set_cloud_connections(&account, &region, items);
                             window.global::<AwsAccount>().set_account_known(true);
                             crate::connections::refresh(app, window);
                         }

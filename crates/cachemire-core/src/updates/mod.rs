@@ -89,7 +89,11 @@ pub fn newer_release(current: &Version, channel: Channel) -> Result<Option<Relea
 
 /// The newest of GitHub's `releases` that `channel` offers and is newer than `current`.
 fn newest_offered(releases: &[Value], current: &Version, channel: Channel) -> Option<Release> {
-    releases.iter().filter_map(parse_release).filter(|r| channel.offers(&r.version) && r.version > *current).max_by(|a, b| a.version.cmp(&b.version))
+    releases
+        .iter()
+        .filter_map(parse_release)
+        .filter(|r| channel.offers(&r.version) && r.version > *current)
+        .max_by(|a, b| a.version.cmp(&b.version))
 }
 
 fn parse_release(item: &Value) -> Option<Release> {
@@ -97,7 +101,12 @@ fn parse_release(item: &Value) -> Option<Release> {
         return None;
     }
     let version = Version::parse(item["tag_name"].as_str()?.trim_start_matches('v')).ok()?;
-    let installer = item["assets"].as_array()?.iter().find(|a| a["name"].as_str().is_some_and(|n| n.ends_with(".msi"))).and_then(|a| a["browser_download_url"].as_str()).map(str::to_string);
+    let installer = item["assets"]
+        .as_array()?
+        .iter()
+        .find(|a| a["name"].as_str().is_some_and(|n| n.ends_with(".msi")))
+        .and_then(|a| a["browser_download_url"].as_str())
+        .map(str::to_string);
     Some(Release { version, page: item["html_url"].as_str()?.to_string(), installer })
 }
 
@@ -107,7 +116,13 @@ pub fn download_installer(url: &str) -> Result<std::path::PathBuf, UpdateError> 
     let dir = std::env::temp_dir().join("cachemire-update");
     std::fs::create_dir_all(&dir)?;
     let path = dir.join(url.rsplit('/').next().filter(|n| !n.is_empty()).unwrap_or("Cachemire.msi"));
-    let mut response = ureq::Agent::config_builder().timeout_connect(Some(Duration::from_secs(30))).user_agent("cachemire").build().new_agent().get(url).call()?;
+    let mut response = ureq::Agent::config_builder()
+        .timeout_connect(Some(Duration::from_secs(30)))
+        .user_agent("cachemire")
+        .build()
+        .new_agent()
+        .get(url)
+        .call()?;
     let mut file = std::fs::File::create(&path)?;
     std::io::copy(&mut response.body_mut().as_reader(), &mut file)?;
     Ok(path)

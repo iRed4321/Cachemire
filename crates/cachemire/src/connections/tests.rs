@@ -25,10 +25,18 @@ fn a_blank_password_box_keeps_the_stored_password_and_everything_else_is_taken_a
     assert_eq!((payload.ssh_enabled, payload.ssh_port), (Some(true), Some(2222)));
     assert_eq!(payload.ssh_private_key.as_deref(), Some("~/.ssh/id_ed25519"));
     assert_eq!(payload.profile_id.as_deref(), Some("production"));
-    assert_eq!(payload_from_form(&ConnectionForm { profile_id: "".into(), ..form() }).unwrap().profile_id.as_deref(), Some(""), "no profile is an empty one, not a kept one");
+    assert_eq!(
+        payload_from_form(&ConnectionForm { profile_id: "".into(), ..form() }).unwrap().profile_id.as_deref(),
+        Some(""),
+        "no profile is an empty one, not a kept one"
+    );
 
-    let typed = payload_from_form(&ConnectionForm { password: "a".into(), ssh_password: "b".into(), ssh_passphrase: "c".into(), ..form() }).unwrap();
-    assert_eq!((typed.password.as_deref(), typed.ssh_password.as_deref(), typed.ssh_passphrase.as_deref()), (Some("a"), Some("b"), Some("c")));
+    let typed = payload_from_form(&ConnectionForm { password: "a".into(), ssh_password: "b".into(), ssh_passphrase: "c".into(), ..form() })
+        .unwrap();
+    assert_eq!(
+        (typed.password.as_deref(), typed.ssh_password.as_deref(), typed.ssh_passphrase.as_deref()),
+        (Some("a"), Some("b"), Some("c"))
+    );
 }
 
 #[test]

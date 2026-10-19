@@ -2,20 +2,20 @@
 //! concern across submodules ([`field`], [`pretty_text`]/[`highlight`],
 //! [`table`]/[`value_list`], [`export`], [`scroll`]); this wires them together.
 
+use parking_lot::Mutex;
 use rustc_hash::{FxHashMap, FxHashSet};
+use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
-use std::sync::{Arc, Mutex};
 
 use rayon::prelude::*;
 use slint::{ComponentHandle, Model, ModelRc, VecModel, Weak};
 use tokio::runtime::Handle;
 
-use cachemire_core::LockExt;
+use crate::{AllValuesRowData, CompletionEdit, KeyPanel, KeyView, MainWindow, SuggestionRow};
+use cachemire_core::json_path::JsonPath;
 use cachemire_core::key_name::KeyName;
 use cachemire_core::redis_value_type::RedisValueType;
 use cachemire_core::state::AppState;
-use cachemire_core::json_path::JsonPath;
-use crate::{AllValuesRowData, CompletionEdit, KeyPanel, KeyView, MainWindow, SuggestionRow};
 
 mod color;
 mod export;
@@ -31,22 +31,22 @@ mod search_filter;
 mod suggest;
 mod table;
 #[cfg(test)]
-pub(crate) mod tests;
-#[cfg(test)]
 mod test_support;
+#[cfg(test)]
+pub(crate) mod tests;
 mod value_list;
 mod word;
 
+pub(crate) use highlight::{search_plain_text, search_value_text};
 pub use scroll::{ScrollPos, current_expanded_fields, current_scroll, restore_expanded_fields};
 pub use table::clear_table;
-pub(crate) use highlight::{search_plain_text, search_value_text};
 
 use field::{Fields, PrettyCache};
 use load::LoadRequest;
 use paging::PageDir;
+use scroll::{arm_table_scroll, disarm_scroll, set_field_expanded, sync_rows_expansion};
 use search_filter::{SearchFilter, SearchTerm};
 use suggest::Suggester;
-use scroll::{arm_table_scroll, disarm_scroll, set_field_expanded, sync_rows_expansion};
 use table::{apply_table, build_table, reset_table_selection, select_table_range};
 use value_list::meta_text;
 
@@ -62,7 +62,8 @@ const HASH_PAGE_SIZE: usize = 200;
 /// model Rust itself just wrote, so this never disagrees with what's shown)
 /// and the case-sensitivity toggle.
 fn current_search_filter(window: &MainWindow) -> SearchFilter {
-    let terms = window.global::<KeyPanel>().get_filter_badges().iter().map(|b| SearchTerm { text: b.text.to_string(), scope: b.scope }).collect();
+    let terms =
+        window.global::<KeyPanel>().get_filter_badges().iter().map(|b| SearchTerm { text: b.text.to_string(), scope: b.scope }).collect();
     SearchFilter::new(terms, window.global::<KeyPanel>().get_filter_case_sensitive())
 }
 
@@ -183,7 +184,7 @@ impl Ctx {
         let latest = shared.table_generation.clone();
         // a snapshot of the pointers, so the lock isn't held while building
         let (fields, filter) = {
-            let content = shared.content.lock_recover();
+            let content = shared.content.lock();
             (content.current.clone(), content.search.clone())
         };
         let weak = self.weak.clone();
@@ -223,7 +224,7 @@ impl Ctx {
     /// filter has left of them); whether it has any.
     fn suggest(&self, text: &str, cursor: i32) -> bool {
         let Some(window) = self.weak.upgrade() else { return false };
-        let fields: Fields = self.shared.content.lock_recover().loaded.clone();
+        let fields: Fields = self.shared.content.lock().loaded.clone();
         let completion = self.shared.suggester.complete(&fields, text, cursor.max(0) as usize);
         let rows: Vec<SuggestionRow> = completion
             .iter()
@@ -278,7 +279,7 @@ impl KeyDetailShared {
     /// The filter's text once completion `index` of the list is taken, and where its
     /// cursor goes; the text unchanged (cursor -1) when there is no such completion.
     fn complete_suggestion(&self, text: slint::SharedString, cursor: i32, index: i32) -> CompletionEdit {
-        let fields: Fields = self.content.lock_recover().loaded.clone();
+        let fields: Fields = self.content.lock().loaded.clone();
         let edit = self
             .suggester
             .complete(&fields, &text, cursor.max(0) as usize)
@@ -309,7 +310,7 @@ fn show_nothing(window: &MainWindow, shared: &KeyDetailShared) {
     window.global::<KeyPanel>().set_all_values_rows(ModelRc::new(VecModel::from(Vec::<AllValuesRowData>::new())));
     window.global::<KeyPanel>().set_json_filter_status("".into());
     {
-        let mut content = shared.content.lock_recover();
+        let mut content = shared.content.lock();
         content.loaded = Vec::new();
         content.current = Vec::new();
     }
@@ -418,14 +419,31 @@ impl KeyDetail {
         };
         // the rows stand for the fields of a key named after the tab: the panel then shows,
         // filters and exports them like any key's, without a trip to the server
-        let fields: Fields = rows.into_iter().enumerate().map(|(i, row)| Arc::new(field::Field::from_value((i + 1).to_string(), serde_json::Value::Object(row)))).collect();
+        let fields: Fields = rows
+            .into_iter()
+            .enumerate()
+            .map(|(i, row)| Arc::new(field::Field::from_value((i + 1).to_string(), serde_json::Value::Object(row))))
+            .collect();
         let slot = (window.connection_id().to_string(), id.clone());
-        ctx.shared.fetched.lock_recover().insert(slot, FetchedKey { badge: String::new(), meta: String::new(), fields, all_names: None, start: 0, field_count: 0, ttl: -1, names_cursor: None, descending: false });
+        ctx.shared.fetched.lock().insert(
+            slot,
+            FetchedKey {
+                badge: String::new(),
+                meta: String::new(),
+                fields,
+                all_names: None,
+                start: 0,
+                field_count: 0,
+                ttl: -1,
+                names_cursor: None,
+                descending: false,
+            },
+        );
         ctx.load_key(LoadRequest { key: id, scroll, reuse: true, announce: false });
     }
 
     /// Drops what was fetched for a connection's key (`Some`), or all its keys (`None`).
     pub fn forget(&self, connection: &str, key: Option<&str>) {
-        self.0.shared.fetched.lock_recover().retain(|(c, k), _| c != connection || key.is_some_and(|key| key != k));
+        self.0.shared.fetched.lock().retain(|(c, k), _| c != connection || key.is_some_and(|key| key != k));
     }
 }

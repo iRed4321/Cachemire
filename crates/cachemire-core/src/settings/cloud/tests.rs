@@ -1,9 +1,8 @@
 use std::sync::Arc;
 
 use super::*;
-use crate::LockExt;
-use crate::settings::ProfileColor;
 use crate::secret_vault::MemoryVault;
+use crate::settings::ProfileColor;
 use crate::test_support::temp_dir;
 
 fn key(name: &str) -> CloudKey {
@@ -11,7 +10,16 @@ fn key(name: &str) -> CloudKey {
 }
 
 fn tunnel(host: &str, password: &str) -> CloudSsh {
-    CloudSsh { enabled: true, host: host.into(), port: 22, username: "ec2-user".into(), private_key: String::new(), password: password.into(), passphrase: String::new(), in_vault: false }
+    CloudSsh {
+        enabled: true,
+        host: host.into(),
+        port: 22,
+        username: "ec2-user".into(),
+        private_key: String::new(),
+        password: password.into(),
+        passphrase: String::new(),
+        in_vault: false,
+    }
 }
 
 fn store_in(file: &std::path::Path, vault: &MemoryVault) -> SettingsStore {
@@ -87,7 +95,15 @@ fn settings_that_cant_be_used_are_refused() {
 fn listed_endpoints_get_their_settings_without_secrets_until_asked() {
     let (mut store, _, _) = new_store();
     store.set_cloud_scope(&account(), "", None, Some(tunnel("bastion", "pw"))).unwrap();
-    let mut items = vec![ConnectionItem { id: "x".into(), name: "orders".into(), connection_url: "redis://h:6379".into(), username: String::new(), password: String::new(), ssh: None, profile_id: String::new() }];
+    let mut items = vec![ConnectionItem {
+        id: "x".into(),
+        name: "orders".into(),
+        connection_url: "redis://h:6379".into(),
+        username: String::new(),
+        password: String::new(),
+        ssh: None,
+        profile_id: String::new(),
+    }];
     store.apply_cloud("111", "eu-west-1", &mut items);
     let mut ssh = items[0].ssh.clone().unwrap();
     assert_eq!((ssh.host.as_str(), ssh.password.as_str()), ("bastion", ""));
@@ -104,10 +120,17 @@ fn tunnel_secrets_live_in_the_vault_and_come_back_after_a_restart() {
     let (mut store, vault, file) = new_store();
     store.set_cloud_scope(&endpoint("orders"), "", None, Some(tunnel("bastion", "s3cret"))).unwrap();
     assert!(!std::fs::read_to_string(&file).unwrap().contains("s3cret"));
-    assert_eq!(vault.entries.lock_recover()[&cloud_vault_key(&endpoint("orders"))].ssh_password, "s3cret");
+    assert_eq!(vault.entries.lock()[&cloud_vault_key(&endpoint("orders"))].ssh_password, "s3cret");
 
     let mut reopened = store_in(&file, &vault);
-    let mut ssh = SshSettings { host: String::new(), port: 22, username: String::new(), password: String::new(), private_key: String::new(), passphrase: String::new() };
+    let mut ssh = SshSettings {
+        host: String::new(),
+        port: 22,
+        username: String::new(),
+        password: String::new(),
+        private_key: String::new(),
+        passphrase: String::new(),
+    };
     reopened.fill_cloud_secrets(&key("orders"), &mut ssh);
     assert_eq!(ssh.password, "", "nothing is read from the vault before it's needed");
     reopened.unlock_cloud(&key("orders")).unwrap();
@@ -123,7 +146,14 @@ fn a_blank_password_keeps_the_stored_one() {
     let mut reopened = store_in(&file, &vault);
     reopened.set_cloud_scope(&account(), "", None, Some(tunnel("new-bastion", ""))).unwrap();
     reopened.unlock_cloud(&key("any")).unwrap();
-    let mut ssh = SshSettings { host: String::new(), port: 22, username: String::new(), password: String::new(), private_key: String::new(), passphrase: String::new() };
+    let mut ssh = SshSettings {
+        host: String::new(),
+        port: 22,
+        username: String::new(),
+        password: String::new(),
+        private_key: String::new(),
+        passphrase: String::new(),
+    };
     reopened.fill_cloud_secrets(&key("any"), &mut ssh);
     assert_eq!(ssh.password, "s3cret");
     assert_eq!(effective(&reopened, "any").1.as_deref(), Some("new-bastion"));
@@ -135,7 +165,7 @@ fn turning_a_tunnel_off_hands_back_the_clean_up_of_its_secrets() {
     store.set_cloud_scope(&account(), "", None, Some(tunnel("bastion", "s3cret"))).unwrap();
     let cleanup = store.set_cloud_scope(&account(), "", None, Some(CloudSsh::none())).unwrap().expect("a clean-up");
     cleanup.run();
-    assert!(vault.entries.lock_recover().is_empty());
+    assert!(vault.entries.lock().is_empty());
 
     store.set_cloud_scope(&account(), "", None, Some(tunnel("bastion", "again"))).unwrap();
     assert!(store.set_cloud_scope(&account(), "", None, None).unwrap().is_some(), "back to inheriting clears it too");
@@ -169,6 +199,6 @@ fn an_endpoint_missing_from_three_listings_in_a_row_loses_its_settings() {
     assert!(store.cloud_entry(&other_region).is_some(), "another region's listing doesn't count");
     assert_eq!(cleanups.len(), 1);
     cleanups.into_iter().for_each(SecretsCleanup::run);
-    assert!(!vault.entries.lock_recover().contains_key(&cloud_vault_key(&endpoint("gone"))));
+    assert!(!vault.entries.lock().contains_key(&cloud_vault_key(&endpoint("gone"))));
     assert!(store_in(&file, &vault).cloud_entry(&endpoint("gone")).is_none(), "the pruning is saved");
 }

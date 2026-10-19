@@ -1,15 +1,13 @@
-use crate::connection::SshSettings;
-use crate::settings::{ConnectionProfile, SavedQuery};
-use crate::secret_vault::MemoryVault;
 use super::ssh_profiles::{SshProfileItem, vault_key};
 use super::*;
+use crate::connection::SshSettings;
+use crate::secret_vault::MemoryVault;
+use crate::settings::{ConnectionProfile, SavedQuery};
 use std::fs;
 use std::sync::atomic::Ordering;
 
 fn temp_file(name: &str) -> PathBuf {
-    std::env::temp_dir()
-        .join(format!("cachemire-settings-{name}-{}-{}", std::process::id(), crate::now_ms()))
-        .join("settings.json")
+    std::env::temp_dir().join(format!("cachemire-settings-{name}-{}-{}", std::process::id(), crate::now_ms())).join("settings.json")
 }
 
 fn ssh(username: &str, password: &str) -> SshSettings {
@@ -56,7 +54,7 @@ fn passwords_go_to_the_vault_and_are_only_read_when_needed() {
     let mut store = SettingsStore::with_vault(file.clone(), Arc::new(vault.clone()));
     let id = store.create_ssh_profile("Work", "deploy", "s3cret").unwrap();
     assert!(!fs::read_to_string(&file).unwrap().contains("s3cret"), "the file holds no password");
-    assert_eq!(vault.entries.lock_recover()[&vault_key(&id)].ssh_password, "s3cret");
+    assert_eq!(vault.entries.lock()[&vault_key(&id)].ssh_password, "s3cret");
 
     // a new run reads nothing until a connection needs the profile
     let mut reopened = SettingsStore::with_vault(file.clone(), Arc::new(vault.clone()));
@@ -69,11 +67,11 @@ fn passwords_go_to_the_vault_and_are_only_read_when_needed() {
 
     // changing the name or the username keeps the password; a new one replaces it
     reopened.update_ssh_profile(&id, "Work 2", "deploy2", None).unwrap();
-    assert_eq!(vault.entries.lock_recover()[&vault_key(&id)].ssh_password, "s3cret");
+    assert_eq!(vault.entries.lock()[&vault_key(&id)].ssh_password, "s3cret");
     reopened.update_ssh_profile(&id, "Work 2", "deploy2", Some("")).unwrap();
-    assert_eq!(vault.entries.lock_recover()[&vault_key(&id)].ssh_password, "s3cret", "a blank box keeps it");
+    assert_eq!(vault.entries.lock()[&vault_key(&id)].ssh_password, "s3cret", "a blank box keeps it");
     reopened.update_ssh_profile(&id, "Work 2", "deploy2", Some("n3w")).unwrap();
-    assert_eq!(vault.entries.lock_recover()[&vault_key(&id)].ssh_password, "n3w");
+    assert_eq!(vault.entries.lock()[&vault_key(&id)].ssh_password, "n3w");
     assert!(!fs::read_to_string(&file).unwrap().contains("n3w"));
 }
 
@@ -90,7 +88,7 @@ fn editing_an_unloaded_profile_does_not_touch_the_vault() {
     reopened.set_active_ssh_profile(&id).unwrap();
     assert!(reopened.unlock_active_ssh_profile().unwrap_err().to_string().contains("system keyring"));
     vault.broken.store(false, Ordering::SeqCst);
-    assert_eq!(vault.entries.lock_recover()[&vault_key(&id)].ssh_password, "s3cret", "nothing was lost");
+    assert_eq!(vault.entries.lock()[&vault_key(&id)].ssh_password, "s3cret", "nothing was lost");
 }
 
 #[test]
@@ -107,7 +105,7 @@ fn without_a_credential_store_the_password_stays_in_the_file() {
     let mut reopened = SettingsStore::with_vault(file.clone(), Arc::new(vault.clone()));
     reopened.unlock_active_ssh_profile().unwrap();
     assert!(!fs::read_to_string(&file).unwrap().contains("s3cret"));
-    assert_eq!(vault.entries.lock_recover().values().next().unwrap().ssh_password, "s3cret");
+    assert_eq!(vault.entries.lock().values().next().unwrap().ssh_password, "s3cret");
 }
 
 #[test]
@@ -123,7 +121,11 @@ fn a_connection_with_its_own_username_ignores_the_profile() {
     assert_eq!((own.username.as_str(), own.password.as_str()), ("me", "my-pw"));
     let mut key_only = ssh("me", "");
     store.fill_ssh(&mut key_only).unwrap();
-    assert_eq!((key_only.username.as_str(), key_only.password.as_str()), ("me", ""), "the profile's password never goes with another username");
+    assert_eq!(
+        (key_only.username.as_str(), key_only.password.as_str()),
+        ("me", ""),
+        "the profile's password never goes with another username"
+    );
 
     let mut empty = ssh("", "");
     store.fill_ssh(&mut empty).unwrap();
@@ -139,9 +141,9 @@ fn removing_a_profile_clears_it_and_its_vault_entry() {
     let cleanup = store.remove_ssh_profile(&id).unwrap().expect("its password was in the vault");
     assert!(store.ssh_profiles().is_empty());
     assert_eq!(store.active_ssh_profile(), "", "the active profile was removed");
-    assert!(vault.entries.lock_recover().contains_key(&vault_key(&id)));
+    assert!(vault.entries.lock().contains_key(&vault_key(&id)));
     cleanup.run();
-    assert!(vault.entries.lock_recover().is_empty());
+    assert!(vault.entries.lock().is_empty());
     assert!(store.remove_ssh_profile(&id).is_err());
     assert!(SettingsStore::with_vault(file, Arc::new(vault)).ssh_profiles().is_empty());
 }
@@ -154,7 +156,8 @@ fn a_settings_file_that_cannot_be_read_is_kept() {
     let mut store = SettingsStore::with_vault(file.clone(), Arc::new(MemoryVault::default()));
     assert!(store.ssh_profiles().is_empty());
     store.create_ssh_profile("Work", "deploy", "pw").unwrap();
-    let kept = fs::read_dir(file.parent().unwrap()).unwrap().flatten().filter(|e| e.file_name().to_string_lossy().contains(".unusable-")).count();
+    let kept =
+        fs::read_dir(file.parent().unwrap()).unwrap().flatten().filter(|e| e.file_name().to_string_lossy().contains(".unusable-")).count();
     assert_eq!(kept, 1, "the file that couldn't be read was moved aside, not overwritten");
 }
 
@@ -234,7 +237,12 @@ fn saved_queries_are_created_listed_and_removed() {
     let id = store.create_saved_query(" Orders by product ", "FROM KEY 'orders' AS o\nSELECT *", "").unwrap();
     assert_eq!(
         store.saved_query(&id),
-        Some(SavedQuery { id: id.clone(), name: "Orders by product".into(), text: "FROM KEY 'orders' AS o\nSELECT *".into(), connection_id: String::new() })
+        Some(SavedQuery {
+            id: id.clone(),
+            name: "Orders by product".into(),
+            text: "FROM KEY 'orders' AS o\nSELECT *".into(),
+            connection_id: String::new()
+        })
     );
     assert_eq!(store.saved_queries().len(), 1);
 

@@ -3,10 +3,9 @@
 
 use std::ops::Range;
 
-
-use super::{Located, QueryError};
 use super::ast::{DEFAULT_LIMIT, Join, MAX_LIMIT, Query, Select, Source, WhereCond, WhereOp};
 use super::lexer::{Tok, Token};
+use super::{Located, QueryError};
 
 const CLAUSES: [&str; 5] = ["from", "join", "where", "select", "limit"];
 /// The clauses a query may hold only one of (JOIN may come back).
@@ -245,7 +244,9 @@ impl<'a> Parser<'a> {
     /// After a clause, the next token must start another (or the statement must end).
     fn end_of_clause(&self) -> Result<(), Located> {
         match self.peek() {
-            Some(t) if !self.at_clause_end() => Err(Located::parse(QueryError::UnexpectedText(self.text_from(self.pos).to_string()), Some(t.span.clone()))),
+            Some(t) if !self.at_clause_end() => {
+                Err(Located::parse(QueryError::UnexpectedText(self.text_from(self.pos).to_string()), Some(t.span.clone())))
+            }
             _ => Ok(()),
         }
     }

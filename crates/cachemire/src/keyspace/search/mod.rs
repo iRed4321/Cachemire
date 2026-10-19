@@ -2,9 +2,8 @@
 //! Redis's MATCH reads it, shown in place of the browse listing.
 
 use super::index::Index;
-use super::{LeafKind, ScanContext, merge_children, nodes_from_children, selection, show_additions, with_model};
 use super::walk::show_footer;
-use cachemire_core::LockExt;
+use super::{LeafKind, ScanContext, merge_children, nodes_from_children, selection, show_additions, with_model};
 use cachemire_core::key_name::KeyName;
 
 /// The glob pattern for the search box: used as-is if it already has glob
@@ -97,7 +96,7 @@ pub(super) fn start_search(ctx: &ScanContext, text: String) {
         return;
     }
     let Some(window) = ctx.weak.upgrade() else { return };
-    let mut tree = ctx.tree.lock_recover();
+    let mut tree = ctx.tree.lock();
     let pattern = search_pattern(&text).into_bytes();
     let mut index = Index::default();
     let mut added = Vec::new();
@@ -120,7 +119,7 @@ pub(super) fn start_search(ctx: &ScanContext, text: String) {
 /// no search is shown.
 pub(super) fn exit_search(ctx: &ScanContext) {
     let Some(window) = ctx.weak.upgrade() else { return };
-    let mut tree = ctx.tree.lock_recover();
+    let mut tree = ctx.tree.lock();
     if tree.search.take().is_none() {
         return;
     }

@@ -204,8 +204,9 @@ pub fn in_release(fast: bool, stable: bool, as_version: Option<&str>, build: imp
 /// What a `release/<request>` branch asks for: a [`Part`], with `-stable` for `release --stable`.
 fn parse_request(request: &str) -> Result<(Part, bool)> {
     let (part, stable_now) = request.strip_suffix("-stable").map_or((request, false), |part| (part, true));
-    let part = <Part as clap::ValueEnum>::from_str(part, true)
-        .map_err(|_| format!("`{request}` is not a release request: beta, stable, fix, minor or major, the last three optionally followed by -stable"))?;
+    let part = <Part as clap::ValueEnum>::from_str(part, true).map_err(|_| {
+        format!("`{request}` is not a release request: beta, stable, fix, minor or major, the last three optionally followed by -stable")
+    })?;
     Ok((part, stable_now))
 }
 
@@ -250,7 +251,10 @@ fn confirm(question: &str) -> Result<bool> {
 fn name_changelog(root: &Path, version: &Version, yes: bool) -> Result<bool> {
     let branch = git(root, &["symbolic-ref", "--quiet", "--short", "HEAD"]).unwrap_or_default();
     if branch != MAIN {
-        return Err(format!("a stable release is made from {MAIN}, and HEAD is on {}: switch to {MAIN} first", if branch.is_empty() { "a detached commit" } else { &branch }));
+        return Err(format!(
+            "a stable release is made from {MAIN}, and HEAD is on {}: switch to {MAIN} first",
+            if branch.is_empty() { "a detached commit" } else { &branch }
+        ));
     }
     git(root, &["fetch", "--quiet", "origin", MAIN])?;
     if git(root, &["rev-list", "--count", &format!("HEAD..origin/{MAIN}")])? != "0" {
@@ -294,7 +298,8 @@ pub fn request_release(part: Part, stable_now: bool, yes: bool) -> Result<()> {
     git(&root, &["push", "--quiet", "origin", &format!("HEAD:refs/heads/{branch}")]).map_err(|e| {
         format!("{e}\nIf {branch} is already on origin, a release is under way, or one ended without removing it: wait, or remove it with `git push origin --delete {branch}`.")
     })?;
-    let runs = github_repo(&root).map_or_else(|| "the repository's Actions tab".to_string(), |repo| format!("https://github.com/{repo}/actions"));
+    let runs =
+        github_repo(&root).map_or_else(|| "the repository's Actions tab".to_string(), |repo| format!("https://github.com/{repo}/actions"));
     println!("Requested. The Release workflow tags and publishes v{version} once its tests and builds pass: {runs}");
     Ok(())
 }

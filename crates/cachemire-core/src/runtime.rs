@@ -19,8 +19,7 @@ pub fn spawn() -> Handle {
                 .enable_all()
                 .build()
                 .expect("failed to start the redis I/O runtime");
-            tx.send(rt.handle().clone())
-                .expect("main thread gone before the redis I/O runtime started");
+            tx.send(rt.handle().clone()).expect("main thread gone before the redis I/O runtime started");
             rt.block_on(std::future::pending::<()>());
         })
         .expect("failed to spawn the redis I/O thread");

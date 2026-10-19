@@ -4,9 +4,8 @@
 use rustc_hash::FxHashMap;
 use std::ops::Range;
 
-
-use super::{Located, QueryError};
 use super::lexer::{Tok, Token, tokenize};
+use super::{Located, QueryError};
 
 fn is_ident_char(c: char) -> bool {
     c.is_alphanumeric() || c == '_'

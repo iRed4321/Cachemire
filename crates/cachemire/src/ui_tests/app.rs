@@ -64,7 +64,7 @@ fn the_left_panel_switches_between_the_keyspace_and_the_saved_queries() {
     use crate::SidebarView;
     let state = test_state();
     {
-        let mut settings = state.settings.lock().unwrap();
+        let mut settings = state.settings.lock();
         settings.create_saved_query("Stale locks", "SELECT * FROM KEY 'lock:*'", "").unwrap();
         settings.create_saved_query("Today's orders", "SELECT * FROM KEY 'orders:*'", "").unwrap();
         settings.create_saved_query("Users by country", "SELECT * FROM KEY 'user:*'", "").unwrap();
@@ -185,7 +185,10 @@ fn a_search_tab_shows_its_box_and_its_hits() {
 
     // the find highlight (#ffe066) fills a box behind each match
     // the whole row is washed blue under the pointer, over its text too (bg-selected-soft #22344d)
-    let wash = { let (r, g, b) = (0x22_u16, 0x34_u16, 0x4d_u16); ((r >> 3) << 11) | ((g >> 2) << 5) | (b >> 3) };
+    let wash = {
+        let (r, g, b) = (0x22_u16, 0x34_u16, 0x4d_u16);
+        ((r >> 3) << 11) | ((g >> 2) << 5) | (b >> 3)
+    };
     let count = |h: &Harness| h.buffer.iter().filter(|p| p.0 == wash).count();
     // pointer away from the rows: the baseline has no wash
     h.window.window().dispatch_event(WindowEvent::PointerMoved { position: LogicalPosition::new(5.0, 5.0) });
@@ -371,7 +374,10 @@ fn a_query_tab_shows_its_box_and_its_result() {
     h.settle();
 
     // the result is drawn as the key panel's table, one row per result row
-    assert!(h.window.global::<KeyPanel>().get_table_columns().row_count() > 1 && h.window.global::<KeyPanel>().get_table_rows().row_count() == 3);
+    assert!(
+        h.window.global::<KeyPanel>().get_table_columns().row_count() > 1
+            && h.window.global::<KeyPanel>().get_table_rows().row_count() == 3
+    );
 }
 
 /// Saving a query from its tab's header puts it in the sidebar's Search/Query

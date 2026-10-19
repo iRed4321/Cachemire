@@ -1,10 +1,9 @@
 //! A saved connection to a Redis server and how one is reached: its settings, the
 //! store that keeps them, the client and pool, and the SSH tunnel in between.
 
-use crate::LockExt;
 use crate::error::{Error, Invalid, NotFound, Timeout};
 use crate::secret_vault::staged;
-use crate::state::{resolve_connection, AppState};
+use crate::state::{AppState, resolve_connection};
 use std::sync::Arc;
 use std::time::Duration;
 
@@ -76,9 +75,7 @@ impl ConnectionItem {
     /// connection's fields, which fill in what it leaves out.
     pub fn endpoint(&self) -> Result<Endpoint, Error> {
         let non_empty = |value: String| if value.is_empty() { None } else { Some(value) };
-        let parts = url::parse(&self.connection_url)
-            .filter(|parts| !parts.host.is_empty())
-            .ok_or(Invalid::UnreadableUrl)?;
+        let parts = url::parse(&self.connection_url).filter(|parts| !parts.host.is_empty()).ok_or(Invalid::UnreadableUrl)?;
         Ok(Endpoint {
             host: parts.host,
             port: parts.port.filter(|p| *p > 0).unwrap_or(6379),
@@ -129,27 +126,24 @@ pub async fn connect_connection(state: &Arc<AppState>, connection_id: &str) -> R
     // the saved passwords are only fetched from the system keyring now, off
     // the async workers and outside the store's lock: it can wait on the user
     let unlocking = (state.clone(), connection_id.to_string());
-    tokio::task::spawn_blocking(move || staged(&unlocking.0.connections, |store| store.unlock_secrets(&unlocking.1)))
-        .await??;
+    tokio::task::spawn_blocking(move || staged(&unlocking.0.connections, |store| store.unlock_secrets(&unlocking.1))).await??;
 
     // what else comes from the keyring: a cloud connection's tunnel secrets, and the active
     // SSH profile's password for a tunnel without a username of its own
     let (cloud_key, uses_profile) = {
-        let store = state.connections.lock_recover();
+        let store = state.connections.lock();
         let connection = store.get(connection_id).ok_or(NotFound::Connection)?;
         (store.cloud_key(connection_id), connection.ssh.is_some_and(|ssh| ssh.username.is_empty()))
     };
 
     if let Some(key) = cloud_key {
         let state = state.clone();
-        tokio::task::spawn_blocking(move || staged(&state.settings, |settings| settings.unlock_cloud(&key)))
-            .await??;
+        tokio::task::spawn_blocking(move || staged(&state.settings, |settings| settings.unlock_cloud(&key))).await??;
     }
 
     if uses_profile {
         let state = state.clone();
-        tokio::task::spawn_blocking(move || staged(&state.settings, |settings| settings.unlock_active_ssh_profile()))
-            .await??;
+        tokio::task::spawn_blocking(move || staged(&state.settings, |settings| settings.unlock_active_ssh_profile())).await??;
     }
 
     let connection = resolve_connection(state, Some(connection_id))?;
@@ -172,11 +166,10 @@ pub async fn connect_connection(state: &Arc<AppState>, connection_id: &str) -> R
 pub async fn test_connection(state: &Arc<AppState>, mut connection: ConnectionItem) -> Result<(), Error> {
     if connection.ssh.as_ref().is_some_and(|ssh| ssh.username.is_empty()) {
         let profile_state = state.clone();
-        tokio::task::spawn_blocking(move || staged(&profile_state.settings, |settings| settings.unlock_active_ssh_profile()))
-            .await??;
+        tokio::task::spawn_blocking(move || staged(&profile_state.settings, |settings| settings.unlock_active_ssh_profile())).await??;
     }
     if let Some(ssh) = connection.ssh.as_mut() {
-        state.settings.lock_recover().fill_ssh(ssh)?;
+        state.settings.lock().fill_ssh(ssh)?;
     }
     tokio::time::timeout(Duration::from_secs(15), state.redis_connections.test(&connection))
         .await

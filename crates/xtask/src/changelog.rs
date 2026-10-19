@@ -73,13 +73,16 @@ pub fn for_stable(version: &Version) -> Result<StableChangelog> {
     let name = version.to_string();
     let text = match (find(&current, &name), find(&current, UNRELEASED).filter(|(_, body)| !body.is_empty())) {
         (Some(_), Some(_)) => {
-            return Err(format!("{CHANGELOG} has both a `## {UNRELEASED}` and a `## {name}` section (from an earlier try of {name}): move the unreleased lines into {name}"));
+            return Err(format!(
+                "{CHANGELOG} has both a `## {UNRELEASED}` and a `## {name}` section (from an earlier try of {name}): move the unreleased lines into {name}"
+            ));
         }
         (Some(_), None) => None,
         (None, Some((line, _))) => Some(renamed(&current, line, &format!("## {name} - {}", today()))),
         (None, None) => return Err(format!("{CHANGELOG} has nothing under `## {UNRELEASED}`: write what {name} changes there first")),
     };
-    let notes = section(text.as_deref().unwrap_or(&current), &name).ok_or_else(|| format!("the `## {name}` section of {CHANGELOG} is empty"))?;
+    let notes =
+        section(text.as_deref().unwrap_or(&current), &name).ok_or_else(|| format!("the `## {name}` section of {CHANGELOG} is empty"))?;
     Ok(StableChangelog { notes, text })
 }
 

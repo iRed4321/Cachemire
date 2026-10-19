@@ -1,14 +1,14 @@
-use crate::LockExt;
+use parking_lot::Mutex;
 use std::path::{Path, PathBuf};
-use std::sync::{LazyLock, Mutex};
+use std::sync::LazyLock;
 use std::sync::atomic::AtomicU64;
 
+use crate::connection::ConnectionItem;
 use crate::connection::pool::ConnectionCache;
 use crate::connection::store::ConnectionStore;
 use crate::error::{Error, NotFound};
 use crate::redisql::history::HistoryStore;
 use crate::settings::SettingsStore;
-use crate::connection::ConnectionItem;
 
 pub struct AppState {
     pub connections: Mutex<ConnectionStore>,
@@ -98,23 +98,18 @@ impl AppState {
 /// Resolves an explicit connection id if provided, otherwise falls back to
 /// whichever connection is marked active. An SSH tunnel with no username of
 /// its own comes back completed with the active SSH profile.
-pub fn resolve_connection(
-    state: &AppState,
-    connection_id: Option<&str>,
-) -> Result<ConnectionItem, Error> {
+pub fn resolve_connection(state: &AppState, connection_id: Option<&str>) -> Result<ConnectionItem, Error> {
     let (mut connection, cloud_key) = {
-        let store = state.connections.lock_recover();
+        let store = state.connections.lock();
         let connection = match connection_id {
-            Some(id) if !id.trim().is_empty() => store
-                .get(id)
-                .ok_or_else(|| NotFound::Connection.into()),
+            Some(id) if !id.trim().is_empty() => store.get(id).ok_or_else(|| NotFound::Connection.into()),
             _ => store.get_active(),
         }?;
         let cloud_key = store.cloud_key(&connection.id);
         (connection, cloud_key)
     };
     if let Some(ssh) = connection.ssh.as_mut() {
-        let settings = state.settings.lock_recover();
+        let settings = state.settings.lock();
         if let Some(key) = cloud_key {
             settings.fill_cloud_secrets(&key, ssh);
         }

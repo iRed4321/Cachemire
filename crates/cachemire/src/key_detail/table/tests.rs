@@ -1,7 +1,7 @@
-use super::*;
 use super::super::field::Fields;
 use super::super::test_support::{field, records_field};
 use super::super::value_list::{filter_fields, parse_filter};
+use super::*;
 use serde_json::json;
 
 fn column_titles(fields: &[Arc<Field>]) -> Vec<String> {
@@ -31,10 +31,7 @@ fn only_the_first_ten_objects_decide_the_columns() {
 
 #[test]
 fn a_field_holding_an_array_contributes_a_row_per_item() {
-    let fields = vec![
-        field("f1", Some(json!([{"a": 1, "b": "x"}, {"a": 2, "b": "y"}]))),
-        field("f2", Some(json!([{"a": 3, "b": "z"}]))),
-    ];
+    let fields = vec![field("f1", Some(json!([{"a": 1, "b": "x"}, {"a": 2, "b": "y"}]))), field("f2", Some(json!([{"a": 3, "b": "z"}])))];
     let table = build_table(&fields, &[], false);
     assert_eq!(table.columns, vec!["Field", "a", "b"]);
     assert_eq!(table.rows.iter().map(|(name, _)| name.as_str()).collect::<Vec<_>>(), vec!["f1", "f1", "f2"]);
@@ -72,7 +69,11 @@ fn value_and_a_trailing_star_lay_the_values_own_properties_out_as_columns() {
         assert_eq!(table_columns_of(query), (top_level.iter().map(|c| c.to_string()).collect(), 4), "{query}: text fields stay");
     }
     for query in ["*", "value.*"] {
-        assert_eq!(table_columns_of(query), (top_level.iter().map(|c| c.to_string()).collect(), 3), "{query}: plain text has no properties");
+        assert_eq!(
+            table_columns_of(query),
+            (top_level.iter().map(|c| c.to_string()).collect(), 3),
+            "{query}: plain text has no properties"
+        );
     }
 
     // `value.` is optional in front of a path, and `.*` on an array lists its items
@@ -163,7 +164,8 @@ fn selected_table_rows_become_one_json_array_in_table_order() {
     assert_eq!(selected_rows_json(&records, &[99]), json!([]), "an index past the rows is ignored");
 
     // rows that are fields: a JSON field is its value, a text field its text
-    let with_text: Fields = fields.iter().take(3).cloned().chain([Arc::new(Field::new("text".into(), "plain text".into(), None))]).collect();
+    let with_text: Fields =
+        fields.iter().take(3).cloned().chain([Arc::new(Field::new("text".into(), "plain text".into(), None))]).collect();
     let picked = selected_rows_json(&with_text, &[1, 3]);
     assert_eq!(picked, json!([fields[1].json.clone().unwrap(), "plain text"]));
 }

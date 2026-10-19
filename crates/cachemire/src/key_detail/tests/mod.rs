@@ -2,18 +2,18 @@
 //! and [`values`]; with the helpers that put a key's rows on screen, which the app's own
 //! UI tests (`crate::ui_tests`) use too.
 
+use super::scroll::arm_all_scroll;
+use super::test_support::field;
+use super::value_list::build_all_values_table;
+use super::*;
+use crate::SearchScope;
+use crate::ui_tests::*;
 use serde_json::json;
+use slint::LogicalPosition;
 use slint::platform::{PointerEventButton, WindowEvent};
 use slint::private_unstable_api::re_exports::StyledText;
-use slint::LogicalPosition;
 use std::cell::RefCell;
 use std::rc::Rc;
-use crate::SearchScope;
-use super::*;
-use super::scroll::arm_all_scroll;
-use super::value_list::build_all_values_table;
-use super::test_support::field;
-use crate::ui_tests::*;
 
 mod header;
 mod table;
@@ -85,7 +85,11 @@ fn show_values(window: &MainWindow, fields: &Fields, pos: Option<ScrollPos>, exp
 fn wheel_down_to(h: &mut Harness, position: impl Fn(&MainWindow) -> f32) {
     h.window.window().dispatch_event(WindowEvent::PointerMoved { position: LogicalPosition::new(700.0, 400.0) });
     for step in 0..400 {
-        h.window.window().dispatch_event(WindowEvent::PointerScrolled { position: LogicalPosition::new(700.0, 400.0), delta_x: 0.0, delta_y: -120.0 });
+        h.window.window().dispatch_event(WindowEvent::PointerScrolled {
+            position: LogicalPosition::new(700.0, 400.0),
+            delta_x: 0.0,
+            delta_y: -120.0,
+        });
         if step % 5 == 0 {
             std::thread::sleep(std::time::Duration::from_millis(20));
             h.frame();

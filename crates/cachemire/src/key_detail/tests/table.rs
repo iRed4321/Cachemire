@@ -22,14 +22,22 @@ fn table_checkbox_selection_ticks_unticks_and_header_clears_all() {
     // header is under the tab bar and the key header, the first row's checkbox
     // just below it
     h.click(358.0, TABLE_FIRST_ROW_Y);
-    assert_eq!((h.window.global::<KeyPanel>().get_table_selected_count(), ticked(&h.window)), (1, 1), "a click on the first row's cell ticks it");
+    assert_eq!(
+        (h.window.global::<KeyPanel>().get_table_selected_count(), ticked(&h.window)),
+        (1, 1),
+        "a click on the first row's cell ticks it"
+    );
     assert_eq!(h.window.global::<KeyPanel>().get_table_selected().row_data(0), Some(true));
     h.click(358.0, TABLE_FIRST_ROW_Y);
     assert_eq!((h.window.global::<KeyPanel>().get_table_selected_count(), ticked(&h.window)), (0, 0), "and a second click unticks it");
     h.click(358.0, TABLE_FIRST_ROW_Y);
     h.frame();
     h.click(358.0, TABLE_HEADER_Y);
-    assert_eq!((h.window.global::<KeyPanel>().get_table_selected_count(), ticked(&h.window)), (0, 0), "the header control clears every tick");
+    assert_eq!(
+        (h.window.global::<KeyPanel>().get_table_selected_count(), ticked(&h.window)),
+        (0, 0),
+        "the header control clears every tick"
+    );
     h.click(358.0, TABLE_HEADER_Y);
     assert_eq!(h.window.global::<KeyPanel>().get_table_selected_count(), 0, "with nothing ticked there is no select-all");
 }
@@ -166,16 +174,24 @@ fn dragging_the_column_edge_resizes_only_that_column() {
     let before: Vec<f32> = h.window.global::<KeyPanel>().get_table_col_widths().iter().collect();
     let (y, grab_x) = (TABLE_HEADER_Y, 331.0 + 10.0 + 34.0 + before[0] - 4.0);
     h.window.window().dispatch_event(WindowEvent::PointerMoved { position: LogicalPosition::new(grab_x, y) });
-    h.window.window().dispatch_event(WindowEvent::PointerPressed { position: LogicalPosition::new(grab_x, y), button: PointerEventButton::Left });
+    h.window
+        .window()
+        .dispatch_event(WindowEvent::PointerPressed { position: LogicalPosition::new(grab_x, y), button: PointerEventButton::Left });
     for step in 1..=40 {
         h.window.window().dispatch_event(WindowEvent::PointerMoved { position: LogicalPosition::new(grab_x + step as f32, y) });
     }
-    h.window.window().dispatch_event(WindowEvent::PointerReleased { position: LogicalPosition::new(grab_x + 40.0, y), button: PointerEventButton::Left });
+    h.window.window().dispatch_event(WindowEvent::PointerReleased {
+        position: LogicalPosition::new(grab_x + 40.0, y),
+        button: PointerEventButton::Left,
+    });
     h.frame();
     let after: Vec<f32> = h.window.global::<KeyPanel>().get_table_col_widths().iter().collect();
     assert!((after[0] - before[0] - 40.0).abs() < 2.0, "the Field column should be ~40px wider: {before:?} -> {after:?}");
     assert_eq!(before[1..], after[1..], "only the dragged column changes");
-    assert!((h.window.global::<KeyPanel>().get_table_total_w() - after.iter().sum::<f32>()).abs() < 0.5, "total width must follow the columns");
+    assert!(
+        (h.window.global::<KeyPanel>().get_table_total_w() - after.iter().sum::<f32>()).abs() < 0.5,
+        "total width must follow the columns"
+    );
 }
 
 /// The table jumps to a position armed for content that arrives next (a tab

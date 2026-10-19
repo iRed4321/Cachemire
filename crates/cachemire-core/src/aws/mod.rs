@@ -2,24 +2,24 @@
 //! (browser authorization for SSO, the SDK's chain otherwise) and the ElastiCache
 //! Redis groups.
 
+use parking_lot::Mutex;
 use rustc_hash::{FxHashMap, FxHashSet};
 use std::path::PathBuf;
-use std::sync::{Mutex, OnceLock};
+use std::sync::OnceLock;
 use std::time::{Duration, Instant, UNIX_EPOCH};
 
-use aws_runtime::env_config::file::EnvConfigFiles;
 use aws_config::{BehaviorVersion, Region, SdkConfig};
 use aws_credential_types::Credentials;
 use aws_credential_types::provider::ProvideCredentials;
-use aws_smithy_http_client::tls;
+use aws_runtime::env_config::file::EnvConfigFiles;
 use aws_sdk_sso::error::ProvideErrorMetadata;
+use aws_smithy_http_client::tls;
 use aws_smithy_runtime_api::client::http::SharedHttpClient;
 use aws_types::os_shim_internal::{Env, Fs};
 
-use crate::LockExt;
+use crate::connection::ConnectionItem;
 use crate::connection::store::build_connection_string;
 use crate::error::{Error, ErrorKind};
-use crate::connection::ConnectionItem;
 
 /// Prefix of a cloud connection's id: `aws:<profile>:<name>`.
 pub const ID_PREFIX: &str = "aws:";
@@ -135,7 +135,12 @@ fn describe_chain<E: std::error::Error>(error: &E) -> String {
 
 /// A client-side config with no credentials, for the calls that need none.
 async fn anonymous_config(region: &str) -> SdkConfig {
-    aws_config::defaults(BehaviorVersion::latest()).no_credentials().region(Region::new(region.to_string())).http_client(http_client()).load().await
+    aws_config::defaults(BehaviorVersion::latest())
+        .no_credentials()
+        .region(Region::new(region.to_string()))
+        .http_client(http_client())
+        .load()
+        .await
 }
 
 struct SsoToken {
@@ -153,13 +158,14 @@ fn tokens() -> &'static Mutex<FxHashMap<String, SsoToken>> {
 /// the browser (OAuth device authorization, the flow `aws sso login` runs).
 async fn sso_access_token(sso: &SsoSettings) -> Result<String, Error> {
     let key = format!("{}|{}", sso.start_url, sso.region);
-    if let Some(token) = tokens().lock_recover().get(&key).filter(|t| t.expires > Instant::now() + Duration::from_secs(60)) {
+    if let Some(token) = tokens().lock().get(&key).filter(|t| t.expires > Instant::now() + Duration::from_secs(60)) {
         return Ok(token.access_token.clone());
     }
 
     let client = aws_sdk_ssooidc::Client::new(&anonymous_config(&sso.region).await);
     let registration = client.register_client().client_name("cachemire").client_type("public").send().await.map_err(describe)?;
-    let (client_id, client_secret) = (incomplete(registration.client_id())?.to_string(), incomplete(registration.client_secret())?.to_string());
+    let (client_id, client_secret) =
+        (incomplete(registration.client_id())?.to_string(), incomplete(registration.client_secret())?.to_string());
     let authorization = client
         .start_device_authorization()
         .client_id(&client_id)
@@ -186,9 +192,12 @@ async fn sso_access_token(sso: &SsoSettings) -> Result<String, Error> {
             .await;
         match created {
             Ok(token) => {
-                let held = SsoToken { access_token: incomplete(token.access_token())?.to_string(), expires: Instant::now() + Duration::from_secs(token.expires_in().max(0) as u64) };
+                let held = SsoToken {
+                    access_token: incomplete(token.access_token())?.to_string(),
+                    expires: Instant::now() + Duration::from_secs(token.expires_in().max(0) as u64),
+                };
                 let access_token = held.access_token.clone();
-                tokens().lock_recover().insert(key, held);
+                tokens().lock().insert(key, held);
                 return Ok(access_token);
             }
             Err(e) => match e.as_service_error() {
@@ -243,7 +252,13 @@ async fn sign_in(profile: &Profile) -> Result<SdkConfig, Error> {
         })?;
     let role = granted.role_credentials().ok_or(AwsError::NoCredentials)?;
     let expires = UNIX_EPOCH + Duration::from_millis(role.expiration().max(0) as u64);
-    let credentials = Credentials::new(incomplete(role.access_key_id())?, incomplete(role.secret_access_key())?, role.session_token().map(str::to_string), Some(expires), "cachemire-sso");
+    let credentials = Credentials::new(
+        incomplete(role.access_key_id())?,
+        incomplete(role.secret_access_key())?,
+        role.session_token().map(str::to_string),
+        Some(expires),
+        "cachemire-sso",
+    );
 
     let region = profile.region.clone().unwrap_or_else(|| sso.region.clone());
     Ok(aws_config::defaults(BehaviorVersion::latest())
@@ -291,7 +306,8 @@ pub struct Listing {
 /// The ElastiCache Redis groups and standalone nodes that `profile` sees, as
 /// connections. Memcached (and Valkey) clusters are left out.
 pub async fn redis_connections(profile_name: &str) -> Result<Listing, Error> {
-    let profile = profiles().await.into_iter().find(|p| p.name == profile_name).ok_or_else(|| AwsError::ProfileNotFound(profile_name.to_string()))?;
+    let profile =
+        profiles().await.into_iter().find(|p| p.name == profile_name).ok_or_else(|| AwsError::ProfileNotFound(profile_name.to_string()))?;
     let config = sign_in(&profile).await?;
     if config.region().is_none() {
         return Err(AwsError::NoRegion(profile_name.to_string()).into());
@@ -335,7 +351,11 @@ pub async fn redis_connections(profile_name: &str) -> Result<Listing, Error> {
                 }
                 None => {
                     let endpoint = cluster.cache_nodes().first().and_then(|n| n.endpoint());
-                    items.extend(item(cluster.cache_cluster_id().unwrap_or_default(), endpoint, cluster.transit_encryption_enabled().unwrap_or(false)));
+                    items.extend(item(
+                        cluster.cache_cluster_id().unwrap_or_default(),
+                        endpoint,
+                        cluster.transit_encryption_enabled().unwrap_or(false),
+                    ));
                 }
             }
         }

@@ -3,6 +3,8 @@
 - Never add a test unless explicitly asked to. Do fix any test that fails
   because of a change you made — run `cargo test` after every change and
   resolve failures before finishing.
+- Run `cargo fmt --all` after changing Rust code; CI fails on unformatted code
+  (`cargo fmt --all --check`).
 - Never launch the app or take a screenshot to check your own work. No UI
   verification of any kind beyond the tests — the user checks the UI
   themselves and will report back if something's off.

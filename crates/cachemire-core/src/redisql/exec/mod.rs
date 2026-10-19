@@ -5,8 +5,8 @@ use rustc_hash::FxHashMap;
 
 use serde_json::{Map, Value};
 
-use super::{Located, QueryError};
 use super::ast::{Query, Select, WhereOp};
+use super::{Located, QueryError};
 use crate::error::Error;
 use crate::key_name::KeyName;
 use crate::redis_value_type::RedisValueType;
@@ -88,7 +88,9 @@ fn string_records(key: &str, raw: &str) -> Result<Vec<Map<String, Value>>, Error
     }
     match serde_json::from_str::<Value>(raw) {
         Ok(Value::Object(map)) => Ok(vec![map]),
-        Ok(Value::Array(items)) => Ok(items.into_iter().filter_map(|item| if let Value::Object(map) = item { Some(map) } else { None }).collect()),
+        Ok(Value::Array(items)) => {
+            Ok(items.into_iter().filter_map(|item| if let Value::Object(map) = item { Some(map) } else { None }).collect())
+        }
         Ok(other) => Err(QueryError::NonObjectValue { key: key.to_string(), kind: json_kind(&other) }.into()),
         Err(e) => Err(QueryError::ValueJson { key: key.to_string(), source: e }.into()),
     }
@@ -182,7 +184,8 @@ pub async fn execute(session: &mut Session, query: &Query) -> Result<QueryOutput
 /// Joins, filters and shapes the rows of `datasets` (each key's, by lowercased alias)
 /// as `query` says: the rows under its limit, and whether more matched.
 fn run(query: &Query, datasets: &FxHashMap<String, Vec<Map<String, Value>>>) -> (Vec<Map<String, Value>>, bool) {
-    let mut rows: Vec<Row> = datasets[&query.base.alias.to_lowercase()].iter().map(|record| vec![(query.base.alias.clone(), record.clone())]).collect();
+    let mut rows: Vec<Row> =
+        datasets[&query.base.alias.to_lowercase()].iter().map(|record| vec![(query.base.alias.clone(), record.clone())]).collect();
 
     for join in &query.joins {
         let right = &datasets[&join.alias.to_lowercase()];
@@ -237,13 +240,19 @@ pub async fn field_names(state: &AppState, connection_id: Option<&str>, key: &st
     let records: Vec<Map<String, Value>> = match session.key_type(&name).await? {
         RedisValueType::Hash => {
             let (_, fields) = session.hash_scan(&name, 0, 100).await?;
-            fields.iter().filter_map(|(_, raw)| serde_json::from_str::<Value>(raw).ok()).filter_map(|value| if let Value::Object(map) = value { Some(map) } else { None }).collect()
+            fields
+                .iter()
+                .filter_map(|(_, raw)| serde_json::from_str::<Value>(raw).ok())
+                .filter_map(|value| if let Value::Object(map) = value { Some(map) } else { None })
+                .collect()
         }
         RedisValueType::String => {
             let raw = session.get(&name).await?.unwrap_or_default();
             match serde_json::from_str::<Value>(&raw) {
                 Ok(Value::Object(map)) => vec![map],
-                Ok(Value::Array(items)) => items.into_iter().filter_map(|item| if let Value::Object(map) = item { Some(map) } else { None }).take(100).collect(),
+                Ok(Value::Array(items)) => {
+                    items.into_iter().filter_map(|item| if let Value::Object(map) = item { Some(map) } else { None }).take(100).collect()
+                }
                 _ => Vec::new(),
             }
         }

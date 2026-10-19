@@ -12,9 +12,8 @@ use slint::{ComponentHandle, Model};
 
 use super::{DELIMITER, Index, ScanContext, Tree, position_of, with_model};
 use crate::app::App;
-use cachemire_core::LockExt;
-use cachemire_core::export_files::{self, Plan};
 use crate::{KeyTree, MainWindow};
+use cachemire_core::export_files::{self, Plan};
 
 /// What is ticked: lone keys, and folders by prefix (`""` = the whole keyspace), the two never
 /// overlapping. `full` and `partial` are the folders ticked in all or in part of what a search shows.
@@ -59,7 +58,9 @@ fn keys_under(index: &Index, prefix: &str) -> usize {
 impl Selection {
     fn covered(&self, id: &str) -> bool {
         !self.folders.is_empty()
-            && (self.folders.contains("") || (id.ends_with(DELIMITER) && self.folders.contains(id)) || ancestors(id).any(|a| self.folders.contains(a)))
+            && (self.folders.contains("")
+                || (id.ends_with(DELIMITER) && self.folders.contains(id))
+                || ancestors(id).any(|a| self.folders.contains(a)))
     }
 
     fn key_ticked(&self, id: &str) -> bool {
@@ -147,7 +148,8 @@ impl Selection {
         loop {
             let Some(level) = index.levels.get(&parent) else { return };
             let child = |label: &str| format!("{parent}{label}");
-            if !level.folders.iter().all(|l| self.folders.contains(&child(l))) || !level.keys.keys().all(|l| self.keys.contains(&child(l))) {
+            if !level.folders.iter().all(|l| self.folders.contains(&child(l))) || !level.keys.keys().all(|l| self.keys.contains(&child(l)))
+            {
                 return;
             }
             for label in &level.folders {
@@ -167,7 +169,8 @@ impl Selection {
     /// Unticks `target` (a key or a folder) out of the folder ticked above it, by ticking
     /// everything else of that folder: its other children, down the path to `target`.
     fn split(&mut self, target: &str, index: &Index) {
-        let covering = if self.folders.contains("") { "" } else { ancestors(target).find(|a| self.folders.contains(*a)).unwrap_or("") }.to_string();
+        let covering =
+            if self.folders.contains("") { "" } else { ancestors(target).find(|a| self.folders.contains(*a)).unwrap_or("") }.to_string();
         self.folders.remove(&covering);
         let mut path = vec![covering.as_str()];
         path.extend(ancestors(target).filter(|a| a.len() > covering.len()));
@@ -279,7 +282,7 @@ pub(super) fn refresh(window: &MainWindow, tree: &mut Tree) {
 
 /// Forgets the selection and leaves export mode.
 pub(super) fn reset(ctx: &ScanContext) {
-    ctx.tree.lock_recover().export = Selection::default();
+    ctx.tree.lock().export = Selection::default();
     if let Some(window) = ctx.weak.upgrade() {
         window.global::<KeyTree>().set_export_mode(false);
         window.global::<KeyTree>().set_export_count(0);
@@ -289,7 +292,7 @@ pub(super) fn reset(ctx: &ScanContext) {
 fn with_tree(app: &App, f: impl FnOnce(&MainWindow, &mut Tree)) {
     let ctx = &app.keyspace.0;
     let Some(window) = ctx.weak.upgrade() else { return };
-    f(&window, &mut ctx.tree.lock_recover());
+    f(&window, &mut ctx.tree.lock());
 }
 
 fn tick(tree: &mut Tree, id: &str, on: bool) {
@@ -303,7 +306,7 @@ fn start_selection(app: &App) {
     let Some(window) = ctx.weak.upgrade() else { return };
     let group = window.global::<KeyTree>().get_export_group();
     let plan = {
-        let tree = ctx.tree.lock_recover();
+        let tree = ctx.tree.lock();
         tree.export.plan(&tree.index, group)
     };
     start(ctx, plan);
@@ -315,7 +318,7 @@ fn start_row(app: &App, id: String) {
     let Some(window) = ctx.weak.upgrade() else { return };
     let group = window.global::<KeyTree>().get_export_group();
     let plan = {
-        let tree = ctx.tree.lock_recover();
+        let tree = ctx.tree.lock();
         if id.ends_with(DELIMITER) {
             let mut keys = Vec::new();
             collect_keys(tree.shown(), &id, &mut keys);
@@ -336,7 +339,7 @@ fn start(ctx: &ScanContext, plan: Plan) {
     if total == 0 || global.get_export_busy() {
         return;
     }
-    let connection_id = match ctx.state.connections.lock_recover().get_active() {
+    let connection_id = match ctx.state.connections.lock().get_active() {
         Ok(connection) => connection.id,
         Err(e) => {
             crate::toast::show(&window, &t!("Export failed: %{error}", error = e.localized()));
@@ -364,7 +367,9 @@ fn start(ctx: &ScanContext, plan: Plan) {
             last = Instant::now();
             let weak = progress_weak.clone();
             let _ = weak.upgrade_in_event_loop(move |window| {
-                window.global::<KeyTree>().set_export_progress(t!("Exporting %{done} of %{total}...", done = done, total = total).as_ref().into());
+                window
+                    .global::<KeyTree>()
+                    .set_export_progress(t!("Exporting %{done} of %{total}...", done = done, total = total).as_ref().into());
             });
         })
         .await;

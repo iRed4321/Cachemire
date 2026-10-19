@@ -220,12 +220,8 @@ _version: 2
   fr: "%{shown} lignes affichées (davantage correspondaient ; augmentez LIMIT pour les voir)"
 "The query is empty.":
   fr: "La requête est vide."
-"Expected a quoted value (single or double quotes).":
-  fr: "Une valeur entre guillemets était attendue (simples ou doubles)."
 "Unterminated quote: %{text}":
   fr: "Guillemet non refermé : %{text}"
-"Expected a name here: %{text}":
-  fr: "Un nom était attendu ici : %{text}"
 "Unexpected text: %{text}":
   fr: "Texte inattendu : %{text}"
 "IN needs a list in [] or (): %{text}":
@@ -242,14 +238,10 @@ _version: 2
   fr: "Le ON d'un JOIN doit relier deux alias différents."
 "The ON clause must name the JOIN's own alias (%{alias}).":
   fr: "La clause ON doit nommer l'alias du JOIN lui-même (%{alias})."
-"Invalid WHERE clause.":
-  fr: "Clause WHERE invalide."
 "Invalid WHERE condition: %{condition}":
   fr: "Condition WHERE invalide : %{condition}"
 "Invalid SELECT clause.":
   fr: "Clause SELECT invalide."
-"Invalid LIMIT clause.":
-  fr: "Clause LIMIT invalide."
 "LIMIT must be a whole number.":
   fr: "LIMIT doit être un nombre entier."
 "Missing FROM clause.":

@@ -1,19 +1,19 @@
-use crate::LockExt;
+use parking_lot::Mutex;
 use rustc_hash::FxHashMap;
 use std::path::{Path, PathBuf};
+use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
-use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
 use redis::aio::ConnectionManager;
 use tokio::sync::OnceCell;
 use tokio::task::JoinSet;
 
-use crate::error::Error;
 use crate::connection::ConnectionItem;
 use crate::connection::client::{create_connection, target_of};
-use crate::session::{cluster_enabled, ping, Session};
 use crate::connection::ssh_tunnel::SshTunnel;
+use crate::error::Error;
+use crate::session::{Session, cluster_enabled, ping};
 
 /// Physical connections kept per saved connection id. Redis serves one
 /// connection's commands strictly in order, so a single shared connection
@@ -93,7 +93,7 @@ impl ConnectionCache {
 
     /// The connection's pool, opened on first use (see `Session::open`).
     pub(crate) async fn pool(&self, connection: &ConnectionItem) -> Result<Arc<ConnectionPool>, Error> {
-        let cell = self.entries.lock_recover().entry(connection.id.clone()).or_default().clone();
+        let cell = self.entries.lock().entry(connection.id.clone()).or_default().clone();
         let pool = cell.get_or_try_init(|| async { ConnectionPool::open(connection, &self.known_hosts).await.map(Arc::new) }).await?;
         Ok(pool.clone())
     }
@@ -101,13 +101,13 @@ impl ConnectionCache {
     /// Whether a pool is already open for this connection id, i.e. it was
     /// successfully connected to during this session. Never opens one.
     pub fn is_connected(&self, connection_id: &str) -> bool {
-        self.entries.lock_recover().get(connection_id).is_some_and(|cell| cell.initialized())
+        self.entries.lock().get(connection_id).is_some_and(|cell| cell.initialized())
     }
 
     /// Whether every connection of the id's open pool answers a PING within
     /// `timeout`; false when no pool is open.
     pub async fn responds(&self, connection_id: &str, timeout: Duration) -> bool {
-        let cell = self.entries.lock_recover().get(connection_id).cloned();
+        let cell = self.entries.lock().get(connection_id).cloned();
         let Some(connections) = cell.as_ref().and_then(|cell| cell.get()).map(|pool| pool.connections.clone()) else {
             return false;
         };
@@ -130,6 +130,6 @@ impl ConnectionCache {
     }
 
     pub fn invalidate(&self, connection_id: &str) {
-        self.entries.lock_recover().remove(connection_id);
+        self.entries.lock().remove(connection_id);
     }
 }

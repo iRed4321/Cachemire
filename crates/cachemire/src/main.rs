@@ -2,7 +2,6 @@
 // GUI; debug builds keep it so the log on stderr stays visible.
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
-use cachemire_core::LockExt;
 use rust_i18n::t;
 use std::sync::Arc;
 use std::sync::atomic::Ordering;
@@ -14,12 +13,12 @@ rust_i18n::i18n!("../../resources/lang", fallback = "en");
 
 mod app;
 mod cloud;
-mod i18n;
 mod connections;
 mod error;
-mod logging;
+mod i18n;
 mod key_detail;
 mod keyspace;
+mod logging;
 mod redisql;
 mod search;
 mod server_stats;
@@ -35,8 +34,8 @@ mod value_actions;
 mod window_state;
 
 use cachemire_core::error::{ErrorKind, Timeout};
-use error::Localize;
 use cachemire_core::state::AppState;
+use error::Localize;
 
 slint::include_modules!();
 
@@ -53,31 +52,21 @@ const CONNECT_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(10);
 /// Connects to a saved connection by id off the UI thread and shows the outcome in
 /// the title bar; `announce` also raises `connection-established` on success. Only
 /// the latest attempt counts: a superseded one's outcome is dropped.
-pub(crate) fn connect_to(
-    window: &MainWindow,
-    state: Arc<AppState>,
-    rt: &tokio::runtime::Handle,
-    connection_id: String,
-    announce: bool,
-) {
+pub(crate) fn connect_to(window: &MainWindow, state: Arc<AppState>, rt: &tokio::runtime::Handle, connection_id: String, announce: bool) {
     let attempt = state.connect_attempt.fetch_add(1, Ordering::SeqCst) + 1;
     let connection = window.global::<ConnectionState>();
     connection.set_view(ConnectionView { connecting: true, ..connection.get_view() });
     let weak = window.as_weak();
     rt.spawn(async move {
-        let outcome = match tokio::time::timeout(CONNECT_TIMEOUT, cachemire_core::connection::connect_connection(&state, &connection_id)).await {
-            Ok(outcome) => outcome,
-            Err(_) => Err(Timeout::Connect { seconds: CONNECT_TIMEOUT.as_secs() }.into()),
-        };
+        let outcome =
+            match tokio::time::timeout(CONNECT_TIMEOUT, cachemire_core::connection::connect_connection(&state, &connection_id)).await {
+                Ok(outcome) => outcome,
+                Err(_) => Err(Timeout::Connect { seconds: CONNECT_TIMEOUT.as_secs() }.into()),
+            };
         // resolved from the saved connection itself, not the attempt's outcome,
         // so the status glyph can still show its lock (see TitleBar) when this
         // connection uses SSH but the attempt just failed
-        let ssh_via = state
-            .connections
-            .lock_recover()
-            .get(&connection_id)
-            .and_then(|c| c.ssh.as_ref().map(ssh_server_label))
-            .unwrap_or_default();
+        let ssh_via = state.connections.lock().get(&connection_id).and_then(|c| c.ssh.as_ref().map(ssh_server_label)).unwrap_or_default();
 
         let _ = weak.upgrade_in_event_loop(move |window| {
             // (checked here, on the UI thread, where the attempts are numbered: nothing
@@ -89,7 +78,7 @@ pub(crate) fn connect_to(
             // marks the SSH tunnel itself as the failure (not the Redis endpoint
             // past it) — the SSH badge colors red for that, not the dot
             let outcome = outcome.and_then(|c| {
-                state.connections.lock_recover().set_active(&connection_id)?;
+                state.connections.lock().set_active(&connection_id)?;
                 Ok(c)
             });
             let view = match outcome {
@@ -138,13 +127,17 @@ fn ssh_server_label(ssh: &cachemire_core::connection::SshSettings) -> String {
 /// keyspace refresh button. Unlike `connect_to`, never auto-called at
 /// startup: the app starts with nothing connected.
 pub(crate) fn connect_active(window: &MainWindow, state: Arc<AppState>, rt: &tokio::runtime::Handle) {
-    let connection_id = state.connections.lock_recover().get_active().ok().map(|c| c.id);
+    let connection_id = state.connections.lock().get_active().ok().map(|c| c.id);
     match connection_id {
         Some(id) => connect_to(window, state, rt, id, false),
         None => {
             // nothing to connect to: an attempt still under way is no longer wanted
             state.connect_attempt.fetch_add(1, Ordering::SeqCst);
-            let view = ConnectionView { status: ConnectionStatus::None, status_detail: t!("No saved connection").as_ref().into(), ..Default::default() };
+            let view = ConnectionView {
+                status: ConnectionStatus::None,
+                status_detail: t!("No saved connection").as_ref().into(),
+                ..Default::default()
+            };
             window.global::<ConnectionState>().set_view(view);
             connections::profiles::apply_tint(window, &state);
         }
@@ -160,7 +153,12 @@ const ICON_RESOURCE: u16 = 1;
 /// matching images instead of shrinking one bitmap itself.
 #[cfg(windows)]
 fn use_exe_icon(window: &slint::Window, event: &slint::winit_030::winit::event::WindowEvent, applied: &mut bool) {
-    use slint::winit_030::winit::{dpi::PhysicalSize, event::WindowEvent, platform::windows::{IconExtWindows, WindowExtWindows}, window::Icon};
+    use slint::winit_030::winit::{
+        dpi::PhysicalSize,
+        event::WindowEvent,
+        platform::windows::{IconExtWindows, WindowExtWindows},
+        window::Icon,
+    };
 
     if !*applied || matches!(event, WindowEvent::ScaleFactorChanged { .. }) {
         *applied = true;
@@ -247,7 +245,7 @@ fn main() -> Result<(), slint::PlatformError> {
 
     let state = Arc::new(AppState::load());
     // the interface language: needs the window (Slint) and the settings
-    i18n::apply(state.settings.lock_recover().language());
+    i18n::apply(state.settings.lock().language());
     let rt = cachemire_core::runtime::spawn();
     updates::init(&window, state.clone(), rt.clone());
     // no auto-connect here — the title bar and keyspace panel both start

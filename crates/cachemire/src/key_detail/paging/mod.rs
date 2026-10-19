@@ -7,10 +7,9 @@ use rustc_hash::FxHashSet;
 use serde_json::Value;
 use slint::{ComponentHandle, Model, ModelRc, VecModel};
 
-use cachemire_core::LockExt;
+use crate::{AllValuesRowData, KeyPanel};
 use cachemire_core::explorer;
 use cachemire_core::key_name::KeyName;
-use crate::{AllValuesRowData, KeyPanel};
 
 use super::field::{Fields, build_fields};
 use super::scroll::current_expanded_fields;
@@ -51,6 +50,15 @@ fn has_next(fetch: &FetchedKey) -> bool {
     hash_page(fetch, PageDir::Next).is_some() || fetch.names_cursor.is_some()
 }
 
+/// A page's fields that pass the applied path, and their rows as built under `search`.
+struct BuiltPage {
+    shown: Fields,
+    matches: usize,
+    search: SearchFilter,
+    field_chars: i32,
+    rows: Vec<AllValuesRowData>,
+}
+
 impl Ctx {
     /// A hash page just landed: merges it into the reuse cache and, if `key` is still
     /// shown and unreloaded since (`epoch`), into `loaded`, then adds its rows (under the
@@ -61,7 +69,7 @@ impl Ctx {
             self.page_done();
             return;
         };
-        if let Some(fetch) = shared.fetched.lock_recover().get_mut(&(connection.to_string(), key.to_string())) {
+        if let Some(fetch) = shared.fetched.lock().get_mut(&(connection.to_string(), key.to_string())) {
             match dir {
                 PageDir::Next => fetch.fields.extend(new_fields.iter().cloned()),
                 PageDir::Previous => {
@@ -71,7 +79,7 @@ impl Ctx {
             }
         }
         let path = {
-            let mut content = shared.content.lock_recover();
+            let mut content = shared.content.lock();
             match dir {
                 PageDir::Next => content.loaded.extend(new_fields.iter().cloned()),
                 PageDir::Previous => {
@@ -87,7 +95,7 @@ impl Ctx {
             let (shown, matches) = filter_fields(&new_fields, path.as_ref());
             let (field_chars, rows) = build_all_values_table(&shown, &search, &expanded);
             let _ = slint::invoke_from_event_loop(move || {
-                ctx.show_page(dir, epoch, shown, matches, &search, field_chars, rows);
+                ctx.show_page(dir, epoch, BuiltPage { shown, matches, search, field_chars, rows });
                 ctx.page_done();
             });
         });
@@ -95,15 +103,15 @@ impl Ctx {
 
     /// Puts a page's filtered fields and rows before or after those shown, unless a
     /// newer load or filter has replaced them (it was built from `loaded`, page included).
-    #[allow(clippy::too_many_arguments)]
-    fn show_page(&self, dir: PageDir, epoch: u64, shown: Fields, matches: usize, search: &SearchFilter, field_chars: i32, rows: Vec<AllValuesRowData>) {
+    fn show_page(&self, dir: PageDir, epoch: u64, page: BuiltPage) {
+        let BuiltPage { shown, matches, search, field_chars, rows } = page;
         let shared = &self.shared;
         let Some(window) = self.weak.upgrade() else { return };
         if shared.view_epoch.load(Ordering::Relaxed) != epoch {
             return;
         }
         let status = {
-            let mut content = shared.content.lock_recover();
+            let mut content = shared.content.lock();
             match dir {
                 PageDir::Next => content.current.extend(shown),
                 PageDir::Previous => {
@@ -116,7 +124,7 @@ impl Ctx {
         let panel = window.global::<KeyPanel>();
         panel.set_json_filter_status(status.into());
         // badges changed while the rows were built: every row is built again under them
-        if current_search_filter(&window) != *search {
+        if current_search_filter(&window) != search {
             self.on_search_changed();
             return;
         }
@@ -167,7 +175,7 @@ impl Ctx {
         let connection = window.connection_id().to_string();
         let key = window.global::<KeyPanel>().get_key_id().to_string();
         let epoch = shared.view_epoch.load(Ordering::Relaxed);
-        let (names, cursor) = match shared.fetched.lock_recover().get(&(connection.clone(), key.clone())) {
+        let (names, cursor) = match shared.fetched.lock().get(&(connection.clone(), key.clone())) {
             Some(fetch) => (hash_page(fetch, dir), fetch.names_cursor.filter(|_| dir == PageDir::Next)),
             None => (None, None),
         };
@@ -183,7 +191,9 @@ impl Ctx {
         self.rt.spawn(async move {
             let result = explorer::hash_field_page(&ctx.state, None, &KeyName::from_id(&key), &names).await;
             let _ = slint::invoke_from_event_loop(move || match result {
-                Ok((values, oversized)) => ctx.on_hash_page_loaded(&connection, &key, epoch, dir, build_fields(Value::Object(values), oversized, &names)),
+                Ok((values, oversized)) => {
+                    ctx.on_hash_page_loaded(&connection, &key, epoch, dir, build_fields(Value::Object(values), oversized, &names))
+                }
                 // not retried right away: the next scroll near the end asks again
                 Err(_) => ctx.shared.paging_in_flight.store(false, Ordering::Release),
             });
@@ -208,7 +218,7 @@ impl Ctx {
                     return;
                 }
                 let meta = {
-                    let mut fetched = shared.fetched.lock_recover();
+                    let mut fetched = shared.fetched.lock();
                     let Some(fetch) = fetched.get_mut(&(connection, key)) else { return };
                     let names = fetch.all_names.get_or_insert_with(Vec::new);
                     // a scan may repeat a name it already gave
@@ -232,7 +242,7 @@ impl Ctx {
     fn fetch_more(&self) {
         let key = self.weak.upgrade().map(|w| (w.connection_id().to_string(), w.global::<KeyPanel>().get_key_id().to_string()));
         let Some(key) = key else { return };
-        let dir = match self.shared.fetched.lock_recover().get(&key) {
+        let dir = match self.shared.fetched.lock().get(&key) {
             Some(fetch) if !has_next(fetch) => PageDir::Previous,
             _ => PageDir::Next,
         };

@@ -62,7 +62,11 @@ mod tests {
 
     #[test]
     fn the_lines_join_as_the_styled_text_reports_its_offsets() {
-        let paragraphs = vec![("{".to_string(), Default::default()), ("  \"a\": 1".to_string(), Default::default()), ("}".to_string(), Default::default())];
+        let paragraphs = vec![
+            ("{".to_string(), Default::default()),
+            ("  \"a\": 1".to_string(), Default::default()),
+            ("}".to_string(), Default::default()),
+        ];
         assert_eq!(plain_text(&paragraphs), "{\n  \"a\": 1\n}");
     }
 }

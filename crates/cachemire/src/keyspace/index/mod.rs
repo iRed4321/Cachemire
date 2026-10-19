@@ -51,7 +51,8 @@ impl Index {
         for (i, _) in id.match_indices(DELIMITER) {
             let end = i + DELIMITER.len();
             if self.level_mut(&id[..parent_end]).folders.insert(id[parent_end..end].into()) {
-                let child = CachedChild { full_name: id[..end].to_string(), label_start: parent_end, is_folder: true, leaf: LeafKind::Other };
+                let child =
+                    CachedChild { full_name: id[..end].to_string(), label_start: parent_end, is_folder: true, leaf: LeafKind::Other };
                 added.push((id[..parent_end].to_string(), child));
             }
             parent_end = end;
@@ -62,14 +63,22 @@ impl Index {
         }
         if self.level_mut(&id[..parent_end]).keys.insert(id[parent_end..].into(), leaf).is_none() {
             self.keys += 1;
-            added.push((id[..parent_end].to_string(), CachedChild { full_name: id.to_string(), label_start: parent_end, is_folder: false, leaf }));
+            added.push((
+                id[..parent_end].to_string(),
+                CachedChild { full_name: id.to_string(), label_start: parent_end, is_folder: false, leaf },
+            ));
         }
     }
 
     /// `folder`'s direct children.
     pub(super) fn children(&self, folder: &str) -> Vec<CachedChild> {
         let Some(level) = self.levels.get(folder) else { return Vec::new() };
-        let child = |label: &str, is_folder: bool, leaf: LeafKind| CachedChild { full_name: format!("{folder}{label}"), label_start: folder.len(), is_folder, leaf };
+        let child = |label: &str, is_folder: bool, leaf: LeafKind| CachedChild {
+            full_name: format!("{folder}{label}"),
+            label_start: folder.len(),
+            is_folder,
+            leaf,
+        };
         let folders = level.folders.iter().map(|label| child(label, true, LeafKind::Other));
         folders.chain(level.keys.iter().map(|(label, leaf)| child(label, false, *leaf))).collect()
     }

@@ -50,6 +50,10 @@ jobs:
       # quiet: the build log then lists what gets compiled, not each crate downloaded
       - name: Fetch crates
         run: cargo fetch --locked --quiet
+      # the same on every OS: checked once, before anything is built
+      - name: Format
+        if: runner.os == 'Linux'
+        run: cargo fmt --all --check
       - name: Install Linux libraries
         if: runner.os == 'Linux'
         run: |

@@ -9,13 +9,11 @@ use std::rc::Rc;
 use rust_i18n::t;
 use slint::{ComponentHandle, ModelRc, VecModel};
 
-
 use crate::app::App;
-use cachemire_core::LockExt;
+use crate::{AwsAccount, CloudSettings, ConnProfileRowData, MainWindow};
 use cachemire_core::secret_vault::staged;
 use cachemire_core::settings::{CloudScope, CloudSsh};
 use cachemire_core::state::AppState;
-use crate::{AwsAccount, CloudSettings, ConnProfileRowData, MainWindow};
 
 /// What the form is open on.
 #[derive(Clone)]
@@ -26,7 +24,9 @@ struct Open {
 
 /// The name of a connection profile, or "none".
 fn profile_name(state: &AppState, id: Option<&str>) -> String {
-    id.filter(|id| !id.is_empty()).and_then(|id| state.settings.lock_recover().connection_profile(id)).map_or_else(|| t!("none").into_owned(), |p| p.name)
+    id.filter(|id| !id.is_empty())
+        .and_then(|id| state.settings.lock().connection_profile(id))
+        .map_or_else(|| t!("none").into_owned(), |p| p.name)
 }
 
 /// Gives the endpoints the settings they now have, and the open pools the tunnel
@@ -34,15 +34,15 @@ fn profile_name(state: &AppState, id: Option<&str>) -> String {
 fn reapply(app: &App, window: &MainWindow) {
     let state = &app.state;
     let (account, region, mut items) = {
-        let store = state.connections.lock_recover();
+        let store = state.connections.lock();
         let (account, region) = store.cloud_account();
         (account.to_string(), region.to_string(), store.cloud_connections().to_vec())
     };
-    state.settings.lock_recover().apply_cloud(&account, &region, &mut items);
+    state.settings.lock().apply_cloud(&account, &region, &mut items);
     for item in &items {
         state.redis_connections.invalidate(&item.id);
     }
-    state.connections.lock_recover().set_cloud_connections(&account, &region, items);
+    state.connections.lock().set_cloud_connections(&account, &region, items);
     crate::connections::refresh(app, window);
     crate::connections::profiles::apply_tint(window, state);
 }
@@ -67,7 +67,11 @@ pub fn init(window: &MainWindow) {
     });
     // "Browse…" beside the private key
     global.on_browse_key(|| {
-        crate::app::with(|app, window| crate::connections::browse_ssh_key(&app.rt, window.as_weak(), |window, path| window.global::<CloudSettings>().set_ssh_key(path.into())));
+        crate::app::with(|app, window| {
+            crate::connections::browse_ssh_key(&app.rt, window.as_weak(), |window, path| {
+                window.global::<CloudSettings>().set_ssh_key(path.into())
+            })
+        });
     });
 }
 
@@ -75,13 +79,13 @@ pub fn init(window: &MainWindow) {
 /// `id`), with the name and detail it shows; `None` when there is no such thing.
 fn scope_of(state: &AppState, window: &MainWindow, kind: i32, id: &str) -> Option<(CloudScope, String, String)> {
     if kind == 0 {
-        let account = state.connections.lock_recover().cloud_account().0.to_string();
+        let account = state.connections.lock().cloud_account().0.to_string();
         if account.is_empty() {
             return None;
         }
         Some((CloudScope::Account(account.clone()), window.global::<AwsAccount>().get_profile().to_string(), account))
     } else {
-        let key = state.connections.lock_recover().cloud_key(id)?;
+        let key = state.connections.lock().cloud_key(id)?;
         let (name, detail) = (key.name.clone(), key.region.clone());
         Some((CloudScope::Endpoint(key), name, detail))
     }
@@ -92,7 +96,7 @@ fn open_form(state: &AppState, window: &MainWindow, kind: i32, id: &str) -> Opti
     let (scope, name, detail) = scope_of(state, window, kind, id)?;
     let endpoint = matches!(scope, CloudScope::Endpoint(_));
     let (entry, account_entry, profiles) = {
-        let settings = state.settings.lock_recover();
+        let settings = state.settings.lock();
         let account_entry = match &scope {
             CloudScope::Endpoint(key) => Some(settings.cloud_settings(&CloudScope::Account(key.account.clone()))),
             CloudScope::Account(_) => None,

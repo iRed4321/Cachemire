@@ -2,16 +2,16 @@
 //! time, from SCAN), and the fields of an alias's key after `alias.`. It works out the token under
 //! the caret, what could replace it, and how a chosen item is written into the text.
 
+use parking_lot::Mutex;
 use rustc_hash::FxHashMap;
+use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
 use crate::explorer::scan_namespaces;
 use crate::key_name::KeyName;
 use crate::redisql::field_names;
 use crate::state::AppState;
-use crate::LockExt;
 
 const KEYWORDS: [&str; 11] = ["FROM", "JOIN", "KEY", "AS", "ON", "WHERE", "SELECT", "LIMIT", "AND", "OR", "IN"];
 /// Most items offered at once.
@@ -101,7 +101,7 @@ fn alias_keys(text: &str) -> FxHashMap<String, String> {
 }
 
 fn cached(map: &Listed, key: &(String, String)) -> Option<Vec<String>> {
-    map.lock_recover().get(key).filter(|(at, _)| at.elapsed() < CACHE_TTL).map(|(_, names)| names.clone())
+    map.lock().get(key).filter(|(at, _)| at.elapsed() < CACHE_TTL).map(|(_, names)| names.clone())
 }
 
 /// The folders (ending in `:`) and keys one level under `prefix`, listed for a moment at most.
@@ -125,7 +125,7 @@ async fn level_names(state: &Arc<AppState>, caches: &Caches, connection: &str, p
             move || !enough.load(Ordering::Relaxed) && Instant::now() < deadline
         },
         move |batch| {
-            let mut names = collected.lock_recover();
+            let mut names = collected.lock();
             names.extend(batch.folders.iter().map(KeyName::to_string_lossy));
             names.extend(batch.keys.iter().map(|key| key.name.to_string_lossy()));
             if names.len() >= SCAN_NAMES {
@@ -134,10 +134,10 @@ async fn level_names(state: &Arc<AppState>, caches: &Caches, connection: &str, p
         },
     )
     .await;
-    let mut names = std::mem::take(&mut *names.lock_recover());
+    let mut names = std::mem::take(&mut *names.lock());
     names.sort();
     names.dedup();
-    caches.levels.lock_recover().insert(cache_key, (Instant::now(), names.clone()));
+    caches.levels.lock().insert(cache_key, (Instant::now(), names.clone()));
     names
 }
 
@@ -147,7 +147,7 @@ async fn field_candidates(state: &Arc<AppState>, caches: &Caches, connection: &s
         return names;
     }
     let names = field_names(state, None, key).await.unwrap_or_default();
-    caches.fields.lock_recover().insert(cache_key, (Instant::now(), names.clone()));
+    caches.fields.lock().insert(cache_key, (Instant::now(), names.clone()));
     names
 }
 
@@ -160,14 +160,16 @@ pub async fn complete(state: &Arc<AppState>, caches: &Caches, text: &str, cursor
     let (start, end, quote) = token_bounds(text, cursor);
     let token = &text[start..cursor];
     let lower = token.to_lowercase();
-    let connection = state.connections.lock_recover().active_connection_id().to_string();
+    let connection = state.connections.lock().active_connection_id().to_string();
     if connection.is_empty() {
         return None;
     }
 
     let mut items: Vec<(String, std::ops::Range<usize>)> = Vec::new();
     let alias_field = quote.is_none().then(|| token.split_once('.')).flatten().filter(|(alias, field)| {
-        alias.chars().next().is_some_and(|c| c.is_ascii_alphabetic() || c == '_') && alias.chars().all(|c| c.is_ascii_alphanumeric() || c == '_') && !field.contains(['.', ':'])
+        alias.chars().next().is_some_and(|c| c.is_ascii_alphabetic() || c == '_')
+            && alias.chars().all(|c| c.is_ascii_alphanumeric() || c == '_')
+            && !field.contains(['.', ':'])
     });
     if let Some((alias, field_prefix)) = alias_field {
         let key = alias_keys(text).get(&alias.to_lowercase())?.clone();

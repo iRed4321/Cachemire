@@ -1,18 +1,20 @@
 //! Manages which keys have an open tab and which one is active. The tab bar
 //! and keyspace tree both drive selection through [`select_key`].
 
-use cachemire_core::LockExt;
 use rustc_hash::{FxHashMap, FxHashSet};
 use std::rc::Rc;
 
 use slint::{ComponentHandle, Model, ModelRc, VecModel};
 
 use crate::app::App;
-use cachemire_core::key_name::KeyName;
 use crate::key_detail::{ScrollPos, current_expanded_fields, current_scroll, restore_expanded_fields};
 use crate::redisql;
 use crate::search;
-use crate::{AllValuesRowData, BadgeData, ConnectionState, ExportPrefs, KeyPanel, KeyTree, KeyView, MainWindow, Preferences, SavedQueries, SearchScope, SearchTab, TabData, TabStrip};
+use crate::{
+    AllValuesRowData, BadgeData, ConnectionState, ExportPrefs, KeyPanel, KeyTree, KeyView, MainWindow, Preferences, SavedQueries,
+    SearchScope, SearchTab, TabData, TabStrip,
+};
+use cachemire_core::key_name::KeyName;
 use rust_i18n::t;
 
 /// Per-tab UI state outside the fetched key data: the search bar, scroll
@@ -208,12 +210,7 @@ fn render(window: &MainWindow, tabs: &Tabs) {
     window.global::<TabStrip>().set_active_is_search(tabs.active.as_deref().is_some_and(search::is_search_id));
     window.global::<TabStrip>().set_active_is_query(tabs.active.as_deref().is_some_and(redisql::is_query_id));
     window.global::<TabStrip>().set_tabs(ModelRc::new(VecModel::from(rows)));
-    let active_index = tabs
-        .active
-        .as_deref()
-        .and_then(|active| tabs.open.iter().position(|k| k == active))
-        .map(|i| i as i32)
-        .unwrap_or(-1);
+    let active_index = tabs.active.as_deref().and_then(|active| tabs.open.iter().position(|k| k == active)).map(|i| i as i32).unwrap_or(-1);
     window.global::<TabStrip>().set_active_index(active_index);
     if tabs.active.is_none() {
         window.global::<KeyTree>().set_selected("".into());
@@ -391,7 +388,7 @@ fn on_connection_changed(app: &App, window: &MainWindow) {
             save_view_state(app, window, &mut tabs, &active);
         }
         let discard = std::mem::take(&mut tabs.discard_on_leave);
-        let still_exists = tabs.connection.is_empty() || state.connections.lock_recover().get(&tabs.connection).is_some();
+        let still_exists = tabs.connection.is_empty() || state.connections.lock().get(&tabs.connection).is_some();
         let keep = still_exists && !discard;
         if !keep {
             app.key_detail.forget(&tabs.connection, None);
@@ -507,7 +504,7 @@ pub fn init(app: &Rc<App>, window: &MainWindow) {
     window.global::<TabStrip>().on_new_query_clicked(move || new_query(()));
     // a saved query in the sidebar: a new tab (not reused — like "New query", always fresh)
     let saved_query = on(app, |app, _, id: String| {
-        let saved = app.state.settings.lock_recover().saved_query(&id);
+        let saved = app.state.settings.lock().saved_query(&id);
         if let Some(saved) = saved {
             open_query(app, saved.text);
         }

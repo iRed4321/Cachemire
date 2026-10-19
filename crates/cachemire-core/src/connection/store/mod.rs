@@ -1,5 +1,3 @@
-#[cfg(test)]
-use crate::LockExt;
 use rustc_hash::FxHashSet;
 use std::path::PathBuf;
 use std::sync::Arc;
@@ -8,11 +6,11 @@ use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
 use crate::connection::{CloudKey, ConnectionItem, ConnectionPayloadInput, ConnectionsState, SshSettings};
-use crate::secret_vault::{OsVault, Secrets, SecretsCleanup, Vault, VaultBacked};
-use crate::secret_vault::KeyringError;
 use crate::error::{Error, Invalid, NotFound};
-use crate::persist::{self, Loaded};
 use crate::now_ms;
+use crate::persist::{self, Loaded};
+use crate::secret_vault::KeyringError;
+use crate::secret_vault::{OsVault, Secrets, SecretsCleanup, Vault, VaultBacked};
 
 fn default_ssh_port() -> u16 {
     22
@@ -145,7 +143,8 @@ fn without_password(url: &str) -> Option<String> {
 
 /// `url` with the saved username and password added where the URL has none.
 fn with_credentials(url: &str, username: &str, password: &str) -> String {
-    let Some(mut parsed) = (if url.contains("://") { url::Url::parse(url) } else { url::Url::parse(&format!("redis://{url}")) }).ok() else {
+    let Some(mut parsed) = (if url.contains("://") { url::Url::parse(url) } else { url::Url::parse(&format!("redis://{url}")) }).ok()
+    else {
         return url.to_string();
     };
     let mut changed = false;
@@ -250,11 +249,7 @@ fn finish(conn: &mut StoredConnection, secrets_loaded: bool) -> Result<(), Error
         }
         // no username: the active SSH profile (see Settings) logs in, which
         // can't be known here, so there is nothing more to require
-        if !conn.ssh_username.is_empty()
-            && secrets_loaded
-            && conn.ssh_password.is_empty()
-            && conn.ssh_private_key.is_empty()
-        {
+        if !conn.ssh_username.is_empty() && secrets_loaded && conn.ssh_password.is_empty() && conn.ssh_private_key.is_empty() {
             return Err(Invalid::SshLogin.into());
         }
     }
@@ -344,7 +339,17 @@ impl ConnectionStore {
         give_urls(&mut state);
         let unloaded = state.connections.iter().filter(|c| c.in_vault).map(|c| c.id.clone()).collect();
 
-        let mut store = Self { file_path, state, vault, unloaded, vault_usable: true, dry_run: false, cloud: Vec::new(), cloud_active: None, cloud_where: Default::default() };
+        let mut store = Self {
+            file_path,
+            state,
+            vault,
+            unloaded,
+            vault_usable: true,
+            dry_run: false,
+            cloud: Vec::new(),
+            cloud_active: None,
+            cloud_where: Default::default(),
+        };
         if first_write {
             let _ = store.commit(store.state.clone(), true);
         }
@@ -357,10 +362,7 @@ impl ConnectionStore {
     pub fn unlock_secrets(&mut self, id: &str) -> Result<(), Error> {
         let Some(position) = self.state.connections.iter().position(|c| c.id == id) else { return Ok(()) };
         if self.unloaded.contains(id) {
-            let stored = self
-                .vault
-                .get(id)
-                .map_err(KeyringError::ConnectionPasswords)?;
+            let stored = self.vault.get(id).map_err(KeyringError::ConnectionPasswords)?;
             let conn = &mut self.state.connections[position];
             match stored {
                 Some(stored) => {
@@ -524,11 +526,7 @@ impl ConnectionStore {
             self.unlock_secrets(id)?;
         }
         let mut next = self.state.clone();
-        let existing = next
-            .connections
-            .iter_mut()
-            .find(|c| c.id == id)
-            .ok_or(NotFound::Connection)?;
+        let existing = next.connections.iter_mut().find(|c| c.id == id).ok_or(NotFound::Connection)?;
         apply_payload(existing, payload);
         finish(existing, !self.unloaded.contains(id))?;
         self.commit(next, true)
@@ -540,11 +538,7 @@ impl ConnectionStore {
             return Ok(());
         }
         let mut next = self.state.clone();
-        let conn = next
-            .connections
-            .iter_mut()
-            .find(|c| c.id == id)
-            .ok_or(NotFound::Connection)?;
+        let conn = next.connections.iter_mut().find(|c| c.id == id).ok_or(NotFound::Connection)?;
         conn.last_connected_at = Some(now_ms());
         next.active_connection_id = id.to_string();
         self.commit(next, false)?;

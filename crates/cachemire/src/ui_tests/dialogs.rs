@@ -2,10 +2,9 @@
 //! connections' import and export.
 
 use super::*;
-use cachemire_core::LockExt;
+use crate::{About, ConnectionTransfer, Preferences};
 use cachemire_core::connection::ConnectionPayloadInput;
 use cachemire_core::updates::{Channel, Release};
-use crate::{About, ConnectionTransfer, Preferences};
 
 /// The Settings window, open, over a state the test can read.
 fn settings_open(state: &std::sync::Arc<cachemire_core::state::AppState>) -> (Harness, tokio::runtime::Runtime) {
@@ -35,18 +34,18 @@ fn the_startup_update_check_box_saves_the_setting_both_ways() {
 
     let on = |h: &Harness| h.window.global::<Preferences>().get_check_updates_at_startup();
     let at = sweep(&mut h, 300..1000, 100..780, 6, back_to_settings, on).expect("the box was found and ticked");
-    assert!(state.settings.lock_recover().check_updates_at_startup(), "ticking it saves it");
+    assert!(state.settings.lock().check_updates_at_startup(), "ticking it saves it");
 
     h.click(at.0, at.1);
     assert!(!on(&h), "a second click unticks it");
-    assert!(!state.settings.lock_recover().check_updates_at_startup());
+    assert!(!state.settings.lock().check_updates_at_startup());
 }
 
 #[test]
 fn the_settings_window_starts_on_what_is_saved() {
     let state = test_state();
     {
-        let mut settings = state.settings.lock_recover();
+        let mut settings = state.settings.lock();
         settings.set_check_updates_at_startup(true).unwrap();
         settings.set_search_depth(200).unwrap();
         settings.set_server_search(true).unwrap();
@@ -67,7 +66,7 @@ fn the_search_depth_buttons_save_the_depth_picked() {
     let (mut h, _rt) = settings_open(&state);
     let picked = |h: &Harness| h.window.global::<Preferences>().get_search_depth() == 60;
     sweep(&mut h, 300..1000, 100..780, 6, back_to_settings, picked).expect("the 60 button");
-    assert_eq!(state.settings.lock_recover().search_depth(), 60);
+    assert_eq!(state.settings.lock().search_depth(), 60);
 }
 
 /// The info window, its callbacks wired, and its link to the repository kept from opening a browser.
@@ -112,7 +111,7 @@ fn the_channel_toggle_saves_the_channel_picked() {
     assert_eq!(h.window.global::<About>().get_channel(), 0, "a dev build follows the stable releases");
     let beta = |h: &Harness| h.window.global::<About>().get_channel() == 1;
     sweep(&mut h, 500..800, 200..600, 4, reopen_info, beta).expect("the Beta segment");
-    assert_eq!(state.settings.lock_recover().update_channel(), Some(Channel::Beta));
+    assert_eq!(state.settings.lock().update_channel(), Some(Channel::Beta));
 }
 
 #[test]
@@ -120,7 +119,11 @@ fn an_update_found_at_startup_opens_the_info_window_with_its_button() {
     let (mut h, _rt, downloads) = info_window(&test_state());
     let about = h.window.global::<About>();
     about.set_open(false);
-    let release = Release { version: semver::Version::new(9, 9, 9), page: "https://example.invalid/r".into(), installer: Some("https://example.invalid/i.msi".into()) };
+    let release = Release {
+        version: semver::Version::new(9, 9, 9),
+        page: "https://example.invalid/r".into(),
+        installer: Some("https://example.invalid/i.msi".into()),
+    };
     crate::updates::show_found(&about, release.clone(), true);
     h.frame();
     let about = h.window.global::<About>();
@@ -151,9 +154,13 @@ fn an_update_found_by_the_button_doesnt_open_a_closed_window() {
 fn transfer_open(names: &[&str]) -> (Harness, Rc<crate::app::App>, (tokio::runtime::Runtime, EventLoopTurn)) {
     let state = test_state();
     {
-        let mut store = state.connections.lock_recover();
+        let mut store = state.connections.lock();
         for (i, name) in names.iter().enumerate() {
-            let payload = ConnectionPayloadInput { name: Some(name.to_string()), connection_url: Some(format!("redis://h{i}:6379")), ..Default::default() };
+            let payload = ConnectionPayloadInput {
+                name: Some(name.to_string()),
+                connection_url: Some(format!("redis://h{i}:6379")),
+                ..Default::default()
+            };
             store.create_with_id(&format!("c{i}"), payload).unwrap();
         }
     }
@@ -237,7 +244,7 @@ fn importing_saves_the_ticked_connections_under_free_names_and_says_so() {
     let transfer = h.window.global::<ConnectionTransfer>();
     assert!(transfer.get_message().contains('2'), "{}", transfer.get_message());
     assert_eq!(transfer.get_import_rows().row_count(), 0, "the list is cleared once imported");
-    let names: Vec<String> = app.state.connections.lock_recover().list_state().connections.into_iter().map(|c| c.name).collect();
+    let names: Vec<String> = app.state.connections.lock().list_state().connections.into_iter().map(|c| c.name).collect();
     assert!(names.contains(&"Prod (2)".to_string()) && names.contains(&"Cache".to_string()), "{names:?}");
     assert!(!names.contains(&"Skipped".to_string()), "an unticked row isn't imported");
     let listed = h.window.global::<crate::ConnectionState>().get_connections().row_count();
