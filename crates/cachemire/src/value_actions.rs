@@ -2,15 +2,15 @@
 //! toolbar: open in the system's default editor for the file type, or copy
 //! to the clipboard. None of this is Redis-specific.
 
-use cachemire_core::error::AppError;
+use crate::error::Error;
 use cachemire_core::now_ms;
 
 /// Writes `text` to a temp file and opens it in a real editor — not via
 /// `xdg-open`: MIME sniffing often routes JSON-looking content to a
 /// browser regardless of extension. Tries known GUI editors, falling back to the OS default.
-pub fn open_in_external_editor(text: &str, extension: &str) -> Result<(), AppError> {
+pub fn open_in_external_editor(text: &str, extension: &str) -> Result<(), Error> {
     let path = std::env::temp_dir().join(format!("cachemire-value-{}.{extension}", now_ms()));
-    std::fs::write(&path, text).map_err(|e| AppError::file(e.to_string()))?;
+    std::fs::write(&path, text)?;
 
     #[cfg(target_os = "windows")]
     const EDITORS: &[&str] = &["code", "notepad++", "notepad"];
@@ -25,33 +25,29 @@ pub fn open_in_external_editor(text: &str, extension: &str) -> Result<(), AppErr
             return Ok(());
         }
     }
-    open::that_detached(&path).map_err(|e| AppError::system(e.to_string()))
-}
-
-fn clipboard_error(error: arboard::Error) -> AppError {
-    AppError::system(error.to_string())
+    Ok(open::that_detached(&path)?)
 }
 
 /// On X11 the app itself serves clipboard contents, so `Clipboard` must
 /// outlive the copy — kept as one shared instance for the process. Wayland
 /// uses arboard's `wayland-data-control` backend; other platforms need neither.
 #[cfg(unix)]
-pub fn copy_to_clipboard(text: &str) -> Result<(), AppError> {
+pub fn copy_to_clipboard(text: &str) -> Result<(), Error> {
     use std::sync::Mutex;
 
     static CLIPBOARD: Mutex<Option<arboard::Clipboard>> = Mutex::new(None);
 
     let mut guard = CLIPBOARD.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
     if guard.is_none() {
-        *guard = Some(arboard::Clipboard::new().map_err(clipboard_error)?);
+        *guard = Some(arboard::Clipboard::new().map_err(Error::from)?);
     }
-    guard.as_mut().expect("set above").set_text(text).map_err(clipboard_error)
+    guard.as_mut().expect("set above").set_text(text).map_err(Error::from)
 }
 
 #[cfg(not(unix))]
-pub fn copy_to_clipboard(text: &str) -> Result<(), AppError> {
-    let mut clipboard = arboard::Clipboard::new().map_err(clipboard_error)?;
-    clipboard.set_text(text).map_err(clipboard_error)
+pub fn copy_to_clipboard(text: &str) -> Result<(), Error> {
+    let mut clipboard = arboard::Clipboard::new().map_err(Error::from)?;
+    clipboard.set_text(text).map_err(Error::from)
 }
 
 /// Whether the clipboard currently holds text: a right-click "Paste" row in a

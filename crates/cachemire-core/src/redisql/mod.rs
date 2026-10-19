@@ -13,27 +13,100 @@ mod script;
 use rustc_hash::FxHashMap;
 use std::ops::Range;
 
-use crate::error::AppError;
+use crate::error::{Error, ErrorKind};
 use crate::session::Session;
 use crate::state::AppState;
 
 pub use exec::{QueryOutput, field_names};
 pub use script::{is_declaration, split_statements, variable_ranges};
 
+/// Why a query can't be understood, or can't run on what its keys hold.
+#[derive(Debug, thiserror::Error)]
+pub enum QueryError {
+    #[error("Unterminated quote: {0}")]
+    UnterminatedQuote(String),
+    #[error("Unexpected text: {0}")]
+    UnexpectedText(String),
+    #[error("Unknown variable: &{0}")]
+    UnknownVariable(String),
+    #[error("Invalid FROM clause. Example: FROM KEY 'my:key' AS src")]
+    InvalidFrom,
+    #[error("Invalid JOIN clause. Example: JOIN KEY 'my:key' AS b ON a.id = b.refId")]
+    InvalidJoin,
+    #[error("A JOIN's ON must link two different aliases.")]
+    JoinOnItself,
+    #[error("The ON clause must name the JOIN's own alias ({0}).")]
+    OnWithoutOwnAlias(String),
+    #[error("Invalid WHERE condition: {0}")]
+    InvalidWhere(String),
+    #[error("IN needs a list in [] or (): {0}")]
+    InWithoutList(String),
+    #[error("IN's list is empty.")]
+    EmptyInList,
+    #[error("Invalid SELECT clause.")]
+    InvalidSelect,
+    #[error("LIMIT must be a whole number.")]
+    InvalidLimit,
+    #[error("The query is empty.")]
+    EmptyQuery,
+    #[error("{0} can only appear once.")]
+    RepeatedClause(String),
+    #[error("Unrecognized clause: {0}")]
+    UnknownClause(String),
+    #[error("Missing FROM clause.")]
+    MissingFrom,
+    #[error("Duplicate alias: {0}")]
+    DuplicateAlias(String),
+    #[error("JOIN {alias} references an unknown alias: {other}")]
+    UnknownJoinAlias { alias: String, other: String },
+    #[error("Unknown alias in WHERE: {0}")]
+    UnknownWhereAlias(String),
+    #[error("Unknown alias in SELECT: {0}")]
+    UnknownSelectAlias(String),
+    #[error("Invalid variable declaration. Example: var companyId = 255;")]
+    InvalidDeclaration,
+    #[error("Key not found: {0}")]
+    KeyNotFound(String),
+    #[error("{key} is a {kind}: only a hash of JSON objects, or a string holding one, can be queried.")]
+    NotQueryable { key: String, kind: String },
+    #[error("A non-object value was found in {key} (field {field}): {kind}")]
+    NonObjectField { key: String, field: String, kind: &'static str },
+    #[error("Invalid JSON in {key} (field {field}): {source}")]
+    FieldJson { key: String, field: String, source: serde_json::Error },
+    #[error("{key} holds JSON, but not an object or an array of objects: {kind}")]
+    NonObjectValue { key: String, kind: &'static str },
+    #[error("Invalid JSON in {key}: {source}")]
+    ValueJson { key: String, source: serde_json::Error },
+}
+
+impl QueryError {
+    pub fn kind(&self) -> ErrorKind {
+        match self {
+            QueryError::KeyNotFound(_) => ErrorKind::NotFound,
+            QueryError::NotQueryable { .. }
+            | QueryError::NonObjectField { .. }
+            | QueryError::FieldJson { .. }
+            | QueryError::NonObjectValue { .. }
+            | QueryError::ValueJson { .. } => ErrorKind::Invalid,
+            _ => ErrorKind::Parse,
+        }
+    }
+}
+
 /// An error, with the byte range of the statement it is about when there is one.
 #[derive(Debug)]
 pub struct Located {
-    pub error: AppError,
+    pub error: Error,
     pub span: Option<Range<usize>>,
 }
 
 impl Located {
-    fn parse(message: impl Into<String>, span: Option<Range<usize>>) -> Self {
-        Self { error: AppError::parse(message), span }
+    fn parse(error: QueryError, span: Option<Range<usize>>) -> Self {
+        Self { error: error.into(), span }
     }
 
     /// Points an error at `span`, for `map_err`.
-    fn at(span: &Range<usize>) -> impl FnOnce(AppError) -> Self + '_ {
+    fn at(span: &Range<usize>) -> impl FnOnce(Error) -> Self + '_ {
         move |error| Self { error, span: Some(span.clone()) }
     }
 
@@ -43,8 +116,8 @@ impl Located {
     }
 
     #[cfg(test)]
-    fn message(&self) -> &str {
-        self.error.message()
+    fn message(&self) -> String {
+        self.error.to_string()
     }
 }
 
@@ -54,8 +127,8 @@ impl std::fmt::Display for Located {
     }
 }
 
-impl From<AppError> for Located {
-    fn from(error: AppError) -> Self {
+impl From<Error> for Located {
+    fn from(error: Error) -> Self {
         Self { error, span: None }
     }
 }
@@ -63,7 +136,7 @@ impl From<AppError> for Located {
 /// What one statement of a script produced: a query's rows, or the error that ended
 /// the script, with where in the script it is when that can be told.
 pub struct StatementResult {
-    pub output: Result<QueryOutput, AppError>,
+    pub output: Result<QueryOutput, Error>,
     pub error_span: Option<Range<usize>>,
 }
 

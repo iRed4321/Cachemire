@@ -3,8 +3,6 @@
 
 use std::time::{SystemTime, UNIX_EPOCH};
 
-rust_i18n::i18n!("../../resources/lang", fallback = "en");
-
 pub mod aws;
 pub mod connection;
 pub mod error;

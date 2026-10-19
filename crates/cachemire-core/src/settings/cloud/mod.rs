@@ -4,11 +4,11 @@
 use rustc_hash::{FxHashMap, FxHashSet};
 use std::collections::BTreeMap;
 
-use rust_i18n::t;
 use serde::{Deserialize, Serialize};
 
 use super::{SettingsStore, StoredSettings};
-use crate::error::AppError;
+use crate::secret_vault::KeyringError;
+use crate::error::{Error, Invalid, NotFound};
 use crate::connection::{CloudKey, ConnectionItem, SshSettings};
 use crate::secret_vault::{Secrets, SecretsCleanup};
 
@@ -170,7 +170,7 @@ impl SettingsStore {
 
     /// Reads the tunnel secrets of `scope` from the credential store, if they are there
     /// and haven't been read yet.
-    pub(super) fn unlock_cloud_scope(&mut self, scope: &CloudScope) -> Result<(), AppError> {
+    pub(super) fn unlock_cloud_scope(&mut self, scope: &CloudScope) -> Result<(), Error> {
         let vault_key = cloud_vault_key(scope);
         if !self.unloaded.contains(&vault_key) {
             return Ok(());
@@ -178,7 +178,7 @@ impl SettingsStore {
         let stored = self
             .vault
             .get(&vault_key)
-            .map_err(|e| AppError::keyring(t!("Couldn't read the SSH tunnel's secrets from the system keyring: %{error}", error = e)))?;
+            .map_err(KeyringError::TunnelSecrets)?;
         if let Some(ssh) = Self::cloud_entry_mut(&mut self.state.cloud, scope).and_then(|entry| entry.ssh.as_mut()) {
             match stored {
                 Some(secrets) => {
@@ -194,7 +194,7 @@ impl SettingsStore {
     }
 
     /// Makes the tunnel secrets that apply to `key` available, ahead of a connection.
-    pub fn unlock_cloud(&mut self, key: &CloudKey) -> Result<(), AppError> {
+    pub fn unlock_cloud(&mut self, key: &CloudKey) -> Result<(), Error> {
         self.unlock_cloud_scope(&CloudScope::Endpoint(key.clone()))?;
         self.unlock_cloud_scope(&CloudScope::Account(key.account.clone()))
     }
@@ -202,16 +202,16 @@ impl SettingsStore {
     /// Sets what is set for `scope`: `profile` is `None` to inherit, "" for none; `ssh` is `None`
     /// to inherit. A blank password or passphrase keeps the stored one while the tunnel stays on.
     /// What it leaves in the credential store is for the caller to clear (the returned cleanup).
-    pub fn set_cloud_scope(&mut self, scope: &CloudScope, label: &str, profile: Option<String>, ssh: Option<CloudSsh>) -> Result<Option<SecretsCleanup>, AppError> {
+    pub fn set_cloud_scope(&mut self, scope: &CloudScope, label: &str, profile: Option<String>, ssh: Option<CloudSsh>) -> Result<Option<SecretsCleanup>, Error> {
         if profile.as_ref().is_some_and(|id| !id.is_empty() && !self.state.connection_profiles.iter().any(|p| &p.id == id)) {
-            return Err(AppError::not_found(t!("Connection profile not found.")));
+            return Err(NotFound::ConnectionProfile.into());
         }
         if let Some(ssh) = ssh.as_ref().filter(|ssh| ssh.enabled) {
             if ssh.host.trim().is_empty() {
-                return Err(AppError::invalid(t!("SSH host is required.")));
+                return Err(Invalid::SshHost.into());
             }
             if ssh.port == 0 {
-                return Err(AppError::invalid(t!("SSH port must be a number between 1 and 65535.")));
+                return Err(Invalid::SshPort.into());
             }
         }
         // the secrets are kept in one entry: changing one needs the other
@@ -257,7 +257,7 @@ impl SettingsStore {
     /// Counts the endpoints of `account` and `region` that this complete listing didn't
     /// have: one missing from the third in a row loses its settings. The clean-ups of what
     /// it had in the credential store are returned.
-    pub fn observe_cloud_listing(&mut self, account: &str, region: &str, present: &FxHashSet<String>) -> Result<Vec<SecretsCleanup>, AppError> {
+    pub fn observe_cloud_listing(&mut self, account: &str, region: &str, present: &FxHashSet<String>) -> Result<Vec<SecretsCleanup>, Error> {
         let prefix = format!("{account}/{region}/");
         let mut next = self.state.clone();
         let (mut changed, mut cleanups, mut pruned) = (false, Vec::new(), Vec::new());

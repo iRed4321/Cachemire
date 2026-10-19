@@ -4,9 +4,8 @@
 use rustc_hash::FxHashMap;
 use std::ops::Range;
 
-use rust_i18n::t;
 
-use super::Located;
+use super::{Located, QueryError};
 use super::lexer::{Tok, Token, tokenize};
 
 fn is_ident_char(c: char) -> bool {
@@ -109,7 +108,7 @@ pub fn substitute_variables(tokens: &mut [Token], vars: &FxHashMap<String, Strin
             let name = &text[range.start + 1..range.end];
             let Some(value) = vars.get(name) else {
                 let at = token.span.start + 1;
-                return Err(Located::parse(t!("Unknown variable: &%{name}", name = name), Some(at + range.start..at + range.end)));
+                return Err(Located::parse(QueryError::UnknownVariable(name.to_string()), Some(at + range.start..at + range.end)));
             };
             out.push_str(value);
             pos = range.end;

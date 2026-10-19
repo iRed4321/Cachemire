@@ -42,7 +42,7 @@ aws-types = "1"
 open = "5"
 ureq = { version = "3", default-features = false, features = ["rustls"] }
 semver = "1"
-rust-i18n = "4"
+thiserror = "2"
 sys-locale = "0.3"
 tracing = { version = "0.1", default-features = false, features = ["std"] }
 futures-util = { version = "0.3", default-features = false, features = ["std"] }

@@ -1,6 +1,7 @@
 //! The walk of the keyspace: its pages go into the index and onto the tree as they
 //! come, with the footer telling how far it is.
 
+use crate::error::Localize;
 use std::sync::atomic::Ordering;
 
 use rust_i18n::t;
@@ -104,7 +105,7 @@ pub(super) fn start_walk(ctx: &ScanContext) {
         if let Err(e) = result {
             let _ = weak.upgrade_in_event_loop(move |window| {
                 if latest.load(Ordering::Relaxed) == generation {
-                    window.global::<KeyTree>().set_footer(t!("scan failed: %{error}", error = e).as_ref().into());
+                    window.global::<KeyTree>().set_footer(t!("scan failed: %{error}", error = e.localized()).as_ref().into());
                 }
             });
         }

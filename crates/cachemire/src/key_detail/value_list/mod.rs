@@ -11,7 +11,6 @@ use serde_json::Value;
 
 use crate::AllValuesRowData;
 use cachemire_core::redis_value_type::RedisValueType;
-use cachemire_core::error::AppError;
 use cachemire_core::json_path::{self, JsonPath};
 
 use super::field::{Field, Fields};
@@ -23,7 +22,7 @@ use super::search_filter::SearchFilter;
 // ---------------------------------------------------------------------------
 
 /// The filter bar's text as a path: `None` for an empty box (no filter).
-pub(super) fn parse_filter(text: &str) -> Result<Option<JsonPath>, AppError> {
+pub(super) fn parse_filter(text: &str) -> Result<Option<JsonPath>, json_path::ParseError> {
     if text.trim().is_empty() { Ok(None) } else { json_path::parse(text).map(Some) }
 }
 

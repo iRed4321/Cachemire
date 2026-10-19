@@ -4,7 +4,6 @@
 
 #[cfg(test)]
 use crate::LockExt;
-use rust_i18n::t;
 use rustc_hash::FxHashSet;
 use std::path::PathBuf;
 use std::sync::Arc;
@@ -12,7 +11,7 @@ use std::sync::Arc;
 use serde::{Deserialize, Serialize};
 
 use crate::i18n::Language;
-use crate::error::AppError;
+use crate::error::{Error, Invalid};
 use crate::persist::{self, Loaded};
 use crate::secret_vault::{OsVault, Secrets, Vault, VaultBacked};
 use crate::updates::Channel;
@@ -147,9 +146,9 @@ impl SettingsStore {
         Some(self.state.search_depth).filter(|depth| SEARCH_DEPTHS.contains(depth)).unwrap_or(DEFAULT_SEARCH_DEPTH)
     }
 
-    pub fn set_search_depth(&mut self, depth: u32) -> Result<(), AppError> {
+    pub fn set_search_depth(&mut self, depth: u32) -> Result<(), Error> {
         if !SEARCH_DEPTHS.contains(&depth) {
-            return Err(AppError::invalid(t!("That search depth isn't one of the choices.")));
+            return Err(Invalid::SearchDepth.into());
         }
         let mut next = self.state.clone();
         next.search_depth = depth;
@@ -161,7 +160,7 @@ impl SettingsStore {
         self.state.server_search
     }
 
-    pub fn set_server_search(&mut self, enabled: bool) -> Result<(), AppError> {
+    pub fn set_server_search(&mut self, enabled: bool) -> Result<(), Error> {
         let mut next = self.state.clone();
         next.server_search = enabled;
         self.commit(next, false)
@@ -172,7 +171,7 @@ impl SettingsStore {
         Channel::from_code(&self.state.update_channel)
     }
 
-    pub fn set_update_channel(&mut self, channel: Channel) -> Result<(), AppError> {
+    pub fn set_update_channel(&mut self, channel: Channel) -> Result<(), Error> {
         let mut next = self.state.clone();
         next.update_channel = channel.code().to_string();
         self.commit(next, false)
@@ -183,7 +182,7 @@ impl SettingsStore {
         self.state.check_updates_at_startup
     }
 
-    pub fn set_check_updates_at_startup(&mut self, enabled: bool) -> Result<(), AppError> {
+    pub fn set_check_updates_at_startup(&mut self, enabled: bool) -> Result<(), Error> {
         let mut next = self.state.clone();
         next.check_updates_at_startup = enabled;
         self.commit(next, false)
@@ -193,13 +192,13 @@ impl SettingsStore {
         self.state.export_escaped
     }
 
-    pub fn set_export_escaped(&mut self, escaped: bool) -> Result<(), AppError> {
+    pub fn set_export_escaped(&mut self, escaped: bool) -> Result<(), Error> {
         let mut next = self.state.clone();
         next.export_escaped = escaped;
         self.commit(next, false)
     }
 
-    pub fn set_language(&mut self, language: Language) -> Result<(), AppError> {
+    pub fn set_language(&mut self, language: Language) -> Result<(), Error> {
         let mut next = self.state.clone();
         next.language = language.code().to_string();
         self.commit(next, false)
@@ -220,7 +219,7 @@ impl SettingsStore {
         self.vault_usable
     }
 
-    fn commit(&mut self, mut next: StoredSettings, store_secrets: bool) -> Result<(), AppError> {
+    fn commit(&mut self, mut next: StoredSettings, store_secrets: bool) -> Result<(), Error> {
         if store_secrets {
             self.vault_secrets(&mut next);
         }

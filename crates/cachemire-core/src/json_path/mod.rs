@@ -2,10 +2,41 @@
 //! `["quoted key"]`, `..key` at any depth, an optional leading `$`. `value` names a
 //! field's own value in the result table unless a real key is called `value`.
 
-use rust_i18n::t;
-
-use crate::error::AppError;
 use serde_json::Value;
+
+/// Why a filter can't be understood.
+#[derive(Debug, Clone, PartialEq, thiserror::Error)]
+pub enum ParseError {
+    #[error("expected a key, found {0}")]
+    ExpectedKey(Found),
+    #[error("a quoted key is missing its closing quote")]
+    UnclosedQuote,
+    #[error("'{0}' is too big an index")]
+    IndexTooBig(String),
+    #[error("expected *, an index or a quoted key after '[', found {0}")]
+    ExpectedInBrackets(Found),
+    #[error("expected ']', found {0}")]
+    ExpectedClosingBracket(Found),
+    #[error("expected '.' or '[', found {0}")]
+    ExpectedSeparator(Found),
+}
+
+/// What a filter has where something else was expected.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub enum Found {
+    /// a character, at its position counted from 1
+    Char { c: char, position: usize },
+    End,
+}
+
+impl std::fmt::Display for Found {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Found::Char { c, position } => write!(f, "'{c}' at position {position}"),
+            Found::End => f.write_str("the end of the filter"),
+        }
+    }
+}
 
 #[derive(Debug, Clone, PartialEq)]
 enum Segment {
@@ -103,14 +134,11 @@ impl JsonPath {
     }
 }
 
-fn describe(chars: &[char], at: usize) -> String {
-    match chars.get(at) {
-        Some(c) => t!("'%{c}' at position %{position}", c = c, position = at + 1).into_owned(),
-        None => t!("the end of the filter").into_owned(),
-    }
+fn found(chars: &[char], at: usize) -> Found {
+    chars.get(at).map_or(Found::End, |&c| Found::Char { c, position: at + 1 })
 }
 
-fn parse_name(chars: &[char], i: &mut usize) -> Result<Segment, AppError> {
+fn parse_name(chars: &[char], i: &mut usize) -> Result<Segment, ParseError> {
     let start = *i;
     while *i < chars.len() && !matches!(chars[*i], '.' | '[' | ']') {
         *i += 1;
@@ -118,13 +146,13 @@ fn parse_name(chars: &[char], i: &mut usize) -> Result<Segment, AppError> {
     let name: String = chars[start..*i].iter().collect();
     let name = name.trim();
     if name.is_empty() {
-        return Err(AppError::parse(t!("expected a key, found %{found}", found = describe(chars, start))));
+        return Err(ParseError::ExpectedKey(found(chars, start)));
     }
     Ok(if name == "*" { Segment::Wildcard } else { Segment::Key(name.to_string()) })
 }
 
 /// `[*]`, `[3]`, `['key']` / `["key"]`, with `*i` at the opening bracket.
-fn parse_bracket(chars: &[char], i: &mut usize) -> Result<Segment, AppError> {
+fn parse_bracket(chars: &[char], i: &mut usize) -> Result<Segment, ParseError> {
     *i += 1;
     let skip_spaces = |i: &mut usize| {
         while *i < chars.len() && chars[*i] == ' ' {
@@ -140,7 +168,7 @@ fn parse_bracket(chars: &[char], i: &mut usize) -> Result<Segment, AppError> {
         Some(&quote @ ('\'' | '"')) => {
             let start = *i + 1;
             let Some(len) = chars[start..].iter().position(|c| *c == quote) else {
-                return Err(AppError::parse(t!("a quoted key is missing its closing quote")));
+                return Err(ParseError::UnclosedQuote);
             };
             *i = start + len + 1;
             Segment::Key(chars[start..start + len].iter().collect())
@@ -151,13 +179,13 @@ fn parse_bracket(chars: &[char], i: &mut usize) -> Result<Segment, AppError> {
                 *i += 1;
             }
             let digits: String = chars[start..*i].iter().collect();
-            Segment::Index(digits.parse().map_err(|_| AppError::parse(t!("'%{digits}' is too big an index", digits = digits)))?)
+            Segment::Index(digits.parse().map_err(|_| ParseError::IndexTooBig(digits))?)
         }
-        _ => return Err(AppError::parse(t!("expected *, an index or a quoted key after '[', found %{found}", found = describe(chars, *i)))),
+        _ => return Err(ParseError::ExpectedInBrackets(found(chars, *i))),
     };
     skip_spaces(i);
     if chars.get(*i) != Some(&']') {
-        return Err(AppError::parse(t!("expected ']', found %{found}", found = describe(chars, *i))));
+        return Err(ParseError::ExpectedClosingBracket(found(chars, *i)));
     }
     *i += 1;
     Ok(segment)
@@ -165,7 +193,7 @@ fn parse_bracket(chars: &[char], i: &mut usize) -> Result<Segment, AppError> {
 
 /// Parses a filter. The empty string is not a filter: callers check for it
 /// first (`$` is the explicit "the whole value").
-pub fn parse(query: &str) -> Result<JsonPath, AppError> {
+pub fn parse(query: &str) -> Result<JsonPath, ParseError> {
     let chars: Vec<char> = query.trim().chars().collect();
     let mut i = usize::from(chars.first() == Some(&'$'));
     // a path may begin with a key directly (`records.*`); after `$` or a
@@ -185,7 +213,7 @@ pub fn parse(query: &str) -> Result<JsonPath, AppError> {
             }
             '[' => {}
             _ if !needs_separator => {}
-            _ => return Err(AppError::parse(t!("expected '.' or '[', found %{found}", found = describe(&chars, i)))),
+            _ => return Err(ParseError::ExpectedSeparator(found(&chars, i))),
         }
         let segment = if chars.get(i) == Some(&'[') { parse_bracket(&chars, &mut i)? } else { parse_name(&chars, &mut i)? };
         segments.push(if descend { Segment::Descend(Box::new(segment)) } else { segment });

@@ -1,6 +1,7 @@
 //! Export mode of the keyspace tree: the keys and folders ticked in it, what that makes of the
 //! rows' boxes and of the count, and the export itself (see `export_files`).
 
+use crate::error::Localize;
 use std::rc::Rc;
 use std::sync::atomic::Ordering;
 use std::time::{Duration, Instant};
@@ -338,7 +339,7 @@ fn start(ctx: &ScanContext, plan: Plan) {
     let connection_id = match ctx.state.connections.lock_recover().get_active() {
         Ok(connection) => connection.id,
         Err(e) => {
-            crate::toast::show(&window, &t!("Export failed: %{error}", error = e));
+            crate::toast::show(&window, &t!("Export failed: %{error}", error = e.localized()));
             return;
         }
     };
@@ -373,7 +374,7 @@ fn start(ctx: &ScanContext, plan: Plan) {
             let text = match result {
                 Ok(outcome) if outcome.cancelled => t!("Export cancelled").into_owned(),
                 Ok(outcome) => t!("Exported %{count} keys", count = outcome.keys).into_owned(),
-                Err(e) => t!("Export failed: %{error}", error = e).into_owned(),
+                Err(e) => t!("Export failed: %{error}", error = e.localized()).into_owned(),
             };
             crate::toast::show(&window, &text);
         });

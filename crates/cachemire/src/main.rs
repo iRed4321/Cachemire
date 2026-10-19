@@ -16,6 +16,7 @@ mod app;
 mod cloud;
 mod i18n;
 mod connections;
+mod error;
 mod logging;
 mod key_detail;
 mod keyspace;
@@ -33,7 +34,8 @@ mod updates;
 mod value_actions;
 mod window_state;
 
-use cachemire_core::error::{AppError, ErrorKind};
+use cachemire_core::error::{ErrorKind, Timeout};
+use error::Localize;
 use cachemire_core::state::AppState;
 
 slint::include_modules!();
@@ -65,7 +67,7 @@ pub(crate) fn connect_to(
     rt.spawn(async move {
         let outcome = match tokio::time::timeout(CONNECT_TIMEOUT, cachemire_core::connection::connect_connection(&state, &connection_id)).await {
             Ok(outcome) => outcome,
-            Err(_) => Err(AppError::timeout(t!("Connection timed out after %{seconds} seconds.", seconds = CONNECT_TIMEOUT.as_secs()))),
+            Err(_) => Err(Timeout::Connect { seconds: CONNECT_TIMEOUT.as_secs() }.into()),
         };
         // resolved from the saved connection itself, not the attempt's outcome,
         // so the status glyph can still show its lock (see TitleBar) when this
@@ -104,11 +106,11 @@ pub(crate) fn connect_to(
                     }
                 }
                 Err(e) => {
-                    tracing::warn!(connection = %connection_id, kind = ?e.kind, "couldn't connect: {e}");
+                    tracing::warn!(connection = %connection_id, kind = ?e.kind(), "couldn't connect: {e}");
                     ConnectionView {
                         status: ConnectionStatus::Disconnected,
-                        status_detail: e.to_string().into(),
-                        ssh_failed: e.kind == ErrorKind::Tunnel,
+                        status_detail: e.localized().into(),
+                        ssh_failed: e.kind() == ErrorKind::Tunnel,
                         ssh_via: ssh_via.into(),
                         ..Default::default()
                     }

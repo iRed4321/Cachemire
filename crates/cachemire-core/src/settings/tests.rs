@@ -44,9 +44,9 @@ fn profiles_are_listed_without_their_passwords_and_the_first_is_active() {
     assert!(store.ssh_profiles().iter().all(|p| !p.active));
     assert!(store.set_active_ssh_profile("nope").is_err());
 
-    assert_eq!(store.create_ssh_profile("", "u", "p").unwrap_err(), AppError::invalid("The profile needs a name."));
-    assert_eq!(store.create_ssh_profile("n", " ", "p").unwrap_err(), AppError::invalid("The profile needs an SSH username."));
-    assert_eq!(store.create_ssh_profile("n", "u", "").unwrap_err(), AppError::invalid("The profile needs an SSH password."));
+    assert_eq!(store.create_ssh_profile("", "u", "p").unwrap_err().to_string(), "The profile needs a name.");
+    assert_eq!(store.create_ssh_profile("n", " ", "p").unwrap_err().to_string(), "The profile needs an SSH username.");
+    assert_eq!(store.create_ssh_profile("n", "u", "").unwrap_err().to_string(), "The profile needs an SSH password.");
 }
 
 #[test]
@@ -88,7 +88,7 @@ fn editing_an_unloaded_profile_does_not_touch_the_vault() {
     vault.broken.store(true, Ordering::SeqCst);
     reopened.update_ssh_profile(&id, "Renamed", "deploy", None).unwrap();
     reopened.set_active_ssh_profile(&id).unwrap();
-    assert!(reopened.unlock_active_ssh_profile().unwrap_err().message().contains("system keyring"));
+    assert!(reopened.unlock_active_ssh_profile().unwrap_err().to_string().contains("system keyring"));
     vault.broken.store(false, Ordering::SeqCst);
     assert_eq!(vault.entries.lock_recover()[&vault_key(&id)].ssh_password, "s3cret", "nothing was lost");
 }
@@ -115,7 +115,7 @@ fn a_connection_with_its_own_username_ignores_the_profile() {
     let mut store = SettingsStore::with_vault(temp_file("fill"), Arc::new(MemoryVault::default()));
 
     let mut none_active = ssh("", "");
-    assert!(store.fill_ssh(&mut none_active).unwrap_err().message().contains("SSH profile"));
+    assert!(store.fill_ssh(&mut none_active).unwrap_err().to_string().contains("SSH profile"));
 
     store.create_ssh_profile("Work", "deploy", "profile-pw").unwrap();
     let mut own = ssh("me", "my-pw");
@@ -191,7 +191,7 @@ fn connection_profiles_are_created_renamed_recolored_and_read_back() {
     let mut store = SettingsStore::with_vault(file.clone(), Arc::new(MemoryVault::default()));
     let dev = store.create_connection_profile(" dev ", ProfileColor::Green).unwrap();
     assert_eq!(store.connection_profile(&dev), Some(ConnectionProfile { id: dev.clone(), name: "dev".into(), color: ProfileColor::Green }));
-    assert_eq!(store.create_connection_profile("  ", ProfileColor::Blue).unwrap_err(), AppError::invalid("The profile needs a name."));
+    assert_eq!(store.create_connection_profile("  ", ProfileColor::Blue).unwrap_err().to_string(), "The profile needs a name.");
 
     store.update_connection_profile(&dev, "staging", ProfileColor::Purple).unwrap();
     assert_eq!(store.connection_profile(&dev).map(|p| (p.name, p.color)), Some(("staging".to_string(), ProfileColor::Purple)));
@@ -238,8 +238,8 @@ fn saved_queries_are_created_listed_and_removed() {
     );
     assert_eq!(store.saved_queries().len(), 1);
 
-    assert_eq!(store.create_saved_query("  ", "SELECT *", "").unwrap_err(), AppError::invalid("The query needs a name."));
-    assert_eq!(store.create_saved_query("Untitled", "  ", "").unwrap_err(), AppError::invalid("The query needs some text to save."));
+    assert_eq!(store.create_saved_query("  ", "SELECT *", "").unwrap_err().to_string(), "The query needs a name.");
+    assert_eq!(store.create_saved_query("Untitled", "  ", "").unwrap_err().to_string(), "The query needs some text to save.");
 
     store.remove_saved_query(&id).unwrap();
     assert!(store.saved_queries().is_empty());

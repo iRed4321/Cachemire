@@ -1,6 +1,7 @@
 //! The search bar (badges, case-sensitivity) and the filter bar's JSON path:
 //! each re-renders what's loaded under them, off the UI thread.
 
+use crate::error::Localize;
 use std::sync::atomic::Ordering;
 
 use rust_i18n::t;
@@ -93,7 +94,7 @@ impl Ctx {
         let path = match parse_filter(&window.global::<KeyPanel>().get_json_filter()) {
             Ok(path) => path,
             Err(error) => {
-                window.global::<KeyPanel>().set_json_filter_error(error.message().into());
+                window.global::<KeyPanel>().set_json_filter_error(error.localized().into());
                 return;
             }
         };

@@ -1,6 +1,7 @@
 //! Loading a key into the panel: fetched (or reused from what was fetched),
 //! filtered, rendered off the UI thread, then shown and scrolled into place.
 
+use crate::error::Localize;
 use std::sync::Arc;
 use std::sync::atomic::Ordering;
 
@@ -78,7 +79,7 @@ impl Ctx {
                         path
                     }
                     Err(error) => {
-                        window.global::<KeyPanel>().set_json_filter_error(error.message().into());
+                        window.global::<KeyPanel>().set_json_filter_error(error.localized().into());
                         None
                     }
                 };
@@ -203,7 +204,7 @@ impl Ctx {
                         window.global::<KeyPanel>().set_badge("".into());
                         window.global::<KeyPanel>().set_loaded(false);
                         show_key_name(&window, &key);
-                        window.global::<KeyPanel>().set_meta(t!("failed to load: %{error}", error = e).as_ref().into());
+                        window.global::<KeyPanel>().set_meta(t!("failed to load: %{error}", error = e.localized()).as_ref().into());
                         window.global::<KeyPanel>().set_all_values_field_chars(8);
                         window.global::<KeyPanel>().set_all_values_rows(ModelRc::new(VecModel::from(Vec::<AllValuesRowData>::new())));
                         window.global::<KeyPanel>().set_json_filter_status("".into());

@@ -2,6 +2,7 @@
 //! button picks the local profile, and its ElastiCache connections show in the
 //! connection dropdown (see `cachemire_core::aws`).
 
+use crate::error::Localize;
 use rustc_hash::FxHashSet;
 use std::rc::Rc;
 
@@ -88,7 +89,7 @@ pub fn init(app: &Rc<App>, window: &MainWindow) {
                         }
                         Err(e) => {
                             tracing::warn!("aws sign-in failed: {e}");
-                            window.global::<AwsAccount>().set_error(e.message().into());
+                            window.global::<AwsAccount>().set_error(e.localized().into());
                         }
                     }
                 });
@@ -145,7 +146,7 @@ pub fn init(app: &Rc<App>, window: &MainWindow) {
                         }
                         Err(e) => {
                             tracing::warn!("listing the cloud connections failed: {e}");
-                            window.global::<AwsAccount>().set_error(e.message().into());
+                            window.global::<AwsAccount>().set_error(e.localized().into());
                         }
                     }
                 });

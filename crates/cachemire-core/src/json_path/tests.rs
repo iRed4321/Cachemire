@@ -63,8 +63,8 @@ fn spaces_are_forgiven_and_mistakes_are_explained() {
     assert_eq!(select("bar[ 0 ].foo", &v), vec![json!(1)]);
     for bad in ["bar.", "bar..", ".", "bar[", "bar[x]", "bar[1", "bar['x]", "$name", "bar]", "bar.*.[0"] {
         let error = parse(bad).unwrap_err();
-        assert!(!error.message().is_empty(), "{bad}");
+        assert!(!error.to_string().is_empty(), "{bad}");
     }
-    assert!(parse("bar.").unwrap_err().message().contains("expected a key"));
-    assert!(parse("bar[x]").unwrap_err().message().contains("after '['"));
+    assert!(parse("bar.").unwrap_err().to_string().contains("expected a key"));
+    assert!(parse("bar[x]").unwrap_err().to_string().contains("after '['"));
 }

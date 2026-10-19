@@ -10,7 +10,7 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use rustc_hash::FxHashSet;
 use serde_json::{Value, json};
 
-use crate::error::AppError;
+use crate::error::{Error, FileError};
 use crate::explorer::{self, ExportedKey};
 use crate::key_name::KeyName;
 use crate::session::Session;
@@ -100,8 +100,8 @@ fn outputs(plan: Plan) -> Vec<Output> {
     out
 }
 
-fn io_error(e: std::io::Error) -> AppError {
-    AppError::file(e.to_string())
+fn io_error(e: std::io::Error) -> Error {
+    FileError::from(e).into()
 }
 
 /// The key as the `{key, type, ttl, value}` object a file holds.
@@ -114,7 +114,7 @@ fn item(key: &str, read: &ExportedKey) -> Value {
 }
 
 /// Creates `path` and writes the start of `output`'s file into it.
-fn start_file(path: &Path, output: &Output) -> Result<BufWriter<File>, AppError> {
+fn start_file(path: &Path, output: &Output) -> Result<BufWriter<File>, Error> {
     let mut writer = BufWriter::new(File::create(path).map_err(io_error)?);
     if let Output::Items { prefix, .. } = output {
         write!(writer, "{{\n  \"prefix\": {},\n  \"items\": [", Value::from(prefix.as_str())).map_err(io_error)?;
@@ -132,7 +132,7 @@ pub async fn run(
     dir: &Path,
     cancel: &AtomicBool,
     mut progress: impl FnMut(usize, usize),
-) -> Result<Outcome, AppError> {
+) -> Result<Outcome, Error> {
     let total = plan.total();
     let mut session = Session::open(state, Some(connection_id)).await?;
     std::fs::create_dir_all(dir).map_err(io_error)?;
@@ -160,9 +160,9 @@ pub async fn run(
                     };
                     let json = item(key, &read);
                     if matches!(output, Output::Single { .. }) {
-                        serde_json::to_writer_pretty(&mut *writer, &json).map_err(|e| AppError::file(e.to_string()))?;
+                        serde_json::to_writer_pretty(&mut *writer, &json).map_err(FileError::from)?;
                     } else {
-                        let text = serde_json::to_string_pretty(&json).map_err(|e| AppError::file(e.to_string()))?;
+                        let text = serde_json::to_string_pretty(&json).map_err(FileError::from)?;
                         writer.write_all(if written == 0 { b"\n    " } else { b",\n    " }).map_err(io_error)?;
                         writer.write_all(text.replace('\n', "\n    ").as_bytes()).map_err(io_error)?;
                     }

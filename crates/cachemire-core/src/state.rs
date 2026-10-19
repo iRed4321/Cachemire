@@ -1,12 +1,11 @@
 use crate::LockExt;
-use rust_i18n::t;
 use std::path::{Path, PathBuf};
 use std::sync::{LazyLock, Mutex};
 use std::sync::atomic::AtomicU64;
 
 use crate::connection::pool::ConnectionCache;
 use crate::connection::store::ConnectionStore;
-use crate::error::AppError;
+use crate::error::{Error, NotFound};
 use crate::redisql::history::HistoryStore;
 use crate::settings::SettingsStore;
 use crate::connection::ConnectionItem;
@@ -102,13 +101,13 @@ impl AppState {
 pub fn resolve_connection(
     state: &AppState,
     connection_id: Option<&str>,
-) -> Result<ConnectionItem, AppError> {
+) -> Result<ConnectionItem, Error> {
     let (mut connection, cloud_key) = {
         let store = state.connections.lock_recover();
         let connection = match connection_id {
             Some(id) if !id.trim().is_empty() => store
                 .get(id)
-                .ok_or_else(|| AppError::not_found(t!("Requested connection not found."))),
+                .ok_or_else(|| NotFound::Connection.into()),
             _ => store.get_active(),
         }?;
         let cloud_key = store.cloud_key(&connection.id);

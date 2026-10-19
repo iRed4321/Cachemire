@@ -1,6 +1,5 @@
 #[cfg(test)]
 use crate::LockExt;
-use rust_i18n::t;
 use rustc_hash::FxHashSet;
 use std::path::PathBuf;
 use std::sync::Arc;
@@ -10,7 +9,8 @@ use uuid::Uuid;
 
 use crate::connection::{CloudKey, ConnectionItem, ConnectionPayloadInput, ConnectionsState, SshSettings};
 use crate::secret_vault::{OsVault, Secrets, SecretsCleanup, Vault, VaultBacked};
-use crate::error::AppError;
+use crate::secret_vault::KeyringError;
+use crate::error::{Error, Invalid, NotFound};
 use crate::persist::{self, Loaded};
 use crate::now_ms;
 
@@ -221,16 +221,16 @@ fn apply_payload(conn: &mut StoredConnection, payload: ConnectionPayloadInput) {
 /// Checks the record can be connected with, moving a password typed into the
 /// URL to its own field. `secrets_loaded` false means its secrets are still in
 /// the credential store, so an SSH password can't be checked here.
-fn finish(conn: &mut StoredConnection, secrets_loaded: bool) -> Result<(), AppError> {
+fn finish(conn: &mut StoredConnection, secrets_loaded: bool) -> Result<(), Error> {
     if conn.name.is_empty() {
-        return Err(AppError::invalid(t!("Connection name is required.")));
+        return Err(Invalid::ConnectionName.into());
     }
     if conn.connection_url.is_empty() {
-        return Err(AppError::invalid(t!("Connection URL is required.")));
+        return Err(Invalid::ConnectionUrl.into());
     }
-    let parts = super::url::parse(&conn.connection_url).ok_or_else(|| AppError::invalid(t!("Couldn't understand the connection URL.")))?;
+    let parts = super::url::parse(&conn.connection_url).ok_or(Invalid::UnreadableUrl)?;
     if parts.host.is_empty() {
-        return Err(AppError::invalid(t!("The connection URL has no host.")));
+        return Err(Invalid::UrlWithoutHost.into());
     }
     // a password typed into the URL is a secret like any other: it moves to
     // the password field (which is what the URL's own password wins over
@@ -243,10 +243,10 @@ fn finish(conn: &mut StoredConnection, secrets_loaded: bool) -> Result<(), AppEr
     }
     if conn.ssh_enabled {
         if conn.ssh_host.is_empty() {
-            return Err(AppError::invalid(t!("SSH host is required.")));
+            return Err(Invalid::SshHost.into());
         }
         if conn.ssh_port == 0 {
-            return Err(AppError::invalid(t!("SSH port must be a number between 1 and 65535.")));
+            return Err(Invalid::SshPort.into());
         }
         // no username: the active SSH profile (see Settings) logs in, which
         // can't be known here, so there is nothing more to require
@@ -255,14 +255,14 @@ fn finish(conn: &mut StoredConnection, secrets_loaded: bool) -> Result<(), AppEr
             && conn.ssh_password.is_empty()
             && conn.ssh_private_key.is_empty()
         {
-            return Err(AppError::invalid(t!("Provide an SSH password or a private key.")));
+            return Err(Invalid::SshLogin.into());
         }
     }
     Ok(())
 }
 
 /// Builds a full connection record from a create-connection payload.
-fn connection_from_payload(payload: ConnectionPayloadInput, secrets_loaded: bool) -> Result<StoredConnection, AppError> {
+fn connection_from_payload(payload: ConnectionPayloadInput, secrets_loaded: bool) -> Result<StoredConnection, Error> {
     let mut conn = StoredConnection { id: Uuid::new_v4().to_string(), ..Default::default() };
     apply_payload(&mut conn, payload);
     finish(&mut conn, secrets_loaded)?;
@@ -354,13 +354,13 @@ impl ConnectionStore {
     /// Makes connection `id`'s secrets available before use: reads them from
     /// the credential store, or moves them there if the file still holds
     /// them (no store was available when they were saved). No-op if it has none.
-    pub fn unlock_secrets(&mut self, id: &str) -> Result<(), AppError> {
+    pub fn unlock_secrets(&mut self, id: &str) -> Result<(), Error> {
         let Some(position) = self.state.connections.iter().position(|c| c.id == id) else { return Ok(()) };
         if self.unloaded.contains(id) {
             let stored = self
                 .vault
                 .get(id)
-                .map_err(|e| AppError::keyring(t!("Couldn't read the saved passwords from the system keyring: %{error}", error = e)))?;
+                .map_err(KeyringError::ConnectionPasswords)?;
             let conn = &mut self.state.connections[position];
             match stored {
                 Some(stored) => {
@@ -421,7 +421,7 @@ impl ConnectionStore {
     /// Persists `next` and only then makes it current, so a failed write
     /// leaves memory and disk agreeing on the old state. With
     /// `store_secrets`, changed secrets are vaulted first; without it, untouched.
-    fn commit(&mut self, mut next: StoredState, store_secrets: bool) -> Result<(), AppError> {
+    fn commit(&mut self, mut next: StoredState, store_secrets: bool) -> Result<(), Error> {
         if store_secrets {
             self.vault_secrets(&mut next);
         }
@@ -451,8 +451,8 @@ impl ConnectionStore {
         self.state.connections.iter().find(|c| c.id == id).map(to_item).or_else(|| self.cloud.iter().find(|c| c.id == id).cloned())
     }
 
-    pub fn get_active(&self) -> Result<ConnectionItem, AppError> {
-        self.get(self.active_connection_id()).ok_or_else(|| AppError::not_found(t!("No active connection.")))
+    pub fn get_active(&self) -> Result<ConnectionItem, Error> {
+        self.get(self.active_connection_id()).ok_or_else(|| NotFound::ActiveConnection.into())
     }
 
     pub fn cloud_connections(&self) -> &[ConnectionItem] {
@@ -481,22 +481,22 @@ impl ConnectionStore {
     }
 
     #[cfg(test)]
-    pub fn create(&mut self, payload: ConnectionPayloadInput) -> Result<(), AppError> {
+    pub fn create(&mut self, payload: ConnectionPayloadInput) -> Result<(), Error> {
         self.create_with_id(&Uuid::new_v4().to_string(), payload)
     }
 
     /// `create`, under an id chosen by the caller.
-    pub fn create_with_id(&mut self, id: &str, payload: ConnectionPayloadInput) -> Result<(), AppError> {
+    pub fn create_with_id(&mut self, id: &str, payload: ConnectionPayloadInput) -> Result<(), Error> {
         self.add(id, payload, true)
     }
 
     /// Adds a connection without making it the active one (an import). Its tunnel may come
     /// with a username and no password or key, as a file made without the passwords has it.
-    pub fn import_with_id(&mut self, id: &str, payload: ConnectionPayloadInput) -> Result<(), AppError> {
+    pub fn import_with_id(&mut self, id: &str, payload: ConnectionPayloadInput) -> Result<(), Error> {
         self.add(id, payload, false)
     }
 
-    fn add(&mut self, id: &str, payload: ConnectionPayloadInput, from_form: bool) -> Result<(), AppError> {
+    fn add(&mut self, id: &str, payload: ConnectionPayloadInput, from_form: bool) -> Result<(), Error> {
         let conn = StoredConnection { id: id.to_string(), ..connection_from_payload(payload, from_form)? };
         let mut next = self.state.clone();
         if from_form {
@@ -508,17 +508,17 @@ impl ConnectionStore {
 
     /// The connection `payload` describes as it would be saved, without saving it: an edit
     /// of the saved connection `id` (its secrets unlocked first), or a new one when `id` is empty.
-    pub fn preview(&self, id: &str, payload: ConnectionPayloadInput) -> Result<ConnectionItem, AppError> {
+    pub fn preview(&self, id: &str, payload: ConnectionPayloadInput) -> Result<ConnectionItem, Error> {
         if id.is_empty() {
             return Ok(to_item(&connection_from_payload(payload, true)?));
         }
-        let mut conn = self.state.connections.iter().find(|c| c.id == id).cloned().ok_or_else(|| AppError::not_found(t!("Connection not found.")))?;
+        let mut conn = self.state.connections.iter().find(|c| c.id == id).cloned().ok_or(NotFound::Connection)?;
         apply_payload(&mut conn, payload);
         finish(&mut conn, !self.unloaded.contains(id))?;
         Ok(to_item(&conn))
     }
 
-    pub fn update(&mut self, id: &str, payload: ConnectionPayloadInput) -> Result<(), AppError> {
+    pub fn update(&mut self, id: &str, payload: ConnectionPayloadInput) -> Result<(), Error> {
         // the secrets are kept in one entry: changing one needs the others
         if payload.password.is_some() || payload.ssh_password.is_some() || payload.ssh_passphrase.is_some() {
             self.unlock_secrets(id)?;
@@ -528,13 +528,13 @@ impl ConnectionStore {
             .connections
             .iter_mut()
             .find(|c| c.id == id)
-            .ok_or_else(|| AppError::not_found(t!("Connection not found.")))?;
+            .ok_or(NotFound::Connection)?;
         apply_payload(existing, payload);
         finish(existing, !self.unloaded.contains(id))?;
         self.commit(next, true)
     }
 
-    pub fn set_active(&mut self, id: &str) -> Result<(), AppError> {
+    pub fn set_active(&mut self, id: &str) -> Result<(), Error> {
         if self.cloud.iter().any(|c| c.id == id) {
             self.cloud_active = Some(id.to_string());
             return Ok(());
@@ -544,7 +544,7 @@ impl ConnectionStore {
             .connections
             .iter_mut()
             .find(|c| c.id == id)
-            .ok_or_else(|| AppError::not_found(t!("Connection not found.")))?;
+            .ok_or(NotFound::Connection)?;
         conn.last_connected_at = Some(now_ms());
         next.active_connection_id = id.to_string();
         self.commit(next, false)?;
@@ -553,7 +553,7 @@ impl ConnectionStore {
     }
 
     /// Leaves no connection active; every saved one is kept.
-    pub fn clear_active(&mut self) -> Result<(), AppError> {
+    pub fn clear_active(&mut self) -> Result<(), Error> {
         self.cloud_active = None;
         let mut next = self.state.clone();
         next.active_connection_id.clear();
@@ -563,8 +563,8 @@ impl ConnectionStore {
     /// Removes saved connection `id` (clearing active status if it was
     /// active). Its credential-store entries are left for the caller — run
     /// the returned `SecretsCleanup` off the UI thread.
-    pub fn remove(&mut self, id: &str) -> Result<Option<SecretsCleanup>, AppError> {
-        let stored = self.state.connections.iter().find(|c| c.id == id).ok_or_else(|| AppError::not_found(t!("Connection not found.")))?;
+    pub fn remove(&mut self, id: &str) -> Result<Option<SecretsCleanup>, Error> {
+        let stored = self.state.connections.iter().find(|c| c.id == id).ok_or(NotFound::Connection)?;
         let cleanup = stored.in_vault.then(|| SecretsCleanup::new(self.vault.clone(), id));
         let mut next = self.state.clone();
         next.connections.retain(|c| c.id != id);

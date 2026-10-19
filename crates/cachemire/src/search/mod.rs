@@ -2,6 +2,7 @@
 //! its box text, hits and status in [`SearchTabs`], shown through the window's
 //! `search-*` properties while active; the search itself runs on Tokio.
 
+use crate::error::Localize;
 use rustc_hash::FxHashMap;
 use std::rc::Rc;
 use std::sync::Arc;
@@ -375,7 +376,7 @@ fn submit(app: &App, window: &MainWindow, query: &str) {
         )
         .await;
         if let Err(error) = result {
-            report(&id, run, Report::Finished { rows: Vec::new(), status: t!("search failed: %{error}", error = error).into_owned(), longest: Longest::default() });
+            report(&id, run, Report::Finished { rows: Vec::new(), status: t!("search failed: %{error}", error = error.localized()).into_owned(), longest: Longest::default() });
         }
     });
 }

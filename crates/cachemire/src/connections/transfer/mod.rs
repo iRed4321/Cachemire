@@ -12,7 +12,7 @@ use slint::{ComponentHandle, Model, ModelRc, VecModel};
 
 use crate::app::App;
 use cachemire_core::connection::store::build_connection_string;
-use cachemire_core::error::AppError;
+use crate::error::{Error, Localize};
 use cachemire_core::connection::ConnectionPayloadInput;
 use cachemire_core::secret_vault::staged;
 use cachemire_core::state::AppState;
@@ -67,11 +67,11 @@ fn draft_of(item: &Value) -> Option<Draft> {
 }
 
 /// The connections of a file: its `connections` list, or the file itself when it is a list.
-fn parse_drafts(text: &str) -> Result<Vec<Draft>, AppError> {
-    let root: Value = serde_json::from_str(text).map_err(|e| AppError::invalid(e.to_string()))?;
+fn parse_drafts(text: &str) -> Result<Vec<Draft>, Error> {
+    let root: Value = serde_json::from_str(text)?;
     let list = root.get("connections").and_then(Value::as_array).or_else(|| root.as_array());
     let drafts: Vec<Draft> = list.map(|list| list.iter().filter_map(draft_of).collect()).unwrap_or_default();
-    if drafts.is_empty() { Err(AppError::invalid(t!("This file has no connections."))) } else { Ok(drafts) }
+    if drafts.is_empty() { Err(Error::NoConnections) } else { Ok(drafts) }
 }
 
 /// UTC date and time of `ms` since the epoch: year, month, day, hour, minute, second, millisecond.
@@ -200,14 +200,14 @@ fn choose_file(app: &Rc<App>) {
     app.rt.spawn(async move {
         let Some(file) = rfd::AsyncFileDialog::new().set_title(t!("Select a connections file")).add_filter("JSON", &["json"]).pick_file().await else { return };
         let path = file.path();
-        let parsed = std::fs::read_to_string(path).map_err(|e| AppError::file(t!("Couldn't read the file: %{error}", error = e))).and_then(|text| parse_drafts(&text));
+        let parsed = std::fs::read_to_string(path).map_err(Error::ReadFile).and_then(|text| parse_drafts(&text));
         let file = path.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default();
         crate::app::later(move |app, window| show_drafts(app, window, parsed, file));
     });
 }
 
 /// Lists an import file's connections (`file` is its name), or why it can't be imported.
-fn show_drafts(app: &Rc<App>, window: &MainWindow, parsed: Result<Vec<Draft>, AppError>, file: String) {
+fn show_drafts(app: &Rc<App>, window: &MainWindow, parsed: Result<Vec<Draft>, Error>, file: String) {
     let global = window.global::<ConnectionTransfer>();
     match parsed {
         Ok(drafts) => {
@@ -233,7 +233,7 @@ fn show_drafts(app: &Rc<App>, window: &MainWindow, parsed: Result<Vec<Draft>, Ap
             app.transfer.borrow_mut().drafts.clear();
             global.set_import_rows(ModelRc::new(VecModel::from(Vec::<TransferRow>::new())));
             global.set_import_file(file.into());
-            set_message(window, e.to_string(), false);
+            set_message(window, e.localized(), false);
         }
     }
     refresh_counts(window);
@@ -302,7 +302,7 @@ fn run_import(app: &Rc<App>, window: &MainWindow) {
                     crate::connections::refresh(app, window);
                     set_message(window, t!("Imported %{count} connection(s).", count = count).into_owned(), true);
                 }
-                Err(e) => set_message(window, e.to_string(), false),
+                Err(e) => set_message(window, e.localized(), false),
             }
         });
     });
@@ -335,7 +335,7 @@ fn run_export(app: &Rc<App>, window: &MainWindow) {
         };
         let outcome = tokio::task::spawn_blocking(move || write_export(&state, &ids, passwords, now, &path).map(|count| (path, count)))
             .await
-            .map_err(AppError::from)
+            .map_err(Error::from)
             .flatten();
         crate::app::later(move |_, window| {
             window.global::<ConnectionTransfer>().set_busy(false);
@@ -344,7 +344,7 @@ fn run_export(app: &Rc<App>, window: &MainWindow) {
                     tracing::info!(count, file = %path.display(), "exported connections");
                     set_message(window, t!("Exported %{count} connection(s) to %{file}.", count = count, file = path.display()).into_owned(), true);
                 }
-                Err(e) => set_message(window, e.to_string(), false),
+                Err(e) => set_message(window, e.localized(), false),
             }
         });
     });
@@ -352,7 +352,7 @@ fn run_export(app: &Rc<App>, window: &MainWindow) {
 
 /// Writes the connections `ids` to `path` as an export made at `now` (ms since the
 /// epoch), with their passwords when `passwords`; how many it wrote.
-fn write_export(state: &AppState, ids: &[String], passwords: bool, now: i64, path: &Path) -> Result<usize, AppError> {
+fn write_export(state: &AppState, ids: &[String], passwords: bool, now: i64, path: &Path) -> Result<usize, Error> {
     if passwords {
         // the passwords are fetched from the system keyring, off the store's lock
         staged(&state.connections, |store| ids.iter().try_for_each(|id| store.unlock_secrets(id)))?;

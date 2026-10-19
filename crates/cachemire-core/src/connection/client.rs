@@ -1,16 +1,16 @@
 use redis::aio::{ConnectionManager, ConnectionManagerConfig};
 
-use crate::error::AppError;
+use crate::error::Error;
 use crate::connection::ConnectionItem;
 
 /// Where the Redis server is, as the connection says (through an SSH tunnel,
 /// this is where the SSH server has to reach).
-pub fn target_of(connection: &ConnectionItem) -> Result<(String, u16), AppError> {
+pub fn target_of(connection: &ConnectionItem) -> Result<(String, u16), Error> {
     let endpoint = connection.endpoint()?;
     Ok((endpoint.host, endpoint.port))
 }
 
-fn build_client(connection: &ConnectionItem, via_local_port: Option<u16>) -> Result<redis::Client, AppError> {
+fn build_client(connection: &ConnectionItem, via_local_port: Option<u16>) -> Result<redis::Client, Error> {
     use redis::IntoConnectionInfo;
 
     let mut endpoint = connection.endpoint()?;
@@ -48,7 +48,7 @@ fn build_client(connection: &ConnectionItem, via_local_port: Option<u16>) -> Res
 /// Opens a connection that reopens its socket by itself once it drops, with
 /// explicit timeouts. No retries: a failed (re)connect is reported at once,
 /// and the next command tries again. `via_local_port` targets the SSH tunnel.
-pub async fn create_connection(connection: &ConnectionItem, via_local_port: Option<u16>) -> Result<ConnectionManager, AppError> {
+pub async fn create_connection(connection: &ConnectionItem, via_local_port: Option<u16>) -> Result<ConnectionManager, Error> {
     let client = build_client(connection, via_local_port)?;
     let config = ConnectionManagerConfig::new()
         .set_connection_timeout(Some(std::time::Duration::from_secs(20)))

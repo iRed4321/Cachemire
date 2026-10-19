@@ -2,6 +2,7 @@
 //! release on the picked channel (stable, or betas too), then downloads and runs its installer
 //! (Windows) or opens its page (elsewhere).
 
+use crate::error::Localize;
 use std::cell::RefCell;
 use std::sync::Arc;
 
@@ -64,7 +65,7 @@ pub(crate) fn show_found(about: &About, release: Release, at_startup: bool) {
 fn look_for_update(weak: slint::Weak<MainWindow>, rt: &tokio::runtime::Handle, channel: Channel, at_startup: bool) {
     let current = current_version();
     rt.spawn(async move {
-        let found = tokio::task::spawn_blocking(move || updates::newer_release(&current, channel)).await.map_err(|e| e.to_string()).and_then(|r| r);
+        let found = tokio::task::spawn_blocking(move || updates::newer_release(&current, channel)).await.map_err(|e| e.to_string()).and_then(|r| r.map_err(|e| e.to_string()));
         match &found {
             Ok(Some(release)) => tracing::info!(version = %release.version, at_startup, "an update is available"),
             Ok(None) => tracing::info!(at_startup, "no update available"),
@@ -102,7 +103,7 @@ pub fn init(window: &MainWindow, state: Arc<AppState>, rt: tokio::runtime::Handl
             let about = window.global::<About>();
             let picked = if index == 1 { Channel::Beta } else { Channel::Stable };
             if let Err(e) = state.settings.lock_recover().set_update_channel(picked) {
-                return say(&about, e.to_string(), false);
+                return say(&about, e.localized(), false);
             }
             tracing::info!(channel = picked.code(), "update channel picked");
             about.set_channel(segment(picked));
@@ -158,7 +159,7 @@ pub fn init(window: &MainWindow, state: Arc<AppState>, rt: tokio::runtime::Handl
 
 #[cfg(windows)]
 fn launch(url: &str) -> Result<(), String> {
-    updates::run_installer(&updates::download_installer(url)?)
+    updates::download_installer(url).and_then(|installer| updates::run_installer(&installer)).map_err(|e| e.to_string())
 }
 
 #[cfg(not(windows))]

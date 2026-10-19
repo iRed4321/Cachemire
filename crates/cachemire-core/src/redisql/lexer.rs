@@ -3,9 +3,8 @@
 
 use std::ops::Range;
 
-use rust_i18n::t;
 
-use super::Located;
+use super::{Located, QueryError};
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum Tok {
@@ -73,8 +72,8 @@ pub fn tokenize(text: &str) -> Result<Vec<Token>, Located> {
         } else if c == '\'' || c == '"' {
             let Some(len) = text[i + 1..].find(c) else {
                 let line_end = text[i..].find('\n').map_or(text.len(), |n| i + n);
-                let message = t!("Unterminated quote: %{text}", text = &text[i..line_end]);
-                return Err(Located::parse(message, Some(i..line_end)));
+                let error = QueryError::UnterminatedQuote(text[i..line_end].to_string());
+                return Err(Located::parse(error, Some(i..line_end)));
             };
             tokens.push(token(Tok::Str(text[i + 1..i + 1 + len].to_string()), len + 2));
             i += len + 2;
@@ -96,7 +95,7 @@ pub fn tokenize(text: &str) -> Result<Vec<Token>, Located> {
                 ']' | ')' => Tok::Close(c),
                 _ => {
                     let span = i..i + c.len_utf8();
-                    return Err(Located::parse(t!("Unexpected text: %{text}", text = &text[span.clone()]), Some(span)));
+                    return Err(Located::parse(QueryError::UnexpectedText(text[span.clone()].to_string()), Some(span)));
                 }
             };
             tokens.push(token(tok, c.len_utf8()));

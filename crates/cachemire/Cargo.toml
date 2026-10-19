@@ -24,6 +24,7 @@ semver = "1"
 # the fork's patched/1.18.1 branch at a fixed commit (also for slint-build): move both `rev`s to update
 slint = { git = "https://github.com/iRed4321/SlintFork.git", rev = "56377498bbb0f835237307b7901427e61fd27412", default-features = false, features = ["std", "backend-winit", "renderer-software", "compat-1-2", "unstable-winit-030"] }
 rust-i18n = "4"
+thiserror = "2"
 # the log: a daily file in the data directory (see logging.rs), and stderr in debug builds
 tracing = { version = "0.1", default-features = false, features = ["std"] }
 tracing-appender = "0.2"

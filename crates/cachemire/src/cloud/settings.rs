@@ -2,6 +2,7 @@
 //! endpoint, which overrides the account's. Opens it with the stored values and saves what it
 //! says through `cachemire_core::settings`; the endpoints themselves are never saved.
 
+use crate::error::Localize;
 use std::cell::RefCell;
 use std::rc::Rc;
 
@@ -201,7 +202,7 @@ fn save(app: &Rc<App>, window: &MainWindow, Open { scope, label }: Open) {
                     reapply(app, window);
                     global.set_open(false);
                 }
-                Err(e) => global.set_error(e.message().into()),
+                Err(e) => global.set_error(e.localized().into()),
             }
         });
     });

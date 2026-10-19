@@ -15,11 +15,10 @@ use aws_smithy_http_client::tls;
 use aws_sdk_sso::error::ProvideErrorMetadata;
 use aws_smithy_runtime_api::client::http::SharedHttpClient;
 use aws_types::os_shim_internal::{Env, Fs};
-use rust_i18n::t;
 
 use crate::LockExt;
 use crate::connection::store::build_connection_string;
-use crate::error::AppError;
+use crate::error::{Error, ErrorKind};
 use crate::connection::ConnectionItem;
 
 /// Prefix of a cloud connection's id: `aws:<profile>:<name>`.
@@ -78,17 +77,56 @@ fn http_client() -> SharedHttpClient {
     aws_smithy_http_client::Builder::new().tls_provider(tls::Provider::Rustls(tls::rustls_provider::CryptoMode::Ring)).build_https()
 }
 
-fn incomplete<T>(value: Option<T>) -> Result<T, AppError> {
-    value.ok_or_else(|| AppError::cloud(t!("Incomplete answer from AWS.")))
+/// Why signing in to AWS, or listing what an account holds, failed.
+#[derive(Debug, thiserror::Error)]
+pub enum AwsError {
+    #[error("Incomplete answer from AWS.")]
+    Incomplete,
+    /// a failed call, with AWS's own message ("message (code)")
+    #[error("{message}")]
+    Service { message: String, source: Box<dyn std::error::Error + Send + Sync> },
+    /// `reason` is the SDK's, when it gave one
+    #[error("No usable credentials for the profile {profile}: {}", reason.as_deref().unwrap_or("No credentials."))]
+    NoUsableCredentials { profile: String, reason: Option<String> },
+    #[error("The profile {profile} can't take the role {role} in the account {account}: {source}")]
+    RoleRefused { profile: String, role: String, account: String, source: Box<AwsError> },
+    #[error("No credentials.")]
+    NoCredentials,
+    #[error("No AWS profile found in the .aws folder.")]
+    NoProfile,
+    #[error("AWS profile not found: {0}")]
+    ProfileNotFound(String),
+    #[error("The profile {0} has no region.")]
+    NoRegion(String),
+    #[error("The sign-in in the browser took too long.")]
+    SignInTimedOut,
+    #[error("Couldn't open the browser: {0}")]
+    Browser(#[source] std::io::Error),
 }
 
-/// An AWS call's error as "message (code)", falling back to the full error chain.
-fn describe<E: std::error::Error + ProvideErrorMetadata>(error: &E) -> AppError {
-    AppError::cloud(match (error.message(), error.code()) {
+impl AwsError {
+    pub fn kind(&self) -> ErrorKind {
+        match self {
+            AwsError::NoProfile | AwsError::ProfileNotFound(_) => ErrorKind::NotFound,
+            AwsError::SignInTimedOut => ErrorKind::Timeout,
+            AwsError::Browser(_) => ErrorKind::System,
+            _ => ErrorKind::Cloud,
+        }
+    }
+}
+
+fn incomplete<T>(value: Option<T>) -> Result<T, AwsError> {
+    value.ok_or(AwsError::Incomplete)
+}
+
+/// An AWS call's error, its message "message (code)", falling back to the full error chain.
+fn describe<E: std::error::Error + ProvideErrorMetadata + Send + Sync + 'static>(error: E) -> AwsError {
+    let message = match (error.message(), error.code()) {
         (Some(message), Some(code)) => format!("{message} ({code})"),
         (Some(text), None) | (None, Some(text)) => text.to_string(),
-        (None, None) => describe_chain(error),
-    })
+        (None, None) => describe_chain(&error),
+    };
+    AwsError::Service { message, source: Box::new(error) }
 }
 
 fn describe_chain<E: std::error::Error>(error: &E) -> String {
@@ -113,14 +151,14 @@ fn tokens() -> &'static Mutex<FxHashMap<String, SsoToken>> {
 
 /// An SSO access token: the one already held, or a new one the user grants in
 /// the browser (OAuth device authorization, the flow `aws sso login` runs).
-async fn sso_access_token(sso: &SsoSettings) -> Result<String, AppError> {
+async fn sso_access_token(sso: &SsoSettings) -> Result<String, Error> {
     let key = format!("{}|{}", sso.start_url, sso.region);
     if let Some(token) = tokens().lock_recover().get(&key).filter(|t| t.expires > Instant::now() + Duration::from_secs(60)) {
         return Ok(token.access_token.clone());
     }
 
     let client = aws_sdk_ssooidc::Client::new(&anonymous_config(&sso.region).await);
-    let registration = client.register_client().client_name("cachemire").client_type("public").send().await.map_err(|e| describe(&e))?;
+    let registration = client.register_client().client_name("cachemire").client_type("public").send().await.map_err(describe)?;
     let (client_id, client_secret) = (incomplete(registration.client_id())?.to_string(), incomplete(registration.client_secret())?.to_string());
     let authorization = client
         .start_device_authorization()
@@ -129,10 +167,10 @@ async fn sso_access_token(sso: &SsoSettings) -> Result<String, AppError> {
         .start_url(&sso.start_url)
         .send()
         .await
-        .map_err(|e| describe(&e))?;
+        .map_err(describe)?;
 
     let url = incomplete(authorization.verification_uri_complete().or(authorization.verification_uri()))?;
-    open::that(url).map_err(|e| AppError::system(t!("Couldn't open the browser: %{error}", error = e.to_string())))?;
+    open::that(url).map_err(AwsError::Browser)?;
 
     let deadline = Instant::now() + Duration::from_secs(authorization.expires_in().max(60) as u64);
     let mut interval = Duration::from_secs(authorization.interval().max(1) as u64);
@@ -156,37 +194,37 @@ async fn sso_access_token(sso: &SsoSettings) -> Result<String, AppError> {
             Err(e) => match e.as_service_error() {
                 Some(service) if service.is_authorization_pending_exception() => {}
                 Some(service) if service.is_slow_down_exception() => interval += Duration::from_secs(5),
-                _ => return Err(describe(&e)),
+                _ => return Err(describe(e).into()),
             },
         }
         if Instant::now() > deadline {
-            return Err(AppError::timeout(t!("The sign-in in the browser took too long.")));
+            return Err(AwsError::SignInTimedOut.into());
         }
     }
 }
 
 /// The SDK's config for `profile` if its own chain (keys, an assumed role, an
-/// existing `aws sso login`...) yields credentials, else why it doesn't.
-async fn chain_config(profile: &Profile) -> Result<SdkConfig, String> {
+/// existing `aws sso login`...) yields credentials, else the SDK's reason, if it gave one.
+async fn chain_config(profile: &Profile) -> Result<SdkConfig, Option<String>> {
     let config = aws_config::defaults(BehaviorVersion::latest()).profile_name(&profile.name).http_client(http_client()).load().await;
     match config.credentials_provider() {
         Some(provider) => match provider.provide_credentials().await {
             Ok(_) => Ok(config),
-            Err(e) => Err(describe_chain(&e)),
+            Err(e) => Err(Some(describe_chain(&e))),
         },
-        None => Err(t!("No credentials.").into_owned()),
+        None => Err(None),
     }
 }
 
 /// A config for `profile` whose credentials work: the SDK's own chain first,
 /// then the profile's SSO role, signing in in the browser if need be.
-async fn sign_in(profile: &Profile) -> Result<SdkConfig, AppError> {
+async fn sign_in(profile: &Profile) -> Result<SdkConfig, Error> {
     let chain_error = match chain_config(profile).await {
         Ok(config) => return Ok(config),
         Err(e) => e,
     };
     let Some(sso) = &profile.sso else {
-        return Err(AppError::cloud(t!("No usable credentials for the profile %{name}: %{error}", name = profile.name.as_str(), error = chain_error)));
+        return Err(AwsError::NoUsableCredentials { profile: profile.name.clone(), reason: chain_error }.into());
     };
 
     let access_token = sso_access_token(sso).await?;
@@ -197,12 +235,13 @@ async fn sign_in(profile: &Profile) -> Result<SdkConfig, AppError> {
         .access_token(access_token)
         .send()
         .await
-        .map_err(|e| {
-            let error = describe(&e);
-            let (name, role, account) = (profile.name.as_str(), sso.role_name.as_str(), sso.account_id.as_str());
-            AppError::cloud(t!("The profile %{name} can't take the role %{role} in the account %{account}: %{error}", name = name, role = role, account = account, error = error.message()))
+        .map_err(|e| AwsError::RoleRefused {
+            profile: profile.name.clone(),
+            role: sso.role_name.clone(),
+            account: sso.account_id.clone(),
+            source: Box::new(describe(e)),
         })?;
-    let role = granted.role_credentials().ok_or_else(|| AppError::cloud(t!("No credentials.")))?;
+    let role = granted.role_credentials().ok_or(AwsError::NoCredentials)?;
     let expires = UNIX_EPOCH + Duration::from_millis(role.expiration().max(0) as u64);
     let credentials = Credentials::new(incomplete(role.access_key_id())?, incomplete(role.secret_access_key())?, role.session_token().map(str::to_string), Some(expires), "cachemire-sso");
 
@@ -218,11 +257,11 @@ async fn sign_in(profile: &Profile) -> Result<SdkConfig, AppError> {
 /// Signs in like `aws sso login`: reuses a working session, else gets an SSO token
 /// in the browser; each profile's role is checked once it is picked. Profiles are
 /// tried in turn (the environment's, `default`, the rest), skipping those with neither.
-pub async fn login() -> Result<(), AppError> {
+pub async fn login() -> Result<(), Error> {
     let mut profiles = profiles().await;
     let wanted = std::env::var("AWS_PROFILE").ok();
     profiles.sort_by_key(|p| (Some(&p.name) != wanted.as_ref(), p.name != "default"));
-    let mut last_error = AppError::not_found(t!("No AWS profile found in the .aws folder."));
+    let mut last_error = AwsError::NoProfile;
     for profile in &profiles {
         let chain_error = match chain_config(profile).await {
             Ok(_) => return Ok(()),
@@ -230,10 +269,10 @@ pub async fn login() -> Result<(), AppError> {
         };
         match &profile.sso {
             Some(sso) => return sso_access_token(sso).await.map(drop),
-            None => last_error = AppError::cloud(t!("No usable credentials for the profile %{name}: %{error}", name = profile.name.as_str(), error = chain_error)),
+            None => last_error = AwsError::NoUsableCredentials { profile: profile.name.clone(), reason: chain_error },
         }
     }
-    Err(last_error)
+    Err(last_error.into())
 }
 
 /// The URL of an ElastiCache endpoint: `rediss://` when it takes TLS.
@@ -251,21 +290,21 @@ pub struct Listing {
 
 /// The ElastiCache Redis groups and standalone nodes that `profile` sees, as
 /// connections. Memcached (and Valkey) clusters are left out.
-pub async fn redis_connections(profile_name: &str) -> Result<Listing, AppError> {
-    let profile = profiles().await.into_iter().find(|p| p.name == profile_name).ok_or_else(|| AppError::not_found(t!("AWS profile not found: %{name}", name = profile_name)))?;
+pub async fn redis_connections(profile_name: &str) -> Result<Listing, Error> {
+    let profile = profiles().await.into_iter().find(|p| p.name == profile_name).ok_or_else(|| AwsError::ProfileNotFound(profile_name.to_string()))?;
     let config = sign_in(&profile).await?;
     if config.region().is_none() {
-        return Err(AppError::cloud(t!("The profile %{name} has no region.", name = profile_name)));
+        return Err(AwsError::NoRegion(profile_name.to_string()).into());
     }
     let region = config.region().map(|r| r.to_string()).unwrap_or_default();
     let account = aws_sdk_sts::Client::new(&config)
         .get_caller_identity()
         .send()
         .await
-        .map_err(|e| describe(&e))?
+        .map_err(describe)?
         .account()
         .map(str::to_string)
-        .ok_or_else(|| AppError::cloud(t!("No credentials.")))?;
+        .ok_or(AwsError::NoCredentials)?;
     let client = aws_sdk_elasticache::Client::new(&config);
 
     let item = |name: &str, endpoint: Option<&aws_sdk_elasticache::types::Endpoint>, tls: bool| {
@@ -285,7 +324,7 @@ pub async fn redis_connections(profile_name: &str) -> Result<Listing, AppError> 
     let mut groups = FxHashSet::default();
     let mut marker: Option<String> = None;
     loop {
-        let page = client.describe_cache_clusters().show_cache_node_info(true).set_marker(marker.take()).send().await.map_err(|e| describe(&e))?;
+        let page = client.describe_cache_clusters().show_cache_node_info(true).set_marker(marker.take()).send().await.map_err(describe)?;
         for cluster in page.cache_clusters() {
             if cluster.engine() != Some("redis") {
                 continue;
@@ -308,7 +347,7 @@ pub async fn redis_connections(profile_name: &str) -> Result<Listing, AppError> 
 
     let mut marker: Option<String> = None;
     loop {
-        let page = client.describe_replication_groups().set_marker(marker.take()).send().await.map_err(|e| describe(&e))?;
+        let page = client.describe_replication_groups().set_marker(marker.take()).send().await.map_err(describe)?;
         for group in page.replication_groups() {
             let id = group.replication_group_id().unwrap_or_default();
             if !groups.contains(id) {

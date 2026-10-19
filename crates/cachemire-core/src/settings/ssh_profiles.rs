@@ -1,11 +1,11 @@
 //! SSH profiles: a username and password a tunnel with no username of its own
 //! logs in with. Their passwords live in the credential store.
 
-use rust_i18n::t;
 use serde::{Deserialize, Serialize};
 
 use super::{SettingsStore, StoredSettings};
-use crate::error::AppError;
+use crate::secret_vault::KeyringError;
+use crate::error::{Error, Invalid, NotFound};
 use crate::connection::SshSettings;
 use crate::secret_vault::{Secrets, SecretsCleanup};
 
@@ -57,21 +57,21 @@ impl SettingsStore {
 
     /// Adds a profile; the first one added becomes the active one.
     #[cfg(test)]
-    pub fn create_ssh_profile(&mut self, name: &str, username: &str, password: &str) -> Result<String, AppError> {
+    pub fn create_ssh_profile(&mut self, name: &str, username: &str, password: &str) -> Result<String, Error> {
         self.create_ssh_profile_with_id(&uuid::Uuid::new_v4().to_string(), name, username, password)
     }
 
     /// `create_ssh_profile`, under an id chosen by the caller.
-    pub fn create_ssh_profile_with_id(&mut self, id: &str, name: &str, username: &str, password: &str) -> Result<String, AppError> {
+    pub fn create_ssh_profile_with_id(&mut self, id: &str, name: &str, username: &str, password: &str) -> Result<String, Error> {
         let (name, username) = (name.trim(), username.trim());
         if name.is_empty() {
-            return Err(AppError::invalid(t!("The profile needs a name.")));
+            return Err(Invalid::ProfileName.into());
         }
         if username.is_empty() {
-            return Err(AppError::invalid(t!("The profile needs an SSH username.")));
+            return Err(Invalid::ProfileUsername.into());
         }
         if password.is_empty() {
-            return Err(AppError::invalid(t!("The profile needs an SSH password.")));
+            return Err(Invalid::ProfilePassword.into());
         }
         let mut next = self.state.clone();
         let id = id.to_string();
@@ -90,16 +90,16 @@ impl SettingsStore {
     }
 
     /// Changes a profile; `password` is `None` to keep the one it has.
-    pub fn update_ssh_profile(&mut self, id: &str, name: &str, username: &str, password: Option<&str>) -> Result<(), AppError> {
+    pub fn update_ssh_profile(&mut self, id: &str, name: &str, username: &str, password: Option<&str>) -> Result<(), Error> {
         let (name, username) = (name.trim(), username.trim());
         if name.is_empty() {
-            return Err(AppError::invalid(t!("The profile needs a name.")));
+            return Err(Invalid::ProfileName.into());
         }
         if username.is_empty() {
-            return Err(AppError::invalid(t!("The profile needs an SSH username.")));
+            return Err(Invalid::ProfileUsername.into());
         }
         let mut next = self.state.clone();
-        let profile = next.ssh_profiles.iter_mut().find(|p| p.id == id).ok_or_else(|| AppError::not_found(t!("SSH profile not found.")))?;
+        let profile = next.ssh_profiles.iter_mut().find(|p| p.id == id).ok_or(NotFound::SshProfile)?;
         profile.name = name.to_string();
         profile.username = username.to_string();
         let new_password = password.filter(|p| !p.is_empty());
@@ -116,8 +116,8 @@ impl SettingsStore {
 
     /// Removes a profile (and stops it being the active one). What it had in the
     /// credential store is left for the caller to clear, off the UI thread.
-    pub fn remove_ssh_profile(&mut self, id: &str) -> Result<Option<SecretsCleanup>, AppError> {
-        let stored = self.state.ssh_profiles.iter().find(|p| p.id == id).ok_or_else(|| AppError::not_found(t!("SSH profile not found.")))?;
+    pub fn remove_ssh_profile(&mut self, id: &str) -> Result<Option<SecretsCleanup>, Error> {
+        let stored = self.state.ssh_profiles.iter().find(|p| p.id == id).ok_or(NotFound::SshProfile)?;
         let cleanup = stored.in_vault.then(|| SecretsCleanup::new(self.vault.clone(), &vault_key(id)));
         let mut next = self.state.clone();
         next.ssh_profiles.retain(|p| p.id != id);
@@ -130,9 +130,9 @@ impl SettingsStore {
     }
 
     /// Makes `id` the active profile; "" leaves none active.
-    pub fn set_active_ssh_profile(&mut self, id: &str) -> Result<(), AppError> {
+    pub fn set_active_ssh_profile(&mut self, id: &str) -> Result<(), Error> {
         if !id.is_empty() && !self.state.ssh_profiles.iter().any(|p| p.id == id) {
-            return Err(AppError::not_found(t!("SSH profile not found.")));
+            return Err(NotFound::SshProfile.into());
         }
         let mut next = self.state.clone();
         next.active_ssh_profile = id.to_string();
@@ -142,14 +142,14 @@ impl SettingsStore {
     /// Makes the active profile's password available, ahead of a connection
     /// using it: reads it from the credential store, or, when the file still
     /// holds it, moves it there. Costs nothing when no profile is active.
-    pub fn unlock_active_ssh_profile(&mut self) -> Result<(), AppError> {
+    pub fn unlock_active_ssh_profile(&mut self) -> Result<(), Error> {
         let id = self.state.active_ssh_profile.clone();
         let Some(position) = self.state.ssh_profiles.iter().position(|p| p.id == id) else { return Ok(()) };
         if self.unloaded.contains(&id) {
             let stored = self
                 .vault
                 .get(&vault_key(&id))
-                .map_err(|e| AppError::keyring(t!("Couldn't read the SSH profile's password from the system keyring: %{error}", error = e)))?;
+                .map_err(KeyringError::SshProfilePassword)?;
             let profile = &mut self.state.ssh_profiles[position];
             match stored {
                 Some(secrets) => profile.password = secrets.ssh_password,
@@ -169,7 +169,7 @@ impl SettingsStore {
     /// Completes an SSH tunnel's settings with the active profile when the
     /// connection has no username of its own. (A connection that has one uses
     /// its own username and password, whatever the profile is.)
-    pub fn fill_ssh(&self, ssh: &mut SshSettings) -> Result<(), AppError> {
+    pub fn fill_ssh(&self, ssh: &mut SshSettings) -> Result<(), Error> {
         if !ssh.username.is_empty() {
             return Ok(());
         }
@@ -178,7 +178,7 @@ impl SettingsStore {
             .ssh_profiles
             .iter()
             .find(|p| p.id == self.state.active_ssh_profile)
-            .ok_or_else(|| AppError::invalid(t!("This SSH connection has no username or password: fill them in, or make an SSH profile active in Settings.")))?;
+            .ok_or(Invalid::SshCredentials)?;
         ssh.username.clone_from(&profile.username);
         if ssh.password.is_empty() {
             ssh.password.clone_from(&profile.password);

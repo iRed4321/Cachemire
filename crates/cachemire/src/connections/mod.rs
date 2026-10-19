@@ -11,7 +11,8 @@ use std::rc::Rc;
 use slint::{ComponentHandle, ModelRc, VecModel};
 use tokio::runtime::Handle;
 
-use cachemire_core::error::AppError;
+use cachemire_core::error::{Error, Invalid};
+use crate::error::Localize;
 use cachemire_core::connection::ConnectionPayloadInput;
 use cachemire_core::settings::ConnectionProfile;
 use cachemire_core::secret_vault::staged;
@@ -177,7 +178,7 @@ fn delete(app: &Rc<App>, window: &MainWindow, id: &str) {
                 crate::keyspace::reload(app);
             }
         }
-        Err(e) => window.global::<ConnectionEditor>().set_error(e.message().into()),
+        Err(e) => window.global::<ConnectionEditor>().set_error(e.localized().into()),
     }
 }
 
@@ -189,7 +190,7 @@ fn test_form(app: &Rc<App>, window: &MainWindow, form: &ConnectionForm) {
         Ok(payload) => payload,
         Err(e) => {
             editor.set_test_ok(false);
-            editor.set_test_status(e.message().into());
+            editor.set_test_status(e.localized().into());
             return;
         }
     };
@@ -204,7 +205,7 @@ fn test_form(app: &Rc<App>, window: &MainWindow, form: &ConnectionForm) {
             })
         })
         .await
-        .map_err(AppError::from)
+        .map_err(Error::from)
         .flatten();
         let outcome = match built {
             Ok(connection) => cachemire_core::connection::test_connection(&state, connection).await,
@@ -214,7 +215,7 @@ fn test_form(app: &Rc<App>, window: &MainWindow, form: &ConnectionForm) {
             let editor = window.global::<ConnectionEditor>();
             editor.set_testing(false);
             editor.set_test_ok(outcome.is_ok());
-            editor.set_test_status(outcome.map_or_else(|e| e.to_string(), |()| t!("Connection successful.").into_owned()).into());
+            editor.set_test_status(outcome.map_or_else(|e| e.localized(), |()| t!("Connection successful.").into_owned()).into());
         });
     });
 }
@@ -224,7 +225,7 @@ fn save_form(app: &Rc<App>, window: &MainWindow, form: &ConnectionForm) {
     let payload = match payload_from_form(form) {
         Ok(payload) => payload,
         Err(e) => {
-            window.global::<ConnectionEditor>().set_error(e.message().into());
+            window.global::<ConnectionEditor>().set_error(e.localized().into());
             return;
         }
     };
@@ -248,7 +249,7 @@ fn save_form(app: &Rc<App>, window: &MainWindow, form: &ConnectionForm) {
                 // (the connection in use may be the one that was edited)
                 crate::connections::profiles::apply_tint(window, &app.state);
             }
-            Err(e) => window.global::<ConnectionEditor>().set_error(e.message().into()),
+            Err(e) => window.global::<ConnectionEditor>().set_error(e.localized().into()),
         });
     });
 }
@@ -270,7 +271,7 @@ pub(crate) fn browse_ssh_key(rt: &Handle, weak: slint::Weak<MainWindow>, set: fn
 
 /// What the form's fields say, as a payload. A blank password box leaves the
 /// stored password alone (`None`); everything else is taken as typed.
-fn payload_from_form(form: &ConnectionForm) -> Result<ConnectionPayloadInput, AppError> {
+fn payload_from_form(form: &ConnectionForm) -> Result<ConnectionPayloadInput, Error> {
     let keep_if_blank = |text: &slint::SharedString| if text.is_empty() { None } else { Some(text.to_string()) };
     let ssh_port = match form.ssh_port.trim() {
         "" => 22,
@@ -278,7 +279,7 @@ fn payload_from_form(form: &ConnectionForm) -> Result<ConnectionPayloadInput, Ap
             .parse::<u16>()
             .ok()
             .filter(|port| *port > 0)
-            .ok_or_else(|| AppError::invalid(t!("SSH port must be a number between 1 and 65535.")))?,
+            .ok_or(Invalid::SshPort)?,
     };
     Ok(ConnectionPayloadInput {
         name: Some(form.name.to_string()),

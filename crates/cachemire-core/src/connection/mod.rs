@@ -2,10 +2,9 @@
 //! store that keeps them, the client and pool, and the SSH tunnel in between.
 
 use crate::LockExt;
-use crate::error::AppError;
+use crate::error::{Error, Invalid, NotFound, Timeout};
 use crate::secret_vault::staged;
 use crate::state::{resolve_connection, AppState};
-use rust_i18n::t;
 use std::sync::Arc;
 use std::time::Duration;
 
@@ -75,11 +74,11 @@ pub struct Endpoint {
 impl ConnectionItem {
     /// The server the URL names; the URL's own user/password win over the
     /// connection's fields, which fill in what it leaves out.
-    pub fn endpoint(&self) -> Result<Endpoint, AppError> {
+    pub fn endpoint(&self) -> Result<Endpoint, Error> {
         let non_empty = |value: String| if value.is_empty() { None } else { Some(value) };
         let parts = url::parse(&self.connection_url)
             .filter(|parts| !parts.host.is_empty())
-            .ok_or_else(|| AppError::invalid(t!("Couldn't understand the connection URL.")))?;
+            .ok_or(Invalid::UnreadableUrl)?;
         Ok(Endpoint {
             host: parts.host,
             port: parts.port.filter(|p| *p > 0).unwrap_or(6379),
@@ -126,7 +125,7 @@ pub struct ConnectionPayloadInput {
 /// Confirms `connection_id` is reachable, rebuilding its pool if stale, without
 /// making it active (see `AppState::connect_attempt`). The error's kind says
 /// what failed (the SSH tunnel, the login, the network…).
-pub async fn connect_connection(state: &Arc<AppState>, connection_id: &str) -> Result<ConnectionItem, AppError> {
+pub async fn connect_connection(state: &Arc<AppState>, connection_id: &str) -> Result<ConnectionItem, Error> {
     // the saved passwords are only fetched from the system keyring now, off
     // the async workers and outside the store's lock: it can wait on the user
     let unlocking = (state.clone(), connection_id.to_string());
@@ -137,7 +136,7 @@ pub async fn connect_connection(state: &Arc<AppState>, connection_id: &str) -> R
     // SSH profile's password for a tunnel without a username of its own
     let (cloud_key, uses_profile) = {
         let store = state.connections.lock_recover();
-        let connection = store.get(connection_id).ok_or_else(|| AppError::not_found(t!("Connection not found.")))?;
+        let connection = store.get(connection_id).ok_or(NotFound::Connection)?;
         (store.cloud_key(connection_id), connection.ssh.is_some_and(|ssh| ssh.username.is_empty()))
     };
 
@@ -170,7 +169,7 @@ pub async fn connect_connection(state: &Arc<AppState>, connection_id: &str) -> R
 
 /// Checks that `connection` (as a form describes it, not saved) can be reached: through its
 /// SSH tunnel if it has one, then a PING. A tunnel with no username logs in with the active SSH profile.
-pub async fn test_connection(state: &Arc<AppState>, mut connection: ConnectionItem) -> Result<(), AppError> {
+pub async fn test_connection(state: &Arc<AppState>, mut connection: ConnectionItem) -> Result<(), Error> {
     if connection.ssh.as_ref().is_some_and(|ssh| ssh.username.is_empty()) {
         let profile_state = state.clone();
         tokio::task::spawn_blocking(move || staged(&profile_state.settings, |settings| settings.unlock_active_ssh_profile()))
@@ -181,7 +180,7 @@ pub async fn test_connection(state: &Arc<AppState>, mut connection: ConnectionIt
     }
     tokio::time::timeout(Duration::from_secs(15), state.redis_connections.test(&connection))
         .await
-        .map_err(|_| AppError::timeout(t!("Connection timed out after %{seconds} seconds.", seconds = 15)))?
+        .map_err(|_| Timeout::Connect { seconds: 15 })?
 }
 
 #[cfg(test)]

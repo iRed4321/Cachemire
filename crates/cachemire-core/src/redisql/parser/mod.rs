@@ -3,9 +3,8 @@
 
 use std::ops::Range;
 
-use rust_i18n::t;
 
-use super::Located;
+use super::{Located, QueryError};
 use super::ast::{DEFAULT_LIMIT, Join, MAX_LIMIT, Query, Select, Source, WhereCond, WhereOp};
 use super::lexer::{Tok, Token};
 
@@ -63,8 +62,8 @@ impl<'a> Parser<'a> {
         found
     }
 
-    fn error(&self, message: impl Into<String>) -> Located {
-        Located::parse(message, self.here())
+    fn error(&self, error: QueryError) -> Located {
+        Located::parse(error, self.here())
     }
 
     fn string(&mut self) -> Option<(String, Range<usize>)> {
@@ -120,7 +119,7 @@ impl<'a> Parser<'a> {
     }
 
     fn from(&mut self) -> Result<Source, Located> {
-        let bad = |p: &Self| p.error(t!("Invalid FROM clause. Example: FROM KEY 'my:key' AS src"));
+        let bad = |p: &Self| p.error(QueryError::InvalidFrom);
         if !self.eat_keyword("key") {
             return Err(bad(self));
         }
@@ -134,7 +133,7 @@ impl<'a> Parser<'a> {
     }
 
     fn join(&mut self) -> Result<Join, Located> {
-        let bad = |p: &Self| p.error(t!("Invalid JOIN clause. Example: JOIN KEY 'my:key' AS b ON a.id = b.refId"));
+        let bad = |p: &Self| p.error(QueryError::InvalidJoin);
         if !self.eat_keyword("key") {
             return Err(bad(self));
         }
@@ -157,21 +156,21 @@ impl<'a> Parser<'a> {
         let ((left_alias, left_span), left_field) = side(left);
         let ((right_alias, right_span), right_field) = side(right);
         if left_alias.eq_ignore_ascii_case(&right_alias) {
-            return Err(Located::parse(t!("A JOIN's ON must link two different aliases."), Some(on_span)));
+            return Err(Located::parse(QueryError::JoinOnItself, Some(on_span)));
         }
         let (anchor_alias, anchor_span, anchor_field, join_field) = if alias.eq_ignore_ascii_case(&right_alias) {
             (left_alias, left_span, left_field, right_field)
         } else if alias.eq_ignore_ascii_case(&left_alias) {
             (right_alias, right_span, right_field, left_field)
         } else {
-            return Err(Located::parse(t!("The ON clause must name the JOIN's own alias (%{alias}).", alias = alias), Some(on_span)));
+            return Err(Located::parse(QueryError::OnWithoutOwnAlias(alias.to_string()), Some(on_span)));
         };
         Ok(Join { key, key_span, alias, alias_span, anchor_alias, anchor_span, anchor_field, join_field })
     }
 
     fn condition(&mut self) -> Result<WhereCond, Located> {
         let start = self.pos;
-        let bad = |p: &Self| Located::parse(t!("Invalid WHERE condition: %{condition}", condition = p.text_from(start)), p.here());
+        let bad = |p: &Self| Located::parse(QueryError::InvalidWhere(p.text_from(start).to_string()), p.here());
         let r = self.reference().ok_or_else(|| bad(self))?;
         let (alias, alias_span) = r.alias.unwrap_or((String::new(), r.span.clone()));
         let (op, values) = if self.eat(&Tok::Eq) {
@@ -182,7 +181,7 @@ impl<'a> Parser<'a> {
             return Err(bad(self));
         };
         if values.iter().any(|v| v.trim().is_empty()) {
-            return Err(Located::parse(t!("Invalid WHERE condition: %{condition}", condition = self.text_from(start)), Some(r.span)));
+            return Err(Located::parse(QueryError::InvalidWhere(self.text_from(start).to_string()), Some(r.span)));
         }
         Ok(WhereCond { alias, alias_span, field: r.field, op, values })
     }
@@ -190,7 +189,7 @@ impl<'a> Parser<'a> {
     /// `[a, 'b', 3]` or `(a, 'b', 3)`.
     fn list(&mut self) -> Result<Vec<String>, Located> {
         let start = self.pos;
-        let bad = |p: &Self| Located::parse(t!("IN needs a list in [] or (): %{text}", text = p.text_from(start)), p.here());
+        let bad = |p: &Self| Located::parse(QueryError::InWithoutList(p.text_from(start).to_string()), p.here());
         let close = match self.peek().map(|t| &t.tok) {
             Some(Tok::Open('[')) => ']',
             Some(Tok::Open('(')) => ')',
@@ -208,7 +207,7 @@ impl<'a> Parser<'a> {
             values.push(self.value().ok_or_else(|| bad(self))?);
         }
         if values.is_empty() {
-            return Err(Located::parse(t!("IN's list is empty."), open_span));
+            return Err(Located::parse(QueryError::EmptyInList, open_span));
         }
         Ok(values)
     }
@@ -219,7 +218,7 @@ impl<'a> Parser<'a> {
             self.pos += 1;
             return Ok(star("*".to_string(), t.span.clone()));
         }
-        let bad = |p: &Self| p.error(t!("Invalid SELECT clause."));
+        let bad = |p: &Self| p.error(QueryError::InvalidSelect);
         let (first, first_span) = self.name().ok_or_else(|| bad(self))?;
         if !self.eat(&Tok::Dot) {
             return Ok(Select { alias: String::new(), alias_span: first_span, field: first, explicit_alias: false });
@@ -235,25 +234,25 @@ impl<'a> Parser<'a> {
     fn limit(&mut self) -> Result<usize, Located> {
         match self.peek().map(|t| &t.tok) {
             Some(Tok::Number(n)) => {
-                let limit = n.parse::<i64>().map_err(|_| self.error(t!("LIMIT must be a whole number.")))?;
+                let limit = n.parse::<i64>().map_err(|_| self.error(QueryError::InvalidLimit))?;
                 self.pos += 1;
                 Ok(usize::try_from(limit).unwrap_or(0))
             }
-            _ => Err(self.error(t!("LIMIT must be a whole number."))),
+            _ => Err(self.error(QueryError::InvalidLimit)),
         }
     }
 
     /// After a clause, the next token must start another (or the statement must end).
     fn end_of_clause(&self) -> Result<(), Located> {
         match self.peek() {
-            Some(t) if !self.at_clause_end() => Err(Located::parse(t!("Unexpected text: %{text}", text = self.text_from(self.pos)), Some(t.span.clone()))),
+            Some(t) if !self.at_clause_end() => Err(Located::parse(QueryError::UnexpectedText(self.text_from(self.pos).to_string()), Some(t.span.clone()))),
             _ => Ok(()),
         }
     }
 
     fn query(&mut self) -> Result<Query, Located> {
         if self.tokens.is_empty() {
-            return Err(Located::parse(t!("The query is empty."), None));
+            return Err(Located::parse(QueryError::EmptyQuery, None));
         }
         let mut base: Option<Source> = None;
         let (mut joins, mut wheres, mut selects, mut limit) = (Vec::new(), Vec::new(), Vec::new(), DEFAULT_LIMIT);
@@ -261,7 +260,7 @@ impl<'a> Parser<'a> {
         while let Some(clause) = self.next() {
             if let Some(single) = SINGLE_CLAUSES.into_iter().find(|c| clause.is_keyword(c)) {
                 if seen.contains(&single) {
-                    return Err(Located::parse(t!("%{clause} can only appear once.", clause = single.to_uppercase()), Some(clause.span.clone())));
+                    return Err(Located::parse(QueryError::RepeatedClause(single.to_uppercase()), Some(clause.span.clone())));
                 }
                 seen.push(single);
             }
@@ -287,11 +286,11 @@ impl<'a> Parser<'a> {
                 limit = self.limit()?;
             } else {
                 self.pos -= 1;
-                return Err(Located::parse(t!("Unrecognized clause: %{clause}", clause = self.text_from(self.pos)), Some(clause.span.clone())));
+                return Err(Located::parse(QueryError::UnknownClause(self.text_from(self.pos).to_string()), Some(clause.span.clone())));
             }
             self.end_of_clause()?;
         }
-        let base = base.ok_or_else(|| Located::parse(t!("Missing FROM clause."), None))?;
+        let base = base.ok_or_else(|| Located::parse(QueryError::MissingFrom, None))?;
         resolve(Query { base, joins, wheres, selects, limit: limit.clamp(1, MAX_LIMIT) })
     }
 }
@@ -310,19 +309,19 @@ fn resolve(mut query: Query) -> Result<Query, Located> {
     for join in &query.joins {
         let alias = join.alias.to_lowercase();
         if known.contains(&alias) {
-            return Err(Located::parse(t!("Duplicate alias: %{alias}", alias = join.alias.as_str()), Some(join.alias_span.clone())));
+            return Err(Located::parse(QueryError::DuplicateAlias(join.alias.clone()), Some(join.alias_span.clone())));
         }
         if !known.contains(&join.anchor_alias.to_lowercase()) {
-            let message = t!("JOIN %{alias} references an unknown alias: %{other}", alias = join.alias.as_str(), other = join.anchor_alias.as_str());
-            return Err(Located::parse(message, Some(join.anchor_span.clone())));
+            let error = QueryError::UnknownJoinAlias { alias: join.alias.clone(), other: join.anchor_alias.clone() };
+            return Err(Located::parse(error, Some(join.anchor_span.clone())));
         }
         known.push(alias);
     }
     if let Some(w) = query.wheres.iter().find(|w| !known.contains(&w.alias.to_lowercase())) {
-        return Err(Located::parse(t!("Unknown alias in WHERE: %{alias}", alias = w.alias.as_str()), Some(w.alias_span.clone())));
+        return Err(Located::parse(QueryError::UnknownWhereAlias(w.alias.clone()), Some(w.alias_span.clone())));
     }
     if let Some(s) = query.selects.iter().find(|s| s.alias != "*" && !known.contains(&s.alias.to_lowercase())) {
-        return Err(Located::parse(t!("Unknown alias in SELECT: %{alias}", alias = s.alias.as_str()), Some(s.alias_span.clone())));
+        return Err(Located::parse(QueryError::UnknownSelectAlias(s.alias.clone()), Some(s.alias_span.clone())));
     }
     Ok(query)
 }
@@ -335,7 +334,7 @@ pub fn parse_query(src: &str, tokens: &[Token]) -> Result<Query, Located> {
 /// A `var name = value` declaration as its name and value.
 pub fn parse_declaration(src: &str, tokens: &[Token]) -> Result<(String, String), Located> {
     let mut p = Parser { src, tokens, pos: 0 };
-    let bad = |p: &Parser| p.error(t!("Invalid variable declaration. Example: var companyId = 255;"));
+    let bad = |p: &Parser| p.error(QueryError::InvalidDeclaration);
     if !p.eat_keyword("var") {
         return Err(bad(&p));
     }

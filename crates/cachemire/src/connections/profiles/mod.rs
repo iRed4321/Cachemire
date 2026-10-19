@@ -2,6 +2,7 @@
 //! connection's form): keeps the window's list in step with `cachemire_core::settings`
 //! and tints the app background for the connection in use.
 
+use crate::error::Localize;
 use std::rc::Rc;
 
 use rust_i18n::t;
@@ -114,7 +115,7 @@ pub fn init(app: &Rc<App>, window: &MainWindow) {
                     apply_tint(&window, state);
                     crate::connections::refresh(&app, &window);
                 }
-                Err(e) => window.global::<Preferences>().set_error(e.message().into()),
+                Err(e) => window.global::<Preferences>().set_error(e.localized().into()),
             }
         }
     });
@@ -137,7 +138,7 @@ pub fn init(app: &Rc<App>, window: &MainWindow) {
                     refresh(&window, &state);
                     crate::connections::refresh(&app, &window);
                 }
-                Err(e) => window.global::<Preferences>().set_error(e.message().into()),
+                Err(e) => window.global::<Preferences>().set_error(e.localized().into()),
             }
         }
     });

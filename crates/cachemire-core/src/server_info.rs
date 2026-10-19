@@ -1,10 +1,10 @@
-use crate::error::AppError;
+use crate::error::Error;
 use crate::session::Session;
 use crate::state::AppState;
 
 /// Bytes of memory the server reports using — just the `memory` section of
 /// `INFO`, not the whole (several KB) reply.
-pub async fn used_memory(state: &AppState, connection_id: Option<&str>) -> Result<i64, AppError> {
+pub async fn used_memory(state: &AppState, connection_id: Option<&str>) -> Result<i64, Error> {
     let raw = Session::open(state, connection_id).await?.info("memory").await?;
     Ok(raw
         .lines()

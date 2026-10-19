@@ -3,12 +3,11 @@
 
 use rustc_hash::FxHashMap;
 
-use rust_i18n::t;
 use serde_json::{Map, Value};
 
-use super::Located;
+use super::{Located, QueryError};
 use super::ast::{Query, Select, WhereOp};
-use crate::error::AppError;
+use crate::error::Error;
 use crate::key_name::KeyName;
 use crate::redis_value_type::RedisValueType;
 use crate::session::Session;
@@ -46,11 +45,11 @@ const MAX_SOURCE_FIELDS: usize = 20_000;
 
 /// `key`'s rows, and whether it held more than [`MAX_SOURCE_FIELDS`] (a join
 /// against it may then be missing matches that were never read).
-async fn load_records(session: &mut Session, key: &str) -> Result<(Vec<Map<String, Value>>, bool), AppError> {
+async fn load_records(session: &mut Session, key: &str) -> Result<(Vec<Map<String, Value>>, bool), Error> {
     // a key typed in a query is its text
     let name = KeyName::from(key);
     match session.key_type(&name).await? {
-        RedisValueType::Missing => Err(AppError::not_found(t!("Key not found: %{key}", key = key))),
+        RedisValueType::Missing => Err(QueryError::KeyNotFound(key.to_string()).into()),
         RedisValueType::Hash => {
             let mut records = Vec::new();
             let mut cursor: u64 = 0;
@@ -68,30 +67,30 @@ async fn load_records(session: &mut Session, key: &str) -> Result<(Vec<Map<Strin
             Ok((records, cursor != 0))
         }
         RedisValueType::String => Ok((string_records(key, &session.get(&name).await?.unwrap_or_default())?, false)),
-        other => Err(AppError::invalid(t!("%{key} is a %{kind}: only a hash of JSON objects, or a string holding one, can be queried.", key = key, kind = other.to_string()))),
+        other => Err(QueryError::NotQueryable { key: key.to_string(), kind: other.to_string() }.into()),
     }
 }
 
 /// The row a hash field's value gives: its JSON, which must be an object.
-fn hash_record(key: &str, field: &str, raw: &str) -> Result<Map<String, Value>, AppError> {
+fn hash_record(key: &str, field: &str, raw: &str) -> Result<Map<String, Value>, Error> {
     match serde_json::from_str::<Value>(raw) {
         Ok(Value::Object(map)) => Ok(map),
-        Ok(other) => Err(AppError::invalid(t!("A non-object value was found in %{key} (field %{field}): %{kind}", key = key, field = field, kind = json_kind(&other)))),
-        Err(e) => Err(AppError::invalid(t!("Invalid JSON in %{key} (field %{field}): %{error}", key = key, field = field, error = e.to_string()))),
+        Ok(other) => Err(QueryError::NonObjectField { key: key.to_string(), field: field.to_string(), kind: json_kind(&other) }.into()),
+        Err(e) => Err(QueryError::FieldJson { key: key.to_string(), field: field.to_string(), source: e }.into()),
     }
 }
 
 /// The rows a string key's value gives: the object it holds, or the objects of its
 /// array (anything else in it is skipped); none for a blank value.
-fn string_records(key: &str, raw: &str) -> Result<Vec<Map<String, Value>>, AppError> {
+fn string_records(key: &str, raw: &str) -> Result<Vec<Map<String, Value>>, Error> {
     if raw.trim().is_empty() {
         return Ok(Vec::new());
     }
     match serde_json::from_str::<Value>(raw) {
         Ok(Value::Object(map)) => Ok(vec![map]),
         Ok(Value::Array(items)) => Ok(items.into_iter().filter_map(|item| if let Value::Object(map) = item { Some(map) } else { None }).collect()),
-        Ok(other) => Err(AppError::invalid(t!("%{key} holds JSON, but not an object or an array of objects: %{kind}", key = key, kind = json_kind(&other)))),
-        Err(e) => Err(AppError::invalid(t!("Invalid JSON in %{key}: %{error}", key = key, error = e.to_string()))),
+        Ok(other) => Err(QueryError::NonObjectValue { key: key.to_string(), kind: json_kind(&other) }.into()),
+        Err(e) => Err(QueryError::ValueJson { key: key.to_string(), source: e }.into()),
     }
 }
 
@@ -232,7 +231,7 @@ const MAX_FIELD_NAMES: usize = 100;
 
 /// The field names the records of `key` have, from its first records only (a hash's first
 /// page of fields, or the object or array a string holds), in the order they appear.
-pub async fn field_names(state: &AppState, connection_id: Option<&str>, key: &str) -> Result<Vec<String>, AppError> {
+pub async fn field_names(state: &AppState, connection_id: Option<&str>, key: &str) -> Result<Vec<String>, Error> {
     let mut session = Session::open(state, connection_id).await?;
     let name = KeyName::from(key);
     let records: Vec<Map<String, Value>> = match session.key_type(&name).await? {

@@ -12,7 +12,8 @@ use rust_i18n::t;
 use serde_json::{Map, Value};
 use slint::{ModelRc, VecModel};
 use crate::app::App;
-use cachemire_core::error::AppError;
+use cachemire_core::error::Error;
+use crate::error::Localize;
 use cachemire_core::redisql::history::HistoryEntry;
 use cachemire_core::{LockExt, now_ms};
 use cachemire_core::redisql::{QueryOutput, is_declaration, run_script, split_statements};
@@ -302,14 +303,14 @@ fn history_of(window: &MainWindow, state: &AppState) -> Vec<HistoryEntry> {
 }
 
 /// The `index`th of `count` results, from what its statement gave.
-fn result_of(index: usize, count: usize, output: Result<QueryOutput, AppError>) -> ResultTable {
+fn result_of(index: usize, count: usize, output: Result<QueryOutput, Error>) -> ResultTable {
     let number = index + 1;
     let mut table = match output {
         Ok(output) => {
             let status = status_text(output.rows.len(), output.truncated, output.sources_truncated);
             ResultTable { label: format!("{number} · {}", output.rows.len()), status, status_is_error: false, rows: output.rows }
         }
-        Err(error) => ResultTable { label: format!("{number} · !"), status: error.to_string(), status_is_error: true, rows: Vec::new() },
+        Err(error) => ResultTable { label: format!("{number} · !"), status: error.localized(), status_is_error: true, rows: Vec::new() },
     };
     if count == 1 {
         table.label.clear();

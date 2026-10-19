@@ -1,12 +1,11 @@
 //! Connection profiles: a name and a tint the app's background takes while a
 //! connection using one is the one in use.
 
-use rust_i18n::t;
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
 use super::SettingsStore;
-use crate::error::AppError;
+use crate::error::{Error, Invalid, NotFound};
 
 /// The tints a connection profile can take: a fixed set, so every one has been
 /// checked against the app's background.
@@ -92,10 +91,10 @@ impl SettingsStore {
         self.state.connection_profiles.iter().find(|p| p.id == id).map(to_profile)
     }
 
-    pub fn create_connection_profile(&mut self, name: &str, color: ProfileColor) -> Result<String, AppError> {
+    pub fn create_connection_profile(&mut self, name: &str, color: ProfileColor) -> Result<String, Error> {
         let name = name.trim();
         if name.is_empty() {
-            return Err(AppError::invalid(t!("The profile needs a name.")));
+            return Err(Invalid::ProfileName.into());
         }
         let mut next = self.state.clone();
         let id = Uuid::new_v4().to_string();
@@ -104,13 +103,13 @@ impl SettingsStore {
         Ok(id)
     }
 
-    pub fn update_connection_profile(&mut self, id: &str, name: &str, color: ProfileColor) -> Result<(), AppError> {
+    pub fn update_connection_profile(&mut self, id: &str, name: &str, color: ProfileColor) -> Result<(), Error> {
         let name = name.trim();
         if name.is_empty() {
-            return Err(AppError::invalid(t!("The profile needs a name.")));
+            return Err(Invalid::ProfileName.into());
         }
         let mut next = self.state.clone();
-        let profile = next.connection_profiles.iter_mut().find(|p| p.id == id).ok_or_else(|| AppError::not_found(t!("Connection profile not found.")))?;
+        let profile = next.connection_profiles.iter_mut().find(|p| p.id == id).ok_or(NotFound::ConnectionProfile)?;
         profile.name = name.to_string();
         profile.color = color.code().to_string();
         self.commit(next, false)
@@ -118,9 +117,9 @@ impl SettingsStore {
 
     /// Removes a profile. Whether a connection still uses it is for the caller
     /// to check first (the connections are not kept here).
-    pub fn remove_connection_profile(&mut self, id: &str) -> Result<(), AppError> {
+    pub fn remove_connection_profile(&mut self, id: &str) -> Result<(), Error> {
         if !self.state.connection_profiles.iter().any(|p| p.id == id) {
-            return Err(AppError::not_found(t!("Connection profile not found.")));
+            return Err(NotFound::ConnectionProfile.into());
         }
         let mut next = self.state.clone();
         next.connection_profiles.retain(|p| p.id != id);

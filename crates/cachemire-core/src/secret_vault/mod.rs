@@ -7,7 +7,30 @@ use rustc_hash::FxHashMap;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 
-use crate::error::AppError;
+/// The credential store failed; cloneable, since `staged` replays its answers.
+#[derive(Debug, Clone, thiserror::Error)]
+pub enum VaultError {
+    #[error(transparent)]
+    Keyring(Arc<keyring::Error>),
+    #[error("the saved secrets can't be read: {0}")]
+    Json(Arc<serde_json::Error>),
+    #[error("no credential store")]
+    Unavailable,
+}
+
+/// A read from the credential store failed, ahead of what needed the secrets.
+#[derive(Debug, thiserror::Error)]
+pub enum KeyringError {
+    #[error(transparent)]
+    Vault(#[from] VaultError),
+    #[error("Couldn't read the saved passwords from the system keyring: {0}")]
+    ConnectionPasswords(#[source] VaultError),
+    #[error("Couldn't read the SSH profile's password from the system keyring: {0}")]
+    SshProfilePassword(#[source] VaultError),
+    #[error("Couldn't read the SSH tunnel's secrets from the system keyring: {0}")]
+    TunnelSecrets(#[source] VaultError),
+}
+
 
 /// The name the entries are filed under in the credential store.
 const SERVICE: &str = "Cachemire";
@@ -35,10 +58,10 @@ impl Secrets {
 pub trait Vault: Send + Sync {
     /// `Ok(None)` when nothing is stored for `id`; `Err` when the credential
     /// store itself can't be used (none running, locked and refused, …).
-    fn get(&self, id: &str) -> Result<Option<Secrets>, AppError>;
-    fn set(&self, id: &str, secrets: &Secrets) -> Result<(), AppError>;
+    fn get(&self, id: &str) -> Result<Option<Secrets>, VaultError>;
+    fn set(&self, id: &str, secrets: &Secrets) -> Result<(), VaultError>;
     /// Removes the entry for `id`; not having one is fine.
-    fn delete(&self, id: &str) -> Result<(), AppError>;
+    fn delete(&self, id: &str) -> Result<(), VaultError>;
 }
 
 /// What is left in the credential store after something that had secrets in
@@ -70,7 +93,7 @@ pub trait VaultBacked: Clone {
 }
 
 /// A write noted while rehearsing: the id, its secrets, and once made, how it went.
-type NotedWrite = (String, Secrets, Option<Result<(), AppError>>);
+type NotedWrite = (String, Secrets, Option<Result<(), VaultError>>);
 
 /// The vault as `staged` sees it: while rehearsing, reads go through to `real`
 /// and writes are only noted; once they're done, the same calls get the
@@ -78,7 +101,7 @@ type NotedWrite = (String, Secrets, Option<Result<(), AppError>>);
 struct Recorded {
     real: Arc<dyn Vault>,
     rehearsing: AtomicBool,
-    reads: Mutex<FxHashMap<String, Result<Option<Secrets>, AppError>>>,
+    reads: Mutex<FxHashMap<String, Result<Option<Secrets>, VaultError>>>,
     writes: Mutex<Vec<NotedWrite>>,
 }
 
@@ -100,7 +123,7 @@ impl Recorded {
 }
 
 impl Vault for Recorded {
-    fn get(&self, id: &str) -> Result<Option<Secrets>, AppError> {
+    fn get(&self, id: &str) -> Result<Option<Secrets>, VaultError> {
         if let Some(read) = self.reads.lock_recover().get(id) {
             return read.clone();
         }
@@ -111,7 +134,7 @@ impl Vault for Recorded {
         read
     }
 
-    fn set(&self, id: &str, secrets: &Secrets) -> Result<(), AppError> {
+    fn set(&self, id: &str, secrets: &Secrets) -> Result<(), VaultError> {
         let mut writes = self.writes.lock_recover();
         if self.rehearsing.load(Ordering::SeqCst) {
             writes.push((id.to_string(), secrets.clone(), None));
@@ -124,7 +147,7 @@ impl Vault for Recorded {
         }
     }
 
-    fn delete(&self, id: &str) -> Result<(), AppError> {
+    fn delete(&self, id: &str) -> Result<(), VaultError> {
         self.real.delete(id)
     }
 }
@@ -153,24 +176,28 @@ pub fn staged<S: VaultBacked, R>(store: &Mutex<S>, op: impl Fn(&mut S) -> R) -> 
     result
 }
 
-fn keyring_error(error: keyring::Error) -> AppError {
-    AppError::keyring(error.to_string())
+fn keyring_error(error: keyring::Error) -> VaultError {
+    VaultError::Keyring(Arc::new(error))
+}
+
+fn json_error(error: serde_json::Error) -> VaultError {
+    VaultError::Json(Arc::new(error))
 }
 
 /// The operating system's credential store.
 pub struct OsVault;
 
 impl OsVault {
-    fn read(service: &str, id: &str) -> Result<Option<Secrets>, AppError> {
+    fn read(service: &str, id: &str) -> Result<Option<Secrets>, VaultError> {
         let entry = keyring::Entry::new(service, id).map_err(keyring_error)?;
         match entry.get_password() {
-            Ok(json) => serde_json::from_str(&json).map(Some).map_err(|e| AppError::keyring(e.to_string())),
+            Ok(json) => serde_json::from_str(&json).map(Some).map_err(json_error),
             Err(keyring::Error::NoEntry) => Ok(None),
             Err(e) => Err(keyring_error(e)),
         }
     }
 
-    fn remove(service: &str, id: &str) -> Result<(), AppError> {
+    fn remove(service: &str, id: &str) -> Result<(), VaultError> {
         match keyring::Entry::new(service, id).and_then(|entry| entry.delete_credential()) {
             Ok(()) | Err(keyring::Error::NoEntry) => Ok(()),
             Err(e) => Err(keyring_error(e)),
@@ -179,7 +206,7 @@ impl OsVault {
 }
 
 impl Vault for OsVault {
-    fn get(&self, id: &str) -> Result<Option<Secrets>, AppError> {
+    fn get(&self, id: &str) -> Result<Option<Secrets>, VaultError> {
         if let Some(secrets) = Self::read(SERVICE, id)? {
             return Ok(Some(secrets));
         }
@@ -193,12 +220,12 @@ impl Vault for OsVault {
         Ok(former)
     }
 
-    fn set(&self, id: &str, secrets: &Secrets) -> Result<(), AppError> {
-        let json = serde_json::to_string(secrets).map_err(|e| AppError::keyring(e.to_string()))?;
+    fn set(&self, id: &str, secrets: &Secrets) -> Result<(), VaultError> {
+        let json = serde_json::to_string(secrets).map_err(json_error)?;
         keyring::Entry::new(SERVICE, id).and_then(|entry| entry.set_password(&json)).map_err(keyring_error)
     }
 
-    fn delete(&self, id: &str) -> Result<(), AppError> {
+    fn delete(&self, id: &str) -> Result<(), VaultError> {
         Self::remove(SERVICE, id)?;
         Self::remove(FORMER_SERVICE, id)
     }
@@ -217,26 +244,26 @@ pub struct MemoryVault {
 
 #[cfg(any(test, feature = "test-support"))]
 impl MemoryVault {
-    fn check(&self) -> Result<(), AppError> {
-        if self.broken.load(std::sync::atomic::Ordering::SeqCst) { Err(AppError::keyring("no credential store".to_string())) } else { Ok(()) }
+    fn check(&self) -> Result<(), VaultError> {
+        if self.broken.load(std::sync::atomic::Ordering::SeqCst) { Err(VaultError::Unavailable) } else { Ok(()) }
     }
 }
 
 #[cfg(any(test, feature = "test-support"))]
 impl Vault for MemoryVault {
-    fn get(&self, id: &str) -> Result<Option<Secrets>, AppError> {
+    fn get(&self, id: &str) -> Result<Option<Secrets>, VaultError> {
         self.reads.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
         self.check()?;
         Ok(self.entries.lock_recover().get(id).cloned())
     }
 
-    fn set(&self, id: &str, secrets: &Secrets) -> Result<(), AppError> {
+    fn set(&self, id: &str, secrets: &Secrets) -> Result<(), VaultError> {
         self.check()?;
         self.entries.lock_recover().insert(id.to_string(), secrets.clone());
         Ok(())
     }
 
-    fn delete(&self, id: &str) -> Result<(), AppError> {
+    fn delete(&self, id: &str) -> Result<(), VaultError> {
         self.check()?;
         self.entries.lock_recover().remove(id);
         Ok(())

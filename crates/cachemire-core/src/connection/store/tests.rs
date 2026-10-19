@@ -27,8 +27,8 @@ fn host_port_and_database_come_from_the_connection_url() {
     let e = to_item(&bare).endpoint().unwrap();
     assert_eq!((e.host.as_str(), e.port, e.db), ("cache.local", 6379, 0));
 
-    assert_eq!(connection_from_payload(payload("x", ""), true).unwrap_err(), AppError::invalid("Connection URL is required."));
-    assert_eq!(connection_from_payload(payload("", "cache.local"), true).unwrap_err(), AppError::invalid("Connection name is required."));
+    assert_eq!(connection_from_payload(payload("x", ""), true).unwrap_err().to_string(), "Connection URL is required.");
+    assert_eq!(connection_from_payload(payload("", "cache.local"), true).unwrap_err().to_string(), "Connection name is required.");
     assert!(connection_from_payload(payload("x", "redis://"), true).is_err());
 }
 
@@ -48,15 +48,15 @@ fn an_ssh_tunnel_needs_a_host_a_username_and_a_way_to_log_in() {
     let ssh = item.ssh.expect("tunnel settings");
     assert_eq!((ssh.host.as_str(), ssh.port, ssh.username.as_str(), ssh.password.as_str()), ("bastion.example.com", 22, "deploy", "pw"));
 
-    assert_eq!(with_ssh(&|p| p.ssh_host = Some("  ".into())).unwrap_err(), AppError::invalid("SSH host is required."));
+    assert_eq!(with_ssh(&|p| p.ssh_host = Some("  ".into())).unwrap_err().to_string(), "SSH host is required.");
     // without a username the SSH profile from the settings is used at connect time
     assert!(with_ssh(&|p| {
         p.ssh_username = Some("".into());
         p.ssh_password = Some("".into());
     })
     .is_ok());
-    assert_eq!(with_ssh(&|p| p.ssh_port = Some(0)).unwrap_err(), AppError::invalid("SSH port must be a number between 1 and 65535."));
-    assert_eq!(with_ssh(&|p| p.ssh_password = Some("".into())).unwrap_err(), AppError::invalid("Provide an SSH password or a private key."));
+    assert_eq!(with_ssh(&|p| p.ssh_port = Some(0)).unwrap_err().to_string(), "SSH port must be a number between 1 and 65535.");
+    assert_eq!(with_ssh(&|p| p.ssh_password = Some("".into())).unwrap_err().to_string(), "Provide an SSH password or a private key.");
     assert!(with_ssh(&|p| {
         p.ssh_password = Some("".into());
         p.ssh_private_key = Some("~/.ssh/id_ed25519".into());
@@ -209,7 +209,7 @@ fn a_vault_that_cannot_be_read_never_costs_the_stored_secrets() {
 
     vault.broken.store(true, Ordering::SeqCst);
     let mut locked = ConnectionStore::with_vault(file, Arc::new(vault.clone()));
-    assert!(locked.unlock_secrets(&id).unwrap_err().message().contains("system keyring"));
+    assert!(locked.unlock_secrets(&id).unwrap_err().to_string().contains("system keyring"));
     // everything that doesn't need the secrets still works, and they stay put
     locked.set_active(&id).unwrap();
     locked.update(&id, payload("renamed", "redis://cache:6379")).unwrap();

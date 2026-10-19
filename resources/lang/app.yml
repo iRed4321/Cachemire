@@ -120,12 +120,12 @@ _version: 2
   fr: "Indiquez un mot de passe SSH ou une clé privée."
 "Couldn't read the saved passwords from the system keyring: %{error}":
   fr: "Impossible de lire les mots de passe enregistrés dans le trousseau du système : %{error}"
+"the saved secrets can't be read: %{error}":
+  fr: "les secrets enregistrés sont illisibles : %{error}"
 "No active connection.":
   fr: "Aucune connexion active."
 "Connection not found.":
   fr: "Connexion introuvable."
-"Requested connection not found.":
-  fr: "La connexion demandée est introuvable."
 "The profile needs a name.":
   fr: "Le profil doit avoir un nom."
 "The profile needs an SSH username.":
@@ -148,8 +148,6 @@ _version: 2
   fr: "Cette connexion SSH n'a ni utilisateur ni mot de passe : renseignez-les, ou activez un profil SSH dans les Paramètres."
 
 # reading keys
-"[unsupported type: %{kind}]":
-  fr: "[type non pris en charge : %{kind}]"
 "The key parameter is required.":
   fr: "Le paramètre de clé est obligatoire."
 "Key not found.":

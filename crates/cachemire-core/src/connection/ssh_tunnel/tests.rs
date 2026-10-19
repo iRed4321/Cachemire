@@ -21,7 +21,7 @@ fn check(known_hosts: &Path, host: &str, port: u16, key: &PublicKeyOrCertificate
     let refusal = Arc::new(Mutex::new(None));
     let mut checker = HostKeyCheck { host: host.into(), port, known_hosts: known_hosts.to_path_buf(), refusal: refusal.clone() };
     let accepted = crate::test_support::block_on(checker.check_server_key(key)).unwrap();
-    (accepted, refusal.lock_recover().clone())
+    (accepted, refusal.lock_recover().take().map(|why| why.to_string()))
 }
 
 #[test]

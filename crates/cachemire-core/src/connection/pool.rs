@@ -1,5 +1,4 @@
 use crate::LockExt;
-use rust_i18n::t;
 use rustc_hash::FxHashMap;
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
@@ -10,7 +9,7 @@ use redis::aio::ConnectionManager;
 use tokio::sync::OnceCell;
 use tokio::task::JoinSet;
 
-use crate::error::AppError;
+use crate::error::Error;
 use crate::connection::ConnectionItem;
 use crate::connection::client::{create_connection, target_of};
 use crate::session::{cluster_enabled, ping, Session};
@@ -38,7 +37,7 @@ pub struct ConnectionPool {
 impl ConnectionPool {
     /// The first connection is opened alone so bad credentials or an
     /// unreachable host fail once, quickly; the rest then open in parallel.
-    async fn open(connection: &ConnectionItem, known_hosts: &Path) -> Result<Self, AppError> {
+    async fn open(connection: &ConnectionItem, known_hosts: &Path) -> Result<Self, Error> {
         let tunnel = match &connection.ssh {
             Some(ssh) => {
                 let (host, port) = target_of(connection)?;
@@ -55,9 +54,7 @@ impl ConnectionPool {
         // a cluster spreads its keys over several servers: talking to one of them would
         // show part of the keyspace and fail on the rest, so it is refused up front
         if cluster_enabled(&mut first).await {
-            return Err(AppError::unsupported(
-                t!("This server runs in cluster mode, which Cachemire doesn't support yet. Connect to a server or endpoint with cluster mode disabled.").into_owned(),
-            ));
+            return Err(Error::ClusterMode);
         }
         connections.push(first);
 
@@ -95,7 +92,7 @@ impl ConnectionCache {
     }
 
     /// The connection's pool, opened on first use (see `Session::open`).
-    pub(crate) async fn pool(&self, connection: &ConnectionItem) -> Result<Arc<ConnectionPool>, AppError> {
+    pub(crate) async fn pool(&self, connection: &ConnectionItem) -> Result<Arc<ConnectionPool>, Error> {
         let cell = self.entries.lock_recover().entry(connection.id.clone()).or_default().clone();
         let pool = cell.get_or_try_init(|| async { ConnectionPool::open(connection, &self.known_hosts).await.map(Arc::new) }).await?;
         Ok(pool.clone())
@@ -127,7 +124,7 @@ impl ConnectionCache {
     }
 
     /// Opens the connection (through its SSH tunnel, if any) and pings it, keeping nothing.
-    pub async fn test(&self, connection: &ConnectionItem) -> Result<(), AppError> {
+    pub async fn test(&self, connection: &ConnectionItem) -> Result<(), Error> {
         let pool = ConnectionPool::open(connection, &self.known_hosts).await?;
         Session::on(Arc::new(pool)).ping().await
     }

@@ -23,17 +23,17 @@ impl LockWatcher {
 }
 
 impl Vault for LockWatcher {
-    fn get(&self, id: &str) -> Result<Option<Secrets>, AppError> {
+    fn get(&self, id: &str) -> Result<Option<Secrets>, VaultError> {
         self.note();
         self.inner.get(id)
     }
 
-    fn set(&self, id: &str, secrets: &Secrets) -> Result<(), AppError> {
+    fn set(&self, id: &str, secrets: &Secrets) -> Result<(), VaultError> {
         self.note();
         self.inner.set(id, secrets)
     }
 
-    fn delete(&self, id: &str) -> Result<(), AppError> {
+    fn delete(&self, id: &str) -> Result<(), VaultError> {
         self.note();
         self.inner.delete(id)
     }
