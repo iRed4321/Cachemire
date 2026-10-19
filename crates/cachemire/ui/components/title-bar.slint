@@ -429,11 +429,14 @@ export component TitleBar inherits Rectangle {
         }
     }
 
+    // below 1280px of window, the pill is a third as wide and shows the connection's name alone
+    property <bool> compact: root.width < 1280px;
+
     // connection pill, centered — click opens the connection picker
     pill := Rectangle {
         x: snap((parent.width - self.width) / 2);
         y: snap((parent.height - self.height) / 2);
-        width: snap(Theme.px(420px));
+        width: snap(Theme.px(root.compact ? 140px : 420px));
         height: snap(Theme.px(30px));
         background: pill-area.has-hover ? Theme.bg-hover : Theme.bg-elevated;
         border-radius: Theme.radius-md;
@@ -470,11 +473,13 @@ export component TitleBar inherits Rectangle {
                 font-size: Theme.pt(12.5px);
                 font-weight: 600;
                 vertical-alignment: center;
+                horizontal-stretch: root.compact ? 1 : 0;
+                overflow: elide;
             }
             // drawn separator rather than a "·" glyph: that codepoint isn't
             // guaranteed to exist in whichever UI font gets picked
-            if connection-name != "": IconDot { size: Theme.px(3px); tint: Theme.text-tertiary; }
-            Text {
+            if connection-name != "" && !root.compact: IconDot { size: Theme.px(3px); tint: Theme.text-tertiary; }
+            if connection-name == "" || !root.compact: Text {
                 text: connection-name == "" ? (root.connecting ? @tr("Connecting...") : @tr("No connection")) : connection-address;
                 color: Theme.text-secondary;
                 font-size: Theme.pt(12.5px);

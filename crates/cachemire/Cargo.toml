@@ -23,7 +23,7 @@ rayon.workspace = true
 open.workspace = true
 semver.workspace = true
 # the fork's patched/1.18.1 branch at a fixed commit (also for slint-build): move both `rev`s to update
-slint = { git = "https://github.com/iRed4321/SlintFork.git", rev = "56377498bbb0f835237307b7901427e61fd27412", default-features = false, features = ["std", "backend-winit", "renderer-software", "compat-1-2", "unstable-winit-030"] }
+slint = { git = "https://github.com/iRed4321/SlintFork.git", rev = "8212a4db5a7d6acb8252f93955319e782cc4f733", default-features = false, features = ["std", "backend-winit", "renderer-software", "compat-1-2", "unstable-winit-030"] }
 rust-i18n = "4"
 thiserror.workspace = true
 # the log: a daily file in the data directory (see logging.rs), and stderr in debug builds
@@ -37,7 +37,7 @@ cachemire-core = { path = "../cachemire-core", features = ["test-support"] }
 russh.workspace = true
 
 [build-dependencies]
-slint-build = { git = "https://github.com/iRed4321/SlintFork.git", rev = "56377498bbb0f835237307b7901427e61fd27412" }
+slint-build = { git = "https://github.com/iRed4321/SlintFork.git", rev = "8212a4db5a7d6acb8252f93955319e782cc4f733" }
 
 # embeds resources/icon.ico (+ version info) into the Windows executable
 [target.'cfg(windows)'.build-dependencies]
