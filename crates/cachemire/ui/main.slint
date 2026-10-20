@@ -301,13 +301,13 @@ export component MainWindow inherits Window {
                             IconSidebar { size: Theme.icon-md; tint: empty-show-button.hovered ? Theme.text-primary : Theme.text-secondary; }
                         }
 
-                        // the app's mark above the hint (tab-colored rods, outlined darker than the background):
+                        // the app's mark above the hint (rods lighter and darker than the background, outlined darker):
                         // with the spacers' stretch of 1 each, its 2 make it about half the height, all centred
                         VerticalLayout {
                             spacing: Theme.px(6px);
                             Rectangle { vertical-stretch: 1; }
                             Image {
-                                source: @image-url("../../../resources/weave-icon-mono-dark.svg");
+                                source: @image-url("../../../resources/weave-icon-tint.svg");
                                 image-fit: contain;
                                 vertical-stretch: 2;
                                 min-height: 0;

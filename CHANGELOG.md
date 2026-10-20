@@ -13,6 +13,7 @@ Every stable release of Cachemire; `Unreleased` is what the next one brings. Bet
 ### Fixes
 
 - **Windows**: the window now shows the Cachemire icon in the taskbar's hover preview
+- The logo shown when no key is open now takes the color of the connection profile in use, its shades being lighter and darker versions of the background
 - The window can no longer be made narrower than 720 px, where its layout stops fitting (Windows let it shrink further)
 - In a window narrower than 960 px, the connection pill of the title bar is a third as wide and shows only the connection's name, so it leaves room for the buttons around it
 - Typing a `[` without its closing `]` in the key tree's search no longer crashes the app
