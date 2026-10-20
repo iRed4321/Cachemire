@@ -11,6 +11,8 @@ use serde_json::Value;
 pub enum UpdateError {
     #[error(transparent)]
     Http(#[from] ureq::Error),
+    #[error("GitHub answered {status} to GET {url}{details}")]
+    Status { status: u16, url: String, details: String },
     #[error(transparent)]
     Io(#[from] std::io::Error),
     #[error(transparent)]
@@ -75,16 +77,67 @@ pub fn repo_url() -> String {
     format!("https://github.com/{REPO}")
 }
 
+const USER_AGENT: &str = "cachemire";
+
 fn agent() -> ureq::Agent {
-    ureq::Agent::config_builder().timeout_global(Some(Duration::from_secs(30))).user_agent("cachemire").build().into()
+    ureq::Agent::config_builder().timeout_global(Some(Duration::from_secs(30))).user_agent(USER_AGENT).build().into()
 }
 
-/// The newest release newer than `current` among those `channel` offers, if any.
+/// GETs `url` as text; a non-2xx answer is an error carrying GitHub's message and rate-limit headers.
+fn get_text(url: &str, accept: &str) -> Result<String, UpdateError> {
+    let mut response = agent().get(url).header("Accept", accept).config().http_status_as_error(false).build().call()?;
+    let status = response.status().as_u16();
+    if (200..300).contains(&status) {
+        return Ok(response.body_mut().read_to_string()?);
+    }
+    let headers = ["retry-after", "x-ratelimit-limit", "x-ratelimit-remaining", "x-ratelimit-reset", "x-ratelimit-resource"]
+        .iter()
+        .filter_map(|name| Some(format!("{name}={}", response.headers().get(*name)?.to_str().ok()?)))
+        .collect::<Vec<_>>()
+        .join(" ");
+    let body = response.body_mut().read_to_string().unwrap_or_default();
+    let body: String = body.chars().take(500).collect();
+    Err(UpdateError::Status { status, url: url.to_string(), details: format!(" [{headers}] {body}") })
+}
+
+/// The newest release newer than `current` among those `channel` offers, if any. When the API
+/// refuses (403/429, e.g. its per-IP rate limit), the releases feed is read instead.
 pub fn newer_release(current: &Version, channel: Channel) -> Result<Option<Release>, UpdateError> {
     let url = format!("https://api.github.com/repos/{REPO}/releases?per_page=50");
-    let body = agent().get(&url).header("Accept", "application/vnd.github+json").call()?.body_mut().read_to_string()?;
-    let listed: Value = serde_json::from_str(&body)?;
-    Ok(newest_offered(listed.as_array().map(Vec::as_slice).unwrap_or_default(), current, channel))
+    tracing::info!(%url, %current, channel = channel.code(), user_agent = USER_AGENT, "looking for a release");
+    match get_text(&url, "application/vnd.github+json") {
+        Ok(body) => {
+            let listed: Value = serde_json::from_str(&body)?;
+            Ok(newest_offered(listed.as_array().map(Vec::as_slice).unwrap_or_default(), current, channel))
+        }
+        Err(error @ UpdateError::Status { status: 403 | 429, .. }) => {
+            tracing::warn!("the releases API refused, reading the releases feed instead: {error}");
+            let feed = get_text(&format!("https://github.com/{REPO}/releases.atom"), "application/atom+xml")?;
+            Ok(newest_offered(&releases_from_feed(&feed), current, channel))
+        }
+        Err(error) => Err(error),
+    }
+}
+
+/// The releases of GitHub's Atom feed, shaped like the API's (the installer is named by convention).
+fn releases_from_feed(feed: &str) -> Vec<Value> {
+    let prefix = format!("https://github.com/{REPO}/releases/tag/");
+    feed.split("href=\"")
+        .skip(1)
+        .filter_map(|rest| {
+            let link = &rest[..rest.find('"')?];
+            let tag = link.strip_prefix(&prefix)?;
+            let version = tag.trim_start_matches('v');
+            Some(serde_json::json!({
+                "tag_name": tag,
+                "html_url": link,
+                "assets": [{
+                    "name": format!("Cachemire-{version}-x64.msi"),
+                    "browser_download_url": format!("https://github.com/{REPO}/releases/download/{tag}/Cachemire-{version}-x64.msi"),
+                }],
+            }))
+        })
+        .collect()
 }
 
 /// The newest of GitHub's `releases` that `channel` offers and is newer than `current`.

@@ -58,3 +58,15 @@ fn a_release_without_an_installer_is_still_offered() {
     let newest = newest_offered(&[bare], &version("3.0.0"), Channel::Stable).unwrap();
     assert_eq!(newest.installer, None);
 }
+
+// Hits GitHub: run with `cargo test -p cachemire-core -- --ignored the_releases_feed`.
+#[test]
+#[ignore = "needs network access to GitHub"]
+fn the_releases_feed_leads_to_a_downloadable_installer() {
+    let feed = get_text(&format!("https://github.com/{REPO}/releases.atom"), "application/atom+xml").unwrap();
+    let newest = newest_offered(&releases_from_feed(&feed), &version("0.0.0"), Channel::Beta).expect("no release in the feed");
+    let installer = newest.installer.expect("no installer for the newest release");
+    println!("newest release {}: {installer}", newest.version);
+    let status = agent().head(&installer).config().http_status_as_error(false).build().call().unwrap().status();
+    assert!(status.is_success(), "{installer} answered {status}");
+}
