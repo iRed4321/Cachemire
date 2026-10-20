@@ -10,6 +10,8 @@ _version: 2
 # the key tree's export
 "Choose a folder...":
   fr: "Choisissez un dossier..."
+"Choose a file...":
+  fr: "Choisissez un fichier..."
 "Exporting %{done} of %{total}...":
   fr: "Export de %{done} sur %{total}..."
 "Exported %{count} keys":

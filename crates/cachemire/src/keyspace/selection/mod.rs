@@ -331,7 +331,8 @@ fn start_row(app: &App, id: String) {
     start(ctx, plan);
 }
 
-/// Asks for a folder, then writes `plan` there off the UI thread, with progress in the bar.
+/// Asks for a folder (or, for a plan making one file, where to save it and under what name, the
+/// default being `Plan::sole_file`), then writes `plan` there off the UI thread, with progress in the bar.
 fn start(ctx: &ScanContext, plan: Plan) {
     let Some(window) = ctx.weak.upgrade() else { return };
     let global = window.global::<KeyTree>();
@@ -347,11 +348,20 @@ fn start(ctx: &ScanContext, plan: Plan) {
         }
     };
     global.set_export_busy(true);
-    global.set_export_progress(t!("Choose a folder...").as_ref().into());
+    let sole_file = plan.sole_file();
+    global.set_export_progress(if sole_file.is_some() { t!("Choose a file...") } else { t!("Choose a folder...") }.as_ref().into());
     ctx.export_cancel.store(false, Ordering::Relaxed);
     let (weak, state, cancel, rt) = (ctx.weak.clone(), ctx.state.clone(), ctx.export_cancel.clone(), ctx.rt.clone());
     rt.spawn(async move {
-        let dir = rfd::AsyncFileDialog::new().pick_folder().await.map(|folder| folder.path().to_path_buf());
+        let (dir, file_name) = match &sole_file {
+            Some(default) => {
+                let chosen = rfd::AsyncFileDialog::new().set_file_name(default).add_filter("JSON", &["json"]).save_file().await;
+                let path = chosen.map(|file| file.path().to_path_buf());
+                let file_name = path.as_ref().and_then(|path| path.file_name()).map(|name| name.to_string_lossy().into_owned());
+                (path.and_then(|path| path.parent().map(std::path::Path::to_path_buf)), file_name)
+            }
+            None => (rfd::AsyncFileDialog::new().pick_folder().await.map(|folder| folder.path().to_path_buf()), None),
+        };
         let Some(dir) = dir else {
             let _ = weak.upgrade_in_event_loop(move |window| {
                 window.global::<KeyTree>().set_export_busy(false);
@@ -360,7 +370,7 @@ fn start(ctx: &ScanContext, plan: Plan) {
         };
         let mut last = Instant::now();
         let progress_weak = weak.clone();
-        let result = export_files::run(&state, &connection_id, plan, &dir, &cancel, |done, total| {
+        let result = export_files::run(&state, &connection_id, plan, &dir, file_name.as_deref(), &cancel, |done, total| {
             if done != total && last.elapsed() < Duration::from_millis(100) {
                 return;
             }

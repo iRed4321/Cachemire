@@ -17,6 +17,7 @@ use crate::session::Session;
 use crate::state::AppState;
 
 /// What to export, as key ids: whole folders (their prefix and every key under it) and lone keys.
+#[derive(Clone)]
 pub struct Plan {
     pub folders: Vec<(String, Vec<String>)>,
     pub keys: Vec<String>,
@@ -27,6 +28,14 @@ pub struct Plan {
 impl Plan {
     pub fn total(&self) -> usize {
         self.folders.iter().map(|(_, keys)| keys.len()).sum::<usize>() + self.keys.len()
+    }
+
+    /// The name of the file the plan writes, when it writes just one.
+    pub fn sole_file(&self) -> Option<String> {
+        let mut files = outputs(self.clone()).into_iter().map(|output| match output {
+            Output::Items { file, .. } | Output::Single { file, .. } => file,
+        });
+        files.next().filter(|_| files.next().is_none())
     }
 }
 
@@ -124,13 +133,14 @@ fn start_file(path: &Path, output: &Output) -> Result<BufWriter<File>, Error> {
 }
 
 /// Writes `plan`'s files into `dir`, reading each key off `connection_id`'s server; `progress` gets
-/// the keys done so far and the total after each one. Stops at once, leaving the file it was writing
-/// out, if `cancel` is set.
+/// the keys done so far and the total after each one. A plan writing a single file names it
+/// `file_name` when given. Stops at once, leaving the file it was writing out, if `cancel` is set.
 pub async fn run(
     state: &AppState,
     connection_id: &str,
     plan: Plan,
     dir: &Path,
+    file_name: Option<&str>,
     cancel: &AtomicBool,
     mut progress: impl FnMut(usize, usize),
 ) -> Result<Outcome, Error> {
@@ -138,12 +148,13 @@ pub async fn run(
     let mut session = Session::open(state, Some(connection_id)).await?;
     std::fs::create_dir_all(dir).map_err(io_error)?;
     let mut done = 0;
+    let sole = plan.sole_file().and(file_name);
     for output in outputs(plan) {
         let (file, keys): (&str, &[String]) = match &output {
             Output::Items { file, keys, .. } => (file, keys),
             Output::Single { file, key } => (file, std::slice::from_ref(key)),
         };
-        let path = dir.join(file);
+        let path = dir.join(sole.unwrap_or(file));
         let mut writer: Option<BufWriter<File>> = None;
         let mut written = 0;
         for key in keys {
