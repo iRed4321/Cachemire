@@ -424,8 +424,8 @@ export component TitleBar inherits Rectangle {
         }
     }
 
-    // below 1280px of window, the pill is a third as wide and shows the connection's name alone
-    property <bool> compact: root.width < 1280px;
+    // below 960px of window, the pill is a third as wide and shows the connection's name alone
+    property <bool> compact: root.width < 960px;
 
     // connection pill, centered — click opens the connection picker
     pill := Rectangle {
