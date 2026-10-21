@@ -1,5 +1,5 @@
 //! Headless input/render tests against the real window, on Slint's software renderer, by
-//! area: [`table`], [`values`], [`header`], [`app`], [`dialogs`] and [`connections`].
+//! area: [`table`], [`values`], [`header`], [`app`], [`dialogs`], [`connections`], [`cloud`] and [`tabs`].
 //! Each test builds its own [`Harness`] (thread-local Slint context).
 
 use crate::{KeyPanel, MainWindow, QueryTab, SavedQueries, SearchTab, TabStrip};
@@ -11,8 +11,10 @@ use std::cell::RefCell;
 use std::rc::Rc;
 
 mod app;
+mod cloud;
 mod connections;
 mod dialogs;
+mod tabs;
 
 /// What other threads hand to the UI thread (`invoke_from_event_loop`). Slint keeps one proxy
 /// for the whole process, so this queue is shared by every test; see [`EventLoopTurn`].

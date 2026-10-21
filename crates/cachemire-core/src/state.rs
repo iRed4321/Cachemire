@@ -138,4 +138,31 @@ mod tests {
         assert_eq!(std::fs::read_to_string(dir.join(DATA_FILE)).unwrap(), "new");
         std::fs::remove_dir_all(&root).unwrap();
     }
+
+    #[test]
+    fn a_connection_is_the_one_named_or_else_the_active_one_its_tunnel_completed_by_the_ssh_profile() {
+        let dir = crate::test_support::temp_dir("resolve");
+        let state = AppState::for_tests(&dir);
+        let payload = |name: &str, ssh: bool| crate::connection::ConnectionPayloadInput {
+            name: Some(name.into()),
+            connection_url: Some("redis://localhost:6379".into()),
+            ssh_enabled: Some(ssh),
+            ssh_host: ssh.then(|| "bastion".into()),
+            ..Default::default()
+        };
+        state.connections.lock().create_with_id("plain", payload("Plain", false)).unwrap();
+        state.connections.lock().create_with_id("tunnelled", payload("Tunnelled", true)).unwrap();
+        state.connections.lock().set_active("plain").unwrap();
+
+        assert!(resolve_connection(&state, Some("tunnelled")).is_err(), "no SSH profile to sign in with");
+        let profile = state.settings.lock().create_ssh_profile("Work", "deploy", "s3cret").unwrap();
+        state.settings.lock().set_active_ssh_profile(&profile).unwrap();
+        let ssh = resolve_connection(&state, Some("tunnelled")).unwrap().ssh.unwrap();
+        assert_eq!((ssh.username.as_str(), ssh.password.as_str()), ("deploy", "s3cret"));
+
+        assert_eq!(resolve_connection(&state, None).unwrap().id, "plain");
+        assert_eq!(resolve_connection(&state, Some("  ")).unwrap().id, "plain", "a blank id is no id");
+        assert!(matches!(resolve_connection(&state, Some("gone")), Err(Error::NotFound(NotFound::Connection))));
+        std::fs::remove_dir_all(&dir).unwrap();
+    }
 }

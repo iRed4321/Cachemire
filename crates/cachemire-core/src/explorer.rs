@@ -698,4 +698,27 @@ mod tests {
         assert!(keys[2].entries.is_empty(), "a key that only matches by name has no entries");
         assert_eq!(keys[3].entries, vec![("1.5".to_string(), "member".to_string())]);
     }
+
+    #[test]
+    fn a_folder_named_like_a_glob_only_matches_itself() {
+        assert_eq!(glob_escape(b"user:*"), b"user:\\*");
+        assert_eq!(glob_escape(b"a?[b]\\c"), b"a\\?\\[b\\]\\\\c");
+        assert_eq!(glob_escape(b"plain:"), b"plain:", "an ordinary prefix stays as it is");
+    }
+
+    #[test]
+    fn hash_fields_are_shown_in_natural_order_either_way() {
+        let mut fields = vec!["a10", "b", "a2", "10", "2"];
+        sort_by_field_name(&mut fields, |f| f, false);
+        assert_eq!(fields, ["2", "10", "a2", "a10", "b"]);
+        sort_by_field_name(&mut fields, |f| f, true);
+        assert_eq!(fields, ["b", "a10", "a2", "10", "2"]);
+    }
+
+    #[test]
+    fn a_score_json_cant_hold_becomes_null() {
+        assert_eq!(score_to_json(1.5), serde_json::json!(1.5));
+        assert_eq!(score_to_json(f64::INFINITY), Value::Null, "ZADD accepts +inf");
+        assert_eq!(score_to_json(f64::NAN), Value::Null);
+    }
 }

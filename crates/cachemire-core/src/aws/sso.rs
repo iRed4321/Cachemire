@@ -274,3 +274,125 @@ fn html(title: &str, message: &str) -> String {
         escape(message)
     )
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::test_support::{block_on, temp_dir};
+
+    fn sso(session: Option<&str>, start_url: &str) -> SsoSettings {
+        SsoSettings {
+            session: session.map(str::to_string),
+            start_url: start_url.into(),
+            region: "eu-west-1".into(),
+            scopes: Vec::new(),
+            account_id: "111".into(),
+            role_name: "ReadOnly".into(),
+        }
+    }
+
+    fn page() -> SignInPage {
+        SignInPage { title: "Cachemire".into(), signed_in: "You're signed in.".into(), refused: "Sign-in refused.".into() }
+    }
+
+    /// Sends `request_line` as the browser would to `port`, and reads the whole answer.
+    async fn browse(port: u16, request_line: &str) -> String {
+        let mut socket = TcpStream::connect(("127.0.0.1", port)).await.unwrap();
+        socket.write_all(format!("{request_line}\r\nHost: 127.0.0.1\r\n\r\n").as_bytes()).await.unwrap();
+        let mut answer = String::new();
+        socket.read_to_string(&mut answer).await.unwrap();
+        answer
+    }
+
+    #[test]
+    fn the_cache_file_is_the_one_the_aws_cli_shares_for_the_session_or_the_start_url() {
+        let by_session = cache_path(&sso(Some("corp"), "https://corp.awsapps.com/start")).unwrap();
+        assert!(by_session.ends_with(Path::new(".aws/sso/cache/ee0bfd2552fbd840c02cc48b6e823320543c450f.json")), "{by_session:?}");
+        let legacy = cache_path(&sso(None, "https://old.awsapps.com/start")).unwrap();
+        assert!(legacy.ends_with("33d5ca4bf3b1a62edb96b47f7c203034a43ac435.json"), "{legacy:?}");
+    }
+
+    #[test]
+    fn a_token_written_by_the_aws_cli_is_read_and_one_kept_here_reads_back_the_same() {
+        let dir = temp_dir("sso-cache");
+        let path = dir.join("sso").join("cache").join("token.json");
+        std::fs::create_dir_all(path.parent().unwrap()).unwrap();
+        std::fs::write(
+            &path,
+            r#"{"startUrl":"https://corp.awsapps.com/start","region":"eu-west-1","accessToken":"abc","expiresAt":"2030-01-01T00:00:00Z"}"#,
+        )
+        .unwrap();
+        let from_cli = read_cache(&path).expect("the AWS CLI's own format");
+        assert_eq!((from_cli.access_token.as_str(), from_cli.refresh_token), ("abc", None));
+
+        let token = CachedToken { refresh_token: Some("again".into()), client_id: Some("me".into()), ..from_cli };
+        write_cache(&path, &token).unwrap();
+        let written = std::fs::read_to_string(&path).unwrap();
+        assert!(written.contains("\"refreshToken\"") && !written.contains("clientSecret"), "camelCase, the absent left out: {written}");
+        let back = read_cache(&path).unwrap();
+        assert_eq!((back.refresh_token.as_deref(), back.client_id.as_deref()), (Some("again"), Some("me")));
+        assert!(!path.with_extension("json.tmp").exists(), "the temporary file is renamed over the cache");
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            assert_eq!(std::fs::metadata(&path).unwrap().permissions().mode() & 0o777, 0o600, "credentials stay the owner's");
+        }
+        std::fs::remove_dir_all(&dir).unwrap();
+    }
+
+    #[test]
+    fn a_damaged_or_missing_cache_is_no_token() {
+        let dir = temp_dir("sso-cache-damaged");
+        std::fs::write(dir.join("half.json"), r#"{"startUrl":"https://x","accessToken":"abc"}"#).unwrap();
+        assert!(read_cache(&dir.join("half.json")).is_none());
+        assert!(read_cache(&dir.join("absent.json")).is_none());
+        std::fs::remove_dir_all(&dir).unwrap();
+    }
+
+    #[test]
+    fn a_token_about_to_expire_counts_as_gone() {
+        assert!(ahead(Some(&timestamp(now() + 3600))));
+        assert!(!ahead(Some(&timestamp(now() + 30))), "within the last minute");
+        assert!(!ahead(Some(&timestamp(now() - 3600))));
+        assert!(!ahead(Some("not a time")) && !ahead(None), "an unknown end is no end to rely on");
+    }
+
+    #[test]
+    fn the_browser_comes_back_with_the_code_once_its_state_matches() {
+        block_on(async {
+            let listener = TcpListener::bind(("127.0.0.1", 0)).await.unwrap();
+            let port = listener.local_addr().unwrap().port();
+            let page = page();
+            let browser = async {
+                let elsewhere = browse(port, "GET /favicon.ico HTTP/1.1").await;
+                let forged = browse(port, "GET /oauth/callback?code=stolen&state=other HTTP/1.1").await;
+                let ours = browse(port, "GET /oauth/callback?code=the-code&state=s1 HTTP/1.1").await;
+                (elsewhere, forged, ours)
+            };
+            let (code, (elsewhere, forged, ours)) = tokio::join!(wait_for_code(&listener, "s1", &page), browser);
+            assert_eq!(code.unwrap(), "the-code");
+            assert!(elsewhere.starts_with("HTTP/1.1 404"), "{elsewhere}");
+            assert!(forged.starts_with("HTTP/1.1 400"), "another sign-in's answer is turned down: {forged}");
+            assert!(ours.starts_with("HTTP/1.1 200") && ours.contains("You're signed in."), "{ours}");
+        });
+    }
+
+    #[test]
+    fn a_refusal_in_the_browser_ends_the_sign_in_with_its_reason() {
+        block_on(async {
+            let listener = TcpListener::bind(("127.0.0.1", 0)).await.unwrap();
+            let port = listener.local_addr().unwrap().port();
+            let page = page();
+            let browser = browse(port, "GET /oauth/callback?error=access_denied&error_description=User%20said%20no HTTP/1.1");
+            let (result, answer) = tokio::join!(wait_for_code(&listener, "s1", &page), browser);
+            assert!(matches!(result, Err(Error::Cloud(AwsError::SignInRefused(ref reason))) if reason == "User said no"), "{result:?}");
+            assert!(answer.contains("Sign-in refused."), "{answer}");
+        });
+    }
+
+    #[test]
+    fn the_sign_in_page_shows_its_texts_as_text() {
+        let page = html("<Cachemire>", "Tom & Jerry");
+        assert!(page.contains("<title>&lt;Cachemire&gt;</title>") && page.contains("<p>Tom &amp; Jerry</p>"), "{page}");
+    }
+}
