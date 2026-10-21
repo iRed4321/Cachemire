@@ -211,7 +211,7 @@ fn table_scroll_restores_after_the_content_is_rebuilt() {
 
     let target = ScrollPos { all_y: -200.0, table_x: -30.0, table_y: -100.0 };
     arm_table_scroll(&h.window, target);
-    apply_table(&h.window, build_table(&fields, &[], false));
+    apply_table(&h.window, build_table(&fields, &[], false, None));
     // (apply_table sizes the columns to the content again)
     let wide = vec![400.0f32; h.window.global::<KeyPanel>().get_table_columns().row_count()];
     h.window.global::<KeyPanel>().set_table_total_w(wide.iter().sum());
@@ -240,7 +240,7 @@ fn table_scroll_restores_when_a_tab_is_switched_back_to() {
     let (long, short) = (hash_fields(400, "long"), hash_fields(30, "short"));
 
     h.window.global::<KeyPanel>().set_view(KeyView::Table);
-    apply_table(&h.window, build_table(&long, &[], false));
+    apply_table(&h.window, build_table(&long, &[], false, None));
     h.settle();
     wheel_down_to(&mut h, |w| current_scroll(w).table_y);
     let saved = current_scroll(&h.window);
@@ -248,11 +248,11 @@ fn table_scroll_restores_when_a_tab_is_switched_back_to() {
     for _ in 0..2 {
         disarm_scroll(&h.window);
         arm_table_scroll(&h.window, ScrollPos::default());
-        apply_table(&h.window, build_table(&short, &[], false));
+        apply_table(&h.window, build_table(&short, &[], false, None));
         h.settle();
         assert_eq!(current_scroll(&h.window).table_y, 0.0);
         arm_table_scroll(&h.window, saved);
-        apply_table(&h.window, build_table(&long, &[], false));
+        apply_table(&h.window, build_table(&long, &[], false, None));
         h.settle();
         assert_eq!(current_scroll(&h.window).table_y, saved.table_y, "the table comes back to the same deep position, every time");
     }
@@ -269,7 +269,7 @@ fn switching_views_back_and_forth_rebuilds_the_table_without_panicking() {
     clear_table(&h.window);
     h.frame();
     h.window.global::<KeyPanel>().set_view(KeyView::Table);
-    apply_table(&h.window, build_table(&fields, &[], false));
+    apply_table(&h.window, build_table(&fields, &[], false, None));
     for _ in 0..3 {
         h.frame();
     }

@@ -109,7 +109,7 @@ fn wheel_down_to(h: &mut Harness, position: impl Fn(&MainWindow) -> f32) {
 /// with a filter applied would.
 fn table_ready(h: &mut Harness, fields: &Fields) {
     h.window.global::<KeyPanel>().set_view(KeyView::Table);
-    apply_table(&h.window, build_table(fields, &[], false));
+    apply_table(&h.window, build_table(fields, &[], false, None));
     assert!(h.window.global::<KeyPanel>().get_table_columns().row_count() > 5);
     h.frame();
     h.frame();
@@ -123,5 +123,5 @@ pub(crate) fn hash_table_ready(h: &mut Harness, n: usize, tag: &str) {
 /// Puts `n` fields of [`hash_fields`] in the key panel's table, as a query's result lands there.
 pub(crate) fn show_hash_table(window: &MainWindow, n: usize, tag: &str) {
     window.global::<KeyPanel>().set_view(KeyView::Table);
-    apply_table(window, build_table(&hash_fields(n, tag), &[], false));
+    apply_table(window, build_table(&hash_fields(n, tag), &[], false, None));
 }

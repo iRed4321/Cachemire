@@ -18,7 +18,7 @@ use cachemire_core::state::AppState;
 use slint::ComponentHandle;
 
 use super::field::{Field, FieldValue, Fields};
-use super::table::{selected_rows_json, table_csv};
+use super::table::{selected_rows_json, table_csv, table_sort};
 use super::{Ctx, PanelContent};
 
 /// A field's value as pretty (indented) JSON.
@@ -190,6 +190,7 @@ impl Exporter {
             return;
         }
         let (fields, key) = self.shown();
+        let sort = self.weak.upgrade().and_then(|window| table_sort(&window));
         let stem = sanitize_filename(&key);
         let escaped = format == ExportFormat::Escaped;
         let action = match target {
@@ -198,7 +199,7 @@ impl Exporter {
             ExportTarget::Copy => ExportAction::Copy,
         };
         run_export(self, key, fields, action, move |fields| {
-            let rows = selected_rows_json(&fields, &indices);
+            let rows = selected_rows_json(&fields, &indices, sort);
             if escaped {
                 serde_json::to_string(&serde_json::to_string(&rows).unwrap_or_default()).unwrap_or_default()
             } else {
@@ -216,9 +217,10 @@ impl Exporter {
         }
         let stem = sanitize_filename(&key);
         let indices = self.selected_rows();
+        let sort = self.weak.upgrade().and_then(|window| table_sort(&window));
         let filename = if indices.is_empty() { format!("{stem}.csv") } else { format!("{stem}.selection.csv") };
         run_export(self, key, fields, ExportAction::Download(filename), move |fields| {
-            table_csv(&fields, (!indices.is_empty()).then_some(indices.as_slice()))
+            table_csv(&fields, (!indices.is_empty()).then_some(indices.as_slice()), sort)
         });
     }
 

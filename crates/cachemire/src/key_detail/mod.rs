@@ -47,7 +47,7 @@ use paging::PageDir;
 use scroll::{arm_table_scroll, disarm_scroll, set_field_expanded, sync_rows_expansion};
 use search_filter::{SearchFilter, SearchTerm};
 use suggest::Suggester;
-use table::{apply_table, build_table, reset_table_selection, select_table_range};
+use table::{apply_table, build_table, reset_table_selection, select_table_range, table_sort};
 use value_list::meta_text;
 
 const MAX_ITEMS: usize = 500;
@@ -188,12 +188,13 @@ impl Ctx {
             (content.current.clone(), content.search.clone())
         };
         let weak = self.weak.clone();
+        let sort = self.weak.upgrade().and_then(|window| table_sort(&window));
         self.rt.spawn_blocking(move || {
             // the search bar's badges narrow the table the same way they narrow
             // the field/value list, and highlight the same way in its cells
             let needles = filter.highlight_needles();
             let fields: Fields = fields.into_par_iter().filter(|f| filter.matches(f)).collect();
-            let table = build_table(&fields, &needles, filter.case_sensitive);
+            let table = build_table(&fields, &needles, filter.case_sensitive, sort);
             let _ = weak.upgrade_in_event_loop(move |window| {
                 if latest.load(Ordering::Relaxed) == generation && window.global::<KeyPanel>().get_view() == KeyView::Table {
                     if let Some(scroll) = scroll {
@@ -260,6 +261,25 @@ impl Ctx {
         self.load_key(LoadRequest { key, scroll: current_scroll(&window), reuse: false, announce: true });
     }
 
+    /// A table header's triangle: orders the rows by that column, in the direction it asks for;
+    /// a hash's Field column flips the hash's own order instead, which covers all its fields.
+    fn sort_table(&self, column: i32, descending: bool) {
+        let Some(window) = self.weak.upgrade() else { return };
+        let panel = window.global::<KeyPanel>();
+        if column == 0 && panel.get_badge() == "HASH" {
+            panel.set_table_sort_column(-1);
+            if descending != panel.get_sort_descending() {
+                self.toggle_sort();
+            } else {
+                self.show_view(&window, None);
+            }
+            return;
+        }
+        panel.set_table_sort_column(column);
+        panel.set_table_sort_descending(descending);
+        self.show_view(&window, None);
+    }
+
     /// The Field header's arrow: flips the order of the hash's fields and loads it
     /// again from the top, with every row folded.
     fn toggle_sort(&self) {
@@ -291,9 +311,12 @@ impl KeyDetailShared {
     }
 }
 
-/// Puts key `id` in the panel's header, as its name reads.
+/// Puts key `id` in the panel's header, as its name reads; another key's table starts unsorted.
 pub(crate) fn show_key_name(window: &MainWindow, id: &str) {
     let panel = window.global::<KeyPanel>();
+    if panel.get_key_id() != id {
+        panel.set_table_sort_column(-1);
+    }
     panel.set_key_id(id.into());
     panel.set_name(KeyName::display_id(id).as_ref().into());
 }
@@ -394,6 +417,10 @@ pub fn init(window: &MainWindow, state: Arc<AppState>, rt: Handle) -> KeyDetail 
     });
     panel.on_refresh_key(with_ctx(Ctx::refresh_key));
     panel.on_sort_toggled(with_ctx(Ctx::toggle_sort));
+    panel.on_table_sort_requested({
+        let ctx = ctx.clone();
+        move |column, descending| ctx.sort_table(column, descending)
+    });
 
     KeyDetail(ctx)
 }

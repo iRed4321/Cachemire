@@ -590,6 +590,8 @@ export component IconSortTriangle inherits Rectangle {
     in property <color> tint: Theme.text-secondary;
     in property <length> size: 10px;
     in property <bool> up: true;
+    // false: just the outline
+    in property <bool> filled: true;
     width: size;
     height: size;
 
@@ -599,7 +601,7 @@ export component IconSortTriangle inherits Rectangle {
         viewbox-width: 24;
         viewbox-height: 24;
         commands: up ? "M12 6 L21 18 L3 18 Z" : "M3 6 L21 6 L12 18 Z";
-        fill: tint;
+        fill: filled ? tint : transparent;
         stroke: tint;
         stroke-width: 1.5px;
         stroke-line-join: round;

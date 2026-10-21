@@ -2,6 +2,7 @@ import { Theme } from "theme.slint";
 import { HDivider, HResizeHandle, VScrollBar, HScrollBar, WheelScroller, CheckBox } from "widgets.slint";
 import { KeyScroll, TableRowData } from "key-detail-types.slint";
 import { ScrollTopButton } from "key-detail-widgets.slint";
+import { IconSortTriangle } from "icons.slint";
 
 // One row of the table view. Every cell has an explicit width (from the
 // table's column widths), and holds a single elided line — a nested object is
@@ -158,6 +159,17 @@ export component TableView inherits Rectangle {
     // the width the columns take, stretched or not
     property <length> columns-w: Theme.px(total-w + total-want * grow) * fill;
     in property <[TableRowData]> rows: [];
+    // index-aligned with `columns`: whether the column shows an ordering triangle; the column the
+    // rows are ordered by (-1: none) and the direction; a click asks Rust to reorder
+    in property <[bool]> sortable: [];
+    in property <int> sort-column: -1;
+    in property <bool> sort-descending: false;
+    callback sort-requested(column: int, descending: bool);
+    // with no column picked, whether the rows come in the Field column's order, and in which direction
+    in property <bool> field-ordered: false;
+    in property <bool> default-descending: false;
+    property <int> shown-sort-column: sort-column >= 0 ? sort-column : field-ordered ? 0 : -1;
+    property <bool> shown-sort-descending: sort-column >= 0 ? sort-descending : default-descending;
     // which rows are ticked (index-aligned with `rows`, set by Rust, toggled
     // here) and how many; the header's clear-all control asks Rust to reset both
     in-out property <[bool]> selected: [];
@@ -436,7 +448,7 @@ export component TableView inherits Rectangle {
                                 width: Theme.px(col-widths[j] + col-wants[j] * root.grow) * root.fill;
                                 Text {
                                     x: Theme.px(8px);
-                                    width: parent.width - Theme.px(16px) - Theme.px(4px);
+                                    width: parent.width - Theme.px(16px) - Theme.px(4px) - (root.sortable[j] ? Theme.px(24px) : 0px);
                                     height: parent.height;
                                     text: j == 0 ? root.row-column-title : name;
                                     font-size: Theme.pt(10.5px);
@@ -445,6 +457,23 @@ export component TableView inherits Rectangle {
                                     color: Theme.text-secondary;
                                     vertical-alignment: center;
                                     overflow: elide;
+                                }
+                                // the ordering triangles: outlined, filled for the one in effect
+                                if root.sortable[j]: Rectangle {
+                                    x: parent.width - self.width - Theme.px(10px);
+                                    width: Theme.px(20px);
+                                    IconSortTriangle {
+                                        x: (parent.width - self.width) / 2;
+                                        y: (parent.height - self.height) / 2;
+                                        size: Theme.icon-xs;
+                                        up: !(root.shown-sort-column == j && root.shown-sort-descending);
+                                        filled: root.shown-sort-column == j;
+                                        tint: self.filled || triangle-area.has-hover ? Theme.text-primary : Theme.text-tertiary;
+                                    }
+                                    triangle-area := TouchArea {
+                                        mouse-cursor: pointer;
+                                        clicked => { root.sort-requested(j, root.shown-sort-column == j && !root.shown-sort-descending); }
+                                    }
                                 }
                                 HResizeHandle {
                                     x: parent.width - self.width;

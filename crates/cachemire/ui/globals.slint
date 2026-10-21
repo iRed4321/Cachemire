@@ -299,6 +299,11 @@ export global KeyPanel {
     in-out property <[length]> table-col-wants: [];
     in-out property <length> table-total-want: 0px;
     in-out property <[TableRowData]> table-rows: [];
+    // per column, whether its cells can be ordered; the column the rows are ordered by (-1: none)
+    // and whether that order is descending
+    in-out property <[bool]> table-sortable: [];
+    in-out property <int> table-sort-column: -1;
+    in-out property <bool> table-sort-descending: false;
     in-out property <string> table-note: "";
     in-out property <[bool]> table-selected: [];
     in-out property <int> table-selected-count: 0;
@@ -317,6 +322,8 @@ export global KeyPanel {
     callback view-changed();
     // the Field header's arrow was clicked: Rust flips `sort-descending` and loads the key again
     callback sort-toggled();
+    // a table header's triangle was clicked: Rust orders the rows by that column
+    callback table-sort-requested(column: int, descending: bool);
     callback suggest(text: string, cursor: int) -> bool;
     callback complete-suggestion(text: string, cursor: int, index: int) -> CompletionEdit;
     callback json-filter-submitted();

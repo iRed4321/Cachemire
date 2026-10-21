@@ -1077,6 +1077,7 @@ dependencies = [
  "arboard",
  "cachemire-core",
  "dirs",
+ "natord",
  "open",
  "parking_lot",
  "rayon",

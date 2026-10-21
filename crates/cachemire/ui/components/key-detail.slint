@@ -483,6 +483,12 @@ export component KeyDetail inherits Rectangle {
             col-wants: root.table-col-wants;
             total-want: root.table-total-want;
             rows: root.table-rows;
+            sortable: KeyPanel.table-sortable;
+            sort-column: KeyPanel.table-sort-column;
+            sort-descending: KeyPanel.table-sort-descending;
+            field-ordered: root.badge == "HASH";
+            default-descending: root.sort-descending;
+            sort-requested(column, descending) => { KeyPanel.table-sort-requested(column, descending); }
             selected <=> root.table-selected;
             selected-count <=> root.table-selected-count;
             clear-selection => { root.table-clear-selection(); }

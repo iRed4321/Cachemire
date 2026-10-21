@@ -20,6 +20,7 @@ dirs.workspace = true
 rustc-hash.workspace = true
 parking_lot.workspace = true
 rayon.workspace = true
+natord = "1"
 open.workspace = true
 semver.workspace = true
 # the fork's patched/1.18.1 branch at a fixed commit (also for slint-build): move both `rev`s to update
