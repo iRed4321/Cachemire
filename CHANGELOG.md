@@ -27,6 +27,7 @@ Every stable release of Cachemire; `Unreleased` is what the next one brings. Bet
 - **AWS**: signing in through the browser no longer fails with "No access" when the first profile's role isn't granted to you: the sign-in succeeds, and only picking that profile reports it, naming the profile, role and account
 - Checking for updates no longer fails with a 403 error when GitHub's API limits requests from your network; the update check falls back to the releases feed
 - **Security**: the TLS library behind `rediss://` connections and AWS is updated, fixing four vulnerabilities (RUSTSEC-2026-0346 to 0349)
+- **Security**: the TLS certificate checks behind `rediss://` connections and AWS no longer trust distrusted intermediate certificates (RUSTSEC-2026-0381, RUSTSEC-2026-0382)
 
 ## 3.0.0 - 2026-10-15
 
