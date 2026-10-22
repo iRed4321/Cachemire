@@ -8,6 +8,9 @@
 - Never launch the app or take a screenshot to check your own work. No UI
   verification of any kind beyond the tests — the user checks the UI
   themselves and will report back if something's off.
+- After finishing all the requested changes, run `cargo build --profile fast`
+  as the last step before handing back, so the user can test that build right
+  away. Fix any build failure first.
 - Never run `git commit` (or push) unless explicitly asked.
 - Comments: 3 lines max, always — this counts every line of the comment
   block, doc comments (`///`) included, and applies to existing comments you

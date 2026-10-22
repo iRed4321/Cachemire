@@ -17,6 +17,7 @@ Every stable release of Cachemire; `Unreleased` is what the next one brings. Bet
 - **Windows**: the window now shows the Cachemire icon in the taskbar's hover preview
 - The logo shown when no key is open now takes the color of the connection profile in use, its shades being lighter and darker versions of the background
 - The window can no longer be made narrower than 720 px, where its layout stops fitting (Windows let it shrink further)
+- When the window is maximized, its edges no longer act as resize borders, so the pointer in the screen's top-right corner reaches the close button
 - In a window narrower than 960 px, the connection pill of the title bar is a third as wide and shows only the connection's name, so it leaves room for the buttons around it
 - Typing a `[` without its closing `]` in the key tree's search no longer crashes the app
 - The query box's completion of `alias.` fields now finds the right key when a query holds letters like `ẞ` or `İ`

@@ -43,7 +43,8 @@ export component MainWindow inherits Window {
     background: Theme.bg-app;
     default-font-family: Theme.font-ui;
     no-frame: true;
-    resize-border-width: 5px;
+    // none while maximized: the screen edges then reach the title bar's buttons
+    resize-border-width: root.maximized ? 0px : 5px;
     forward-focus: root-scope;
 
     callback request-drag-window();
