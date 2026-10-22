@@ -1,10 +1,11 @@
 name: CI
 
-# The checks of a pull request and of every push to main; releases run their own tests (release.yml).
+# The checks of a pull request (those main's rules require: `cargo ship setup`) and of every push to main
+# and next; releases run their own tests (release.yml).
 on:
   pull_request:
   push:
-    branches: [main]
+    branches: [main, next]
     # a push touching only text has nothing to build
     paths-ignore: ["**.md", "docs/**", "LICENSE"]
 
@@ -33,13 +34,13 @@ jobs:
         os: [ubuntu-latest, windows-latest]
     steps:
       - uses: actions/checkout@v7
-      # the compiled dependencies, kept between runs (one cache per OS); saved from main only,
-      # which pull requests start from. cache-bin off: its cleanup deletes cargo, which the other
+      # the compiled dependencies, kept between runs (one cache per OS); saved from main, which pull
+      # requests start from, and next. cache-bin off: its cleanup deletes cargo, which the other
       # cache's post step still needs
       - uses: Swatinem/rust-cache@v2
         with:
           cache-bin: false
-          save-if: ${{ github.ref == 'refs/heads/main' }}
+          save-if: ${{ github.ref == 'refs/heads/main' || github.ref == 'refs/heads/next' }}
       # xtask's own build (target/xtask), shared by every job of the OS, in both workflows
       - uses: Swatinem/rust-cache@v2
         with:

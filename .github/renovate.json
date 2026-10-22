@@ -1,0 +1,44 @@
+{
+  "$schema": "https://docs.renovatebot.com/renovate-schema.json",
+  "description": "Run by the Dependencies workflow (docs/releasing.md). main gets every update but majors, grouped once a week, and security fixes at once: merged once their checks pass, then released as a fix. next gets the majors.",
+  "extends": ["config:recommended"],
+  "timezone": "Europe/Paris",
+  "baseBranchPatterns": ["main", "next"],
+  "labels": ["dependencies"],
+  "osvVulnerabilityAlerts": true,
+  "automerge": true,
+  "automergeType": "pr",
+  "platformAutomerge": true,
+  "rebaseWhen": "behind-base-branch",
+  "minimumReleaseAge": "3 days",
+  "schedule": ["* 0-4 * * 1"],
+  "lockFileMaintenance": {
+    "enabled": true,
+    "schedule": ["* 0-4 * * 1"]
+  },
+  "packageRules": [
+    {
+      "description": "The stable line: the week's updates in one pull request",
+      "matchBaseBranches": ["main"],
+      "matchUpdateTypes": ["minor", "patch", "pin", "digest"],
+      "groupName": "dependencies"
+    },
+    {
+      "description": "The stable line takes no major update: they go to next",
+      "matchBaseBranches": ["main"],
+      "matchUpdateTypes": ["major"],
+      "enabled": false
+    },
+    {
+      "description": "next takes the other updates from main, through `cargo ship sync`",
+      "matchBaseBranches": ["next"],
+      "matchUpdateTypes": ["minor", "patch", "pin", "digest", "lockFileMaintenance"],
+      "enabled": false
+    },
+    {
+      "description": "The Slint fork, pinned to a commit on purpose",
+      "matchDepNames": ["slint", "slint-build"],
+      "enabled": false
+    }
+  ]
+}
