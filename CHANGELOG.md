@@ -4,6 +4,8 @@ Every stable release of Cachemire; `Unreleased` is what the next one brings. Bet
 
 ## Unreleased
 
+## 3.1.0 - 2026-10-22
+
 ### Added
 
 - **Export** of a single key or folder now asks where to save the file and lets you rename it, with the usual name filled in
@@ -14,22 +16,22 @@ Every stable release of Cachemire; `Unreleased` is what the next one brings. Bet
 
 ### Fixes
 
-- **Windows**: the window now shows the Cachemire icon in the taskbar's hover preview
-- The logo shown when no key is open now takes the color of the connection profile in use, its shades being lighter and darker versions of the background
-- The window can no longer be made narrower than 720 px, where its layout stops fitting (Windows let it shrink further)
-- When the window is maximized, its edges no longer act as resize borders, so the pointer in the screen's top-right corner reaches the close button
-- In a window narrower than 960 px, the connection pill of the title bar is a third as wide and shows only the connection's name, so it leaves room for the buttons around it
-- Typing a `[` without its closing `]` in the key tree's search no longer crashes the app
-- The query box's completion of `alias.` fields now finds the right key when a query holds letters like `ẞ` or `İ`
-- **Windows**: exporting keys whose names differ only by case (`User` and `user`) no longer writes one over the other
-- A Redisql query with a second `WHERE`, `SELECT` or `LIMIT` is now an error, instead of the first one being silently dropped
-- An export no longer leaves an empty file for a key deleted before it could be read
-- Connections to an IPv6 address (`redis://[::1]:6379`) now work, directly or through an SSH tunnel
-- Finding text in a value, and the highlighting of search matches, now ignore case on lines holding letters such as `İ` or `ẞ` too
-- **AWS**: signing in through the browser no longer fails with "No access" when the first profile's role isn't granted to you: the sign-in succeeds, and only picking that profile reports it, naming the profile, role and account
-- Checking for updates no longer fails with a 403 error when GitHub's API limits requests from your network; the update check falls back to the releases feed
-- **Security**: the TLS library behind `rediss://` connections and AWS is updated, fixing four vulnerabilities (RUSTSEC-2026-0346 to 0349)
-- **Security**: the TLS certificate checks behind `rediss://` connections and AWS no longer trust distrusted intermediate certificates (RUSTSEC-2026-0381, RUSTSEC-2026-0382)
+- **Appearance**: the logo shown when no key is open now takes the connection profile's colors
+- **AWS**: browser sign-in no longer fails with "No access" when the first profile's role isn't granted to you
+- **Connection**: IPv6 addresses (`redis://[::1]:6379`) now work, directly or through an SSH tunnel
+- **Export**: on Windows, keys differing only by case (`User`, `user`) no longer overwrite each other
+- **Export**: a key deleted during an export no longer leaves an empty file
+- **Query**: `alias.` completion now finds the right key in queries holding letters like `ẞ` or `İ`
+- **Query**: a second `WHERE`, `SELECT` or `LIMIT` is now an error instead of being silently dropped
+- **Search**: typing an unclosed `[` in the key tree's search no longer crashes the app
+- **Search**: find-in-value and match highlighting now ignore case on lines holding `İ` or `ẞ`
+- **Security**: TLS library behind `rediss://` and AWS updated, fixing four vulnerabilities (RUSTSEC-2026-0346 to 0349)
+- **Security**: TLS checks behind `rediss://` and AWS no longer trust distrusted intermediate certificates (RUSTSEC-2026-0381, RUSTSEC-2026-0382)
+- **Updates**: the update check falls back to the releases feed when GitHub's API answers with a 403 error
+- **Window**: on Windows, the taskbar's hover preview now shows the Cachemire icon
+- **Window**: the window can no longer shrink below 720 px, where its layout stops fitting
+- **Window**: under 960 px wide, the title bar's connection pill shrinks to the connection's name
+- **Window**: when maximized, the screen edges no longer resize the window, so the top-right corner hits Close
 
 ## 3.0.0 - 2026-10-15
 
