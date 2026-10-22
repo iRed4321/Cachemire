@@ -5,10 +5,12 @@
 mod appimage;
 mod changelog;
 mod deb;
+mod deps;
 mod i18n;
 mod install;
 mod linux;
 mod report;
+mod ship;
 mod tools;
 mod version;
 mod windows;
@@ -26,22 +28,19 @@ struct Cli {
 enum Task {
     /// Extract the UI texts and merge them into each language's .po
     I18n,
-    /// Release HEAD: pushes it as the release/<request> branch, from which the Release workflow tags and publishes it
+    /// Releases and their branches (`cargo ship`): betas from next, fixes and stable releases through pull requests into main
     Release {
-        /// beta (the default) raises the beta number; stable drops the suffix; major, minor or fix start the next version as -beta.1
-        #[arg(default_value = "beta")]
-        part: version::Part,
-        /// With major, minor or fix: release the new version at once, with no beta
-        #[arg(long)]
-        stable: bool,
-        /// Don't ask before a stable release commits CHANGELOG.md and pushes main
-        #[arg(long)]
-        yes: bool,
+        /// What to do; a beta of next when left out
+        #[command(subcommand)]
+        command: Option<ship::Ship>,
     },
-    /// Print the version a release/<request> branch releases, from the latest tag (what the Release workflow runs)
+    /// Print the version a release request releases, from the latest tags (what the Release workflow runs)
     NextVersion {
-        /// The branch name without `release/`: a part of `release`, with `-stable` for its --stable
+        /// beta, beta-minor, beta-major, stable, stable-minor, stable-major, fix, or a stable version to check
         request: String,
+        /// Print the version of this run's try build of it instead, just below it
+        #[arg(long = "try", value_name = "RUN")]
+        try_run: Option<u64>,
     },
     /// Print a stable version's section of CHANGELOG.md, its release notes (what the Release workflow runs)
     ReleaseNotes {
@@ -159,8 +158,8 @@ enum Task {
 fn main() {
     let result = match Cli::parse().task {
         Task::I18n => i18n::run_task(),
-        Task::Release { part, stable, yes } => version::request_release(part, stable, yes),
-        Task::NextVersion { request } => version::print_next_version(&request),
+        Task::Release { command } => ship::run_task(command),
+        Task::NextVersion { request, try_run } => version::print_next_version(&request, try_run),
         Task::ReleaseNotes { version } => changelog::print_notes(&version),
         Task::BuildWindows { fast, stable, as_version, clean, skip_installer, with_zip, reported } => {
             windows::run_task(fast, stable, as_version.as_deref(), clean, skip_installer, with_zip, reported)

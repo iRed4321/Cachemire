@@ -42,6 +42,28 @@ pub fn git(dir: &std::path::Path, args: &[&str]) -> Result<String> {
     Ok(String::from_utf8_lossy(&output.stdout).trim().to_string())
 }
 
+/// Whether `git` in `dir` succeeds with `args`: for its yes-or-no questions, like `merge-base --is-ancestor`.
+pub fn git_ok(dir: &Path, args: &[&str]) -> bool {
+    Command::new("git").current_dir(dir).args(args).output().is_ok_and(|o| o.status.success())
+}
+
+/// The GitHub CLI in `dir`, aimed at the repository `repo` (`owner/name`) whatever the remotes.
+pub fn gh_command(dir: &Path, repo: &str) -> Command {
+    let mut command = Command::new("gh");
+    command.current_dir(dir).env("GH_REPO", repo).env("GH_PROMPT_DISABLED", "1");
+    command
+}
+
+/// Runs `command` (a [`gh_command`]) and returns its trimmed output, failing on a non-zero exit.
+pub fn gh_output(command: &mut Command) -> Result<String> {
+    let shown = std::iter::once("gh".into()).chain(command.get_args().map(|a| a.to_string_lossy())).collect::<Vec<_>>().join(" ");
+    let output = command.output().map_err(|e| format!("could not run the GitHub CLI (gh), needed here: {e}"))?;
+    if !output.status.success() {
+        return Err(format!("`{shown}` failed: {}", String::from_utf8_lossy(&output.stderr).trim()));
+    }
+    Ok(String::from_utf8_lossy(&output.stdout).trim().to_string())
+}
+
 /// Appends `markdown` to the GitHub Actions job summary; does nothing outside of GitHub Actions.
 pub fn summary(markdown: &str) -> Result<()> {
     let Some(path) = std::env::var_os("GITHUB_STEP_SUMMARY") else { return Ok(()) };

@@ -1,7 +1,7 @@
 [alias]
 # xtask builds into its own target directory, which CI caches apart from the app's builds
 xtask = "run --quiet --package xtask --target-dir target/xtask --"
-# `cargo ship beta`, `cargo ship minor --stable`…: requests a release (see `cargo xtask release`)
+# `cargo ship`, `cargo ship stable`, `cargo ship start-fix <name>`…: releases and their branches (docs/releasing.md)
 ship = "run --quiet --package xtask --target-dir target/xtask -- release"
 
 # MSVC: links the C and C++ runtimes statically (/MT, also for Skia's prebuilt

@@ -1,0 +1,133 @@
+name: Dependencies
+
+# Renovate (.github/renovate.json), each night at 2am in Paris or by hand, then again after each merge into
+# main to rebase its other pull requests. What its merges bring to main is released as a fix
+# (`cargo ship deps-release`), and each published fix or stable release is brought into next.
+on:
+  schedule:
+    # 2am in Paris: 00:07 UTC in summer, 01:07 UTC in winter; the run at the other hour does nothing
+    - cron: "7 0,1 * * *"
+  workflow_dispatch:
+    inputs:
+      everything:
+        description: Also the weekly updates (and the lock file refresh), without waiting for Monday
+        type: boolean
+        default: false
+  push:
+    branches: [main]
+  workflow_run:
+    workflows: [Release]
+    types: [completed]
+
+# the CARGO_* variables of the other workflows: they're part of the xtask cache's key
+env:
+  CARGO_TERM_COLOR: always
+  CARGO_TERM_PROGRESS_WHEN: never
+  CARGO_PROFILE_DEV_DEBUG: line-tables-only
+
+defaults:
+  run:
+    shell: bash
+
+jobs:
+  # with the RENOVATE_TOKEN secret (`cargo ship setup`): pull requests made with the workflow's own token
+  # wouldn't start their checks, so they could never be merged
+  renovate:
+    name: Renovate
+    if: github.event_name != 'workflow_run'
+    runs-on: ubuntu-latest
+    concurrency:
+      group: renovate
+      cancel-in-progress: false
+    outputs:
+      ran: ${{ steps.time.outputs.run }}
+    steps:
+      - id: time
+        name: Time to run
+        run: |
+          if [[ "$GITHUB_EVENT_NAME" == schedule && "$(TZ=Europe/Paris date +%H)" != 02 ]]; then
+            echo "Not 2am in Paris: the other scheduled run is the one." >> "$GITHUB_STEP_SUMMARY"
+            echo "run=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "run=true" >> "$GITHUB_OUTPUT"
+          fi
+      - if: steps.time.outputs.run == 'true'
+        uses: renovatebot/github-action@v46.3.7
+        with:
+          token: ${{ secrets.RENOVATE_TOKEN }}
+        env:
+          RENOVATE_REPOSITORIES: ${{ github.repository }}
+          RENOVATE_ONBOARDING: "false"
+          RENOVATE_REQUIRE_CONFIG: required
+          # by hand with "everything": the weekly schedule lifted for this run
+          RENOVATE_FORCE: ${{ inputs.everything && '{"schedule":["* * * * *"]}' || '{}' }}
+          LOG_LEVEL: info
+
+  # what Renovate merged into main, as a fix pull request merged once its checks pass, then published;
+  # nothing while one of its pull requests is still on its way into main, or another release under way
+  release:
+    name: Release the updates
+    needs: renovate
+    if: always() && needs.renovate.outputs.ran == 'true'
+    runs-on: ubuntu-latest
+    concurrency:
+      group: dependencies-release
+      cancel-in-progress: false
+    steps:
+      # the whole history, for the tags; pushed with the token, so the pull request's checks start
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+          token: ${{ secrets.RENOVATE_TOKEN }}
+      # xtask's own build (target/xtask) as the CI saved it from main
+      - uses: Swatinem/rust-cache@v2
+        with:
+          cache-bin: false
+          shared-key: xtask
+          workspaces: ". -> target/xtask"
+          save-if: false
+      # the advisories the updates fix, for the changelog
+      - name: Install cargo-audit
+        uses: taiki-e/install-action@v2
+        with:
+          tool: cargo-audit
+      - name: Release the updates
+        env:
+          GH_TOKEN: ${{ secrets.RENOVATE_TOKEN }}
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          cargo ship deps-release
+
+  # after a fix or a stable release is published: next takes in main (`cargo ship sync`). A conflict
+  # other than the changelog's or the lock file's fails it: then `cargo ship sync` by hand
+  sync:
+    name: Bring main into next
+    if: >-
+      github.event_name == 'workflow_run' && github.event.workflow_run.conclusion == 'success'
+      && github.event.workflow_run.event == 'pull_request'
+    runs-on: ubuntu-latest
+    concurrency:
+      group: sync-next
+      cancel-in-progress: false
+    steps:
+      # next, pushed with the token so its checks run on the merge
+      - uses: actions/checkout@v7
+        with:
+          ref: next
+          fetch-depth: 0
+          token: ${{ secrets.RENOVATE_TOKEN }}
+      # xtask's own build (target/xtask) as the CI saved it from main
+      - uses: Swatinem/rust-cache@v2
+        with:
+          cache-bin: false
+          shared-key: xtask
+          workspaces: ". -> target/xtask"
+          save-if: false
+      - name: Sync
+        env:
+          GH_TOKEN: ${{ secrets.RENOVATE_TOKEN }}
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          cargo ship sync

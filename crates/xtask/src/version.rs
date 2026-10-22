@@ -1,15 +1,11 @@
-//! Release versions: worked out by the Release workflow from the latest `v<version>` tag and a
-//! request (`cargo xtask release`), then written into the checkout being built, never committed.
+//! Release versions: worked out by the Release workflow from the latest `v<version>` tags and a
+//! request (see `cargo ship`), then written into the checkout being built, never committed.
 
 use semver::{Prerelease, Version};
 
 use std::path::Path;
 
-use crate::changelog::{self, CHANGELOG};
 use crate::tools::{APP_MANIFEST, Result, git, repo_root};
-
-/// The branch stable releases are made from, and their changelog commit pushed to.
-const MAIN: &str = "main";
 
 /// The package's `version = "..."` line (the first one at the start of a line,
 /// as dependency versions are indented or inline) and its value.
@@ -37,43 +33,103 @@ pub fn msi_version(version: &str) -> String {
     }
 }
 
-/// What to do to the version.
-#[derive(Clone, Copy, PartialEq, clap::ValueEnum)]
-pub enum Part {
-    Major,
-    Minor,
-    Fix,
+/// What to release, as the Release workflow is asked for it (`cargo xtask next-version`).
+#[derive(Clone, PartialEq, Debug)]
+pub enum Request {
+    /// The next beta: the following one of those under way, else the first of the next minor.
     Beta,
+    /// The first beta of the next minor or major, when no betas are under way.
+    BetaMinor,
+    BetaMajor,
+    /// The betas under way, released as stable.
     Stable,
+    /// The next minor or major released as stable at once, when no betas are under way.
+    StableMinor,
+    StableMajor,
+    /// The latest stable release with its patch raised: a fix released from main.
+    Fix,
+    /// A stable version, checked to be one a stable release may take next.
+    Exactly(Version),
 }
 
-/// The version to release for `part`, from the latest released one. From a stable version,
-/// major/minor/fix start `-beta.1` (or the final version with `stable_now`); from a beta,
-/// only beta and stable apply.
-fn target_version(last: &Version, part: Part, stable_now: bool) -> Result<Version> {
-    let (major, minor, patch) = (last.major, last.minor, last.patch);
-    let beta = |major, minor, patch, number: u64| -> Result<Version> {
-        let mut next = Version::new(major, minor, patch);
-        next.pre = Prerelease::new(&format!("beta.{number}")).map_err(|e| e.to_string())?;
-        Ok(next)
+impl Request {
+    const NAMES: [(&str, Request); 7] = [
+        ("beta", Request::Beta),
+        ("beta-minor", Request::BetaMinor),
+        ("beta-major", Request::BetaMajor),
+        ("stable", Request::Stable),
+        ("stable-minor", Request::StableMinor),
+        ("stable-major", Request::StableMajor),
+        ("fix", Request::Fix),
+    ];
+
+    /// The request named `name` (as a `release/<name>` branch carries it), or a version.
+    pub fn parse(name: &str) -> Result<Self> {
+        if let Some((_, request)) = Self::NAMES.iter().find(|(known, _)| *known == name) {
+            return Ok(request.clone());
+        }
+        Version::parse(name).map(Self::Exactly).map_err(|_| {
+            let names: Vec<&str> = Self::NAMES.iter().map(|(known, _)| *known).collect();
+            format!("`{name}` is not a release request: {} or a version", names.join(", "))
+        })
+    }
+
+    /// The request's name, as [`Request::parse`] reads it.
+    pub fn name(&self) -> String {
+        match self {
+            Self::Exactly(version) => version.to_string(),
+            _ => Self::NAMES.iter().find(|(_, request)| request == self).map_or_else(String::new, |(name, _)| name.to_string()),
+        }
+    }
+}
+
+/// The latest release of each kind, from the tags.
+pub struct Latest {
+    /// The highest version released, betas included.
+    pub last: Version,
+    /// The highest stable version released.
+    pub stable: Option<Version>,
+}
+
+/// The version `request` releases after `latest`. Betas of one version at a time: while they're under
+/// way, only the next beta or their stable release apply (and fixes of the stable, below their version).
+fn target_version(latest: &Latest, request: &Request) -> Result<Version> {
+    let last = &latest.last;
+    let base = Version::new(last.major, last.minor, last.patch);
+    let raised = |major: bool| if major { Version::new(last.major + 1, 0, 0) } else { Version::new(last.major, last.minor + 1, 0) };
+    let beta = |mut version: Version, number: u64| -> Result<Version> {
+        version.pre = Prerelease::new(&format!("beta.{number}")).map_err(|e| e.to_string())?;
+        Ok(version)
     };
-    if stable_now && !matches!(part, Part::Major | Part::Minor | Part::Fix) {
-        return Err("--stable only goes with major, minor or fix".into());
-    }
-    if last.pre.is_empty() {
-        let (major, minor, patch) = match part {
-            Part::Major => (major + 1, 0, 0),
-            Part::Minor => (major, minor + 1, 0),
-            Part::Fix => (major, minor, patch + 1),
-            Part::Beta | Part::Stable => return Err(format!("{last} is already stable: run major, minor or fix")),
-        };
-        return if stable_now { Ok(Version::new(major, minor, patch)) } else { beta(major, minor, patch, 1) };
-    }
-    let number = last.pre.as_str().strip_prefix("beta.").and_then(|n| n.parse::<u64>().ok());
-    match (part, number) {
-        (Part::Beta, Some(n)) => beta(major, minor, patch, n + 1),
-        (Part::Stable, _) => Ok(Version::new(major, minor, patch)),
-        _ => Err(format!("{last} is a beta: run beta for the next one or stable to release it")),
+    let in_betas = !last.pre.is_empty();
+    let under_way = || format!("the betas of {base} are under way ({last}): `beta` releases the next one, `stable` releases them");
+    match request {
+        Request::Beta | Request::BetaMinor | Request::BetaMajor if !in_betas => beta(raised(*request == Request::BetaMajor), 1),
+        Request::Beta => {
+            let number = last.pre.as_str().strip_prefix("beta.").and_then(|n| n.parse::<u64>().ok());
+            beta(base.clone(), number.ok_or_else(|| format!("{last} is not a beta.<number> version"))? + 1)
+        }
+        Request::BetaMinor | Request::BetaMajor => Err(under_way()),
+        Request::Stable if in_betas => Ok(base),
+        Request::Stable => Err(format!("{last} is already stable, with no betas since: name the new version with --minor or --major")),
+        Request::StableMinor | Request::StableMajor if in_betas => Err(under_way()),
+        Request::StableMinor | Request::StableMajor => Ok(raised(*request == Request::StableMajor)),
+        Request::Fix => {
+            let stable = latest.stable.as_ref().ok_or("no stable release to fix")?;
+            let fix = Version::new(stable.major, stable.minor, stable.patch + 1);
+            if in_betas && fix >= base {
+                return Err(format!("{fix}, the next fix of {stable}, would come after the betas under way ({last})"));
+            }
+            Ok(fix)
+        }
+        Request::Exactly(version) => {
+            let allowed = if in_betas { vec![base] } else { vec![raised(false), raised(true)] };
+            if !version.pre.is_empty() || !allowed.contains(version) {
+                let names: Vec<String> = allowed.iter().map(Version::to_string).collect();
+                return Err(format!("after {last}, the next stable release is {}, not {version}", names.join(" or ")));
+            }
+            Ok(version.clone())
+        }
     }
 }
 
@@ -201,105 +257,34 @@ pub fn in_release(fast: bool, stable: bool, as_version: Option<&str>, build: imp
     build()
 }
 
-/// What a `release/<request>` branch asks for: a [`Part`], with `-stable` for `release --stable`.
-fn parse_request(request: &str) -> Result<(Part, bool)> {
-    let (part, stable_now) = request.strip_suffix("-stable").map_or((request, false), |part| (part, true));
-    let part = <Part as clap::ValueEnum>::from_str(part, true).map_err(|_| {
-        format!("`{request}` is not a release request: beta, stable, fix, minor or major, the last three optionally followed by -stable")
-    })?;
-    Ok((part, stable_now))
+/// The latest releases of the repository, from its `v*` tags.
+pub fn latest(root: &Path) -> Result<Latest> {
+    let tags = git(root, &["tag", "--list", "v*"])?;
+    let last = highest(&tags, false).ok_or("no release tag to start from (are the tags fetched?)")?;
+    Ok(Latest { last, stable: highest(&tags, true) })
 }
 
-/// The request `release` pushes for `part` (and `--stable`), as its branch names it.
-fn request_of(part: Part, stable_now: bool) -> String {
-    let name = clap::ValueEnum::to_possible_value(&part).map_or_else(String::new, |value| value.get_name().to_string());
-    if stable_now { format!("{name}-stable") } else { name }
+/// The version `request` releases, after the latest tags of the repository.
+pub fn next_version(root: &Path, request: &Request) -> Result<Version> {
+    target_version(&latest(root)?, request)
 }
 
-/// The version `request` releases, after the highest `v*` tag of the repository.
-fn next_version(root: &Path, request: &str) -> Result<Version> {
-    let (part, stable_now) = parse_request(request)?;
-    let last = highest(&git(root, &["tag", "--list", "v*"])?, false).ok_or("no release tag to start from (are the tags fetched?)")?;
-    target_version(&last, part, stable_now)
+/// The version of try build `run` of what releases as `version`: just below it, and above the beta
+/// before it (`3.2.0-beta.4` → `3.2.0-beta.3.try.<run>`, `3.1.1` → `3.1.1-try.<run>`).
+fn try_version(version: &Version, run: u64) -> Result<Version> {
+    let beta = version.pre.as_str().strip_prefix("beta.").and_then(|n| n.parse::<u64>().ok());
+    let pre = match beta {
+        Some(number) => format!("beta.{}.try.{run}", number.saturating_sub(1)),
+        None => format!("try.{run}"),
+    };
+    let mut built = Version::new(version.major, version.minor, version.patch);
+    built.pre = Prerelease::new(&pre).map_err(|e| e.to_string())?;
+    Ok(built)
 }
 
-/// `cargo xtask next-version`: prints the version `request` releases.
-pub fn print_next_version(request: &str) -> Result<()> {
-    println!("{}", next_version(&repo_root(), request)?);
-    Ok(())
-}
-
-/// The `owner/repo` of the `origin` remote, when it is on GitHub.
-fn github_repo(root: &Path) -> Option<String> {
-    let url = git(root, &["remote", "get-url", "origin"]).ok()?;
-    let path = url.split_once("github.com").map(|(_, path)| path.trim_start_matches([':', '/']))?;
-    Some(path.trim_end_matches('/').trim_end_matches(".git").to_string())
-}
-
-/// Asks `question` on the terminal: true for y or yes.
-fn confirm(question: &str) -> Result<bool> {
-    print!("{question} [y/N] ");
-    std::io::Write::flush(&mut std::io::stdout()).map_err(|e| e.to_string())?;
-    let mut answer = String::new();
-    std::io::stdin().read_line(&mut answer).map_err(|e| e.to_string())?;
-    Ok(matches!(answer.trim().to_lowercase().as_str(), "y" | "yes"))
-}
-
-/// Before releasing the stable `version` from an up-to-date main: names the changelog's `## Unreleased`
-/// section after it, once confirmed (unless `yes`), commits the changelog alone and pushes main.
-/// `false` when called off, with nothing changed.
-fn name_changelog(root: &Path, version: &Version, yes: bool) -> Result<bool> {
-    let branch = git(root, &["symbolic-ref", "--quiet", "--short", "HEAD"]).unwrap_or_default();
-    if branch != MAIN {
-        return Err(format!(
-            "a stable release is made from {MAIN}, and HEAD is on {}: switch to {MAIN} first",
-            if branch.is_empty() { "a detached commit" } else { &branch }
-        ));
-    }
-    git(root, &["fetch", "--quiet", "origin", MAIN])?;
-    if git(root, &["rev-list", "--count", &format!("HEAD..origin/{MAIN}")])? != "0" {
-        return Err(format!("origin/{MAIN} has commits HEAD doesn't: pull them first"));
-    }
-    let changelog = changelog::for_stable(version)?;
-    println!("Release notes of {version}, from {CHANGELOG}:\n\n{}\n", changelog.notes);
-    if !yes && !confirm(&format!("Release {version} with these notes, committing {CHANGELOG} and pushing {MAIN}?"))? {
-        println!("Called off: nothing was changed.");
-        return Ok(false);
-    }
-    if let Some(text) = changelog.text {
-        std::fs::write(root.join(CHANGELOG), text).map_err(|e| format!("writing {CHANGELOG}: {e}"))?;
-    }
-    // committed alone, whatever else is staged; skipped when HEAD already has it as it is
-    if !git(root, &["status", "--porcelain", "--", CHANGELOG])?.is_empty() {
-        git(root, &["add", "--", CHANGELOG])?;
-        git(root, &["commit", "--quiet", "--message", &format!("Release {version}"), "--", CHANGELOG])?;
-    }
-    git(root, &["push", "--quiet", "origin", &format!("HEAD:refs/heads/{MAIN}")])?;
-    Ok(true)
-}
-
-/// `cargo xtask release`: asks the Release workflow to release HEAD, by pushing it as the
-/// `release/<request>` branch. The workflow works out the version, builds, tags and publishes.
-pub fn request_release(part: Part, stable_now: bool, yes: bool) -> Result<()> {
-    let root = repo_root();
-    let request = request_of(part, stable_now);
-    git(&root, &["fetch", "--quiet", "--tags", "origin"])?;
-    let version = next_version(&root, &request)?;
-    if !git(&root, &["status", "--porcelain", "--untracked-files=no"])?.is_empty() {
-        println!("Note: the uncommitted changes are not part of the release, only HEAD is.");
-    }
-    // a stable release is published with its section of the changelog as its notes
-    if version.pre.is_empty() && !name_changelog(&root, &version, yes)? {
-        return Ok(());
-    }
-    let head = git(&root, &["log", "-1", "--format=%h %s"])?;
-    println!("Requesting the release of {version} from {head}...");
-    let branch = format!("release/{request}");
-    git(&root, &["push", "--quiet", "origin", &format!("HEAD:refs/heads/{branch}")]).map_err(|e| {
-        format!("{e}\nIf {branch} is already on origin, a release is under way, or one ended without removing it: wait, or remove it with `git push origin --delete {branch}`.")
-    })?;
-    let runs =
-        github_repo(&root).map_or_else(|| "the repository's Actions tab".to_string(), |repo| format!("https://github.com/{repo}/actions"));
-    println!("Requested. The Release workflow tags and publishes v{version} once its tests and builds pass: {runs}");
+/// `cargo xtask next-version`: prints the version `request` releases, or that of try build `try_run` of it.
+pub fn print_next_version(request: &str, try_run: Option<u64>) -> Result<()> {
+    let version = next_version(&repo_root(), &Request::parse(request)?)?;
+    println!("{}", try_run.map_or(Ok(version.clone()), |run| try_version(&version, run))?);
     Ok(())
 }

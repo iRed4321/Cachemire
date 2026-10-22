@@ -1,26 +1,29 @@
 name: Release
 
-# Releases the commit pushed as a release/<request> branch (`cargo ship`), or the one
-# picked here by hand: works out the version from the tags, tests and builds the packages as that
-# version, then tags the commit and publishes the packages, only if everything passed.
+# Publishes a release once its tests and builds pass, tagging its commit: a beta of next pushed as
+# release/<request> (`cargo ship`), or a fix or stable pull request merged into main with the `release`
+# label (`cargo ship fix`, `cargo ship stable`). Started by hand (`cargo ship try`), it only builds.
 on:
   push:
     branches: ["release/*"]
+  pull_request:
+    types: [closed]
+    branches: [main]
   workflow_dispatch:
     inputs:
-      part:
-        description: What to release (see `cargo ship --help`)
+      request:
+        description: try builds the branch's packages without releasing them; beta releases next as the next beta
         type: choice
-        options: [beta, stable, fix, minor, major]
-        default: beta
-      stable:
-        description: With fix, minor or major, release the new version at once, with no beta
-        type: boolean
-        default: false
+        options: [try, beta]
+        default: try
 
-# one release at a time, so two can't work out the same version
+# one release at a time, so two can't work out the same version; a try build has a group per branch, and a
+# pull request closed without being released one of its own, so neither holds up or cancels a waiting release
 concurrency:
-  group: release
+  group: >-
+    ${{ github.event_name == 'workflow_dispatch' && inputs.request == 'try' && format('try-{0}', github.ref)
+    || github.event_name == 'pull_request' && !(github.event.pull_request.merged && contains(github.event.pull_request.labels.*.name, 'release')) && format('not-released-{0}', github.run_id)
+    || 'release' }}
   cancel-in-progress: false
 
 # colored logs without progress bars; test builds keep line tables only, enough for backtraces
@@ -35,14 +38,85 @@ defaults:
     shell: bash
 
 jobs:
+  # what's released, worked out once: the commit (a merged pull request's merge commit), its version from
+  # the tags, and whether it's only a try build. A pull request closed without the label releases nothing
+  plan:
+    name: Version
+    if: >-
+      github.event_name != 'pull_request'
+      || github.event.pull_request.merged && contains(github.event.pull_request.labels.*.name, 'release')
+      && github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-latest
+    outputs:
+      sha: ${{ steps.next.outputs.sha }}
+      version: ${{ steps.next.outputs.version }}
+      try: ${{ steps.next.outputs.try }}
+    steps:
+      # the whole history, for the tags the version is worked out from and the branches checked
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+          ref: ${{ github.event.pull_request.merge_commit_sha || github.sha }}
+      # xtask's own build (target/xtask) as the CI saved it from main
+      - uses: Swatinem/rust-cache@v2
+        with:
+          cache-bin: false
+          shared-key: xtask
+          workspaces: ". -> target/xtask"
+          save-if: false
+      # a beta comes from next and a release from main (merged pull request); a try build from any branch
+      - id: next
+        name: Next version
+        env:
+          REQUEST: ${{ inputs.request }}
+          HEAD_REF: ${{ github.event.pull_request.head.ref }}
+          SHA: ${{ github.event.pull_request.merge_commit_sha || github.sha }}
+        run: |
+          try=false
+          case "$GITHUB_EVENT_NAME" in
+            push) request=${GITHUB_REF_NAME#release/} ;;
+            pull_request)
+              case "$HEAD_REF" in
+                fix/*) request=fix ;;
+                stable/*) request=${HEAD_REF#stable/} ;;
+                *) echo "::error::$HEAD_REF is neither a fix/ nor a stable/ branch: only those are released"; exit 1 ;;
+              esac ;;
+            workflow_dispatch)
+              if [[ "$REQUEST" == try ]]; then
+                # built as what it leads to: a fix of the stable, or next's next beta
+                try=true
+                [[ "$GITHUB_REF_NAME" == fix/* || "$GITHUB_REF_NAME" == main ]] && request=fix || request=beta
+              else
+                request=beta
+                [[ "$GITHUB_REF_NAME" == next ]] || { echo "::error::betas are released from next, not $GITHUB_REF_NAME"; exit 1; }
+              fi ;;
+          esac
+          if [[ "$GITHUB_EVENT_NAME" == push ]]; then
+            [[ "$request" == beta* ]] || { echo "::error::release/$request: only betas are requested by a branch, stable releases and fixes by pull requests"; exit 1; }
+            git merge-base --is-ancestor "$SHA" origin/next || { echo "::error::$SHA is not on next: betas are released from next"; exit 1; }
+          fi
+          if [[ "$try" == true ]]; then
+            version=$(cargo xtask next-version "$request" --try "$GITHUB_RUN_NUMBER")
+            echo "Try build of $GITHUB_REF_NAME as $version, from $SHA" >> "$GITHUB_STEP_SUMMARY"
+          else
+            version=$(cargo xtask next-version "$request")
+            echo "Releasing $version from $SHA" >> "$GITHUB_STEP_SUMMARY"
+          fi
+          { echo "sha=$SHA"; echo "version=$version"; echo "try=$try"; } >> "$GITHUB_OUTPUT"
+
+  # a try build skips them: the pull request's checks run them
   test:
     name: Tests (${{ matrix.os }})
+    needs: plan
+    if: needs.plan.outputs.try != 'true'
     runs-on: ${{ matrix.os }}
     strategy:
       matrix:
         os: [ubuntu-latest, windows-latest]
     steps:
       - uses: actions/checkout@v7
+        with:
+          ref: ${{ needs.plan.outputs.sha }}
       # xtask's own build (target/xtask) as the CI saved it from main; the app's builds aren't cached
       - uses: Swatinem/rust-cache@v2
         with:
@@ -72,14 +146,12 @@ jobs:
 
   windows:
     name: Windows (MSI and portable zip)
+    needs: plan
     runs-on: windows-latest
-    outputs:
-      version: ${{ steps.next.outputs.version }}
     steps:
-      # the whole history, for the tags the version is worked out from
       - uses: actions/checkout@v7
         with:
-          fetch-depth: 0
+          ref: ${{ needs.plan.outputs.sha }}
       # xtask's own build (target/xtask) as the CI saved it from main; the app's builds aren't cached
       - uses: Swatinem/rust-cache@v2
         with:
@@ -87,18 +159,6 @@ jobs:
           shared-key: xtask
           workspaces: ". -> target/xtask"
           save-if: false
-      # pushed: the request is the branch's name (release/fix-stable); started by hand: the form's
-      - id: next
-        name: Next version
-        env:
-          PART: ${{ inputs.part }}
-          STABLE: ${{ inputs.stable }}
-        run: |
-          request=${PART:-${GITHUB_REF_NAME#release/}}
-          [[ "$STABLE" == true ]] && request+=-stable
-          version=$(cargo xtask next-version "$request")
-          echo "Releasing $version from $GITHUB_SHA" >> "$GITHUB_STEP_SUMMARY"
-          echo "version=$version" >> "$GITHUB_OUTPUT"
       # quiet: the build log then lists what gets compiled, not each crate downloaded
       - name: Fetch crates
         run: cargo fetch --locked --quiet
@@ -110,7 +170,7 @@ jobs:
           & "$env:USERPROFILE\.dotnet\tools\wix.exe" eula accept wix7
       - name: Build
         env:
-          VERSION: ${{ steps.next.outputs.version }}
+          VERSION: ${{ needs.plan.outputs.version }}
         run: cargo xtask build-windows --as-version "$VERSION" --report
       - uses: actions/upload-artifact@v7
         with:
@@ -126,14 +186,12 @@ jobs:
 
   linux:
     name: Linux (deb and AppImage)
+    needs: plan
     runs-on: ubuntu-latest
-    outputs:
-      version: ${{ steps.next.outputs.version }}
     steps:
-      # the whole history, for the tags the version is worked out from
       - uses: actions/checkout@v7
         with:
-          fetch-depth: 0
+          ref: ${{ needs.plan.outputs.sha }}
       # xtask's own build (target/xtask) as the CI saved it from main; the app's builds aren't cached
       - uses: Swatinem/rust-cache@v2
         with:
@@ -141,27 +199,15 @@ jobs:
           shared-key: xtask
           workspaces: ". -> target/xtask"
           save-if: false
-      # pushed: the request is the branch's name (release/fix-stable); started by hand: the form's
-      - id: next
-        name: Next version
-        env:
-          PART: ${{ inputs.part }}
-          STABLE: ${{ inputs.stable }}
-        run: |
-          request=${PART:-${GITHUB_REF_NAME#release/}}
-          [[ "$STABLE" == true ]] && request+=-stable
-          version=$(cargo xtask next-version "$request")
-          echo "Releasing $version from $GITHUB_SHA" >> "$GITHUB_STEP_SUMMARY"
-          echo "version=$version" >> "$GITHUB_OUTPUT"
       # a stable release's notes: its section of CHANGELOG.md, checked before anything is built
       - name: Release notes
-        if: ${{ !contains(steps.next.outputs.version, '-') }}
+        if: ${{ !contains(needs.plan.outputs.version, '-') }}
         env:
-          VERSION: ${{ steps.next.outputs.version }}
+          VERSION: ${{ needs.plan.outputs.version }}
         run: |
           mkdir -p target/notes
           cargo xtask release-notes "$VERSION" > target/notes/release-notes.md
-      - if: ${{ !contains(steps.next.outputs.version, '-') }}
+      - if: ${{ !contains(needs.plan.outputs.version, '-') }}
         uses: actions/upload-artifact@v7
         with:
           name: release-notes
@@ -180,7 +226,7 @@ jobs:
           tool: cargo-deb
       - name: Build
         env:
-          VERSION: ${{ steps.next.outputs.version }}
+          VERSION: ${{ needs.plan.outputs.version }}
         run: cargo xtask build-linux --as-version "$VERSION" --report
       - uses: actions/upload-artifact@v7
         with:
@@ -197,7 +243,8 @@ jobs:
   # the tag is made here, on the released commit: it only exists once everything passed
   publish:
     name: GitHub release
-    needs: [test, windows, linux]
+    needs: [plan, test, windows, linux]
+    if: needs.plan.outputs.try != 'true'
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -207,7 +254,7 @@ jobs:
           pattern: package-*
           path: dist
           merge-multiple: true
-      - if: ${{ !contains(needs.linux.outputs.version, '-') }}
+      - if: ${{ !contains(needs.plan.outputs.version, '-') }}
         uses: actions/download-artifact@v8
         with:
           name: release-notes
@@ -215,11 +262,9 @@ jobs:
       - name: Tag and create the release
         env:
           GH_TOKEN: ${{ github.token }}
-          VERSION: ${{ needs.windows.outputs.version }}
-          LINUX_VERSION: ${{ needs.linux.outputs.version }}
+          VERSION: ${{ needs.plan.outputs.version }}
+          SHA: ${{ needs.plan.outputs.sha }}
         run: |
-          # each build worked out the version on its own, from the same tags
-          [[ "$VERSION" == "$LINUX_VERSION" ]] || { echo "::error::Windows built $VERSION, Linux $LINUX_VERSION"; exit 1; }
           flags=()
           # a version with a suffix (3.0.0-beta.10) is a pre-release
           [[ "$VERSION" == *-* ]] && flags+=(--prerelease)
@@ -227,14 +272,14 @@ jobs:
           [[ -f notes/release-notes.md ]] && flags+=(--notes-file notes/release-notes.md)
           # every file, as an artifact keeps the folders of its files (the linux one: debian/, appimage/)
           mapfile -t files < <(find dist -type f)
-          gh release create "v$VERSION" "${files[@]}" --repo "$GITHUB_REPOSITORY" --target "$GITHUB_SHA" \
+          gh release create "v$VERSION" "${files[@]}" --repo "$GITHUB_REPOSITORY" --target "$SHA" \
             --title "v$VERSION" --generate-notes "${flags[@]}"
 
-  # removes the request branch whatever happened, so the same request can be pushed again;
+  # removes the beta's request branch whatever happened, so the same request can be pushed again;
   # left alone if it was pushed anew meanwhile (that request runs next)
   cleanup:
     name: Remove the release request
-    needs: [test, windows, linux, publish]
+    needs: [plan, test, windows, linux, publish]
     if: always() && github.event_name == 'push'
     runs-on: ubuntu-latest
     permissions:
@@ -252,11 +297,13 @@ jobs:
   # one summary for the whole run, from the reports the jobs saved (`cargo xtask report-build`)
   summary:
     name: Summary
-    needs: [test, windows, linux]
-    if: always()
+    needs: [plan, test, windows, linux]
+    if: always() && needs.plan.result != 'skipped'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
+        with:
+          ref: ${{ needs.plan.outputs.sha || github.sha }}
       # xtask's own build (target/xtask) as the CI saved it from main; the app's builds aren't cached
       - uses: Swatinem/rust-cache@v2
         with:
@@ -271,8 +318,10 @@ jobs:
           merge-multiple: true
       - name: Summary
         env:
-          VERSION: ${{ needs.windows.outputs.version || needs.linux.outputs.version }}
+          VERSION: ${{ needs.plan.outputs.version }}
+          TRY: ${{ needs.plan.outputs.try }}
         run: |
           title="🚀 Release v$VERSION"
+          [[ "$TRY" == true ]] && title="🧪 Try build v$VERSION"
           [[ -z "$VERSION" ]] && title="🚀 Release request $GITHUB_REF_NAME"
           cargo xtask report "$title" --dir reports
