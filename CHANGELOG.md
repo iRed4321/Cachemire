@@ -4,6 +4,12 @@ Every stable release of Cachemire; `Unreleased` is what the next one brings. Bet
 
 ## Unreleased
 
+## 3.1.1 - 2026-10-22
+
+### Fixes
+
+- **Security**: tokio updated, fixing RUSTSEC-2026-0384
+
 ## 3.1.0 - 2026-10-22
 
 ### Added
