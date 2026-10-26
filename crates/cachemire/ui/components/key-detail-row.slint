@@ -1,6 +1,6 @@
 import { Theme } from "theme.slint";
 import { Hint, IconButton } from "widgets.slint";
-import { IconChevron, IconCopy, IconDownload, IconExternalLink, IconSpinner } from "icons.slint";
+import { IconChevron, IconCopy, IconDownload, IconExternalLink, IconPencil, IconSpinner } from "icons.slint";
 import { ExportGroup, SearchField } from "key-detail-widgets.slint";
 import { KeyScroll, ExportPrefs, ValueLine } from "key-detail-types.slint";
 import { KeyPanel } from "../globals.slint";
@@ -95,6 +95,20 @@ export component RowHeader inherits Rectangle {
             IconChevron { size: Theme.icon-sm; down: true; tint: Theme.text-tertiary; }
         }
         Rectangle { horizontal-stretch: 1; }
+        // opens the editor on this field, in a pill like the export one's
+        if KeyPanel.editable: Rectangle {
+            width: Theme.px(32px);
+            height: Theme.px(32px);
+            border-radius: Theme.radius-sm;
+            border-width: 1px;
+            border-color: Theme.border-soft;
+            IconButton {
+                box-size: Theme.px(26px);
+                hint: @tr("Edit");
+                clicked => { KeyPanel.edit-value(root.field); }
+                IconPencil { size: Theme.icon-lg; tint: Theme.text-secondary; }
+            }
+        }
         // acts on plain or escaped JSON as this row's choice says
         ExportGroup {
             format-toggle: true;

@@ -2,7 +2,7 @@
 msgid ""
 msgstr ""
 "Project-Id-Version: cachemire VERSION\n"
-"POT-Creation-Date: 2026-10-26 18:38+0000\n"
+"POT-Creation-Date: 2026-10-26 21:06+0000\n"
 "PO-Revision-Date: YEAR-MO-DA HO:MI+ZONE\n"
 "Last-Translator: FULL NAME <EMAIL@ADDRESS>\n"
 "Language-Team: LANGUAGE <LL@li.org>\n"
@@ -12,42 +12,42 @@ msgstr ""
 "Content-Transfer-Encoding: 8bit\n"
 "Plural-Forms: nplurals=1; plural=0;\n"
 
-#: crates/cachemire/ui/main.slint:300
-#: crates/cachemire/ui/main.slint:300
+#: crates/cachemire/ui/main.slint:301
+#: crates/cachemire/ui/main.slint:301
 msgid "Show sidebar"
 msgstr ""
 
-#: crates/cachemire/ui/main.slint:319
+#: crates/cachemire/ui/main.slint:320
 msgid "Couldn't use the AWS account"
 msgstr ""
 
-#: crates/cachemire/ui/main.slint:320
+#: crates/cachemire/ui/main.slint:321
 msgid "Select a key to open it"
 msgstr ""
 
-#: crates/cachemire/ui/main.slint:321
+#: crates/cachemire/ui/main.slint:322
 msgid "Couldn't connect"
 msgstr ""
 
-#: crates/cachemire/ui/main.slint:322
+#: crates/cachemire/ui/main.slint:323
 msgid "Pick a connection to get started"
 msgstr ""
 
-#: crates/cachemire/ui/main.slint:330
+#: crates/cachemire/ui/main.slint:331
 msgid "Browse the keyspace on the left and click a key."
 msgstr ""
 
-#: crates/cachemire/ui/main.slint:331
+#: crates/cachemire/ui/main.slint:332
 msgid ""
 "Hover the connection status in the top bar to see why, or pick another "
 "connection."
 msgstr ""
 
-#: crates/cachemire/ui/main.slint:332
+#: crates/cachemire/ui/main.slint:333
 msgid "Use the connection selector in the top bar."
 msgstr ""
 
-#: crates/cachemire/ui/main.slint:377
+#: crates/cachemire/ui/main.slint:378
 msgid "Write a Redisql query above (FROM/JOIN/WHERE/SELECT/LIMIT), then Run."
 msgstr ""
 
@@ -126,9 +126,11 @@ msgstr ""
 #: crates/cachemire/ui/components/cloud-settings.slint:178
 #: crates/cachemire/ui/components/cloud-settings.slint:178
 #: crates/cachemire/ui/components/cloud-settings.slint:178
+#: crates/cachemire/ui/components/cloud-settings.slint:178
 msgid "Cancel"
 msgstr ""
 
+#: crates/cachemire/ui/components/cloud-settings.slint:179
 #: crates/cachemire/ui/components/cloud-settings.slint:179
 #: crates/cachemire/ui/components/cloud-settings.slint:179
 #: crates/cachemire/ui/components/cloud-settings.slint:179
@@ -239,9 +241,11 @@ msgstr ""
 #: crates/cachemire/ui/components/connection-picker.slint:744
 #: crates/cachemire/ui/components/connection-picker.slint:744
 #: crates/cachemire/ui/components/connection-picker.slint:744
+#: crates/cachemire/ui/components/connection-picker.slint:744
 msgid "Click again to delete"
 msgstr ""
 
+#: crates/cachemire/ui/components/connection-picker.slint:744
 #: crates/cachemire/ui/components/connection-picker.slint:744
 #: crates/cachemire/ui/components/connection-picker.slint:744
 #: crates/cachemire/ui/components/connection-picker.slint:744
@@ -344,31 +348,35 @@ msgstr ""
 msgid "Next match"
 msgstr ""
 
-#: crates/cachemire/ui/components/key-detail-row.slint:470
+#: crates/cachemire/ui/components/key-detail-row.slint:107
+msgid "Edit"
+msgstr ""
+
+#: crates/cachemire/ui/components/key-detail-row.slint:606
 msgid "Value too long ({})"
 msgstr ""
 
-#: crates/cachemire/ui/components/key-detail-row.slint:480
-#: crates/cachemire/ui/components/key-detail-row.slint:480
+#: crates/cachemire/ui/components/key-detail-row.slint:616
+#: crates/cachemire/ui/components/key-detail-row.slint:616
 msgid "Open in a text editor"
 msgstr ""
 
-#: crates/cachemire/ui/components/key-detail-row.slint:486
-#: crates/cachemire/ui/components/key-detail-row.slint:486
+#: crates/cachemire/ui/components/key-detail-row.slint:622
+#: crates/cachemire/ui/components/key-detail-row.slint:622
 msgid "Download"
 msgstr ""
 
-#: crates/cachemire/ui/components/key-detail-row.slint:492
-#: crates/cachemire/ui/components/key-detail-row.slint:492
-#: crates/cachemire/ui/components/key-detail-row.slint:492
+#: crates/cachemire/ui/components/key-detail-row.slint:628
+#: crates/cachemire/ui/components/key-detail-row.slint:628
+#: crates/cachemire/ui/components/key-detail-row.slint:628
 msgid "Copy"
 msgstr ""
 
-#: crates/cachemire/ui/components/key-detail-row.slint:507
+#: crates/cachemire/ui/components/key-detail-row.slint:643
 msgid "Try to load"
 msgstr ""
 
-#: crates/cachemire/ui/components/key-detail-row.slint:556
+#: crates/cachemire/ui/components/key-detail-row.slint:692
 msgid "Formatting..."
 msgstr ""
 
@@ -376,9 +384,11 @@ msgstr ""
 #: crates/cachemire/ui/components/key-detail-table.slint:196
 #: crates/cachemire/ui/components/key-detail-table.slint:196
 #: crates/cachemire/ui/components/key-detail-table.slint:196
+#: crates/cachemire/ui/components/key-detail-table.slint:196
 msgid "Field"
 msgstr ""
 
+#: crates/cachemire/ui/components/key-detail-values.slint:307
 #: crates/cachemire/ui/components/key-detail-values.slint:307
 #: crates/cachemire/ui/components/key-detail-values.slint:307
 #: crates/cachemire/ui/components/key-detail-values.slint:307
@@ -555,24 +565,24 @@ msgid ""
 "statement, Ctrl+Shift+Enter the whole script)"
 msgstr ""
 
-#: crates/cachemire/ui/components/query-panel.slint:619
+#: crates/cachemire/ui/components/query-panel.slint:605
 msgid "Undo (Ctrl+Z)"
 msgstr ""
 
-#: crates/cachemire/ui/components/query-panel.slint:625
+#: crates/cachemire/ui/components/query-panel.slint:611
 msgid "Redo (Ctrl+Y)"
 msgstr ""
 
-#: crates/cachemire/ui/components/query-panel.slint:631
+#: crates/cachemire/ui/components/query-panel.slint:617
 msgid "History"
 msgstr ""
 
-#: crates/cachemire/ui/components/query-panel.slint:693
+#: crates/cachemire/ui/components/query-panel.slint:679
 msgid "Run all"
 msgstr ""
 
-#: crates/cachemire/ui/components/query-panel.slint:736
-#: crates/cachemire/ui/components/query-panel.slint:736
+#: crates/cachemire/ui/components/query-panel.slint:722
+#: crates/cachemire/ui/components/query-panel.slint:722
 msgid "Run"
 msgstr ""
 
@@ -742,6 +752,22 @@ msgstr ""
 
 #: crates/cachemire/ui/components/title-bar.slint:476
 msgid "No connection"
+msgstr ""
+
+#: crates/cachemire/ui/components/value-editor.slint:125
+msgid "Edit value"
+msgstr ""
+
+#: crates/cachemire/ui/components/value-editor.slint:198
+msgid "This value is too long to edit here."
+msgstr ""
+
+#: crates/cachemire/ui/components/value-editor.slint:371
+msgid "Format JSON"
+msgstr ""
+
+#: crates/cachemire/ui/components/value-editor.slint:376
+msgid "Saving..."
 msgstr ""
 
 #: crates/cachemire/ui/components/widgets.slint:169

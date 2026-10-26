@@ -125,6 +125,8 @@ impl Ctx {
                         ttl: details.ttl,
                         names_cursor: details.names_cursor,
                         descending,
+                        editable: details.key_type == RedisValueType::Hash
+                            || (details.key_type == RedisValueType::String && !details.truncated),
                     };
                     fetch.meta = if details.key_type == RedisValueType::Hash {
                         fetch.hash_meta()
@@ -139,7 +141,7 @@ impl Ctx {
             // parsing, coloring and pretty-printing every field scales with the
             // field count, so it all happens here rather than in the event-loop
             // closure below, which only wraps models and sets properties
-            let prepared = fetch.map(|FetchedKey { badge, meta, fields, .. }| {
+            let prepared = fetch.map(|FetchedKey { badge, meta, fields, editable, .. }| {
                 let (shown, matches) = filter_fields(&fields, path.as_ref());
                 let status = filter_status(path.as_ref(), matches, shown.len());
                 // rows about to reopen (`expanded`) get pretty text rendered here,
@@ -153,7 +155,7 @@ impl Ctx {
                 }
                 let (av_field_chars, av_rows) = build_all_values_table(&shown, &filter, &expanded);
 
-                (badge, meta, fields, shown, matches, status, av_field_chars, av_rows)
+                (badge, meta, fields, editable, shown, matches, status, av_field_chars, av_rows)
             });
 
             let _ = slint::invoke_from_event_loop(move || {
@@ -168,8 +170,9 @@ impl Ctx {
                     return;
                 }
                 match prepared {
-                    Ok((badge, meta, fields, shown, matches, status, av_field_chars, av_rows)) => {
+                    Ok((badge, meta, fields, editable, shown, matches, status, av_field_chars, av_rows)) => {
                         window.global::<KeyPanel>().set_badge(badge.into());
+                        window.global::<KeyPanel>().set_editable(editable);
                         window.global::<KeyPanel>().set_loaded(true);
                         show_key_name(&window, &key);
                         window.global::<KeyPanel>().set_meta(meta.into());
@@ -214,6 +217,7 @@ impl Ctx {
                         disarm_scroll(&window);
                         window.global::<KeyPanel>().set_badge("".into());
                         window.global::<KeyPanel>().set_loaded(false);
+                        window.global::<KeyPanel>().set_editable(false);
                         show_key_name(&window, &key);
                         window.global::<KeyPanel>().set_meta(t!("failed to load: %{error}", error = e.localized()).as_ref().into());
                         window.global::<KeyPanel>().set_all_values_field_chars(8);

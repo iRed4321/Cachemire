@@ -4,6 +4,11 @@ Every stable release of Cachemire; `Unreleased` is what the next one brings. Bet
 
 ## Unreleased
 
+### Added
+
+- **Editing**: an open row's pencil button opens its value in an editor with line numbers, colored as you type; **Format JSON** re-indents it, and **Save** writes it back to Redis once it's valid JSON (hash fields and string keys; a click outside cancels). A hash field can also be renamed, to a name the hash doesn't have yet, or deleted
+- **Table view**: a click on a cell outlines it in blue, and the arrow keys move it from cell to cell, the table scrolling to keep it in view
+
 ### Changed
 
 - **Large values**: a hash field is now shown up to 4 MB (was 128 KB); past that, it shows its size with buttons to open, save or copy it, and **Try to load** to read and show it

@@ -1,0 +1,404 @@
+import { Theme } from "theme.slint";
+import { ModalButton, TextMenuPopup } from "widgets.slint";
+import { ConnectionModalField } from "connection-picker.slint";
+
+// The value editor: a field's value as pretty JSON to change, written back to its key once
+// it is valid JSON. Rust fills it in and answers its callbacks (see src/key_detail/edit.rs).
+export global ValueEditor {
+    in-out property <bool> open: false;
+    // what is edited: the key's name as shown, and the field's ("" for a string key's value)
+    in property <string> key-name;
+    in property <string> field;
+    in-out property <string> text;
+    // whether a hash field is edited: its name, as typed, is then the one it gets on save
+    // (`check-name` says why it can't be, "" when it can), and it can be deleted
+    in property <bool> is-field: false;
+    in-out property <string> name;
+    pure callback check-name(name: string) -> string;
+    // a save under way, and why the last one failed ("" when it didn't)
+    in property <bool> saving: false;
+    in property <string> error: "";
+    // `text` colored as JSON, and why it isn't valid JSON ("" when it is)
+    pure callback highlight(text: string) -> styled-text;
+    pure callback check(text: string) -> string;
+    // whether `text` wrapped to `columns` characters takes at most `max-lines` lines
+    pure callback fits(text: string, columns: int, max-lines: int) -> bool;
+    // `text` without the `\r` a paste brings, which would shift the colored copy's lines
+    pure callback sanitize(text: string) -> string;
+    // `text` pretty-printed (as it is when it isn't valid JSON)
+    pure callback format(text: string) -> string;
+    // the lines of `text`, to number them: Rust keeps them in step through `text-changed`
+    in property <[string]> lines;
+    callback text-changed(text: string);
+    callback save(text: string, name: string);
+    callback delete();
+}
+
+// Over the whole window; a click outside the card closes it, nothing written.
+export component ValueEditorModal inherits Rectangle {
+    // the window's device pixels per logical pixel, for the size the text can be drawn at
+    in property <float> device-scale: 1.0;
+    callback clipboard-has-text() -> bool;
+
+    property <string> json-problem: ValueEditor.check(ValueEditor.text);
+    property <string> name-problem: ValueEditor.is-field ? ValueEditor.check-name(ValueEditor.name) : "";
+    property <string> problem: name-problem != "" ? name-problem : json-problem;
+    function save() {
+        if problem == "" && !ValueEditor.saving {
+            ValueEditor.save(ValueEditor.text, ValueEditor.name);
+        }
+    }
+    // deleting is one click to arm, a second to do it
+    property <bool> confirming-delete: false;
+    // a failed save's reason goes with the next change to the text
+    property <string> edited: ValueEditor.text;
+    changed edited => {
+        ValueEditor.error = "";
+        ValueEditor.text-changed(ValueEditor.text);
+    }
+    property <string> renamed: ValueEditor.name;
+    changed renamed => { ValueEditor.error = ""; }
+    init => { ValueEditor.text-changed(ValueEditor.text); }
+
+    // the text's right-click menu, which can't sit in the text's conditional: where it opens,
+    // what it offers, and the command picked (`menu-command`, run when `menu-tick` moves)
+    property <length> menu-x;
+    property <length> menu-y;
+    property <bool> menu-has-selection: false;
+    property <bool> menu-can-paste: false;
+    property <int> menu-command: 0;
+    property <int> menu-tick: 0;
+    function show-menu(x: length, y: length, has-selection: bool) {
+        menu-x = x - root.absolute-position.x;
+        menu-y = y - root.absolute-position.y;
+        menu-has-selection = has-selection;
+        menu-can-paste = root.clipboard-has-text();
+        edit-menu.show();
+    }
+    function run-menu(command: int) {
+        menu-command = command;
+        menu-tick += 1;
+    }
+
+    background: #000000aa;
+    TouchArea {
+        clicked => { ValueEditor.open = false; }
+    }
+
+    card := Rectangle {
+        width: min(parent.width - Theme.px(80px), Theme.px(1100px));
+        height: parent.height - Theme.px(80px);
+        x: (parent.width - self.width) / 2;
+        y: (parent.height - self.height) / 2;
+        background: Theme.bg-elevated;
+        border-radius: Theme.radius-lg;
+        border-width: 1px;
+        border-color: Theme.border-soft;
+        drop-shadow-color: Theme.shadow-color;
+        drop-shadow-blur: Theme.shadow-blur;
+        drop-shadow-offset-y: Theme.shadow-offset-y;
+
+        // swallow clicks so they don't reach the backdrop's close
+        TouchArea { }
+
+        // Esc closes, Ctrl+Enter or Ctrl+S saves, from either box
+        FocusScope {
+            focus-on-click: false;
+            key-pressed(event) => {
+                if event.text == Key.Escape {
+                    ValueEditor.open = false;
+                    return accept;
+                }
+                if (event.text == Key.Return || event.text == "s") && event.modifiers.control {
+                    root.save();
+                    return accept;
+                }
+                return reject;
+            }
+            VerticalLayout {
+                padding: Theme.px(18px);
+                spacing: Theme.px(12px);
+
+                HorizontalLayout {
+                    spacing: Theme.px(10px);
+                    Text {
+                        text: @tr("Edit value");
+                        font-size: Theme.pt(14px);
+                        font-weight: 700;
+                        color: Theme.text-primary;
+                        vertical-alignment: center;
+                    }
+                    Text {
+                        horizontal-stretch: 1;
+                        text: ValueEditor.field == "" ? ValueEditor.key-name : ValueEditor.key-name + "  ·  " + ValueEditor.field;
+                        font-size: Theme.pt(12px);
+                        font-family: Theme.font-mono;
+                        color: Theme.text-secondary;
+                        vertical-alignment: center;
+                        overflow: elide;
+                    }
+                }
+
+                if ValueEditor.is-field: ConnectionModalField {
+                    label: @tr("Field");
+                    text <=> ValueEditor.name;
+                    clipboard-has-text() => { return root.clipboard-has-text(); }
+                }
+
+                // the value's box, under its name like the field's
+                VerticalLayout {
+                    vertical-stretch: 1;
+                    spacing: Theme.px(4px);
+                    Text {
+                        text: @tr("Value");
+                        height: Theme.pt(15px);
+                        font-size: Theme.pt(10.5px);
+                        font-weight: 600;
+                        color: Theme.text-secondary;
+                        vertical-alignment: center;
+                    }
+                    box := Rectangle {
+                        vertical-stretch: 1;
+                        background: Theme.bg-sunken;
+                        border-radius: Theme.radius-sm;
+                        border-width: 1px;
+                        border-color: Theme.border-soft;
+                        clip: true;
+
+                        // the line numbers' column, as wide as the last one needs, then the text
+                        property <int> digits: ValueEditor.lines.length < 100 ? 2 : (ValueEditor.lines.length < 1000 ? 3 : (ValueEditor.lines.length < 10000 ? 4 : 5));
+                        property <length> gutter-x: Theme.px(8px);
+                        property <length> gutter-w: digits * char-w;
+                        property <length> text-x: gutter-x + gutter-w + Theme.px(12px);
+                        property <length> text-w: self.width - text-x - Theme.px(10px);
+                        // the text is one element, which the renderer can't draw past 32767 device
+                        // pixels: a text that would be taller isn't shown (`fits`)
+                        property <length> char-w: max(1px, text-probe.preferred-width / 64);
+                        // the step from one drawn row to the next, off a 100-row text: a text's measured
+                        // height is rounded up to a whole pixel, which a single row would add to every line
+                        property <length> line-h: drawn-probe.preferred-height / 100;
+                        property <string> ten-rows: "0\n0\n0\n0\n0\n0\n0\n0\n0\n0";
+                        property <int> columns: max(1, floor(text-w / char-w));
+                        property <int> max-lines: floor(28000 / (line-h / 1px * root.device-scale));
+                        property <bool> fits: ValueEditor.fits(ValueEditor.text, columns, max-lines);
+                        // the probes are placed, so their size doesn't count in this box's own
+                        text-probe := Text {
+                            x: 0px;
+                            y: 0px;
+                            text: "0000000000000000000000000000000000000000000000000000000000000000";
+                            font-size: Theme.pt(12px);
+                            font-family: Theme.font-mono;
+                            opacity: 0;
+                        }
+                        drawn-probe := StyledText {
+                            x: 0px;
+                            y: 0px;
+                            width: Theme.px(40px);
+                            text: ValueEditor.highlight(ten-rows + "\n" + ten-rows + "\n" + ten-rows + "\n" + ten-rows + "\n" + ten-rows + "\n" + ten-rows + "\n" + ten-rows + "\n" + ten-rows + "\n" + ten-rows + "\n" + ten-rows);
+                            default-font-family: Theme.font-mono;
+                            default-font-size: Theme.pt(12px);
+                            opacity: 0;
+                        }
+
+                        if !box.fits: Text {
+                            x: box.text-x;
+                            width: box.text-w;
+                            text: @tr("This value is too long to edit here.");
+                            font-size: Theme.pt(12px);
+                            color: Theme.text-secondary;
+                            horizontal-alignment: center;
+                            vertical-alignment: center;
+                            wrap: word-wrap;
+                        }
+
+                        // the line numbers and the text scroll as one: an invisible copy of each line, drawn
+                        // like the text, counts its rows, so its number stays level with its first row
+                        if box.fits: flick := Flickable {
+                            x: box.gutter-x;
+                            y: Theme.px(8px);
+                            width: parent.width - box.gutter-x - Theme.px(10px);
+                            height: parent.height - Theme.px(16px);
+                            content-height: max(self.height, input.preferred-height);
+                            interactive: true;
+                            property <length> text-dx: box.text-x - box.gutter-x;
+
+                            VerticalLayout {
+                                x: 0px;
+                                y: 0px;
+                                width: box.gutter-w;
+                                alignment: start;
+                                for line[i] in ValueEditor.lines: Rectangle {
+                                    height: max(1, round(measure.preferred-height / box.line-h)) * box.line-h;
+                                    measure := StyledText {
+                                        x: 0px;
+                                        y: 0px;
+                                        width: box.text-w;
+                                        text: ValueEditor.highlight(line);
+                                        default-font-family: Theme.font-mono;
+                                        default-font-size: Theme.pt(12px);
+                                        opacity: 0;
+                                    }
+                                    Text {
+                                        x: 0px;
+                                        y: 0px;
+                                        width: box.gutter-w;
+                                        text: i + 1;
+                                        horizontal-alignment: right;
+                                        font-size: Theme.pt(12px);
+                                        font-family: Theme.font-mono;
+                                        color: Theme.text-tertiary;
+                                    }
+                                }
+                            }
+
+                            // the colored copy of the text, drawn under the edit box (whose own text is
+                            // near-invisible) since StyledText can't be typed into; both are pinned at the top
+                            StyledText {
+                                x: flick.text-dx;
+                                y: 0px;
+                                width: box.text-w;
+                                text: ValueEditor.highlight(ValueEditor.text);
+                                default-color: Theme.text-primary;
+                                default-font-family: Theme.font-mono;
+                                default-font-size: Theme.pt(12px);
+                            }
+
+                            // right-click menu: a TouchArea wrapping the input, which keeps its own mouse
+                            // handling (cursor placement, drag-to-select)
+                            input-area := TouchArea {
+                                x: flick.text-dx;
+                                y: 0px;
+                                width: box.text-w;
+                                height: max(parent.height, input.preferred-height);
+                                mouse-cursor: MouseCursor.text;
+                                pointer-event(event) => {
+                                    if event.button == PointerEventButton.right && event.kind == PointerEventKind.down {
+                                        input.focus();
+                                        root.show-menu(self.absolute-position.x + self.mouse-x, self.absolute-position.y + self.mouse-y,
+                                            input.anchor-position-byte-offset != input.cursor-position-byte-offset);
+                                    }
+                                }
+                                property <int> menu-tick: root.menu-tick;
+                                changed menu-tick => {
+                                    if root.menu-command == 0 {
+                                        input.cut();
+                                    } else if root.menu-command == 1 {
+                                        input.copy();
+                                    } else if root.menu-command == 2 {
+                                        input.paste();
+                                    } else {
+                                        input.select-all();
+                                    }
+                                }
+
+                                input := TextInput {
+                                    x: 0px;
+                                    y: 0px;
+                                    width: parent.width;
+                                    text <=> ValueEditor.text;
+                                    single-line: false;
+                                    wrap: word-wrap;
+                                    font-size: Theme.pt(12px);
+                                    font-family: Theme.font-mono;
+                                    // near-invisible (the colored copy shows the glyphs): fully transparent
+                                    // would skip drawing the selection too; the caret is drawn by `caret`
+                                    color: #00000001;
+                                    selection-foreground-color: transparent;
+                                    selection-background-color: Theme.accent-blue.with-alpha(0.35);
+                                    init => {
+                                        self.focus();
+                                        self.set-selection-offsets(0, 0);
+                                    }
+                                    changed text => {
+                                        let clean = ValueEditor.sanitize(self.text);
+                                        if clean != self.text {
+                                            self.text = clean;
+                                        }
+                                    }
+                                    cursor-position-changed(position) => {
+                                        caret.x = flick.text-dx + position.x;
+                                        caret.y = position.y;
+                                        caret-blink-on = true;
+                                        // keeps the caret in view
+                                        if position.y + flick.content-y < 0px {
+                                            flick.content-y = -position.y;
+                                        } else if position.y + box.line-h + flick.content-y > flick.height {
+                                            flick.content-y = -(position.y + box.line-h - flick.height);
+                                        }
+                                    }
+                                }
+                            }
+
+                            property <bool> caret-blink-on: true;
+                            Timer {
+                                interval: 530ms;
+                                running: input.has-focus;
+                                triggered => { caret-blink-on = !caret-blink-on; }
+                            }
+                            caret := Rectangle {
+                                // pinned so it doesn't start centered; moved by the input's cursor
+                                x: flick.text-dx;
+                                y: 0px;
+                                width: input.text-cursor-width;
+                                height: box.line-h;
+                                background: Theme.text-primary;
+                                visible: input.has-focus && caret-blink-on && input.anchor-position-byte-offset == input.cursor-position-byte-offset;
+                            }
+                        }
+                    }
+                }
+
+                HorizontalLayout {
+                    spacing: Theme.px(8px);
+                    Text {
+                        horizontal-stretch: 1;
+                        text: ValueEditor.error != "" ? ValueEditor.error : root.problem;
+                        font-size: Theme.pt(12px);
+                        color: Theme.accent-red;
+                        vertical-alignment: center;
+                        overflow: elide;
+                    }
+                    if ValueEditor.is-field: ModalButton {
+                        text: root.confirming-delete ? @tr("Click again to delete") : @tr("Delete");
+                        danger: true;
+                        armed: root.confirming-delete;
+                        enabled: !ValueEditor.saving;
+                        clicked => {
+                            if root.confirming-delete {
+                                ValueEditor.delete();
+                            } else {
+                                root.confirming-delete = true;
+                            }
+                        }
+                    }
+                    ModalButton {
+                        text: @tr("Cancel");
+                        clicked => { ValueEditor.open = false; }
+                    }
+                    ModalButton {
+                        text: @tr("Format JSON");
+                        enabled: root.json-problem == "" && !ValueEditor.saving;
+                        clicked => { ValueEditor.text = ValueEditor.format(ValueEditor.text); }
+                    }
+                    ModalButton {
+                        text: ValueEditor.saving ? @tr("Saving...") : @tr("Save");
+                        primary: true;
+                        enabled: root.problem == "" && !ValueEditor.saving;
+                        clicked => { root.save(); }
+                    }
+                }
+            }
+        }
+    }
+
+    edit-menu := TextMenuPopup {
+        x: root.menu-x;
+        y: root.menu-y;
+        has-selection: root.menu-has-selection;
+        can-paste: root.menu-can-paste;
+        cut => { root.run-menu(0); }
+        copy => { root.run-menu(1); }
+        paste => { root.run-menu(2); }
+        select-all => { root.run-menu(3); }
+    }
+}

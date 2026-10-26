@@ -15,6 +15,7 @@ fn hash(total: usize, start: usize, loaded: usize, more: bool) -> FetchedKey {
         ttl: -1,
         names_cursor: more.then_some(7),
         descending: false,
+        editable: true,
     }
 }
 

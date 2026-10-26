@@ -10,6 +10,19 @@ _version: 2
 # in a value, in place of a string too long to show
 "[REDACTED: string too long]":
   fr: "[MASQUÉ : chaîne trop longue]"
+# the value editor
+"Not valid JSON: line %{line}, column %{column}":
+  fr: "JSON invalide : ligne %{line}, colonne %{column}"
+"Saving failed: %{error}":
+  fr: "Échec de l'enregistrement : %{error}"
+"Saved":
+  fr: "Enregistré"
+"Deleted":
+  fr: "Supprimé"
+"A field needs a name":
+  fr: "Un champ doit avoir un nom"
+"This hash already has a field with this name":
+  fr: "Ce hash a déjà un champ de ce nom"
 # a value-list row's "Try to load", reading a value left out for its size
 "This field no longer exists":
   fr: "Ce champ n'existe plus"

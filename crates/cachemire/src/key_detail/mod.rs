@@ -18,6 +18,7 @@ use cachemire_core::redis_value_type::RedisValueType;
 use cachemire_core::state::AppState;
 
 mod color;
+mod edit;
 mod export;
 mod field;
 mod filtering;
@@ -87,6 +88,8 @@ struct FetchedKey {
     names_cursor: Option<u64>,
     // for a hash: whether its names are sorted descending rather than ascending
     descending: bool,
+    // whether its values can be written back: a hash's fields, or a string read whole
+    editable: bool,
 }
 
 impl FetchedKey {
@@ -331,6 +334,7 @@ fn show_nothing(window: &MainWindow, shared: &KeyDetailShared) {
     window.global::<KeyPanel>().set_loaded(false);
     show_key_name(window, "");
     window.global::<KeyPanel>().set_meta("".into());
+    window.global::<KeyPanel>().set_editable(false);
     window.global::<KeyPanel>().set_all_values_field_chars(8);
     window.global::<KeyPanel>().set_all_values_rows(ModelRc::new(VecModel::from(Vec::<AllValuesRowData>::new())));
     window.global::<KeyPanel>().set_json_filter_status("".into());
@@ -400,6 +404,7 @@ pub fn init(window: &MainWindow, state: Arc<AppState>, rt: Handle) -> KeyDetail 
 
     pretty::init(window, &ctx);
     export::init(window, &ctx);
+    edit::init(window, &ctx);
     panel.on_load_value({
         let ctx = ctx.clone();
         move |field| ctx.load_full_value(&field)
@@ -470,6 +475,7 @@ impl KeyDetail {
                 ttl: -1,
                 names_cursor: None,
                 descending: false,
+                editable: false,
             },
         );
         ctx.load_key(LoadRequest { key: id, scroll, reuse: true, announce: false });

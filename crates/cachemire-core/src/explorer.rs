@@ -674,6 +674,45 @@ pub async fn hash_full_values(
     session.hash_values(key, names).await
 }
 
+/// Writes `value` as what `key` holds: the value of its field `field` for a hash
+/// (`Some`), its whole value, TTL kept, for a string (`None`).
+pub async fn write_value(
+    state: &AppState,
+    connection_id: Option<&str>,
+    key: &KeyName,
+    field: Option<&str>,
+    value: &str,
+) -> Result<(), Error> {
+    let mut session = Session::open(state, connection_id).await?;
+    match field {
+        Some(field) => session.hash_set(key, field, value).await,
+        None => session.string_set(key, value).await,
+    }
+}
+
+/// Moves hash `key`'s field `from` to the new name `to`, with `value` as its value:
+/// false, nothing changed, when the hash has a field `to` already.
+pub async fn rename_hash_field(
+    state: &AppState,
+    connection_id: Option<&str>,
+    key: &KeyName,
+    from: &str,
+    to: &str,
+    value: &str,
+) -> Result<bool, Error> {
+    let mut session = Session::open(state, connection_id).await?;
+    if !session.hash_set_new(key, to, value).await? {
+        return Ok(false);
+    }
+    session.hash_delete(key, from).await?;
+    Ok(true)
+}
+
+/// Removes field `field` from hash `key`.
+pub async fn delete_hash_field(state: &AppState, connection_id: Option<&str>, key: &KeyName, field: &str) -> Result<(), Error> {
+    Session::open(state, connection_id).await?.hash_delete(key, field).await
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

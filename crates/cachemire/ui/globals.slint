@@ -352,6 +352,10 @@ export global KeyPanel {
     callback open-value(field: string, escaped: bool);
     callback download-value(field: string, escaped: bool);
     callback copy-value(field: string, escaped: bool);
+    // whether the shown key's values can be written (a hash, or a string read whole), and
+    // opening the editor on one row's field
+    in property <bool> editable: false;
+    callback edit-value(field: string);
     // reads a row's value left out for its size (see AllValuesRowData.too-long)
     callback load-value(field: string);
     callback export-all-fields(format: ExportFormat, target: ExportTarget);

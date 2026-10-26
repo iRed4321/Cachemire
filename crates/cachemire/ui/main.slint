@@ -2,6 +2,7 @@ import { Theme } from "components/theme.slint";
 import { TitleBar } from "components/title-bar.slint";
 import { AwsProfileDropdown } from "components/cloud-picker.slint";
 import { About, AboutModal } from "components/about.slint";
+import { ValueEditor, ValueEditorModal } from "components/value-editor.slint";
 import { CloudSettings, CloudSettingsModal } from "components/cloud-settings.slint";
 import { ConnectionTransfer, ConnectionTransferModal } from "components/connection-transfer.slint";
 import { ConnectionDropdown, ConnectionModal, ConnectionRowData, ConnectionForm, ConnProfileRowData } from "components/connection-picker.slint";
@@ -19,7 +20,7 @@ import { ConnectionView, ConnectionState, ConnectionEditor, AwsAccount, Preferen
 
 // read and written by Rust: where each tab left the key panel scrolled to
 // (Rust tints the background: see Theme.env-tint)
-export { KeyScroll, ExportPrefs, Theme, About, CloudSettings, ConnectionTransfer, LineSelection, ValueLine }
+export { KeyScroll, ExportPrefs, Theme, About, CloudSettings, ConnectionTransfer, LineSelection, ValueLine, ValueEditor }
 // the enumerations Rust shares with the UI
 export { ConnectionStatus, TreeRowKind, ExportFormat, ExportTarget, LanguageSetting, ProfileTint, KeyView, SidebarView, SearchScope }
 // a badge of the key panel's field/value search bar
@@ -637,6 +638,12 @@ export component MainWindow inherits Window {
         }
 
         if About.open: AboutModal { }
+        if ValueEditor.open: ValueEditorModal {
+            width: 100%;
+            height: 100%;
+            device-scale: root.device-scale;
+            clipboard-has-text() => { return root.clipboard-has-text(); }
+        }
         if ConnectionTransfer.open: ConnectionTransferModal { }
         if CloudSettings.open: CloudSettingsModal {
             clipboard-has-text() => { return root.clipboard-has-text(); }

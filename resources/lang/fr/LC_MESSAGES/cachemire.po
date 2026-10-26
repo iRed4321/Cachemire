@@ -12,31 +12,31 @@ msgstr ""
 "Content-Transfer-Encoding: 8bit\n"
 "Plural-Forms: nplurals=2; plural=(n > 1);\n"
 
-#: crates/cachemire/ui/main.slint:300 crates/cachemire/ui/main.slint:300
+#: crates/cachemire/ui/main.slint:301 crates/cachemire/ui/main.slint:301
 msgid "Show sidebar"
 msgstr "Afficher le panneau latéral"
 
-#: crates/cachemire/ui/main.slint:319
+#: crates/cachemire/ui/main.slint:320
 msgid "Couldn't use the AWS account"
 msgstr "Impossible d'utiliser le compte AWS"
 
-#: crates/cachemire/ui/main.slint:320
+#: crates/cachemire/ui/main.slint:321
 msgid "Select a key to open it"
 msgstr "Sélectionnez une clé pour l'ouvrir"
 
-#: crates/cachemire/ui/main.slint:321
+#: crates/cachemire/ui/main.slint:322
 msgid "Couldn't connect"
 msgstr "Connexion impossible"
 
-#: crates/cachemire/ui/main.slint:322
+#: crates/cachemire/ui/main.slint:323
 msgid "Pick a connection to get started"
 msgstr "Choisissez une connexion pour commencer"
 
-#: crates/cachemire/ui/main.slint:330
+#: crates/cachemire/ui/main.slint:331
 msgid "Browse the keyspace on the left and click a key."
 msgstr "Parcourez l'espace de clés à gauche et cliquez sur une clé."
 
-#: crates/cachemire/ui/main.slint:331
+#: crates/cachemire/ui/main.slint:332
 msgid ""
 "Hover the connection status in the top bar to see why, or pick another "
 "connection."
@@ -44,11 +44,11 @@ msgstr ""
 "Survolez l'indicateur d'état dans la barre du haut pour en connaître la "
 "raison, ou choisissez une autre connexion."
 
-#: crates/cachemire/ui/main.slint:332
+#: crates/cachemire/ui/main.slint:333
 msgid "Use the connection selector in the top bar."
 msgstr "Utilisez le sélecteur de connexion dans la barre du haut."
 
-#: crates/cachemire/ui/main.slint:377
+#: crates/cachemire/ui/main.slint:378
 msgid "Write a Redisql query above (FROM/JOIN/WHERE/SELECT/LIMIT), then Run."
 msgstr ""
 "Écrivez une requête Redisql ci-dessus (FROM/JOIN/WHERE/SELECT/LIMIT), puis "
@@ -130,9 +130,11 @@ msgstr "Tunnel SSH"
 #: crates/cachemire/ui/components/cloud-settings.slint:178
 #: crates/cachemire/ui/components/cloud-settings.slint:178
 #: crates/cachemire/ui/components/cloud-settings.slint:178
+#: crates/cachemire/ui/components/cloud-settings.slint:178
 msgid "Cancel"
 msgstr "Annuler"
 
+#: crates/cachemire/ui/components/cloud-settings.slint:179
 #: crates/cachemire/ui/components/cloud-settings.slint:179
 #: crates/cachemire/ui/components/cloud-settings.slint:179
 #: crates/cachemire/ui/components/cloud-settings.slint:179
@@ -246,9 +248,11 @@ msgstr "Ajouter un profil de connexion"
 #: crates/cachemire/ui/components/connection-picker.slint:744
 #: crates/cachemire/ui/components/connection-picker.slint:744
 #: crates/cachemire/ui/components/connection-picker.slint:744
+#: crates/cachemire/ui/components/connection-picker.slint:744
 msgid "Click again to delete"
 msgstr "Cliquez à nouveau pour supprimer"
 
+#: crates/cachemire/ui/components/connection-picker.slint:744
 #: crates/cachemire/ui/components/connection-picker.slint:744
 #: crates/cachemire/ui/components/connection-picker.slint:744
 #: crates/cachemire/ui/components/connection-picker.slint:744
@@ -351,31 +355,35 @@ msgstr "Résultat précédent"
 msgid "Next match"
 msgstr "Résultat suivant"
 
-#: crates/cachemire/ui/components/key-detail-row.slint:470
+#: crates/cachemire/ui/components/key-detail-row.slint:107
+msgid "Edit"
+msgstr "Modifier"
+
+#: crates/cachemire/ui/components/key-detail-row.slint:606
 msgid "Value too long ({})"
 msgstr "Valeur trop longue ({})"
 
-#: crates/cachemire/ui/components/key-detail-row.slint:480
-#: crates/cachemire/ui/components/key-detail-row.slint:480
+#: crates/cachemire/ui/components/key-detail-row.slint:616
+#: crates/cachemire/ui/components/key-detail-row.slint:616
 msgid "Open in a text editor"
 msgstr "Ouvrir dans un éditeur de texte"
 
-#: crates/cachemire/ui/components/key-detail-row.slint:486
-#: crates/cachemire/ui/components/key-detail-row.slint:486
+#: crates/cachemire/ui/components/key-detail-row.slint:622
+#: crates/cachemire/ui/components/key-detail-row.slint:622
 msgid "Download"
 msgstr "Télécharger"
 
-#: crates/cachemire/ui/components/key-detail-row.slint:492
-#: crates/cachemire/ui/components/key-detail-row.slint:492
-#: crates/cachemire/ui/components/key-detail-row.slint:492
+#: crates/cachemire/ui/components/key-detail-row.slint:628
+#: crates/cachemire/ui/components/key-detail-row.slint:628
+#: crates/cachemire/ui/components/key-detail-row.slint:628
 msgid "Copy"
 msgstr "Copier"
 
-#: crates/cachemire/ui/components/key-detail-row.slint:507
+#: crates/cachemire/ui/components/key-detail-row.slint:643
 msgid "Try to load"
 msgstr "Essayer de charger"
 
-#: crates/cachemire/ui/components/key-detail-row.slint:556
+#: crates/cachemire/ui/components/key-detail-row.slint:692
 msgid "Formatting..."
 msgstr "Mise en forme..."
 
@@ -383,9 +391,11 @@ msgstr "Mise en forme..."
 #: crates/cachemire/ui/components/key-detail-table.slint:196
 #: crates/cachemire/ui/components/key-detail-table.slint:196
 #: crates/cachemire/ui/components/key-detail-table.slint:196
+#: crates/cachemire/ui/components/key-detail-table.slint:196
 msgid "Field"
 msgstr "Champ"
 
+#: crates/cachemire/ui/components/key-detail-values.slint:307
 #: crates/cachemire/ui/components/key-detail-values.slint:307
 #: crates/cachemire/ui/components/key-detail-values.slint:307
 #: crates/cachemire/ui/components/key-detail-values.slint:307
@@ -566,24 +576,24 @@ msgstr ""
 "FROM KEY 'ma:cle' AS x\nSELECT *\nLIMIT 100\n\n(Ctrl+Entrée exécute "
 "l'instruction, Ctrl+Maj+Entrée tout le script)"
 
-#: crates/cachemire/ui/components/query-panel.slint:619
+#: crates/cachemire/ui/components/query-panel.slint:605
 msgid "Undo (Ctrl+Z)"
 msgstr "Annuler (Ctrl+Z)"
 
-#: crates/cachemire/ui/components/query-panel.slint:625
+#: crates/cachemire/ui/components/query-panel.slint:611
 msgid "Redo (Ctrl+Y)"
 msgstr "Rétablir (Ctrl+Y)"
 
-#: crates/cachemire/ui/components/query-panel.slint:631
+#: crates/cachemire/ui/components/query-panel.slint:617
 msgid "History"
 msgstr "Historique"
 
-#: crates/cachemire/ui/components/query-panel.slint:693
+#: crates/cachemire/ui/components/query-panel.slint:679
 msgid "Run all"
 msgstr "Tout exécuter"
 
-#: crates/cachemire/ui/components/query-panel.slint:736
-#: crates/cachemire/ui/components/query-panel.slint:736
+#: crates/cachemire/ui/components/query-panel.slint:722
+#: crates/cachemire/ui/components/query-panel.slint:722
 msgid "Run"
 msgstr "Exécuter"
 
@@ -772,6 +782,22 @@ msgstr "Connexion..."
 #: crates/cachemire/ui/components/title-bar.slint:476
 msgid "No connection"
 msgstr "Aucune connexion"
+
+#: crates/cachemire/ui/components/value-editor.slint:125
+msgid "Edit value"
+msgstr "Modifier la valeur"
+
+#: crates/cachemire/ui/components/value-editor.slint:198
+msgid "This value is too long to edit here."
+msgstr "Cette valeur est trop longue pour être modifiée ici."
+
+#: crates/cachemire/ui/components/value-editor.slint:371
+msgid "Format JSON"
+msgstr "Formater le JSON"
+
+#: crates/cachemire/ui/components/value-editor.slint:376
+msgid "Saving..."
+msgstr "Enregistrement..."
 
 #: crates/cachemire/ui/components/widgets.slint:169
 #: crates/cachemire/ui/components/widgets.slint:169

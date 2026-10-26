@@ -237,6 +237,30 @@ impl Session {
         Ok(values.into_iter().map(|value| value.map(lossy)).collect())
     }
 
+    /// Writes `value` into `field` of the hash (`HSET`).
+    pub async fn hash_set(&mut self, key: &KeyName, field: &str, value: &str) -> Result<(), Error> {
+        redis::cmd("HSET").arg(key).arg(field).arg(value).query_async::<()>(&mut self.con).await?;
+        Ok(())
+    }
+
+    /// Writes `value` into `field` of the hash unless it has that field already
+    /// (`HSETNX`); whether it was written.
+    pub async fn hash_set_new(&mut self, key: &KeyName, field: &str, value: &str) -> Result<bool, Error> {
+        Ok(redis::cmd("HSETNX").arg(key).arg(field).arg(value).query_async(&mut self.con).await?)
+    }
+
+    /// Removes `field` from the hash (`HDEL`).
+    pub async fn hash_delete(&mut self, key: &KeyName, field: &str) -> Result<(), Error> {
+        redis::cmd("HDEL").arg(key).arg(field).query_async::<()>(&mut self.con).await?;
+        Ok(())
+    }
+
+    /// Replaces the string's value, its TTL kept (`SET … KEEPTTL`, Redis 6+).
+    pub async fn string_set(&mut self, key: &KeyName, value: &str) -> Result<(), Error> {
+        redis::cmd("SET").arg(key).arg(value).arg("KEEPTTL").query_async::<()>(&mut self.con).await?;
+        Ok(())
+    }
+
     /// The size in bytes of each of `fields`' values, in that order (0 for a field that
     /// is gone), from one pipelined `HSTRLEN` per field.
     pub async fn hash_value_sizes(&mut self, key: &KeyName, fields: &[String]) -> Result<Vec<usize>, Error> {

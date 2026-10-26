@@ -499,8 +499,11 @@ export component ModalButton inherits Rectangle {
     // outlined red; `armed` turns it into a solid red confirmation
     in property <bool> danger: false;
     in property <bool> armed: false;
+    // grayed out and deaf to clicks while false
+    in property <bool> enabled: true;
     callback clicked <=> area.clicked;
 
+    opacity: enabled ? 1 : 0.4;
     width: max(Theme.px(72px), label.preferred-width + Theme.px(28px));
     height: Theme.px(28px);
     border-radius: Theme.radius-sm;
@@ -511,7 +514,10 @@ export component ModalButton inherits Rectangle {
                 : (area.has-hover ? Theme.accent-red.with-alpha(0.15) : transparent))
             : (area.has-hover ? Theme.bg-hover : transparent));
 
-    area := TouchArea { mouse-cursor: pointer; }
+    area := TouchArea {
+        enabled: root.enabled;
+        mouse-cursor: root.enabled ? pointer : default;
+    }
     label := Text {
         text: root.text;
         color: primary ? #ffffff : (danger ? (armed ? #ffffff : Theme.accent-red) : Theme.text-secondary);
