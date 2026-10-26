@@ -89,7 +89,8 @@ impl Ctx {
             replace(&mut content.current, old, &new);
         }
         set_field_expanded(&window, &new.name, true);
-        let (_, rows) = build_all_values_table(&[new.clone()], &current_search_filter(&window), &current_expanded_fields(&window));
+        let (_, rows) =
+            build_all_values_table(std::slice::from_ref(&new), &current_search_filter(&window), &current_expanded_fields(&window));
         match rows.into_iter().next() {
             Some(row) => update_row(&window, &new.name, |shown| *shown = row),
             // the search bar's badges no longer match it: every row is built again under them

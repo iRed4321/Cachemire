@@ -23,6 +23,9 @@ fn signal_pretty_ready(window: &MainWindow) {
     window.global::<KeyPanel>().set_pretty_ready_tick(window.global::<KeyPanel>().get_pretty_ready_tick().wrapping_add(1));
 }
 
+/// A field's paragraphs, and the lines they're drawn in.
+type TextLines = (Arc<Vec<ColoredParagraph>>, Rc<Vec<VisualLine>>);
+
 /// A position as Slint holds it (line, byte offset), negatives as 0.
 fn position(line: i32, offset: i32) -> (usize, usize) {
     (line.max(0) as usize, offset.max(0) as usize)
@@ -48,12 +51,12 @@ pub(super) fn init(window: &MainWindow, ctx: &Ctx) {
             Some(paragraphs)
         }
     };
-    // a field's paragraphs and their lines at `columns` characters, for `with` to read
+    // a field's paragraphs and their lines wrapped to `columns` characters
     let memos = Rc::new(RefCell::new(LineMemos::default()));
     let with_lines = {
         let memos = memos.clone();
         let cached_or_compute = cached_or_compute.clone();
-        move |name: &str, escaped: bool, columns: i32| -> Option<(Arc<Vec<ColoredParagraph>>, Rc<Vec<VisualLine>>)> {
+        move |name: &str, escaped: bool, columns: i32| -> Option<TextLines> {
             let paragraphs = cached_or_compute(name, escaped)?;
             let layout = memos.borrow_mut().layout(name, escaped, &paragraphs, columns.max(1) as usize);
             Some((paragraphs, layout))
