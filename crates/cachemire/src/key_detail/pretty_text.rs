@@ -2,11 +2,13 @@
 //! serde_json's `Formatter` trait, so escaping and number formatting are
 //! exactly what serde_json would write, in the single pass it already makes.
 
+use std::borrow::Cow;
 use std::cell::RefCell;
 use std::io;
 use std::ops::Range;
 use std::rc::Rc;
 
+use rust_i18n::t;
 use serde::Serialize;
 use serde_json::ser::{CharEscape, Formatter};
 use slint::Color;
@@ -17,6 +19,15 @@ use super::color::color_for_kind;
 /// elided line can show, so the visible cutoff is still the `overflow: elide`;
 /// this only bounds the worst case.
 pub(super) const COMPACT_PREVIEW_CHAR_BUDGET: usize = 350;
+
+/// The longest string shown in a value, in bytes; a longer one is replaced by a
+/// placeholder in its own color (exports, copies and the editor still get it whole).
+pub(super) const MAX_SHOWN_STRING_BYTES: usize = 10_000;
+
+/// What is shown in place of a string over [`MAX_SHOWN_STRING_BYTES`].
+fn too_long_placeholder() -> Cow<'static, str> {
+    t!("[REDACTED: string too long]")
+}
 
 /// Color spans (byte ranges into their paragraph's text) in the order
 /// `ColorTrackingFormatter` wrote them.
@@ -36,6 +47,11 @@ struct ColorAccumulator {
     budget: usize,
     // the string being written: where it starts and its kind ("key" or "string")
     open_string: Option<(usize, &'static str)>,
+    // past this many bytes, a string is shown as a placeholder (`None`: always whole)
+    max_string: Option<usize>,
+    // with `max_string`, the string being written is held back (escaped, with its
+    // length in bytes) until its end tells whether it is shown or replaced
+    held: Option<(String, usize)>,
 }
 
 impl ColorAccumulator {
@@ -67,6 +83,38 @@ impl ColorAccumulator {
             self.spans.push((start..self.text.len(), color));
         }
         result
+    }
+
+    fn begin_string(&mut self, kind: &'static str) -> io::Result<()> {
+        self.open_string = Some((self.text.len(), kind));
+        if self.max_string.is_some() {
+            self.held = Some((String::new(), 0));
+            return Ok(());
+        }
+        self.push_plain("\"")
+    }
+
+    /// Writes `escaped`, the escaped form of `raw_len` bytes of the string being written.
+    fn push_string_part(&mut self, escaped: &str, raw_len: usize) -> io::Result<()> {
+        let Some((held, len)) = &mut self.held else { return self.push_plain(escaped) };
+        *len += raw_len;
+        if self.max_string.is_some_and(|max| *len <= max) {
+            held.push_str(escaped);
+        }
+        Ok(())
+    }
+
+    fn end_string(&mut self) -> io::Result<()> {
+        let written = match self.held.take() {
+            Some((_, len)) if self.max_string.is_some_and(|max| len > max) => {
+                self.open_string = None;
+                return self.push_colored(&too_long_placeholder(), "too-long");
+            }
+            Some((held, _)) => self.push_plain("\"").and_then(|()| self.push_plain(&held)).and_then(|()| self.push_plain("\"")),
+            None => self.push_plain("\""),
+        };
+        self.close_string();
+        written
     }
 
     /// Colors the string being written, from its opening quote to the end of the text so far.
@@ -141,21 +189,15 @@ impl Formatter for ColorTrackingFormatter {
     // Fragments write plain (no per-fragment span) so the whole string —
     // quotes included — is one key/string-colored span, matching one token.
     fn begin_string<W: ?Sized + io::Write>(&mut self, _w: &mut W) -> io::Result<()> {
-        let mut acc = self.acc.borrow_mut();
-        let kind = if self.in_object_key { "key" } else { "string" };
-        acc.open_string = Some((acc.text.len(), kind));
-        acc.push_plain("\"")
+        self.acc.borrow_mut().begin_string(if self.in_object_key { "key" } else { "string" })
     }
 
     fn end_string<W: ?Sized + io::Write>(&mut self, _w: &mut W) -> io::Result<()> {
-        let mut acc = self.acc.borrow_mut();
-        let written = acc.push_plain("\"");
-        acc.close_string();
-        written
+        self.acc.borrow_mut().end_string()
     }
 
     fn write_string_fragment<W: ?Sized + io::Write>(&mut self, _w: &mut W, fragment: &str) -> io::Result<()> {
-        self.acc.borrow_mut().push_plain(fragment)
+        self.acc.borrow_mut().push_string_part(fragment, fragment.len())
     }
 
     fn write_char_escape<W: ?Sized + io::Write>(&mut self, _w: &mut W, char_escape: CharEscape) -> io::Result<()> {
@@ -164,7 +206,7 @@ impl Formatter for ColorTrackingFormatter {
             AsciiControl(byte) => {
                 const HEX: [u8; 16] = *b"0123456789abcdef";
                 let bytes = [b'\\', b'u', b'0', b'0', HEX[(byte >> 4) as usize], HEX[(byte & 0xf) as usize]];
-                return self.acc.borrow_mut().push_plain(std::str::from_utf8(&bytes).unwrap_or_default());
+                return self.acc.borrow_mut().push_string_part(std::str::from_utf8(&bytes).unwrap_or_default(), 1);
             }
             Quote => "\\\"",
             ReverseSolidus => "\\\\",
@@ -175,7 +217,8 @@ impl Formatter for ColorTrackingFormatter {
             CarriageReturn => "\\r",
             Tab => "\\t",
         };
-        self.acc.borrow_mut().push_plain(escaped)
+        // every escaped character is a single byte of the string
+        self.acc.borrow_mut().push_string_part(escaped, 1)
     }
 
     fn begin_array<W: ?Sized + io::Write>(&mut self, _w: &mut W) -> io::Result<()> {
@@ -236,8 +279,18 @@ impl Formatter for ColorTrackingFormatter {
     }
 }
 
+/// `value`'s colored text, each string over [`MAX_SHOWN_STRING_BYTES`] replaced by a placeholder.
 pub(super) fn colored_paragraphs_for(value: &impl Serialize, pretty: bool, budget: usize) -> Vec<ColoredParagraph> {
-    let acc = Rc::new(RefCell::new(ColorAccumulator { budget, ..Default::default() }));
+    colored_paragraphs(value, pretty, budget, Some(MAX_SHOWN_STRING_BYTES))
+}
+
+/// `value`'s colored text on one line, every string shown whole (up to `budget`).
+pub(super) fn compact_paragraphs_with_whole_strings(value: &impl Serialize, budget: usize) -> Vec<ColoredParagraph> {
+    colored_paragraphs(value, false, budget, None)
+}
+
+fn colored_paragraphs(value: &impl Serialize, pretty: bool, budget: usize, max_string: Option<usize>) -> Vec<ColoredParagraph> {
+    let acc = Rc::new(RefCell::new(ColorAccumulator { budget, max_string, ..Default::default() }));
     {
         let formatter = ColorTrackingFormatter::new(pretty, acc.clone());
         let mut serializer = serde_json::Serializer::with_formatter(io::sink(), formatter);

@@ -157,7 +157,11 @@ pub(super) fn build_all_values_table(
     let rows = matching
         .into_par_iter()
         .map(|f| {
-            let (value_compact, value_compact_escaped) = compact_styled_texts_for(f.value(), &needles, filter.case_sensitive);
+            // a value too long to show has no preview
+            let (value_compact, value_compact_escaped) = match f.too_long {
+                Some(_) => Default::default(),
+                None => compact_styled_texts_for(f.value(), &needles, filter.case_sensitive),
+            };
             let too_long = f.too_long.map(|size| cachemire_core::server_info::format_bytes(size as i64)).unwrap_or_default();
             // a value left out for its size has nothing to open: its row never starts open
             let initial_expanded = f.too_long.is_none() && expanded.contains(&f.name);
@@ -166,6 +170,7 @@ pub(super) fn build_all_values_table(
                 value_compact,
                 value_compact_escaped,
                 too_long: too_long.into(),
+                loading: false,
                 initial_expanded,
             }
         })

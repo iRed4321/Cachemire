@@ -450,8 +450,8 @@ pub const HASH_NAMES_BATCH: usize = 10_000;
 pub const MAX_STRING_BYTES: usize = 4 * 1024 * 1024;
 
 /// The biggest hash field value the key panel reads with its page; a bigger one is
-/// shown by its size, and read only when it's opened, saved or copied.
-pub const MAX_FIELD_BYTES: usize = 128 * 1024;
+/// shown by its size, and read only when it's opened, saved, copied or asked for.
+pub const MAX_FIELD_BYTES: usize = 4 * 1024 * 1024;
 
 /// The field names of `key` from `HSCAN` cursor `cursor` on, until `limit` are read
 /// or the scan ends (cursor 0), without the duplicates a scan may repeat. Each step

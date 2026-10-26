@@ -3,7 +3,7 @@ import { ExportFormat, ExportTarget, KeyView, SearchScope } from "types.slint";
 import { IconButton } from "widgets.slint";
 import { IconCopy, IconRefresh, IconChevron, IconHash } from "icons.slint";
 import { ExportGroup, ExportButton, SearchField, ViewSwitcher, ViewOption, ScopeSwitch, SearchBadge, SuggestionPopup } from "key-detail-widgets.slint";
-import { KeyScroll, ExportPrefs, AllValuesRowData, TableRowData, FindResult, SelectionRange, SuggestionRow, CompletionEdit, BadgeData } from "key-detail-types.slint";
+import { KeyScroll, ExportPrefs, AllValuesRowData, TableRowData, FindResult, LineSelection, ValueLine, SuggestionRow, CompletionEdit, BadgeData } from "key-detail-types.slint";
 import { AllValuesTable } from "key-detail-values.slint";
 import { TableView } from "key-detail-table.slint";
 import { TabStrip, KeyPanel, KeyTree } from "../globals.slint";
@@ -11,7 +11,7 @@ import { TabStrip, KeyPanel, KeyTree } from "../globals.slint";
 // re-exported so main.slint (and anything else importing "key-detail.slint",
 // the historical entry point) keeps seeing these here, though they now live
 // in key-detail-types.slint alongside the row/table components that share them
-export { KeyScroll, ExportPrefs, AllValuesRowData, FindResult, SelectionRange, TableRowData, SuggestionRow, CompletionEdit, BadgeData }
+export { KeyScroll, ExportPrefs, AllValuesRowData, FindResult, LineSelection, ValueLine, TableRowData, SuggestionRow, CompletionEdit, BadgeData }
 
 export component KeyDetail inherits Rectangle {
     // transparent: sits inside the main FloatingCard, which already paints

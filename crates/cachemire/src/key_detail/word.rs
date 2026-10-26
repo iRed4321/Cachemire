@@ -1,19 +1,5 @@
-//! Where a double or triple click selects in a value's pretty text: the word under the click, or
-//! all of it. Offsets are bytes into the text as a `StyledText` reports them (its lines joined by `\n`).
-
-use super::pretty_text::ColoredParagraph;
-
-/// The text a `StyledText` built from `paragraphs` selects in.
-pub(super) fn plain_text(paragraphs: &[ColoredParagraph]) -> String {
-    let mut text = String::new();
-    for (line, _) in paragraphs {
-        if !text.is_empty() {
-            text.push('\n');
-        }
-        text.push_str(line);
-    }
-    text
-}
+//! Where a double click selects in a value's pretty text: the word under the click.
+//! Offsets are bytes into one of its paragraphs.
 
 fn is_word_char(c: char) -> bool {
     c.is_alphanumeric() || c == '_'
@@ -58,15 +44,5 @@ mod tests {
         assert_eq!(word_at("é", 1), None);
         assert_eq!(word_at("ab", 3), None);
         assert_eq!(word_at("", 0), None);
-    }
-
-    #[test]
-    fn the_lines_join_as_the_styled_text_reports_its_offsets() {
-        let paragraphs = vec![
-            ("{".to_string(), Default::default()),
-            ("  \"a\": 1".to_string(), Default::default()),
-            ("}".to_string(), Default::default()),
-        ];
-        assert_eq!(plain_text(&paragraphs), "{\n  \"a\": 1\n}");
     }
 }

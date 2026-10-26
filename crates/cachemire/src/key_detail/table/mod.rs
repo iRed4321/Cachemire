@@ -17,7 +17,7 @@ use slint::ComponentHandle;
 use super::color::color_for_kind;
 use super::field::Field;
 use super::highlight::{head_chars, highlight_needle_matches};
-use super::pretty_text::{ColoredParagraph, colored_paragraphs_for};
+use super::pretty_text::{ColoredParagraph, MAX_SHOWN_STRING_BYTES, colored_paragraphs_for};
 
 /// How many rows decide the columns: the first ones that are JSON objects.
 const TABLE_SAMPLE: usize = 10;
@@ -249,13 +249,13 @@ fn table_columns(rows: &[TableSourceRow]) -> Vec<Column> {
     keys.into_iter().map(Column::Key).collect()
 }
 
-/// One cell, always a single line: strings in the string color (line breaks become
-/// spaces), numbers and booleans as in the value view, nested values as compact
-/// colored JSON; the search badges' matches are highlighted.
+/// One cell, always a single line: strings in the string color (line breaks become spaces,
+/// one too long to show a placeholder), numbers and booleans as in the value view, nested
+/// values as compact colored JSON; the search badges' matches are highlighted.
 fn table_cell_text(value: Option<&Value>, needles: &[String], case_sensitive: bool) -> StyledText {
     let paragraphs: Vec<ColoredParagraph> = match value {
         None => vec![(String::new(), Vec::new())],
-        Some(Value::String(text)) => {
+        Some(Value::String(text)) if text.len() <= MAX_SHOWN_STRING_BYTES => {
             let line: String = head_chars(text, TABLE_CELL_BUDGET).replace(['\n', '\r'], " ");
             let spans = color_for_kind("string").map(|color| vec![(0..line.len(), color)]).unwrap_or_default();
             vec![(line, spans)]

@@ -35,11 +35,11 @@ fn the_header_of_an_open_row_stays_fixed_while_its_text_scrolls() {
     let big: serde_json::Value =
         json!({"items": (0..300).map(|i| json!({"id": i, "name": format!("item number {i}")})).collect::<Vec<_>>()});
     let fields: Fields = (0..3).map(|i| Arc::new(field::Field::from_value(format!("row{i}"), big.clone()))).collect();
-    h.window.global::<KeyPanel>().on_request_pretty_value({
+    h.window.global::<KeyPanel>().on_value_line_count({
         let fields = fields.clone();
-        move |name, _q, _c, _e| {
+        move |name, _e, _c| {
             let f = fields.iter().find(|f| f.name == name.as_str()).unwrap();
-            highlight::pretty_styled_text_with_highlights(&pretty_text::pretty_paragraphs_for(&f.value()), &[], false, "", 0)
+            pretty_text::pretty_paragraphs_for(&f.value()).len() as i32
         }
     });
     h.window.global::<KeyPanel>().on_pretty_is_ready(|_, _| true);
@@ -80,7 +80,7 @@ fn the_header_of_an_open_row_stays_fixed_while_its_text_scrolls() {
     let searched = Rc::new(RefCell::new(Vec::<(String, String)>::new()));
     h.window.global::<KeyPanel>().on_find_in_value({
         let searched = searched.clone();
-        move |field, query, _, _| {
+        move |field, query, _, _, _| {
             searched.borrow_mut().push((field.to_string(), query.to_string()));
             crate::FindResult { count: 3, index: 0, line: 0, label: "1/3".into() }
         }
@@ -114,11 +114,11 @@ fn a_revealed_row_is_opened_and_scrolled_to() {
     let mut h = Harness::new();
     h.window.global::<KeyPanel>().set_view(KeyView::Fields);
     let fields = hash_fields(400, "long");
-    h.window.global::<KeyPanel>().on_request_pretty_value({
+    h.window.global::<KeyPanel>().on_value_line_count({
         let fields = fields.clone();
-        move |name, _q, _c, _e| {
+        move |name, _e, _c| {
             let f = fields.iter().find(|f| f.name == name.as_str()).unwrap();
-            highlight::pretty_styled_text_with_highlights(&pretty_text::pretty_paragraphs_for(&f.value()), &[], false, "", 0)
+            pretty_text::pretty_paragraphs_for(&f.value()).len() as i32
         }
     });
     h.window.global::<KeyPanel>().on_pretty_is_ready(|_, _| true);
@@ -246,11 +246,11 @@ fn two_rows_opening_together_both_get_their_pretty_text() {
         move |field, _| requested.borrow_mut().push(field.to_string())
     });
     let loaded_calls = Rc::new(RefCell::new(Vec::<String>::new()));
-    h.window.global::<KeyPanel>().on_request_pretty_value({
+    h.window.global::<KeyPanel>().on_request_value_lines({
         let loaded_calls = loaded_calls.clone();
-        move |field, _query, _current, _| {
+        move |field, _query, _current, _, _, _, _| {
             loaded_calls.borrow_mut().push(field.to_string());
-            StyledText::default()
+            ModelRc::default()
         }
     });
 
@@ -313,11 +313,11 @@ fn a_row_born_with_its_field_already_cached_loads_immediately() {
         }
     });
     let loaded_calls = Rc::new(RefCell::new(Vec::<String>::new()));
-    h.window.global::<KeyPanel>().on_request_pretty_value({
+    h.window.global::<KeyPanel>().on_request_value_lines({
         let loaded_calls = loaded_calls.clone();
-        move |field, _query, _current, _| {
+        move |field, _query, _current, _, _, _, _| {
             loaded_calls.borrow_mut().push(field.to_string());
-            StyledText::default()
+            ModelRc::default()
         }
     });
 

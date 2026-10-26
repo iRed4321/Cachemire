@@ -2,7 +2,7 @@ import { Theme } from "theme.slint";
 import { Hint, IconButton } from "widgets.slint";
 import { IconChevron, IconCopy, IconDownload, IconExternalLink, IconSpinner } from "icons.slint";
 import { ExportGroup, SearchField } from "key-detail-widgets.slint";
-import { KeyScroll, ExportPrefs } from "key-detail-types.slint";
+import { KeyScroll, ExportPrefs, ValueLine } from "key-detail-types.slint";
 import { KeyPanel } from "../globals.slint";
 
 // The header of an open row: fold chevron and name, the find box with its match
@@ -119,8 +119,9 @@ export component AllValuesRow inherits Rectangle {
     in property <string> field;
     in property <styled-text> value-compact;
     in property <styled-text> value-compact-escaped;
-    // see AllValuesRowData.too-long: such a row never opens
+    // see AllValuesRowData.too-long: such a row opens only once its value is read
     in property <string> too-long: "";
+    in property <bool> loading: false;
     in property <int> index;
     in property <length> field-col-width;
     // this row's slot in the content, the viewport window the table shows (both
@@ -192,13 +193,13 @@ export component AllValuesRow inherits Rectangle {
         }
         pretty-loaded = false;
         prefetch-requested = false;
+        clear-selection();
         if expanded {
             load-pretty();
         }
     }
     property <bool> pretty-loaded: false;
     property <bool> prefetch-requested: false;
-    property <styled-text> pretty-cache;
     property <string> find-query: "";
     property <string> find-last-query: "";
     property <int> find-current: 0;
@@ -208,7 +209,52 @@ export component AllValuesRow inherits Rectangle {
     property <int> header-focus-tick: 0;
     property <color> selection-bg: Theme.accent-blue.with-alpha(0.35);
     property <length> collapsed-height: Theme.pt(12px) * 1.4;
-    property <length> line-height: Theme.pt(12px) * 1.4;
+    // The open text is drawn a line at a time, only near the view (see KeyPanel.value-line-count):
+    // a line's height and a character's width, measured off `measure`, give its line count
+    // at the row's width and the lines to build, `window-count` from `window-first` on.
+    property <length> char-w: max(1px, measure.preferred-width / 64);
+    property <length> text-line-h: measure.preferred-height;
+    property <int> columns: max(1, floor((root.width - Theme.px(20px)) / char-w));
+    property <int> line-count: 0;
+    property <[ValueLine]> lines: [];
+    property <int> lines-first: 0;
+    property <length> text-top: Theme.px(5px) + header-h + body-gap;
+    property <int> first-in-view: expanded ? max(0, floor((view-top - row-y - text-top) / text-line-h)) : 0;
+    property <int> window-first: max(0, floor(first-in-view / 64) * 64 - 64);
+    property <int> window-count: expanded ? ceil(view-height / text-line-h) + 192 : 0;
+    changed window-first => { if expanded && pretty-loaded { refresh-lines(); } }
+    changed window-count => { if expanded && pretty-loaded { refresh-lines(); } }
+    changed columns => {
+        if pretty-loaded {
+            clear-selection();
+            measure-lines();
+            refresh-lines();
+        }
+    }
+    // the selection: where it was started and where it's dragged to, as a line and a byte
+    // offset in it (`sel-anchor-line` -1: none), and the same in text order
+    property <int> sel-anchor-line: -1;
+    property <int> sel-anchor-offset: 0;
+    property <int> sel-cursor-line: -1;
+    property <int> sel-cursor-offset: 0;
+    property <bool> sel-forward: sel-anchor-line < sel-cursor-line || (sel-anchor-line == sel-cursor-line && sel-anchor-offset <= sel-cursor-offset);
+    property <int> sel-start-line: sel-forward ? sel-anchor-line : sel-cursor-line;
+    property <int> sel-start-offset: sel-forward ? sel-anchor-offset : sel-cursor-offset;
+    property <int> sel-end-line: sel-forward ? sel-cursor-line : sel-anchor-line;
+    property <int> sel-end-offset: sel-forward ? sel-cursor-offset : sel-anchor-offset;
+    // presses following one another closely: the second selects a word, the third the value
+    property <int> clicks: 0;
+    property <int> click-tick: 0;
+    Timer {
+        interval: 400ms + Math.mod(root.click-tick, 2) * 1ms;
+        running: root.clicks > 0;
+        triggered => { root.clicks = 0; }
+    }
+    changed selection-owner => { if selection-owner != field { clear-selection(); } }
+    // the part of the row near the view: its open background and accent bar are drawn only
+    // there, as the renderer can't draw a rectangle past 32767 physical pixels
+    property <length> slice-top: max(0px, view-top - row-y - view-height);
+    property <length> slice-bottom: min(root.height, view-top - row-y + 2 * view-height);
     // An open row is one column: a header (name, find, export, fold) above
     // the text, which is only for reading and selecting. The header floats, so
     // the row's top padding leaves room for it.
@@ -288,8 +334,71 @@ export component AllValuesRow inherits Rectangle {
         expanded = false;
     }
 
-    function refresh-pretty() {
-        pretty-cache = KeyPanel.request-pretty-value(field, find-query, find-current, escaped);
+    function measure-lines() {
+        line-count = KeyPanel.value-line-count(field, escaped, columns);
+    }
+    function refresh-lines() {
+        lines-first = window-first;
+        lines = KeyPanel.request-value-lines(field, find-query, find-current, escaped, columns, window-first, window-count);
+    }
+    function clear-selection() {
+        sel-anchor-line = -1;
+        sel-cursor-line = -1;
+        sel-anchor-offset = 0;
+        sel-cursor-offset = 0;
+    }
+    // the text selected, "" for none
+    function selection-text() -> string {
+        if sel-start-line < 0 || (sel-start-line == sel-end-line && sel-start-offset == sel-end-offset) {
+            return "";
+        }
+        return KeyPanel.value-selected-text(field, escaped, columns, {
+            start-line: sel-start-line,
+            start-offset: sel-start-offset,
+            end-line: sel-end-line,
+            end-offset: sel-end-offset,
+        });
+    }
+    // the line at `y` in the text, and the byte offset in it nearest to `x` (before the
+    // first line: its start; past the last one: its end)
+    function line-at(y: length) -> int {
+        return max(0, min(line-count - 1, floor(y / text-line-h)));
+    }
+    function offset-at(x: length, y: length) -> int {
+        let column = y < 0px ? 0 : (y >= line-count * text-line-h ? 1000000 : max(0, round(x / char-w)));
+        return KeyPanel.value-offset-at(field, escaped, columns, line-at(y), column);
+    }
+    function press-text(x: length, y: length) {
+        clicks += 1;
+        click-tick += 1;
+        let line = line-at(y);
+        let offset = offset-at(x, y);
+        if clicks >= 2 {
+            let range = KeyPanel.value-selection(field, escaped, columns, line, offset, clicks >= 3);
+            if range.start-line >= 0 {
+                sel-anchor-line = range.start-line;
+                sel-anchor-offset = range.start-offset;
+                sel-cursor-line = range.end-line;
+                sel-cursor-offset = range.end-offset;
+            }
+        } else {
+            sel-anchor-line = line;
+            sel-anchor-offset = offset;
+            sel-cursor-line = line;
+            sel-cursor-offset = offset;
+        }
+    }
+    function drag-text(x: length, y: length) {
+        if clicks < 2 && sel-anchor-line >= 0 {
+            sel-cursor-line = line-at(y);
+            sel-cursor-offset = offset-at(x, y);
+        }
+    }
+    function show-loaded() {
+        pretty-loaded = true;
+        prefetch-requested = false;
+        measure-lines();
+        run-find(0);
     }
 
     // kicks off (or reuses) the background rendering of this field.
@@ -300,9 +409,7 @@ export component AllValuesRow inherits Rectangle {
         prefetch-requested = true;
         KeyPanel.request-pretty-value-async(field, escaped);
         if KeyPanel.pretty-is-ready(field, escaped) {
-            pretty-loaded = true;
-            prefetch-requested = false;
-            run-find(0);
+            show-loaded();
         }
     }
 
@@ -316,16 +423,16 @@ export component AllValuesRow inherits Rectangle {
             find-count = 0;
             find-current = 0;
             find-label = "";
-            refresh-pretty();
+            refresh-lines();
             return;
         }
-        let res = KeyPanel.find-in-value(field, find-query, find-current + step, escaped);
+        let res = KeyPanel.find-in-value(field, find-query, find-current + step, escaped, columns);
         find-count = res.count;
         find-current = res.index;
         find-label = res.label;
-        refresh-pretty();
+        refresh-lines();
         if res.count > 0 {
-            reveal(value-cell.absolute-position.y + res.line * line-height);
+            reveal(value-cell.absolute-position.y + res.line * text-line-h);
         }
     }
 
@@ -335,6 +442,7 @@ export component AllValuesRow inherits Rectangle {
     function on-expanded-changed() {
         // the value text is swapped for another element: no selection yet
         current-selection = "";
+        clear-selection();
         // a hover prefetch may already be in flight; its arrival loads the row
         if expanded && !pretty-loaded && !prefetch-requested {
             load-pretty();
@@ -377,17 +485,33 @@ export component AllValuesRow inherits Rectangle {
     }
     changed pretty-ready-tick => {
         if !pretty-loaded && KeyPanel.pretty-is-ready(field, escaped) {
-            pretty-loaded = true;
-            prefetch-requested = false;
-            run-find(0);
+            show-loaded();
         }
     }
 
     // An open row is a sunken block with an accent bar rather than a hover
     // wash: the text in it is for selecting, and a blue hover behind a blue
     // selection made both hard to read.
-    background: expanded ? Theme.bg-sunken : (row-area.has-hover ? Theme.bg-selected-soft : (mod(index, 2) == 1 ? Theme.bg-hover : transparent));
-    border-radius: expanded ? Theme.radius-sm : 0px;
+    background: expanded ? transparent : (row-area.has-hover ? Theme.bg-selected-soft : (mod(index, 2) == 1 ? Theme.bg-hover : transparent));
+
+    // measures a line of the value's font (see `char-w`), never shown
+    measure := Text {
+        x: 0;
+        y: 0;
+        width: 0px;
+        height: 0px;
+        visible: false;
+        text: "0000000000000000000000000000000000000000000000000000000000000000";
+        font-size: Theme.pt(12px);
+        font-family: Theme.font-mono;
+    }
+    if expanded: Rectangle {
+        y: root.slice-top;
+        width: 100%;
+        height: max(0px, root.slice-bottom - root.slice-top);
+        background: Theme.bg-sunken;
+        border-radius: Theme.radius-sm;
+    }
 
     // Prefetch while hovering. The timer resets when hover ends, so only
     // lingering on a row triggers it, not passing over it.
@@ -417,7 +541,7 @@ export component AllValuesRow inherits Rectangle {
         }
         pointer-event(event) => {
             if event.button == PointerEventButton.right && event.kind == PointerEventKind.down {
-                root.context-requested(self.mouse-x + self.absolute-position.x, self.mouse-y + self.absolute-position.y, current-selection);
+                root.context-requested(self.mouse-x + self.absolute-position.x, self.mouse-y + self.absolute-position.y, expanded ? selection-text() : current-selection);
             }
         }
 
@@ -491,6 +615,25 @@ export component AllValuesRow inherits Rectangle {
                         clicked => { KeyPanel.copy-value(root.field, root.escaped); }
                         IconCopy { size: Theme.icon-sm; tint: Theme.text-secondary; }
                     }
+                    if !root.loading: Rectangle {
+                        width: load-label.preferred-width + Theme.px(16px);
+                        border-radius: Theme.radius-sm;
+                        border-width: 1px;
+                        border-color: Theme.border-soft;
+                        background: load-area.has-hover ? Theme.bg-hover : transparent;
+                        load-area := TouchArea {
+                            mouse-cursor: pointer;
+                            clicked => { KeyPanel.load-value(root.field); }
+                        }
+                        load-label := Text {
+                            text: @tr("Try to load");
+                            font-size: Theme.pt(11px);
+                            color: Theme.text-secondary;
+                            horizontal-alignment: center;
+                            vertical-alignment: center;
+                        }
+                    }
+                    if root.loading: IconSpinner { size: Theme.icon-xs; y: (parent.height - self.height) / 2; }
                 }
                 if !expanded && too-long == "": Rectangle {
                     height: collapsed-height;
@@ -539,49 +682,57 @@ export component AllValuesRow inherits Rectangle {
                         vertical-alignment: center;
                     }
                 }
-                // The text wraps to the cell's width. A plain Rectangle holds it: the
-                // text's minimum width (its longest word) must not reach the layout, and
-                // the Rectangle takes the wrapped text's height.
+                // Only the lines near the view exist (see `window-first`), each its own
+                // StyledText at its place in a box as tall as the whole text, which
+                // only takes input: it selects, and copies with Ctrl+C.
                 if expanded && pretty-loaded: Rectangle {
                     horizontal-stretch: 1;
                     min-width: 0px;
-                    height: pretty-text.preferred-height;
-                    pretty-text := StyledText {
-                        text: pretty-cache;
+                    height: root.line-count * root.text-line-h;
+                    for line[i] in root.lines: StyledText {
+                        property <int> at: root.lines-first + i;
+                        property <bool> in-selection: self.at >= root.sel-start-line && self.at <= root.sel-end-line;
+                        x: 0;
+                        y: self.at * root.text-line-h;
+                        // a little wider than the box, so a line never wraps on rounding
+                        width: parent.width + root.char-w * 4;
+                        height: root.text-line-h;
+                        text: line.text;
                         default-color: Theme.text-primary;
                         default-font-family: Theme.font-mono;
                         default-font-size: Theme.pt(12px);
-                        selection-background-color: selection-bg;
-                        width: parent.width;
-                        property <string> owner: root.selection-owner;
-                        changed owner => {
-                            if owner != field {
-                                self.anchor-position-byte-offset = 0;
-                                self.cursor-position-byte-offset = 0;
+                        selection-background-color: root.selection-bg;
+                        anchor-position-byte-offset: self.in-selection && self.at == root.sel-start-line ? root.sel-start-offset : 0;
+                        cursor-position-byte-offset: !self.in-selection ? 0 : (self.at == root.sel-end-line ? root.sel-end-offset : line.len);
+                    }
+                    text-keys := FocusScope {
+                        key-pressed(event) => {
+                            if (event.modifiers.control || event.modifiers.meta) && (event.text == "c" || event.text == "C") {
+                                let text = root.selection-text();
+                                if text != "" {
+                                    KeyPanel.copy-selection(text);
+                                }
+                                return accept;
                             }
+                            return reject;
                         }
-                        selection-drag-moved(position) => {
-                            root.selection-drag-check(self.absolute-position.y + position.y);
-                        }
-                        selection-drag-ended => { root.selection-drag-ended(); }
-                        changed selected-text => { root.current-selection = self.selected-text; }
-                        // Plain clicks are counted while they follow one another closely: the
-                        // second selects the word under the pointer, the third (and on) the value.
-                        property <int> clicks: 0;
-                        property <int> click-tick: 0;
-                        Timer {
-                            interval: 400ms + Math.mod(pretty-text.click-tick, 2) * 1ms;
-                            running: pretty-text.clicks > 0;
-                            triggered => { pretty-text.clicks = 0; }
-                        }
-                        clicked => {
-                            self.clicks += 1;
-                            self.click-tick += 1;
-                            if self.clicks >= 2 {
-                                let range = KeyPanel.value-selection(root.field, self.cursor-position-byte-offset, self.clicks >= 3, root.escaped);
-                                if range.start >= 0 {
-                                    self.anchor-position-byte-offset = range.start;
-                                    self.cursor-position-byte-offset = range.end;
+                        text-area := TouchArea {
+                            mouse-cursor: text;
+                            pointer-event(event) => {
+                                if event.kind == PointerEventKind.down && event.button == PointerEventButton.left {
+                                    text-keys.focus();
+                                    root.selection-drag-check(self.absolute-position.y + self.mouse-y);
+                                    root.press-text(self.mouse-x, self.mouse-y);
+                                } else if event.kind == PointerEventKind.up && event.button == PointerEventButton.left {
+                                    root.selection-drag-ended();
+                                } else if event.kind == PointerEventKind.down && event.button == PointerEventButton.right {
+                                    root.context-requested(self.mouse-x + self.absolute-position.x, self.mouse-y + self.absolute-position.y, root.selection-text());
+                                }
+                            }
+                            moved => {
+                                if self.pressed {
+                                    root.drag-text(self.mouse-x, self.mouse-y);
+                                    root.selection-drag-check(self.absolute-position.y + self.mouse-y);
                                 }
                             }
                         }
@@ -615,9 +766,9 @@ export component AllValuesRow inherits Rectangle {
     // a colour wash over its text; drawn last, over the row, and takes no input
     if expanded: Rectangle {
         x: 0;
-        y: Theme.px(4px);
+        y: max(Theme.px(4px), root.slice-top);
         width: Theme.px(2px);
-        height: parent.height - Theme.px(8px);
+        height: max(0px, min(parent.height - Theme.px(4px), root.slice-bottom) - self.y);
         border-radius: Theme.px(1px);
         background: Theme.accent-blue;
     }

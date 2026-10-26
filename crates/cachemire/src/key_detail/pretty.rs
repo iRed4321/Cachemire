@@ -1,23 +1,31 @@
-//! An open row's pretty text: rendered off the UI thread into the shared cache,
-//! then served from it with find matches highlighted, and searched for selections.
+//! An open row's pretty text: rendered off the UI thread into the shared cache, then
+//! served from it a few lines at a time (see [`super::value_lines`]), with find matches
+//! highlighted, and searched for matches and selections.
 
+use std::cell::RefCell;
+use std::rc::Rc;
 use std::sync::Arc;
 use std::sync::atomic::Ordering;
 
-use slint::ComponentHandle;
-use slint::private_unstable_api::re_exports::StyledText;
+use slint::{ComponentHandle, ModelRc, VecModel};
 
-use crate::{FindResult, KeyPanel, MainWindow, SelectionRange};
+use crate::{FindResult, KeyPanel, LineSelection, MainWindow, ValueLine};
 
-use super::highlight::{find_matches, pretty_styled_text_with_highlights};
+use super::Ctx;
+use super::highlight::window_highlights;
 use super::pretty_text::{ColoredParagraph, paragraphs_for};
-use super::{Ctx, word};
+use super::value_lines::{LineMemos, Lines, VisualLine};
 
 /// Pokes every row to check whether its own field's pretty text has landed
 /// in the cache (via `pretty-is-ready`) — not "tells them which field", so
 /// two renderings completing close together can't race a shared property.
 fn signal_pretty_ready(window: &MainWindow) {
     window.global::<KeyPanel>().set_pretty_ready_tick(window.global::<KeyPanel>().get_pretty_ready_tick().wrapping_add(1));
+}
+
+/// A position as Slint holds it (line, byte offset), negatives as 0.
+fn position(line: i32, offset: i32) -> (usize, usize) {
+    (line.max(0) as usize, offset.max(0) as usize)
 }
 
 /// Wires the KeyPanel callbacks an open row asks its pretty text through.
@@ -40,6 +48,17 @@ pub(super) fn init(window: &MainWindow, ctx: &Ctx) {
             Some(paragraphs)
         }
     };
+    // a field's paragraphs and their lines at `columns` characters, for `with` to read
+    let memos = Rc::new(RefCell::new(LineMemos::default()));
+    let with_lines = {
+        let memos = memos.clone();
+        let cached_or_compute = cached_or_compute.clone();
+        move |name: &str, escaped: bool, columns: i32| -> Option<(Arc<Vec<ColoredParagraph>>, Rc<Vec<VisualLine>>)> {
+            let paragraphs = cached_or_compute(name, escaped)?;
+            let layout = memos.borrow_mut().layout(name, escaped, &paragraphs, columns.max(1) as usize);
+            Some((paragraphs, layout))
+        }
+    };
 
     // a cheap, non-computing peek at the cache: whether `field`'s pretty text is
     // ready yet, for a row to ask about itself on every `pretty-ready-tick` pulse
@@ -49,51 +68,82 @@ pub(super) fn init(window: &MainWindow, ctx: &Ctx) {
         move |field, escaped| pretty_cache.lock().contains(&field, escaped)
     });
 
-    window.global::<KeyPanel>().on_request_pretty_value({
-        let cached_or_compute = cached_or_compute.clone();
+    window.global::<KeyPanel>().on_value_line_count({
+        let with_lines = with_lines.clone();
+        move |field, escaped, columns| with_lines(&field, escaped, columns).map_or(0, |(_, layout)| layout.len() as i32)
+    });
+
+    window.global::<KeyPanel>().on_request_value_lines({
+        let with_lines = with_lines.clone();
+        let memos = memos.clone();
         let content = shared.content.clone();
-        move |field, query, current_match, escaped| {
-            let Some(paragraphs) = cached_or_compute(field.as_str(), escaped) else { return StyledText::default() };
+        move |field, query, current, escaped, columns, first, count| {
+            let Some((paragraphs, layout)) = with_lines(&field, escaped, columns) else { return ModelRc::default() };
+            let query = query.trim().to_lowercase();
+            let finds = memos.borrow_mut().finds(&field, escaped, &paragraphs, &query);
             let filter = content.lock().search.clone();
-            pretty_styled_text_with_highlights(
-                &paragraphs,
-                &filter.highlight_needles(),
-                filter.case_sensitive,
-                &query.trim().to_lowercase(),
-                current_match,
-            )
+            let needles = filter.highlight_needles();
+            let lines = Lines { paragraphs: &paragraphs, layout: &layout };
+            let first = first.max(0) as usize;
+            let built = lines.styled(first..first + count.max(0) as usize, |range| {
+                window_highlights(&paragraphs, range, &needles, filter.case_sensitive, &finds, current)
+            });
+            let rows: Vec<ValueLine> = built.into_iter().map(|(text, len)| ValueLine { text, len: len as i32 }).collect();
+            ModelRc::new(VecModel::from(rows))
         }
     });
 
     window.global::<KeyPanel>().on_find_in_value({
-        let cached_or_compute = cached_or_compute.clone();
-        move |field, query, current_match, escaped| {
+        let with_lines = with_lines.clone();
+        let memos = memos.clone();
+        move |field, query, current_match, escaped, columns| {
             let query = query.trim().to_lowercase();
-            let Some(paragraphs) = cached_or_compute(field.as_str(), escaped) else { return FindResult::default() };
-            let matches = find_matches(&paragraphs, &query, false);
+            let Some((paragraphs, layout)) = with_lines(&field, escaped, columns) else { return FindResult::default() };
+            let matches = memos.borrow_mut().finds(&field, escaped, &paragraphs, &query);
             if matches.is_empty() {
                 return FindResult { count: 0, index: 0, line: 0, label: if query.is_empty() { "" } else { "0" }.into() };
             }
             let count = matches.len() as i32;
             let index = current_match.rem_euclid(count);
-            FindResult { count, index, line: matches[index as usize].0 as i32, label: format!("{}/{count}", index + 1).into() }
+            let (para, range) = &matches[index as usize];
+            let (line, _) = Lines { paragraphs: &paragraphs, layout: &layout }.position_of(*para, range.start);
+            FindResult { count, index, line: line as i32, label: format!("{}/{count}", index + 1).into() }
+        }
+    });
+
+    window.global::<KeyPanel>().on_value_offset_at({
+        let with_lines = with_lines.clone();
+        move |field, escaped, columns, line, column| {
+            let Some((paragraphs, layout)) = with_lines(&field, escaped, columns) else { return 0 };
+            let (line, column) = position(line, column);
+            Lines { paragraphs: &paragraphs, layout: &layout }.offset_at(line, column) as i32
         }
     });
 
     // double click: the word under the click is selected; triple click: the whole value
     window.global::<KeyPanel>().on_value_selection({
-        let cached_or_compute = cached_or_compute.clone();
-        move |field, offset, whole, escaped| {
-            let none = SelectionRange { start: -1, end: -1 };
-            let Some(paragraphs) = cached_or_compute(field.as_str(), escaped) else { return none };
-            let text = word::plain_text(&paragraphs);
-            if whole {
-                return SelectionRange { start: 0, end: text.len() as i32 };
-            }
-            match word::word_range(&text, offset.max(0) as usize) {
-                Some((start, end)) => SelectionRange { start: start as i32, end: end as i32 },
+        let with_lines = with_lines.clone();
+        move |field, escaped, columns, line, offset, whole| {
+            let none = LineSelection { start_line: -1, start_offset: 0, end_line: -1, end_offset: 0 };
+            let Some((paragraphs, layout)) = with_lines(&field, escaped, columns) else { return none };
+            let lines = Lines { paragraphs: &paragraphs, layout: &layout };
+            let range = if whole { Some(((0, 0), lines.end())) } else { lines.word_at(line.max(0) as usize, offset.max(0) as usize) };
+            match range {
+                Some(((sl, so), (el, eo))) => {
+                    LineSelection { start_line: sl as i32, start_offset: so as i32, end_line: el as i32, end_offset: eo as i32 }
+                }
                 None => none,
             }
+        }
+    });
+
+    window.global::<KeyPanel>().on_value_selected_text({
+        let with_lines = with_lines.clone();
+        move |field, escaped, columns, selection| {
+            let Some((paragraphs, layout)) = with_lines(&field, escaped, columns) else { return Default::default() };
+            let from = position(selection.start_line, selection.start_offset);
+            let to = position(selection.end_line, selection.end_offset);
+            Lines { paragraphs: &paragraphs, layout: &layout }.selected_text(from, to).into()
         }
     });
 

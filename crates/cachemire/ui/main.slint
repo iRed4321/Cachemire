@@ -7,7 +7,7 @@ import { ConnectionTransfer, ConnectionTransferModal } from "components/connecti
 import { ConnectionDropdown, ConnectionModal, ConnectionRowData, ConnectionForm, ConnProfileRowData } from "components/connection-picker.slint";
 import { KeyspacePanel, KeyspaceRowData, SavedQueryRowData } from "components/keyspace-panel.slint";
 import { TabBar, TabData, TabContextMenu, SelectionContextMenu, RowContextMenu } from "components/content-header.slint";
-import { KeyDetail, KeyScroll, ExportPrefs, AllValuesRowData, FindResult, SelectionRange, TableRowData, SuggestionRow, CompletionEdit, BadgeData } from "components/key-detail.slint";
+import { KeyDetail, KeyScroll, ExportPrefs, AllValuesRowData, FindResult, LineSelection, ValueLine, TableRowData, SuggestionRow, CompletionEdit, BadgeData } from "components/key-detail.slint";
 import { SearchPanel, SearchRowData } from "components/search-panel.slint";
 import { QueryEditor, QueryToolbar, ResultTabs, HistoryRow } from "components/query-panel.slint";
 import { TableRowData } from "components/key-detail-types.slint";
@@ -19,7 +19,7 @@ import { ConnectionView, ConnectionState, ConnectionEditor, AwsAccount, Preferen
 
 // read and written by Rust: where each tab left the key panel scrolled to
 // (Rust tints the background: see Theme.env-tint)
-export { KeyScroll, ExportPrefs, Theme, About, CloudSettings, ConnectionTransfer, SelectionRange }
+export { KeyScroll, ExportPrefs, Theme, About, CloudSettings, ConnectionTransfer, LineSelection, ValueLine }
 // the enumerations Rust shares with the UI
 export { ConnectionStatus, TreeRowKind, ExportFormat, ExportTarget, LanguageSetting, ProfileTint, KeyView, SidebarView, SearchScope }
 // a badge of the key panel's field/value search bar

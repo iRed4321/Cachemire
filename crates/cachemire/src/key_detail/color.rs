@@ -3,7 +3,7 @@
 
 use slint::Color;
 
-use crate::theme_colors::{JSON_BOOL, JSON_ESCAPE, JSON_KEY, JSON_NUMBER, JSON_PUNCT, JSON_STRING};
+use crate::theme_colors::{JSON_BOOL, JSON_ESCAPE, JSON_KEY, JSON_NUMBER, JSON_PUNCT, JSON_STRING, JSON_TOO_LONG};
 
 pub(super) fn color_for_kind(kind: &str) -> Option<Color> {
     match kind {
@@ -13,6 +13,7 @@ pub(super) fn color_for_kind(kind: &str) -> Option<Color> {
         "number" => Some(JSON_NUMBER),
         "punct" => Some(JSON_PUNCT),
         "escape" => Some(JSON_ESCAPE),
+        "too-long" => Some(JSON_TOO_LONG),
         _ => None, // null / anything else: falls back to StyledText's default-color
     }
 }

@@ -4,6 +4,15 @@ Every stable release of Cachemire; `Unreleased` is what the next one brings. Bet
 
 ## Unreleased
 
+### Changed
+
+- **Large values**: a hash field is now shown up to 4 MB (was 128 KB); past that, it shows its size with buttons to open, save or copy it, and **Try to load** to read and show it
+- **Long strings**: a string over 10,000 bytes inside a value is shown as `[REDACTED: string too long]` in its own color; opening, saving or copying the value still gives it whole
+
+### Fixes
+
+- **Values**: opening a value of thousands of lines no longer crashes the app
+
 ## 3.1.1 - 2026-10-22
 
 ### Fixes

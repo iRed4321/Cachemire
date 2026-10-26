@@ -112,12 +112,12 @@ fn run_export(
             },
             _ => None,
         };
-        let too_long: Vec<String> = fields.iter().filter(|f| f.too_long.is_some()).map(|f| f.name.clone()).collect();
-        let read = if too_long.is_empty() {
+        let unread: Vec<String> = fields.iter().filter(|f| f.too_long.is_some()).map(|f| f.name.clone()).collect();
+        let read = if unread.is_empty() {
             Vec::new()
         } else {
-            match explorer::hash_full_values(&state, None, &KeyName::from_id(&key), &too_long).await {
-                Ok(values) => too_long.into_iter().zip(values).collect(),
+            match explorer::hash_full_values(&state, None, &KeyName::from_id(&key), &unread).await {
+                Ok(values) => unread.into_iter().zip(values).collect(),
                 Err(e) => {
                     tracing::warn!("reading the values left out for their size failed: {e}");
                     return;

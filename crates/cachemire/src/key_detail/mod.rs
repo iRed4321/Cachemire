@@ -21,6 +21,7 @@ mod color;
 mod export;
 mod field;
 mod filtering;
+mod full_value;
 mod highlight;
 mod load;
 mod paging;
@@ -34,6 +35,7 @@ mod table;
 mod test_support;
 #[cfg(test)]
 pub(crate) mod tests;
+mod value_lines;
 mod value_list;
 mod word;
 
@@ -398,6 +400,10 @@ pub fn init(window: &MainWindow, state: Arc<AppState>, rt: Handle) -> KeyDetail 
 
     pretty::init(window, &ctx);
     export::init(window, &ctx);
+    panel.on_load_value({
+        let ctx = ctx.clone();
+        move |field| ctx.load_full_value(&field)
+    });
 
     panel.on_table_clear_selection({
         let weak = window.as_weak();
