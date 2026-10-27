@@ -208,7 +208,7 @@ A try build counts as a beta for the app's updates.
 
 The Slint fork is left alone: it's pinned to a commit on purpose. The config is [`.github/renovate.json`](../.github/renovate.json).
 
-**What happens, each night at 2am (Paris time):**
+**What happens, each night** (scheduled at 01:00 UTC: 2am in Paris in winter, 3am in summer; GitHub often starts it a few hours later):
 
 1. **Renovate** opens its pull requests (`renovate/*`), with auto-merge on: GitHub merges each one once its checks pass, and Renovate rebases the others, as `main` needs them up to date. Its *Dependency Dashboard* issue lists what's pending; ticking a box there makes it act at its next run.
 2. **After each merge into `main`**, the workflow runs Renovate again, to rebase the others at once, then `cargo ship deps-release`. Once none of Renovate's pull requests is on its way into `main` any more (one with a failed check doesn't count), and no other release is under way, it:
@@ -226,7 +226,7 @@ The Slint fork is left alone: it's pinned to a commit on purpose. The config is 
 - **Security**: tokio updated, fixing RUSTSEC-2026-0384
 ```
 
-**By hand**, without waiting for 2am: **Actions** → **Dependencies** → **Run workflow**, or `gh workflow run dependencies.yml`. Check **everything** (`-f everything=true`) to have the weekly updates too, whatever the day.
+**By hand**, without waiting for the night: **Actions** → **Dependencies** → **Run workflow**, or `gh workflow run dependencies.yml`. Check **everything** (`-f everything=true`) to have the weekly updates too, whatever the day.
 
 If Renovate's pull request fails its checks (an update breaks the build or a test), it stays open, and holds nothing up: correct it on its branch, or close it to skip that version.
 
@@ -300,7 +300,7 @@ To see what a request would release without pushing anything: `cargo xtask next-
 
 | Job | Started by | Does |
 |---|---|---|
-| Renovate | each night at 2am Paris time (two schedules, 00:07 and 01:07 UTC, the one that isn't 2am in Paris doing nothing), by hand, and each push to `main` | runs Renovate on the repository |
+| Renovate | each night (01:00 UTC, often started hours later by GitHub), by hand, and each push to `main` | runs Renovate on the repository |
 | Release the updates | after Renovate | `cargo ship deps-release` |
 | Bring main into next | the Release workflow's success on a merged pull request | `cargo ship sync` on `next` |
 
