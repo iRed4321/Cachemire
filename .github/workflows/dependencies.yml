@@ -41,7 +41,7 @@ jobs:
       group: renovate
       cancel-in-progress: false
     steps:
-      - uses: renovatebot/github-action@v46.3.7
+      - uses: renovatebot/github-action@v46.3.9
         with:
           token: ${{ secrets.RENOVATE_TOKEN }}
         env:
