@@ -195,236 +195,243 @@ export component AllValuesTable inherits Rectangle {
         check-near-end();
     }
 
-    HorizontalLayout {
-        Rectangle {
-            horizontal-stretch: 1;
-            // the fixed header riding up with the end of its row is cut at the top of the
-            // view, not drawn over the filter bar above
-            clip: true;
+    // where the pointer is over the view (it sees moves its rows take too): the
+    // scrollbar shows once it gets close to the right edge
+    values-pointer := TouchArea {
+        HorizontalLayout {
+            Rectangle {
+                horizontal-stretch: 1;
+                // the fixed header riding up with the end of its row is cut at the top of the
+                // view, not drawn over the filter bar above
+                clip: true;
 
-            all-values-flick := Flickable {
-                width: 100%;
-                height: 100%;
-                // rows hold selectable StyledText, so drag always selects, never
-                // pans; wheel scroll still works regardless of `interactive`
-                interactive: false;
-                // never wider than the view: long values wrap instead of scrolling sideways
-                content-width: self.width;
-                init => {
-                    root.flick-height-snapshot = self.height;
-                    root.content-y-snapshot = self.content-y;
-                    KeyScroll.all-y = self.content-y;
-                    root.apply-restore();
-                    root.grow-if-needed();
-                    root.grow-for-reveal();
-                    root.check-near-end();
-                }
-                changed height => {
-                    root.flick-height-snapshot = self.height;
-                    root.grow-if-needed();
-                    root.check-near-end();
-                }
-                changed content-y => {
-                    root.content-y-snapshot = self.content-y;
-                    KeyScroll.all-y = self.content-y;
-                    root.grow-if-needed();
-                    root.check-near-end();
-                    root.check-near-start();
-                }
-                changed content-height => { root.apply-restore(); }
-                // inertial wheel scrolling, behind the rows (see WheelScroller).
-                // Kept under the visible frame via the snapshots — a "100%"
-                // child would only cover the frame's top, once scrolled.
-                WheelScroller {
-                    x: 0;
-                    y: -root.content-y-snapshot;
+                all-values-flick := Flickable {
                     width: 100%;
-                    height: root.flick-height-snapshot;
-                    scroll-by(delta) => {
-                        if delta > 0px {
-                            root.check-near-start();
-                        }
-                        let scroll-range = max(0px, all-values-flick.content-height - all-values-flick.height);
-                        all-values-flick.content-y = max(-scroll-range, min(0px, all-values-flick.content-y + delta));
+                    height: 100%;
+                    // rows hold selectable StyledText, so drag always selects, never
+                    // pans; wheel scroll still works regardless of `interactive`
+                    interactive: false;
+                    // never wider than the view: long values wrap instead of scrolling sideways
+                    content-width: self.width;
+                    init => {
+                        root.flick-height-snapshot = self.height;
+                        root.content-y-snapshot = self.content-y;
+                        KeyScroll.all-y = self.content-y;
+                        root.apply-restore();
+                        root.grow-if-needed();
+                        root.grow-for-reveal();
+                        root.check-near-end();
                     }
-                }
-                VerticalLayout {
-                    // the view's width, not the widest unwrapped line's: the text wraps
-                    width: parent.width;
-                    alignment: start;
-                    padding: Theme.px(10px);
-                    // rows are flush (see AllValuesRow's padding); the header
-                    // keeps its breathing room via its own padding
-                    spacing: 0px;
+                    changed height => {
+                        root.flick-height-snapshot = self.height;
+                        root.grow-if-needed();
+                        root.check-near-end();
+                    }
+                    changed content-y => {
+                        root.content-y-snapshot = self.content-y;
+                        KeyScroll.all-y = self.content-y;
+                        root.grow-if-needed();
+                        root.check-near-end();
+                        root.check-near-start();
+                    }
+                    changed content-height => { root.apply-restore(); }
+                    // inertial wheel scrolling, behind the rows (see WheelScroller).
+                    // Kept under the visible frame via the snapshots — a "100%"
+                    // child would only cover the frame's top, once scrolled.
+                    WheelScroller {
+                        x: 0;
+                        y: -root.content-y-snapshot;
+                        width: 100%;
+                        height: root.flick-height-snapshot;
+                        scroll-by(delta) => {
+                            if delta > 0px {
+                                root.check-near-start();
+                            }
+                            let scroll-range = max(0px, all-values-flick.content-height - all-values-flick.height);
+                            all-values-flick.content-y = max(-scroll-range, min(0px, all-values-flick.content-y + delta));
+                        }
+                    }
+                    VerticalLayout {
+                        // the view's width, not the widest unwrapped line's: the text wraps
+                        width: parent.width;
+                        alignment: start;
+                        padding: Theme.px(10px);
+                        // rows are flush (see AllValuesRow's padding); the header
+                        // keeps its breathing room via its own padding
+                        spacing: 0px;
 
-                    Rectangle {
-                        background: Theme.bg-elevated;
-                        border-radius: Theme.radius-sm;
-                        // column titles (the search bar above the filter bar does the
-                        // filtering now — see KeyDetail.filter-badges)
-                        HorizontalLayout {
-                            padding-top: Theme.px(4px);
-                            padding-bottom: Theme.px(4px);
-                            padding-left: Theme.px(4px);
-                            padding-right: Theme.px(4px);
-                            spacing: 0px;
-                            Rectangle {
-                                width: field-col-width;
-                                HorizontalLayout {
-                                    alignment: start;
-                                    spacing: Theme.px(2px);
-                                    Text {
-                                        text: @tr("Field");
-                                        font-size: Theme.pt(10.5px);
-                                        font-weight: 700;
-                                        color: Theme.text-secondary;
-                                        vertical-alignment: center;
-                                        overflow: elide;
-                                    }
-                                    if root.sortable: Rectangle {
-                                        width: Theme.px(20px);
-                                        IconSortTriangle {
-                                            x: (parent.width - self.width) / 2;
-                                            y: (parent.height - self.height) / 2;
-                                            size: Theme.icon-xs;
-                                            up: !root.descending;
-                                            tint: sort-area.has-hover ? Theme.text-primary : Theme.text-tertiary;
+                        Rectangle {
+                            background: Theme.bg-elevated;
+                            border-radius: Theme.radius-sm;
+                            // column titles (the search bar above the filter bar does the
+                            // filtering now — see KeyDetail.filter-badges)
+                            HorizontalLayout {
+                                padding-top: Theme.px(4px);
+                                padding-bottom: Theme.px(4px);
+                                padding-left: Theme.px(4px);
+                                padding-right: Theme.px(4px);
+                                spacing: 0px;
+                                Rectangle {
+                                    width: field-col-width;
+                                    HorizontalLayout {
+                                        alignment: start;
+                                        spacing: Theme.px(2px);
+                                        Text {
+                                            text: @tr("Field");
+                                            font-size: Theme.pt(10.5px);
+                                            font-weight: 700;
+                                            color: Theme.text-secondary;
+                                            vertical-alignment: center;
+                                            overflow: elide;
                                         }
-                                        sort-area := TouchArea {
-                                            mouse-cursor: pointer;
-                                            clicked => { root.sort-toggled(); }
+                                        if root.sortable: Rectangle {
+                                            width: Theme.px(20px);
+                                            IconSortTriangle {
+                                                x: (parent.width - self.width) / 2;
+                                                y: (parent.height - self.height) / 2;
+                                                size: Theme.icon-xs;
+                                                up: !root.descending;
+                                                tint: sort-area.has-hover ? Theme.text-primary : Theme.text-tertiary;
+                                            }
+                                            sort-area := TouchArea {
+                                                mouse-cursor: pointer;
+                                                clicked => { root.sort-toggled(); }
+                                            }
                                         }
                                     }
                                 }
-                            }
-                            HResizeHandle {
-                                width: resize-handle-w;
-                                dragged(delta) => {
-                                    field-col-override = max(Theme.px(40px), min(root.width - Theme.px(160px), field-col-width + delta));
+                                HResizeHandle {
+                                    width: resize-handle-w;
+                                    dragged(delta) => {
+                                        field-col-override = max(Theme.px(40px), min(root.width - Theme.px(160px), field-col-width + delta));
+                                    }
                                 }
-                            }
-                            Text {
-                                text: @tr("Value");
-                                horizontal-stretch: 1;
-                                font-size: Theme.pt(10.5px);
-                                font-weight: 700;
-                                color: Theme.text-secondary;
-                                vertical-alignment: center;
-                                overflow: elide;
+                                Text {
+                                    text: @tr("Value");
+                                    horizontal-stretch: 1;
+                                    font-size: Theme.pt(10.5px);
+                                    font-weight: 700;
+                                    color: Theme.text-secondary;
+                                    vertical-alignment: center;
+                                    overflow: elide;
+                                }
                             }
                         }
-                    }
-                    HDivider { }
-                    // a VerticalLayout wrapper because a Rectangle wouldn't
-                    // auto-size to a conditional child
-                    for row[i] in rows: VerticalLayout {
-                        if i < rendered-count: AllValuesRow {
-                            index: i;
-                            field: row.field;
-                            value-compact: row.value-compact;
-                            value-compact-escaped: row.value-compact-escaped;
-                            too-long: row.too-long;
-                            loading: row.loading;
-                            initial-expanded: row.initial-expanded;
-                            field-col-width: root.field-col-width;
-                            row-y: parent.y;
-                            row-height: parent.height;
-                            // paint only rows near the viewport (see AllValuesRow.in-paint-window)
-                            visible: self.in-paint-window;
-                            view-top: root.view-top;
-                            stuck-find-query: root.stuck-find-query;
-                            stuck-escaped: root.stuck-escaped;
-                            command-index: root.stuck-index;
-                            command-kind: root.command-kind;
-                            command-tick: root.command-tick;
-                            overlay-focused: root.overlay-focused;
-                            stuck-changed(active, field, query, label, count, limit, escaped) => {
-                                if active {
-                                    root.stuck-index = i;
-                                    root.stuck-field = field;
-                                    root.stuck-find-query = query;
-                                    root.stuck-escaped = escaped;
-                                    root.stuck-find-label = label;
-                                    root.stuck-find-count = count;
-                                    root.stuck-limit = limit;
-                                } else if root.stuck-index == i {
-                                    root.stuck-index = -1;
-                                    root.overlay-focused = false;
+                        HDivider { }
+                        // a VerticalLayout wrapper because a Rectangle wouldn't
+                        // auto-size to a conditional child
+                        for row[i] in rows: VerticalLayout {
+                            if i < rendered-count: AllValuesRow {
+                                index: i;
+                                field: row.field;
+                                value-compact: row.value-compact;
+                                value-compact-escaped: row.value-compact-escaped;
+                                too-long: row.too-long;
+                                loading: row.loading;
+                                initial-expanded: row.initial-expanded;
+                                field-col-width: root.field-col-width;
+                                row-y: parent.y;
+                                row-height: parent.height;
+                                // paint only rows near the viewport (see AllValuesRow.in-paint-window)
+                                visible: self.in-paint-window;
+                                view-top: root.view-top;
+                                stuck-find-query: root.stuck-find-query;
+                                stuck-escaped: root.stuck-escaped;
+                                command-index: root.stuck-index;
+                                command-kind: root.command-kind;
+                                command-tick: root.command-tick;
+                                overlay-focused: root.overlay-focused;
+                                stuck-changed(active, field, query, label, count, limit, escaped) => {
+                                    if active {
+                                        root.stuck-index = i;
+                                        root.stuck-field = field;
+                                        root.stuck-find-query = query;
+                                        root.stuck-escaped = escaped;
+                                        root.stuck-find-label = label;
+                                        root.stuck-find-count = count;
+                                        root.stuck-limit = limit;
+                                    } else if root.stuck-index == i {
+                                        root.stuck-index = -1;
+                                        root.overlay-focused = false;
+                                    }
                                 }
-                            }
-                            focus-overlay => { root.overlay-focus-tick += 1; }
-                            view-height: root.view-height;
-                            paint-buffer: root.paint-buffer-px;
-                            selection-owner: root.selection-owner;
-                            collapse-tick: root.collapse-tick;
-                            context-requested(x, y, selected) => { root.context-requested(x, y, selected); }
-                            expanded-changed(field, expanded) => { root.field-expanded-changed(field, expanded); }
-                            reveal(abs-y) => { root.reveal(abs-y); }
-                            // a row near the end of the list can't reach the top of
-                            // the viewport once the content is shorter: it lands at
-                            // the lowest position still in range
-                            scroll-to-top(y, shrink) => {
-                                let new-range = max(0px, all-values-flick.content-height - shrink - all-values-flick.height);
-                                all-values-flick.content-y = -min(y, new-range);
-                            }
-                            selection-drag-check(abs-y) => {
-                                selection-owner = row.field;
-                                selection-dragging = true;
-                                if abs-y < all-values-flick.absolute-position.y + selection-edge-threshold {
-                                    selection-scroll-dir = -1;
-                                } else if abs-y > all-values-flick.absolute-position.y + all-values-flick.height - selection-edge-threshold {
-                                    selection-scroll-dir = 1;
-                                } else {
+                                focus-overlay => { root.overlay-focus-tick += 1; }
+                                view-height: root.view-height;
+                                paint-buffer: root.paint-buffer-px;
+                                selection-owner: root.selection-owner;
+                                collapse-tick: root.collapse-tick;
+                                context-requested(x, y, selected) => { root.context-requested(x, y, selected); }
+                                expanded-changed(field, expanded) => { root.field-expanded-changed(field, expanded); }
+                                reveal(abs-y) => { root.reveal(abs-y); }
+                                // a row near the end of the list can't reach the top of
+                                // the viewport once the content is shorter: it lands at
+                                // the lowest position still in range
+                                scroll-to-top(y, shrink) => {
+                                    let new-range = max(0px, all-values-flick.content-height - shrink - all-values-flick.height);
+                                    all-values-flick.content-y = -min(y, new-range);
+                                }
+                                selection-drag-check(abs-y) => {
+                                    selection-owner = row.field;
+                                    selection-dragging = true;
+                                    if abs-y < all-values-flick.absolute-position.y + selection-edge-threshold {
+                                        selection-scroll-dir = -1;
+                                    } else if abs-y > all-values-flick.absolute-position.y + all-values-flick.height - selection-edge-threshold {
+                                        selection-scroll-dir = 1;
+                                    } else {
+                                        selection-scroll-dir = 0;
+                                    }
+                                }
+                                selection-drag-ended => {
+                                    selection-dragging = false;
                                     selection-scroll-dir = 0;
                                 }
                             }
-                            selection-drag-ended => {
-                                selection-dragging = false;
-                                selection-scroll-dir = 0;
-                            }
                         }
+                        Rectangle { height: max(0px, (rows.length - rendered-count) * collapsed-row-stride); }
+                        HDivider { }
                     }
-                    Rectangle { height: max(0px, (rows.length - rendered-count) * collapsed-row-stride); }
-                    HDivider { }
+                }
+
+                // the fixed header of the stuck row (see `stuck-index`), over the rows: at
+                // the top of the view, or riding up with the end of its row
+                if root.stuck-index >= 0: RowHeader {
+                    x: Theme.px(14px);
+                    y: min(0px, root.stuck-limit - root.view-top);
+                    width: parent.width - Theme.px(28px);
+                    hairline: true;
+                    field: root.stuck-field;
+                    find-query <=> root.stuck-find-query;
+                    escaped <=> root.stuck-escaped;
+                    find-label: root.stuck-find-label;
+                    find-count: root.stuck-find-count;
+                    focus-tick: root.overlay-focus-tick;
+                    collapse => { root.command(3); }
+                    find-accepted => { root.command(0); }
+                    find-step(step) => { root.command(step < 0 ? 1 : 2); }
+                    find-focus-changed(focused) => { root.overlay-focused = focused; }
+                }
+                // once scrolled down a little: back to the first row
+                if root.view-top > Theme.px(120px): ScrollTopButton {
+                    x: parent.width - self.width - Theme.px(25px);
+                    y: parent.height - self.height - Theme.px(16px);
+                    clicked => { all-values-flick.content-y = 0px; }
                 }
             }
-
-            // the fixed header of the stuck row (see `stuck-index`), over the rows: at
-            // the top of the view, or riding up with the end of its row
-            if root.stuck-index >= 0: RowHeader {
-                x: Theme.px(14px);
-                y: min(0px, root.stuck-limit - root.view-top);
-                width: parent.width - Theme.px(28px);
-                hairline: true;
-                field: root.stuck-field;
-                find-query <=> root.stuck-find-query;
-                escaped <=> root.stuck-escaped;
-                find-label: root.stuck-find-label;
-                find-count: root.stuck-find-count;
-                focus-tick: root.overlay-focus-tick;
-                collapse => { root.command(3); }
-                find-accepted => { root.command(0); }
-                find-step(step) => { root.command(step < 0 ? 1 : 2); }
-                find-focus-changed(focused) => { root.overlay-focused = focused; }
+            VScrollBar {
+                content-height: all-values-flick.content-height;
+                content-y <=> all-values-flick.content-y;
+                scale: Theme.view-scrollbar-scale;
+                linger: Theme.view-scrollbar-linger;
+                nearby: values-pointer.has-hover && values-pointer.mouse-x > values-pointer.width - Theme.view-scrollbar-reach;
             }
-            // once scrolled down a little: back to the first row
-            if root.view-top > Theme.px(120px): ScrollTopButton {
-                x: parent.width - self.width - Theme.px(18px);
-                y: parent.height - self.height - Theme.px(16px);
-                clicked => { all-values-flick.content-y = 0px; }
-            }
-        }
-        VScrollBar {
-            content-height: all-values-flick.content-height;
-            content-y <=> all-values-flick.content-y;
-        }
-        Timer {
-            interval: 16ms;
-            running: selection-dragging && selection-scroll-dir != 0;
-            triggered => {
-                let scroll-range = max(0px, all-values-flick.content-height - all-values-flick.height);
-                all-values-flick.content-y = max(-scroll-range, min(0px,
-                    all-values-flick.content-y - selection-scroll-dir * selection-scroll-step));
+            Timer {
+                interval: 16ms;
+                running: selection-dragging && selection-scroll-dir != 0;
+                triggered => {
+                    let scroll-range = max(0px, all-values-flick.content-height - all-values-flick.height);
+                    all-values-flick.content-y = max(-scroll-range, min(0px,
+                        all-values-flick.content-y - selection-scroll-dir * selection-scroll-step));
+                }
             }
         }
     }

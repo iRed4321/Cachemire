@@ -285,42 +285,62 @@ export component VScrollBar inherits Rectangle {
     property <length> track-travel: self.height - thumb-height;
     property <length> scroll-range: max(0px, content-height - self.height);
 
+    // how much thicker than usual the strip and thumb are drawn
+    in property <float> scale: 1.0;
+    // the host's pointer is close to the bar: it shows as if hovered
+    in property <bool> nearby: false;
+    // how much longer the bar stays after a scroll, a hover or `nearby` end
+    in property <duration> linger: 0ms;
+    property <length> strip: Theme.scrollbar-size * scale;
+
     property <bool> scrolling: false;
     property <duration> last-scroll: 0ms;
     property <bool> over-thumb: thumb-area.has-hover || thumb-area.pressed;
-    property <bool> engaged: scrolling || track-area.has-hover || over-thumb;
+    property <bool> pointed: track-area.has-hover || over-thumb || nearby;
+    property <bool> lingering: false;
+    property <duration> left-at: 0ms;
+    property <bool> engaged: scrolling || pointed || lingering;
     changed content-y => {
         root.scrolling = true;
         root.last-scroll = animation-tick();
     }
+    changed pointed => {
+        if !root.pointed && root.linger > 0ms {
+            root.lingering = true;
+            root.left-at = animation-tick();
+        }
+    }
     Timer {
         interval: 200ms;
-        running: root.scrolling;
+        running: root.scrolling || root.lingering;
         triggered => {
-            if animation-tick() - root.last-scroll > 700ms {
+            if animation-tick() - root.last-scroll > 700ms + root.linger {
                 root.scrolling = false;
+            }
+            if animation-tick() - root.left-at > root.linger {
+                root.lingering = false;
             }
         }
     }
 
     // hover zone only: nothing else lives in this strip
     track := Rectangle {
-        x: -Theme.scrollbar-size;
-        width: Theme.scrollbar-size;
+        x: -root.strip;
+        width: root.strip;
         height: root.height;
         background: root.engaged ? Theme.bg-elevated.with-alpha(0.9) : Theme.bg-elevated.with-alpha(0);
         animate background { duration: 130ms; }
     }
 
     track-area := TouchArea {
-        x: -Theme.scrollbar-size;
-        width: Theme.scrollbar-size;
+        x: -root.strip;
+        width: root.strip;
         height: root.height;
     }
 
     thumb := Rectangle {
-        width: root.over-thumb ? Theme.px(8px) : Theme.px(6px);
-        x: -self.width - Theme.px(3px);
+        width: (root.over-thumb ? Theme.px(8px) : Theme.px(6px)) * root.scale;
+        x: -self.width - Theme.px(3px) * root.scale;
         height: root.thumb-height;
         y: root.track-travel <= 0px ? 0px : root.track-travel * (-root.content-y / root.scroll-range);
         border-radius: self.width / 2;
@@ -367,41 +387,61 @@ export component HScrollBar inherits Rectangle {
     property <length> track-travel: self.width - thumb-width;
     property <length> scroll-range: max(0px, content-width - self.width);
 
+    // how much thicker than usual the strip and thumb are drawn
+    in property <float> scale: 1.0;
+    // the host's pointer is close to the bar: it shows as if hovered
+    in property <bool> nearby: false;
+    // how much longer the bar stays after a scroll, a hover or `nearby` end
+    in property <duration> linger: 0ms;
+    property <length> strip: Theme.scrollbar-size * scale;
+
     property <bool> scrolling: false;
     property <duration> last-scroll: 0ms;
     property <bool> over-thumb: thumb-area.has-hover || thumb-area.pressed;
-    property <bool> engaged: scrolling || track-area.has-hover || over-thumb;
+    property <bool> pointed: track-area.has-hover || over-thumb || nearby;
+    property <bool> lingering: false;
+    property <duration> left-at: 0ms;
+    property <bool> engaged: scrolling || pointed || lingering;
     changed content-x => {
         root.scrolling = true;
         root.last-scroll = animation-tick();
     }
+    changed pointed => {
+        if !root.pointed && root.linger > 0ms {
+            root.lingering = true;
+            root.left-at = animation-tick();
+        }
+    }
     Timer {
         interval: 200ms;
-        running: root.scrolling;
+        running: root.scrolling || root.lingering;
         triggered => {
-            if animation-tick() - root.last-scroll > 700ms {
+            if animation-tick() - root.last-scroll > 700ms + root.linger {
                 root.scrolling = false;
+            }
+            if animation-tick() - root.left-at > root.linger {
+                root.lingering = false;
             }
         }
     }
 
     track := Rectangle {
-        y: -Theme.scrollbar-size;
+        y: -root.strip;
         width: root.width;
-        height: Theme.scrollbar-size;
+        height: root.strip;
         background: root.engaged ? Theme.bg-elevated.with-alpha(0.9) : Theme.bg-elevated.with-alpha(0);
         animate background { duration: 130ms; }
     }
 
     track-area := TouchArea {
-        y: -Theme.scrollbar-size;
+        y: -root.strip;
         width: root.width;
-        height: Theme.scrollbar-size;
+        height: root.strip;
     }
 
     thumb := Rectangle {
-        height: root.over-thumb ? Theme.px(8px) : Theme.px(6px);
-        y: -self.height - Theme.px(3px);
+        height: (root.over-thumb ? Theme.px(8px) : Theme.px(6px)) * root.scale;
+        y: -self.height - Theme.px(3px) * root.scale;
         width: root.thumb-width;
         x: root.track-travel <= 0px ? 0px : root.track-travel * (-root.content-x / root.scroll-range);
         border-radius: self.height / 2;

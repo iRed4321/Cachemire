@@ -3,7 +3,7 @@
 //! Passwords live in the OS credential store.
 
 use rustc_hash::FxHashSet;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
 use serde::{Deserialize, Serialize};
@@ -53,6 +53,9 @@ struct StoredSettings {
     // whether the app looks for an update on that channel each time it starts
     #[serde(default)]
     check_updates_at_startup: bool,
+    // whether the app reopens the last connection with its tabs and open folders
+    #[serde(default)]
+    restore_session: bool,
     // experimental: the global search filters inside Redis, with a script
     #[serde(default)]
     server_search: bool,
@@ -134,6 +137,11 @@ impl SettingsStore {
         Self { file_path, state, vault, unloaded, vault_usable: true, dry_run: false }
     }
 
+    /// Where the settings are saved: the app's other files sit next to it.
+    pub fn file_path(&self) -> &Path {
+        &self.file_path
+    }
+
     pub fn language(&self) -> Language {
         Language::from_code(&self.state.language)
     }
@@ -183,6 +191,17 @@ impl SettingsStore {
     pub fn set_check_updates_at_startup(&mut self, enabled: bool) -> Result<(), Error> {
         let mut next = self.state.clone();
         next.check_updates_at_startup = enabled;
+        self.commit(next, false)
+    }
+
+    /// Whether the app reopens, at start, the connection it was closed on, with its tabs and open folders.
+    pub fn restore_session(&self) -> bool {
+        self.state.restore_session
+    }
+
+    pub fn set_restore_session(&mut self, enabled: bool) -> Result<(), Error> {
+        let mut next = self.state.clone();
+        next.restore_session = enabled;
         self.commit(next, false)
     }
 

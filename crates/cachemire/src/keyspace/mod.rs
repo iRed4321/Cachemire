@@ -17,6 +17,7 @@ use cachemire_core::key_name::KeyName;
 use cachemire_core::redis_value_type::RedisValueType;
 use cachemire_core::state::AppState;
 
+mod edit;
 mod index;
 mod search;
 mod selection;
@@ -162,12 +163,24 @@ struct Tree {
     pending_expand: Vec<String>,
     // what export mode has ticked
     export: Selection,
+    // the connection the tree shows ("" for none), and the folders each one
+    // left open when another was connected, reopened when it comes back
+    connection: String,
+    parked_folders: FxHashMap<String, Vec<String>>,
 }
 
 impl Tree {
     /// The index the rows come from: the search's while there is one.
     fn shown(&self) -> &Index {
         self.search.as_ref().map_or(&self.index, |s| &s.index)
+    }
+
+    /// The folders open in the browse listing (none while a search is shown).
+    fn open_folders(&self) -> Vec<String> {
+        if self.search.is_some() {
+            return Vec::new();
+        }
+        self.nodes.iter().filter(|n| n.is_folder && n.expanded).map(|n| n.full_name.clone()).collect()
     }
 }
 
@@ -352,6 +365,26 @@ fn expand(window: &MainWindow, tree: &mut Tree, pos: usize) {
     refresh_row(window, tree, pos);
 }
 
+/// Builds the rows anew from the shown index (after keys left it), the folders
+/// that were open, and still exist, opened again.
+fn rebuild(window: &MainWindow, tree: &mut Tree) {
+    let mut open: Vec<String> = tree.nodes.iter().filter(|n| n.is_folder && n.expanded).map(|n| n.full_name.clone()).collect();
+    open.sort_by_key(|name| name.matches(DELIMITER).count());
+    tree.nodes.clear();
+    with_model(window, |model| model.set_vec(Vec::new()));
+    let nodes = nodes_from_children(tree.shown(), 0, &tree.shown().children(""));
+    merge_children(window, tree, None, nodes);
+    for name in open {
+        if let Some(pos) = position_of(tree, &name) {
+            expand(window, tree, pos);
+        }
+    }
+    walk::show_footer(window, tree);
+    if tree.export.on {
+        selection::refresh(window, tree);
+    }
+}
+
 /// The folders `key` lives under, shallowest first: `a:b:c` yields `a:`, `a:b:`.
 fn ancestor_folders(key: &str) -> Vec<String> {
     key.match_indices(DELIMITER).map(|(i, _)| key[..i + DELIMITER.len()].to_string()).collect()
@@ -458,6 +491,8 @@ impl Keyspace {
             search: None,
             pending_expand: Vec::new(),
             export: Selection::default(),
+            connection: String::new(),
+            parked_folders: FxHashMap::default(),
         };
         Self(ScanContext {
             weak: window.as_weak(),
@@ -472,20 +507,45 @@ impl Keyspace {
 
 /// Connecting (possibly to a different server): the keyspace is walked anew, and
 /// any search belonged to the previous one, so the box is cleared with the tree.
+/// The folders open are kept for the connection left, and its own come back open.
 pub fn reload(app: &App) {
     let ctx = &app.keyspace.0;
-    if let Some(window) = ctx.weak.upgrade() {
-        window.global::<KeyTree>().set_search_text("".into());
-    }
+    let Some(window) = ctx.weak.upgrade() else { return };
+    window.global::<KeyTree>().set_search_text("".into());
+    let connection = window.connection_id().to_string();
     selection::reset(ctx);
-    // no rows left to re-expand: another connection starts with its folders closed
-    ctx.tree.lock().nodes.clear();
-    load_root(ctx, false);
+    let reopen = {
+        let mut tree = ctx.tree.lock();
+        let leaving = std::mem::replace(&mut tree.connection, connection.clone());
+        // no connection left (a disconnect, a delete): its folders go with its tabs
+        if !leaving.is_empty() && !connection.is_empty() {
+            let open = tree.open_folders();
+            tree.parked_folders.insert(leaving, open);
+        }
+        tree.parked_folders.remove(&connection).unwrap_or_default()
+    };
+    load_root(ctx, false, reopen);
+}
+
+/// The folders open in the tree of the connection shown.
+pub fn open_folders(app: &App) -> Vec<String> {
+    app.keyspace.0.tree.lock().open_folders()
+}
+
+/// Keeps `folders` as those `connection` reopens once it is connected.
+pub fn park_folders(app: &App, connection: &str, folders: Vec<String>) {
+    app.keyspace.0.tree.lock().parked_folders.insert(connection.to_string(), folders);
+}
+
+/// Drops what is kept of a connection that was deleted.
+pub fn forget(app: &App, connection: &str) {
+    app.keyspace.0.tree.lock().parked_folders.remove(connection);
 }
 
 /// Wires the tree's rows, its search box and its refresh button.
 pub fn init(app: &Rc<App>, window: &MainWindow) {
     selection::init(app, window);
+    edit::init(app, window);
     window.global::<KeyTree>().on_row_clicked({
         let app = app.clone();
         move |full_name| on_row_clicked(&app, full_name.to_string())
@@ -506,7 +566,8 @@ pub fn init(app: &Rc<App>, window: &MainWindow) {
             if let Some(window) = ctx.weak.upgrade() {
                 crate::connect_active(&window, ctx.state.clone(), &ctx.rt);
             }
-            load_root(ctx, true);
+            let reopen = ctx.tree.lock().open_folders();
+            load_root(ctx, true, reopen);
         }
     });
 }

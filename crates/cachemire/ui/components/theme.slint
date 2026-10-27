@@ -113,6 +113,11 @@ export global Theme {
     // thickness of a scrollbar's track: the strip that wakes the bar when the
     // pointer comes near it (the thumb inside is thinner)
     out property <length> scrollbar-size: px(14px);
+    // the key panel's views (fields, table): scrollbars drawn thicker, shown once the
+    // pointer is this close to their edge, and left a while longer after
+    out property <float> view-scrollbar-scale: 1.5;
+    out property <length> view-scrollbar-reach: px(48px);
+    out property <duration> view-scrollbar-linger: 2s;
 
     // icon glyph sizes — the size passed to an Icon* component's `size` property
     out property <length> icon-xs: px(12px);  // chevrons, tiny accents

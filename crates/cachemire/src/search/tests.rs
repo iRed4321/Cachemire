@@ -11,10 +11,10 @@ fn key(name: &str, entries: &[(&str, &str)]) -> KeyEntries {
 #[test]
 fn a_search_tab_id_is_never_a_key() {
     let mut tabs = SearchTabs::default();
-    let id = tabs.create();
+    let id = tabs.create(String::new());
     assert!(is_search_id(&id));
     assert!(!is_search_id("search:1"));
-    assert_ne!(id, tabs.create());
+    assert_ne!(id, tabs.create(String::new()));
     tabs.forget(&id);
 }
 

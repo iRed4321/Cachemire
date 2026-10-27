@@ -90,12 +90,13 @@ pub(crate) fn refresh(app: &App, window: &MainWindow) {
 }
 
 /// Drops the connection in use and returns to "No connection": it stops being
-/// the active one, its pool closes and its tabs are dropped.
+/// the active one, its pool closes and its tabs are dropped, with the last session.
 pub(crate) fn disconnect(app: &App, window: &MainWindow) {
     let (state, rt) = (&app.state, &app.rt);
     let id = window.connection_id().to_string();
     if !id.is_empty() {
         app.tabs.borrow_mut().discard_on_leave();
+        crate::last_session::forget(&app.state);
     }
     if let Err(e) = state.connections.lock().clear_active() {
         tracing::error!("disconnect failed: {e}");
@@ -166,6 +167,7 @@ fn delete(app: &Rc<App>, window: &MainWindow, id: &str) {
         Ok(cleanup) => {
             // drops its pooled connections and its SSH tunnel
             state.redis_connections.invalidate(id);
+            crate::keyspace::forget(app, id);
             if let Some(cleanup) = cleanup {
                 rt.spawn_blocking(move || cleanup.run());
             }

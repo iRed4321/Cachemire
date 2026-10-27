@@ -70,6 +70,57 @@ impl Index {
         }
     }
 
+    /// The kind of key `id`, if it is in the index.
+    pub(super) fn leaf(&self, id: &str) -> Option<LeafKind> {
+        let parent_end = parent_end(id);
+        self.levels.get(&id[..parent_end])?.keys.get(&id[parent_end..]).copied()
+    }
+
+    /// Removes key `id`, and then each folder above it left empty; whether it was there.
+    pub(super) fn remove(&mut self, id: &str) -> bool {
+        let parent_end = parent_end(id);
+        let Some(level) = self.levels.get_mut(&id[..parent_end]) else { return false };
+        if level.keys.remove(&id[parent_end..]).is_none() {
+            return false;
+        }
+        self.keys -= 1;
+        self.prune(&id[..parent_end]);
+        true
+    }
+
+    /// Removes `folder` (its name ends with the delimiter) and every key under it;
+    /// then each folder above it left empty. How many keys went.
+    pub(super) fn remove_folder(&mut self, folder: &str) -> usize {
+        let mut removed = 0;
+        self.levels.retain(|name, level| {
+            let under = name.starts_with(folder);
+            if under {
+                removed += level.keys.len();
+            }
+            !under
+        });
+        self.keys -= removed;
+        let parent_end = parent_end(folder.strip_suffix(DELIMITER).unwrap_or(folder));
+        if let Some(parent) = self.levels.get_mut(&folder[..parent_end]) {
+            parent.folders.remove(&folder[parent_end..]);
+        }
+        self.prune(&folder[..parent_end]);
+        removed
+    }
+
+    /// Drops `folder` while it holds nothing, then its parent the same way, up to the root.
+    fn prune(&mut self, folder: &str) {
+        let mut folder = folder.to_string();
+        while !folder.is_empty() && self.levels.get(&folder).is_none_or(|level| level.len() == 0) {
+            self.levels.remove(&folder);
+            let parent_end = parent_end(&folder[..folder.len() - DELIMITER.len()]);
+            if let Some(parent) = self.levels.get_mut(&folder[..parent_end]) {
+                parent.folders.remove(&folder[parent_end..]);
+            }
+            folder.truncate(parent_end);
+        }
+    }
+
     /// `folder`'s direct children.
     pub(super) fn children(&self, folder: &str) -> Vec<CachedChild> {
         let Some(level) = self.levels.get(folder) else { return Vec::new() };
@@ -92,6 +143,11 @@ impl Index {
     pub(super) fn keys(&self) -> impl Iterator<Item = (String, LeafKind)> + '_ {
         self.levels.iter().flat_map(|(folder, level)| level.keys.iter().map(move |(label, leaf)| (format!("{folder}{label}"), *leaf)))
     }
+}
+
+/// Where the name past `id`'s folder starts: just past its last delimiter, else 0.
+fn parent_end(id: &str) -> usize {
+    id.rfind(DELIMITER).map_or(0, |i| i + DELIMITER.len())
 }
 
 #[cfg(test)]

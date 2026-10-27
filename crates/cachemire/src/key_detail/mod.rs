@@ -135,6 +135,9 @@ struct KeyDetailShared {
     // loaded, or the next step of a search/filter's scan through the rest —
     // from overlapping another one already under way for the same key
     paging_in_flight: Arc<AtomicBool>,
+    // keys made in the app, by (connection, key): an empty hash Redis doesn't hold
+    // yet, shown as such until its first field is written
+    new_keys: Arc<Mutex<FxHashSet<(String, String)>>>,
 }
 
 /// The key the panel shows and what of it is shown.
@@ -358,6 +361,7 @@ pub fn init(window: &MainWindow, state: Arc<AppState>, rt: Handle) -> KeyDetail 
         fetched: Arc::new(Mutex::new(FxHashMap::default())),
         suggester: Arc::new(Suggester::default()),
         paging_in_flight: Arc::new(AtomicBool::new(false)),
+        new_keys: Arc::default(),
     };
     let ctx = Ctx { weak: window.as_weak(), state, rt, shared };
     let panel = window.global::<KeyPanel>();
@@ -484,5 +488,21 @@ impl KeyDetail {
     /// Drops what was fetched for a connection's key (`Some`), or all its keys (`None`).
     pub fn forget(&self, connection: &str, key: Option<&str>) {
         self.0.shared.fetched.lock().retain(|(c, k), _| c != connection || key.is_some_and(|key| key != k));
+    }
+
+    /// Shows `key` of `connection` as an empty hash while Redis doesn't hold it (a key
+    /// just made in the app: Redis stores a hash once it has a field).
+    pub fn mark_new(&self, connection: &str, key: &str) {
+        self.0.shared.new_keys.lock().insert((connection.to_string(), key.to_string()));
+    }
+
+    /// Whether `key` of `connection` is a new hash Redis doesn't hold yet (see [`Self::mark_new`]).
+    pub fn is_new(&self, connection: &str, key: &str) -> bool {
+        self.0.shared.new_keys.lock().contains(&(connection.to_string(), key.to_string()))
+    }
+
+    /// The new hashes of `connection` picked by `gone` (deleted or renamed) are no longer shown as such.
+    pub fn forget_new(&self, connection: &str, gone: impl Fn(&str) -> bool) {
+        self.0.shared.new_keys.lock().retain(|(c, k)| c != connection || !gone(k));
     }
 }

@@ -9,7 +9,8 @@ use rust_i18n::t;
 use slint::{ComponentHandle, ModelRc, VecModel};
 
 use crate::{AllValuesRowData, KeyPanel, KeyTree};
-use cachemire_core::explorer;
+use cachemire_core::error::{Error, NotFound};
+use cachemire_core::explorer::{self, KeyDetails};
 use cachemire_core::key_name::KeyName;
 use cachemire_core::redis_value_type::RedisValueType;
 
@@ -39,7 +40,7 @@ impl Ctx {
         let LoadRequest { key, scroll, reuse, announce } = request;
         let ctx = self.clone();
         let weak = &self.weak;
-        let KeyDetailShared { content, pretty_cache, view_epoch, fetched, suggester, .. } = self.shared.clone();
+        let KeyDetailShared { content, pretty_cache, view_epoch, fetched, suggester, new_keys, .. } = self.shared.clone();
         let epoch = view_epoch.fetch_add(1, Ordering::Relaxed) + 1;
         let cache_slot = (weak.upgrade().map(|w| w.connection_id().to_string()).unwrap_or_default(), key.clone());
         // a field asked for (a hit of a search tab): the page holding it is the one loaded
@@ -48,6 +49,7 @@ impl Ctx {
             scroll.get_reveal_pending().then(|| scroll.get_reveal_field().to_string())
         });
         let descending = weak.upgrade().is_some_and(|w| w.global::<KeyPanel>().get_sort_descending());
+        let is_new = new_keys.lock().contains(&cache_slot);
         let cached = if reuse { fetched.lock().get(&cache_slot).cloned() } else { None };
         let cached = cached.filter(|fetch| {
             (fetch.all_names.is_none() || fetch.descending == descending) && focus.as_ref().is_none_or(|f| holds_field(fetch, f))
@@ -104,6 +106,11 @@ impl Ctx {
                     descending,
                 )
                 .await
+                .or_else(|e| match e {
+                    // a key made in the app, which Redis holds once its first field is written
+                    Error::NotFound(NotFound::Key) if is_new => Ok(KeyDetails::empty_hash()),
+                    e => Err(e),
+                })
                 .map(|details| {
                     let fields: Fields = if details.key_type == RedisValueType::Hash {
                         let names = details.all_field_names.as_deref().unwrap_or_default();

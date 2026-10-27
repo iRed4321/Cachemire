@@ -23,6 +23,27 @@ _version: 2
   fr: "Un champ doit avoir un nom"
 "This hash already has a field with this name":
   fr: "Ce hash a déjà un champ de ce nom"
+# the keyspace's right-click menu: a new key, renaming or deleting a key or a folder
+"A key needs a name":
+  fr: "Une clé doit avoir un nom"
+"A key name can't end with ':'":
+  fr: "Le nom d'une clé ne peut pas finir par ':'"
+"A key with this name already exists":
+  fr: "Une clé de ce nom existe déjà"
+"A folder needs a name":
+  fr: "Un dossier doit avoir un nom"
+"The key %{name} already exists":
+  fr: "La clé %{name} existe déjà"
+"Creating failed: %{error}":
+  fr: "Échec de la création : %{error}"
+"Renaming failed: %{error}":
+  fr: "Échec du renommage : %{error}"
+"Deleting failed: %{error}":
+  fr: "Échec de la suppression : %{error}"
+"Renamed":
+  fr: "Renommé"
+"%{count} keys deleted":
+  fr: "%{count} clés supprimées"
 # a value-list row's "Try to load", reading a value left out for its size
 "This field no longer exists":
   fr: "Ce champ n'existe plus"

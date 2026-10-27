@@ -1,5 +1,6 @@
 //! Editing a value: an open row's field as pretty JSON in the value editor, colored as
-//! it's typed, then written back to its hash field or string key once it's valid JSON.
+//! it's typed, then written back to its hash field or string key once it's valid JSON;
+//! or a new field of a hash, written once it has a name and a value.
 
 use std::cell::RefCell;
 use std::ops::Range;
@@ -24,12 +25,13 @@ use super::pretty_text::{ColorSpans, ColoredParagraph};
 use super::scroll::{current_scroll, set_field_expanded};
 
 /// What the editor writes to: a key of a connection, and the hash field (`None`
-/// for a string key's whole value).
+/// for a string key's whole value, or a field being added: `creating`).
 #[derive(Clone)]
 struct EditTarget {
     connection: String,
     key: String,
     field: Option<String>,
+    creating: bool,
 }
 
 /// What a write did to the field the editor was open on.
@@ -37,6 +39,7 @@ enum Written {
     Value,
     Renamed(String),
     Deleted,
+    Added(String),
 }
 
 /// Why a write didn't happen: the server refused it, or it failed.
@@ -177,8 +180,10 @@ impl Ctx {
             connection: window.connection_id().to_string(),
             key: panel.get_key_id().to_string(),
             field: hash.then(|| name.to_string()),
+            creating: false,
         });
         let editor = window.global::<ValueEditor>();
+        editor.set_creating(false);
         editor.set_key_name(panel.get_name());
         editor.set_field(if hash { name.into() } else { Default::default() });
         editor.set_is_field(hash);
@@ -189,15 +194,40 @@ impl Ctx {
         editor.set_open(true);
     }
 
+    /// Opens the editor on a new field of the shown hash: no name, an empty string.
+    fn add_field(&self, target: &RefCell<Option<EditTarget>>) {
+        let Some(window) = self.weak.upgrade() else { return };
+        let panel = window.global::<KeyPanel>();
+        if !panel.get_editable() || panel.get_badge() != "HASH" {
+            return;
+        }
+        *target.borrow_mut() = Some(EditTarget {
+            connection: window.connection_id().to_string(),
+            key: panel.get_key_id().to_string(),
+            field: None,
+            creating: true,
+        });
+        let editor = window.global::<ValueEditor>();
+        editor.set_creating(true);
+        editor.set_key_name(panel.get_name());
+        editor.set_field(Default::default());
+        editor.set_is_field(true);
+        editor.set_name(Default::default());
+        editor.set_text("\"\"".into());
+        editor.set_error(Default::default());
+        editor.set_saving(false);
+        editor.set_open(true);
+    }
+
     /// Why the field edited can't be named `name` ("" when it can): it needs one, and
     /// not one of another field of the hash among those read.
     fn check_name(&self, name: &str, target: &RefCell<Option<EditTarget>>) -> String {
         let target = target.borrow();
-        let Some((target, field)) = target.as_ref().and_then(|t| Some((t, t.field.as_deref()?))) else { return String::new() };
+        let Some(target) = target.as_ref().filter(|t| t.field.is_some() || t.creating) else { return String::new() };
         if name.is_empty() {
             return t!("A field needs a name").into_owned();
         }
-        if name == field {
+        if target.field.as_deref() == Some(name) {
             return String::new();
         }
         let taken = match self.shared.fetched.lock().get(&(target.connection.clone(), target.key.clone())) {
@@ -220,7 +250,14 @@ impl Ctx {
             other => other.to_string(),
         };
         let renamed = target.field.as_deref().filter(|field| *field != name).map(|_| name.to_string());
+        let added = target.creating.then(|| name.to_string());
         self.run_write(target, t!("Saved").into_owned(), move |state, key, field| async move {
+            if let Some(name) = added {
+                return match explorer::write_new_hash_field(&state, None, &key, &name, &raw).await? {
+                    true => Ok(Written::Added(name)),
+                    false => Err(WriteError::Refused(t!("This hash already has a field with this name").into_owned())),
+                };
+            }
             let written: Result<Written, WriteError> = match (field, renamed) {
                 (Some(from), Some(to)) => match explorer::rename_hash_field(&state, None, &key, &from, &to, &raw).await? {
                     true => Ok(Written::Renamed(to)),
@@ -279,7 +316,10 @@ impl Ctx {
     /// After a write to `target`: what was fetched of its key is dropped, and the key is
     /// read again if it's still shown, scrolled to the field written (if it's still there).
     fn show_written(&self, window: &MainWindow, target: &EditTarget, written: Written) {
-        self.shared.fetched.lock().remove(&(target.connection.clone(), target.key.clone()));
+        let slot = (target.connection.clone(), target.key.clone());
+        self.shared.fetched.lock().remove(&slot);
+        // a new hash is in Redis once a field is written
+        self.shared.new_keys.lock().remove(&slot);
         if window.global::<KeyPanel>().get_key_id() != target.key.as_str() {
             return;
         }
@@ -291,6 +331,10 @@ impl Ctx {
                 }
                 set_field_expanded(window, &to, true);
                 Some(to)
+            }
+            (Written::Added(name), _) => {
+                set_field_expanded(window, &name, true);
+                Some(name)
             }
             (Written::Deleted, from) => {
                 if let Some(from) = from {
@@ -332,6 +376,10 @@ pub(super) fn init(window: &MainWindow, ctx: &Ctx) {
     editor.on_delete({
         let (ctx, target) = (ctx.clone(), target.clone());
         move || ctx.delete_field(&target)
+    });
+    window.global::<KeyPanel>().on_add_field({
+        let (ctx, target) = (ctx.clone(), target.clone());
+        move || ctx.add_field(&target)
     });
     window.global::<KeyPanel>().on_edit_value({
         let ctx = ctx.clone();

@@ -112,6 +112,11 @@ impl QueryTabs {
         id
     }
 
+    /// What query tab `id`'s box holds, as of when it was last left.
+    pub fn text(&self, id: &str) -> Option<&str> {
+        self.tabs.get(id).map(|tab| tab.text.as_str())
+    }
+
     /// The tab is being left: keeps what was typed in its box (its last result is
     /// already kept, from when the run that produced it landed).
     pub fn leave(&mut self, window: &MainWindow, id: &str) {

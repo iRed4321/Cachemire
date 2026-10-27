@@ -571,6 +571,24 @@ pub struct KeyDetails {
     pub names_cursor: Option<u64>,
 }
 
+impl KeyDetails {
+    /// A hash with no field yet: one made in the app, which Redis only stores
+    /// once it has a field.
+    pub fn empty_hash() -> Self {
+        Self {
+            key_type: RedisValueType::Hash,
+            ttl: -1,
+            value: Value::Object(serde_json::Map::new()),
+            truncated: false,
+            all_field_names: Some(Vec::new()),
+            oversized: FxHashMap::default(),
+            page_start: 0,
+            field_count: 0,
+            names_cursor: None,
+        }
+    }
+}
+
 /// Fetches a key's type, TTL, and value, bounded to `max_items` entries for
 /// hash/list/set/zset/stream; a hash's value is the page holding `focus`, else the first.
 /// Type and TTL come in one pipelined round-trip; a missing key is type `none`.
@@ -708,9 +726,105 @@ pub async fn rename_hash_field(
     Ok(true)
 }
 
+/// Writes `value` into a new field `field` of hash `key` (making the hash if there is
+/// none): false, nothing changed, when it has that field already.
+pub async fn write_new_hash_field(
+    state: &AppState,
+    connection_id: Option<&str>,
+    key: &KeyName,
+    field: &str,
+    value: &str,
+) -> Result<bool, Error> {
+    Session::open(state, connection_id).await?.hash_set_new(key, field, value).await
+}
+
 /// Removes field `field` from hash `key`.
 pub async fn delete_hash_field(state: &AppState, connection_id: Option<&str>, key: &KeyName, field: &str) -> Result<(), Error> {
     Session::open(state, connection_id).await?.hash_delete(key, field).await
+}
+
+/// Whether `key` exists.
+pub async fn key_exists(state: &AppState, connection_id: Option<&str>, key: &KeyName) -> Result<bool, Error> {
+    let mut session = Session::open(state, connection_id).await?;
+    Ok(session.existing(std::slice::from_ref(key)).await?.first().copied().unwrap_or(false))
+}
+
+/// Removes `key`.
+pub async fn delete_key(state: &AppState, connection_id: Option<&str>, key: &KeyName) -> Result<(), Error> {
+    Session::open(state, connection_id).await?.unlink(std::slice::from_ref(key)).await
+}
+
+/// Renames `from` to `to`: false, nothing changed, when a key `to` exists already.
+pub async fn rename_key(state: &AppState, connection_id: Option<&str>, from: &KeyName, to: &KeyName) -> Result<bool, Error> {
+    Session::open(state, connection_id).await?.rename_new(from, to).await
+}
+
+/// Every key whose name starts with `prefix`.
+async fn keys_under(session: &mut Session, prefix: &KeyName) -> Result<Vec<KeyName>, Error> {
+    let mut pattern = glob_escape(prefix.as_bytes());
+    pattern.push(b'*');
+    let (mut cursor, mut keys) = (0u64, FxHashSet::default());
+    loop {
+        let (next, names) = session.scan(cursor, Some(&pattern), 1000).await?;
+        keys.extend(names);
+        cursor = next;
+        if cursor == 0 {
+            return Ok(keys.into_iter().collect());
+        }
+    }
+}
+
+/// How many keys one `UNLINK` or one round of renames takes.
+const KEYS_PER_WRITE: usize = 500;
+
+/// Removes every key whose name starts with `prefix` (a folder); how many there were.
+pub async fn delete_folder(state: &AppState, connection_id: Option<&str>, prefix: &KeyName) -> Result<usize, Error> {
+    let mut session = Session::open(state, connection_id).await?;
+    let keys = keys_under(&mut session, prefix).await?;
+    for chunk in keys.chunks(KEYS_PER_WRITE) {
+        session.unlink(chunk).await?;
+    }
+    Ok(keys.len())
+}
+
+/// What moving a folder's keys did.
+pub enum FolderMove {
+    /// every key, as (old name, new name)
+    Moved(Vec<(KeyName, KeyName)>),
+    /// nothing, since this new name is a key already
+    Taken(KeyName),
+}
+
+/// Moves every key whose name starts with `from` to the same name starting with `to`,
+/// once none of the new names is taken.
+pub async fn rename_folder(state: &AppState, connection_id: Option<&str>, from: &KeyName, to: &KeyName) -> Result<FolderMove, Error> {
+    let mut session = Session::open(state, connection_id).await?;
+    let renamed = |key: &KeyName| {
+        let mut name = to.as_bytes().to_vec();
+        name.extend_from_slice(&key.as_bytes()[from.as_bytes().len()..]);
+        KeyName::from(name)
+    };
+    let moves: Vec<(KeyName, KeyName)> = keys_under(&mut session, from)
+        .await?
+        .into_iter()
+        .map(|key| {
+            let new = renamed(&key);
+            (key, new)
+        })
+        .collect();
+    for chunk in moves.chunks(KEYS_PER_WRITE) {
+        let targets: Vec<KeyName> = chunk.iter().map(|(_, new)| new.clone()).collect();
+        if let Some(i) = session.existing(&targets).await?.iter().position(|taken| *taken) {
+            return Ok(FolderMove::Taken(targets[i].clone()));
+        }
+    }
+    let mut moved = Vec::with_capacity(moves.len());
+    for (old, new) in moves {
+        if session.rename_new(&old, &new).await? {
+            moved.push((old, new));
+        }
+    }
+    Ok(FolderMove::Moved(moved))
 }
 
 #[cfg(test)]

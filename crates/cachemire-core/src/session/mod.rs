@@ -255,6 +255,31 @@ impl Session {
         Ok(())
     }
 
+    /// Which of `keys` exist, in their order (`EXISTS` each, in one round trip).
+    pub async fn existing(&mut self, keys: &[KeyName]) -> Result<Vec<bool>, Error> {
+        if keys.is_empty() {
+            return Ok(Vec::new());
+        }
+        let mut pipe = redis::pipe();
+        for key in keys {
+            pipe.cmd("EXISTS").arg(key);
+        }
+        Ok(pipe.query_async(&mut self.con).await?)
+    }
+
+    /// Removes `keys`, their memory freed in the background (`UNLINK`).
+    pub async fn unlink(&mut self, keys: &[KeyName]) -> Result<(), Error> {
+        if !keys.is_empty() {
+            redis::cmd("UNLINK").arg(keys).query_async::<()>(&mut self.con).await?;
+        }
+        Ok(())
+    }
+
+    /// Renames `from` to `to` unless a key `to` exists (`RENAMENX`); whether it was renamed.
+    pub async fn rename_new(&mut self, from: &KeyName, to: &KeyName) -> Result<bool, Error> {
+        Ok(redis::cmd("RENAMENX").arg(from).arg(to).query_async(&mut self.con).await?)
+    }
+
     /// Replaces the string's value, its TTL kept (`SET … KEEPTTL`, Redis 6+).
     pub async fn string_set(&mut self, key: &KeyName, value: &str) -> Result<(), Error> {
         redis::cmd("SET").arg(key).arg(value).arg("KEEPTTL").query_async::<()>(&mut self.con).await?;

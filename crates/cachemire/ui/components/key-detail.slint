@@ -1,7 +1,7 @@
 import { Theme } from "theme.slint";
 import { ExportFormat, ExportTarget, KeyView, SearchScope } from "types.slint";
 import { IconButton } from "widgets.slint";
-import { IconCopy, IconRefresh, IconChevron, IconHash } from "icons.slint";
+import { IconCopy, IconRefresh, IconChevron, IconHash, IconPlus } from "icons.slint";
 import { ExportGroup, ExportButton, SearchField, ViewSwitcher, ViewOption, ScopeSwitch, SearchBadge, SuggestionPopup } from "key-detail-widgets.slint";
 import { KeyScroll, ExportPrefs, AllValuesRowData, TableRowData, FindResult, LineSelection, ValueLine, SuggestionRow, CompletionEdit, BadgeData } from "key-detail-types.slint";
 import { AllValuesTable } from "key-detail-values.slint";
@@ -276,6 +276,13 @@ export component KeyDetail inherits Rectangle {
                             data: badge;
                             removed => { root.filter-badge-removed(badge.text, badge.scope); }
                         }
+                    }
+                    // a new field of the hash, in the value editor
+                    if loaded && !root.query-mode && KeyPanel.editable && root.badge == "HASH": IconButton {
+                        box-size: Theme.px(32px);
+                        hint: @tr("Add a field");
+                        clicked => { KeyPanel.add-field(); }
+                        IconPlus { size: Theme.icon-sm; tint: Theme.text-tertiary; }
                     }
                     // The table's ticked rows, once there are any: how many, and the
                     // export pill, working on them as one JSON array. In this row, at

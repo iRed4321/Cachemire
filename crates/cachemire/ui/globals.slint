@@ -119,6 +119,9 @@ export global Preferences {
     // looks for an update on the About window's channel each time the app starts
     in-out property <bool> check-updates-at-startup: false;
     callback check-updates-at-startup-toggled(enabled: bool);
+    // reopens the connection the app was closed on, with its tabs and open folders
+    in-out property <bool> restore-session: false;
+    callback restore-session-toggled(enabled: bool);
     // how many entries of a key the global search reads
     in-out property <int> search-depth: 1000;
     callback search-depth-selected(depth: int);
@@ -178,6 +181,11 @@ export global KeyTree {
     // the row menu's entries: export just this row, or tick it (which opens the mode)
     callback export-row(name: string);
     callback export-select-row(name: string);
+    // and writing: a new key (its name starting with `prefix`), renaming or deleting a
+    // row's key or folder (its name ends with the delimiter)
+    callback add-key-requested(prefix: string);
+    callback rename-requested(name: string);
+    callback delete-requested(name: string);
 }
 
 // The left panel's saved queries (Rust filters them on `filter`).
@@ -356,6 +364,8 @@ export global KeyPanel {
     // opening the editor on one row's field
     in property <bool> editable: false;
     callback edit-value(field: string);
+    // the header's + on a hash: the editor, open on a new field
+    callback add-field();
     // reads a row's value left out for its size (see AllValuesRowData.too-long)
     callback load-value(field: string);
     callback export-all-fields(format: ExportFormat, target: ExportTarget);

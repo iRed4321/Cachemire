@@ -14,6 +14,8 @@ export global ValueEditor {
     // (`check-name` says why it can't be, "" when it can), and it can be deleted
     in property <bool> is-field: false;
     in-out property <string> name;
+    // a new field of the hash is written (under `name`) rather than an existing one changed
+    in property <bool> creating: false;
     pure callback check-name(name: string) -> string;
     // a save under way, and why the last one failed ("" when it didn't)
     in property <bool> saving: false;
@@ -122,7 +124,7 @@ export component ValueEditorModal inherits Rectangle {
                 HorizontalLayout {
                     spacing: Theme.px(10px);
                     Text {
-                        text: @tr("Edit value");
+                        text: ValueEditor.creating ? @tr("New field") : @tr("Edit value");
                         font-size: Theme.pt(14px);
                         font-weight: 700;
                         color: Theme.text-primary;
@@ -358,7 +360,7 @@ export component ValueEditorModal inherits Rectangle {
                         vertical-alignment: center;
                         overflow: elide;
                     }
-                    if ValueEditor.is-field: ModalButton {
+                    if ValueEditor.is-field && !ValueEditor.creating: ModalButton {
                         text: root.confirming-delete ? @tr("Click again to delete") : @tr("Delete");
                         danger: true;
                         armed: root.confirming-delete;

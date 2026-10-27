@@ -103,12 +103,17 @@ pub struct SearchTabs {
 }
 
 impl SearchTabs {
-    /// A new, empty search tab; returns its id.
-    pub fn create(&mut self) -> String {
+    /// A new search tab with `query` in its box (not searched yet); returns its id.
+    pub fn create(&mut self, query: String) -> String {
         self.last_id += 1;
         let id = format!("{ID_PREFIX}{}", self.last_id);
-        self.tabs.insert(id.clone(), TabSearch::new());
+        self.tabs.insert(id.clone(), TabSearch { query, ..TabSearch::new() });
         id
+    }
+
+    /// What search tab `id`'s box holds, as of when it was last left.
+    pub fn query(&self, id: &str) -> Option<&str> {
+        self.tabs.get(id).map(|tab| tab.query.as_str())
     }
 
     /// Shows search tab `id` in the main area: its box, hits and status.

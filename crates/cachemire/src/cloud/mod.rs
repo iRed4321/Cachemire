@@ -5,6 +5,7 @@
 use crate::error::Localize;
 use rustc_hash::FxHashSet;
 use std::rc::Rc;
+use std::sync::atomic::Ordering;
 
 use slint::winit_030::WinitWindowAccessor;
 use slint::winit_030::winit::window::UserAttentionType;
@@ -25,6 +26,34 @@ pub struct Cloud {
     profile: String,
     // bumped whenever the account or profile changes: a listing still on its way is then stale
     generation: u64,
+    // the last session's connection, reached once signed in and listed (see `resume`)
+    resume: Option<Resume>,
+}
+
+impl Cloud {
+    /// The profile whose connections are listed ("" for none).
+    pub fn profile(&self) -> &str {
+        &self.profile
+    }
+}
+
+/// A cloud connection to get back to: its profile, its id, and the connect attempt
+/// counted when it was asked for (one made since by the user wins).
+struct Resume {
+    profile: String,
+    connection: String,
+    attempt: u64,
+}
+
+/// Signs in (in the browser when the session has expired), lists `profile`'s
+/// connections and connects to `connection`, as if picked one after the other.
+pub fn resume(app: &App, window: &MainWindow, profile: String, connection: String) {
+    if !window.global::<AwsAccount>().get_available() || app.cloud.borrow().connected {
+        return;
+    }
+    let attempt = app.state.connect_attempt.load(Ordering::SeqCst);
+    app.cloud.borrow_mut().resume = Some(Resume { profile, connection, attempt });
+    window.global::<AwsAccount>().invoke_clicked();
 }
 
 /// Raises the window and gives it the focus, for when the browser sign-in is done. A window
@@ -93,12 +122,21 @@ pub fn init(app: &Rc<App>, window: &MainWindow) {
                     match result {
                         Ok(()) => {
                             tracing::info!(profiles = names.len(), "signed in to AWS");
+                            let resumed = {
+                                let mut cloud = app.cloud.borrow_mut();
+                                cloud.resume = cloud.resume.take().filter(|r| names.iter().any(|n| n.as_str() == r.profile));
+                                cloud.resume.as_ref().map(|r| r.profile.clone())
+                            };
                             window.global::<AwsAccount>().set_profiles(ModelRc::new(VecModel::from(names)));
                             app.cloud.borrow_mut().connected = true;
                             window.global::<AwsAccount>().set_connected(true);
+                            if let Some(profile) = resumed {
+                                window.global::<AwsAccount>().invoke_profile_selected(profile.into());
+                            }
                         }
                         Err(e) => {
                             tracing::warn!("aws sign-in failed: {e}");
+                            app.cloud.borrow_mut().resume = None;
                             window.global::<AwsAccount>().set_error(e.localized().into());
                         }
                     }
@@ -112,8 +150,14 @@ pub fn init(app: &Rc<App>, window: &MainWindow) {
         move |name| {
             let Some(window) = app.window.upgrade() else { return };
             let name = name.to_string();
-            if app.cloud.borrow().profile == name {
-                return;
+            {
+                let mut cloud = app.cloud.borrow_mut();
+                if cloud.resume.as_ref().is_some_and(|r| r.profile != name) {
+                    cloud.resume = None;
+                }
+                if cloud.profile == name {
+                    return;
+                }
             }
             clear_connections(&app, &window);
             let generation = {
@@ -154,8 +198,17 @@ pub fn init(app: &Rc<App>, window: &MainWindow) {
                             state.connections.lock().set_cloud_connections(&account, &region, items);
                             window.global::<AwsAccount>().set_account_known(true);
                             crate::connections::refresh(app, window);
+                            // the last session's connection, unless one was picked since
+                            let resume = app.cloud.borrow_mut().resume.take().filter(|r| {
+                                r.attempt == state.connect_attempt.load(Ordering::SeqCst)
+                                    && state.connections.lock().get(&r.connection).is_some()
+                            });
+                            if let Some(resume) = resume {
+                                crate::connect_to(window, state.clone(), &app.rt, resume.connection, true);
+                            }
                         }
                         Err(e) => {
+                            app.cloud.borrow_mut().resume = None;
                             tracing::warn!("listing the cloud connections failed: {e}");
                             window.global::<AwsAccount>().set_error(e.localized().into());
                         }

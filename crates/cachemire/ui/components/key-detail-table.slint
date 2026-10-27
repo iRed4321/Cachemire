@@ -358,260 +358,270 @@ export component TableView inherits Rectangle {
             }
             return accept;
         }
-        VerticalLayout {
-            HorizontalLayout {
-                vertical-stretch: 1;
-                Rectangle {
-                    horizontal-stretch: 1;
+        // where the pointer is over the table (it sees moves its cells take too):
+        // the scrollbars show once it gets close to their edge
+        table-pointer := TouchArea {
+            VerticalLayout {
+                HorizontalLayout {
+                    vertical-stretch: 1;
+                    Rectangle {
+                        horizontal-stretch: 1;
 
-                    table-flick := Flickable {
-                        // the left inset is outside the Flickable, not padding in
-                        // its content: scrolled sideways, the columns then slide
-                        // under a fixed margin instead of up to the panel's edge
-                        x: pad;
-                        width: parent.width - pad;
-                        height: 100%;
-                        // the cells hold selectable text, so a drag selects rather
-                        // than pans; the wheel below and the scrollbars do the moving
-                        interactive: false;
-                        content-width: sel-w + root.columns-w + pad;
+                        table-flick := Flickable {
+                            // the left inset is outside the Flickable, not padding in
+                            // its content: scrolled sideways, the columns then slide
+                            // under a fixed margin instead of up to the panel's edge
+                            x: pad;
+                            width: parent.width - pad;
+                            height: 100%;
+                            // the cells hold selectable text, so a drag selects rather
+                            // than pans; the wheel below and the scrollbars do the moving
+                            interactive: false;
+                            content-width: sel-w + root.columns-w + pad;
 
-                        // jumps to the scroll position Rust armed (see KeyScroll,
-                        // AllValuesTable.apply-restore) once content is big enough;
-                        // here, not on `root`, since this only exists with columns
-                        function apply-restore() {
-                            if KeyScroll.restore-table-pending {
-                                // the rows around the target exist before the jump, see AllValuesTable
-                                if root.rows-needed(KeyScroll.restore-table-y) > root.rendered-count {
-                                    root.grow-to(KeyScroll.restore-table-y);
-                                } else if -KeyScroll.restore-table-x <= max(0px, self.content-width - self.width)
-                                    && -KeyScroll.restore-table-y <= max(0px, self.content-height - self.height) {
+                            // jumps to the scroll position Rust armed (see KeyScroll,
+                            // AllValuesTable.apply-restore) once content is big enough;
+                            // here, not on `root`, since this only exists with columns
+                            function apply-restore() {
+                                if KeyScroll.restore-table-pending {
+                                    // the rows around the target exist before the jump, see AllValuesTable
+                                    if root.rows-needed(KeyScroll.restore-table-y) > root.rendered-count {
+                                        root.grow-to(KeyScroll.restore-table-y);
+                                    } else if -KeyScroll.restore-table-x <= max(0px, self.content-width - self.width)
+                                        && -KeyScroll.restore-table-y <= max(0px, self.content-height - self.height) {
+                                        KeyScroll.restore-table-pending = false;
+                                        self.content-x = KeyScroll.restore-table-x;
+                                        self.content-y = KeyScroll.restore-table-y;
+                                    }
+                                }
+                            }
+                            // scrolls, only as far as needed, so a cell (in window coordinates) shows
+                            // whole: left-aligned when it's wider than the view, and under the titles
+                            function reveal-cell(x: length, y: length, w: length, h: length) {
+                                let left = x - self.absolute-position.x;
+                                let top = y - self.absolute-position.y;
+                                let x-range = max(0px, self.content-width - self.width);
+                                let y-range = max(0px, self.content-height - self.height);
+                                // the row's padding around the cell, kept in sight with it
+                                let margin = Theme.px(6px);
+                                if left < 0px || w > self.width {
+                                    self.content-x = max(-x-range, min(0px, self.content-x - left));
+                                } else if left + w > self.width {
+                                    self.content-x = max(-x-range, self.content-x - (left + w - self.width));
+                                }
+                                if top - margin < header-h {
+                                    self.content-y = min(0px, self.content-y + header-h - (top - margin));
+                                } else if top + h + margin > self.height {
+                                    self.content-y = max(-y-range, self.content-y - (top + h + margin - self.height));
+                                }
+                            }
+                            // the content never got big enough: go as far as it allows
+                            Timer {
+                                interval: 300ms;
+                                running: KeyScroll.restore-table-pending;
+                                triggered => {
                                     KeyScroll.restore-table-pending = false;
-                                    self.content-x = KeyScroll.restore-table-x;
-                                    self.content-y = KeyScroll.restore-table-y;
+                                    table-flick.content-x = max(-max(0px, table-flick.content-width - table-flick.width), KeyScroll.restore-table-x);
+                                    table-flick.content-y = max(-max(0px, table-flick.content-height - table-flick.height), KeyScroll.restore-table-y);
                                 }
                             }
-                        }
-                        // scrolls, only as far as needed, so a cell (in window coordinates) shows
-                        // whole: left-aligned when it's wider than the view, and under the titles
-                        function reveal-cell(x: length, y: length, w: length, h: length) {
-                            let left = x - self.absolute-position.x;
-                            let top = y - self.absolute-position.y;
-                            let x-range = max(0px, self.content-width - self.width);
-                            let y-range = max(0px, self.content-height - self.height);
-                            // the row's padding around the cell, kept in sight with it
-                            let margin = Theme.px(6px);
-                            if left < 0px || w > self.width {
-                                self.content-x = max(-x-range, min(0px, self.content-x - left));
-                            } else if left + w > self.width {
-                                self.content-x = max(-x-range, self.content-x - (left + w - self.width));
-                            }
-                            if top - margin < header-h {
-                                self.content-y = min(0px, self.content-y + header-h - (top - margin));
-                            } else if top + h + margin > self.height {
-                                self.content-y = max(-y-range, self.content-y - (top + h + margin - self.height));
-                            }
-                        }
-                        // the content never got big enough: go as far as it allows
-                        Timer {
-                            interval: 300ms;
-                            running: KeyScroll.restore-table-pending;
-                            triggered => {
-                                KeyScroll.restore-table-pending = false;
-                                table-flick.content-x = max(-max(0px, table-flick.content-width - table-flick.width), KeyScroll.restore-table-x);
-                                table-flick.content-y = max(-max(0px, table-flick.content-height - table-flick.height), KeyScroll.restore-table-y);
-                            }
-                        }
-                        property <[TableRowData]> watched-rows: root.rows;
-                        changed watched-rows => { apply-restore(); }
-                        changed content-width => { apply-restore(); }
-                        changed content-height => { apply-restore(); }
+                            property <[TableRowData]> watched-rows: root.rows;
+                            changed watched-rows => { apply-restore(); }
+                            changed content-width => { apply-restore(); }
+                            changed content-height => { apply-restore(); }
 
-                        init => {
-                            root.flick-width-snapshot = self.width;
-                            root.flick-height-snapshot = self.height;
-                            root.content-x-snapshot = self.content-x;
-                            root.content-y-snapshot = self.content-y;
-                            KeyScroll.table-x = self.content-x;
-                            KeyScroll.table-y = self.content-y;
-                            apply-restore();
-                            root.grow-if-needed();
-                            root.check-near-end();
-                        }
-                        changed width => { root.flick-width-snapshot = self.width; }
-                        changed height => {
-                            root.flick-height-snapshot = self.height;
-                            root.grow-if-needed();
-                            root.check-near-end();
-                        }
-                        changed content-x => {
-                            root.content-x-snapshot = self.content-x;
-                            KeyScroll.table-x = self.content-x;
-                        }
-                        changed content-y => {
-                            root.content-y-snapshot = self.content-y;
-                            KeyScroll.table-y = self.content-y;
-                            root.grow-if-needed();
-                            root.check-near-end();
-                        }
-
-                        // wheel behind the rows, pinned under the visible frame (see
-                        // AllValuesTable); Shift+wheel and horizontal gestures go sideways
-                        WheelScroller {
-                            sideways: true;
-                            x: -root.content-x-snapshot;
-                            y: -root.content-y-snapshot;
-                            width: root.flick-width-snapshot;
-                            height: root.flick-height-snapshot;
-                            scroll-by(delta) => {
-                                let scroll-range = max(0px, table-flick.content-height - table-flick.height);
-                                table-flick.content-y = max(-scroll-range, min(0px, table-flick.content-y + delta));
+                            init => {
+                                root.flick-width-snapshot = self.width;
+                                root.flick-height-snapshot = self.height;
+                                root.content-x-snapshot = self.content-x;
+                                root.content-y-snapshot = self.content-y;
+                                KeyScroll.table-x = self.content-x;
+                                KeyScroll.table-y = self.content-y;
+                                apply-restore();
+                                root.grow-if-needed();
+                                root.check-near-end();
                             }
-                            scroll-by-x(delta) => {
-                                let scroll-range = max(0px, table-flick.content-width - table-flick.width);
-                                table-flick.content-x = max(-scroll-range, min(0px, table-flick.content-x + delta));
+                            changed width => { root.flick-width-snapshot = self.width; }
+                            changed height => {
+                                root.flick-height-snapshot = self.height;
+                                root.grow-if-needed();
+                                root.check-near-end();
                             }
-                            // the cells' text leaves right-clicks to what is behind it,
-                            // which is this
-                            context-requested(x, y) => { root.context-requested(x, y, root.current-selection); }
-                        }
+                            changed content-x => {
+                                root.content-x-snapshot = self.content-x;
+                                KeyScroll.table-x = self.content-x;
+                            }
+                            changed content-y => {
+                                root.content-y-snapshot = self.content-y;
+                                KeyScroll.table-y = self.content-y;
+                                root.grow-if-needed();
+                                root.check-near-end();
+                            }
 
-                        VerticalLayout {
-                            width: sel-w + root.columns-w + pad;
-                            alignment: start;
-                            padding: pad;
-                            padding-left: 0px;
+                            // wheel behind the rows, pinned under the visible frame (see
+                            // AllValuesTable); Shift+wheel and horizontal gestures go sideways
+                            WheelScroller {
+                                sideways: true;
+                                x: -root.content-x-snapshot;
+                                y: -root.content-y-snapshot;
+                                width: root.flick-width-snapshot;
+                                height: root.flick-height-snapshot;
+                                scroll-by(delta) => {
+                                    let scroll-range = max(0px, table-flick.content-height - table-flick.height);
+                                    table-flick.content-y = max(-scroll-range, min(0px, table-flick.content-y + delta));
+                                }
+                                scroll-by-x(delta) => {
+                                    let scroll-range = max(0px, table-flick.content-width - table-flick.width);
+                                    table-flick.content-x = max(-scroll-range, min(0px, table-flick.content-x + delta));
+                                }
+                                // the cells' text leaves right-clicks to what is behind it,
+                                // which is this
+                                context-requested(x, y) => { root.context-requested(x, y, root.current-selection); }
+                            }
 
-                            // room for the sticky header drawn below
-                            Rectangle { height: header-h; }
-                            for row[i] in rows: VerticalLayout {
-                                if i < rendered-count: TableRow {
-                                    index: i;
-                                    data: row;
-                                    col-widths: root.col-widths;
-                                    col-wants: root.col-wants;
-                                    grow: root.grow;
-                                    fill: root.fill;
-                                    sel-w: root.sel-w;
-                                    selected: root.selected[i];
-                                    toggled(shift) => {
-                                        if shift && root.select-anchor >= 0 && root.select-anchor != i {
-                                            root.select-range(root.select-anchor, i);
-                                        } else {
-                                            root.selected[i] = !root.selected[i];
-                                            root.selected-count += root.selected[i] ? 1 : -1;
+                            VerticalLayout {
+                                width: sel-w + root.columns-w + pad;
+                                alignment: start;
+                                padding: pad;
+                                padding-left: 0px;
+
+                                // room for the sticky header drawn below
+                                Rectangle { height: header-h; }
+                                for row[i] in rows: VerticalLayout {
+                                    if i < rendered-count: TableRow {
+                                        index: i;
+                                        data: row;
+                                        col-widths: root.col-widths;
+                                        col-wants: root.col-wants;
+                                        grow: root.grow;
+                                        fill: root.fill;
+                                        sel-w: root.sel-w;
+                                        selected: root.selected[i];
+                                        toggled(shift) => {
+                                            if shift && root.select-anchor >= 0 && root.select-anchor != i {
+                                                root.select-range(root.select-anchor, i);
+                                            } else {
+                                                root.selected[i] = !root.selected[i];
+                                                root.selected-count += root.selected[i] ? 1 : -1;
+                                            }
+                                            root.select-anchor = i;
                                         }
-                                        root.select-anchor = i;
-                                    }
-                                    selection-changed(text) => { root.current-selection = text; }
-                                    context-requested(x, y) => { root.context-requested(x, y, root.current-selection); }
-                                    focus-col: root.focus-row == i ? root.focus-col : -1;
-                                    cell-clicked(col) => {
-                                        root.focus-row = i;
-                                        root.focus-col = col;
-                                        // the name's cell has no text to hold the focus: the keys go here
-                                        if col == 0 {
-                                            table-keys.focus();
+                                        selection-changed(text) => { root.current-selection = text; }
+                                        context-requested(x, y) => { root.context-requested(x, y, root.current-selection); }
+                                        focus-col: root.focus-row == i ? root.focus-col : -1;
+                                        cell-clicked(col) => {
+                                            root.focus-row = i;
+                                            root.focus-col = col;
+                                            // the name's cell has no text to hold the focus: the keys go here
+                                            if col == 0 {
+                                                table-keys.focus();
+                                            }
                                         }
+                                        focus-shown(x, y, w, h) => { table-flick.reveal-cell(x, y, w, h); }
+                                        row-y: parent.y;
+                                        row-height: parent.height;
+                                        visible: self.in-paint-window;
+                                        view-top: root.view-top;
+                                        view-height: root.view-height;
+                                        paint-buffer: root.paint-buffer-px;
                                     }
-                                    focus-shown(x, y, w, h) => { table-flick.reveal-cell(x, y, w, h); }
-                                    row-y: parent.y;
-                                    row-height: parent.height;
-                                    visible: self.in-paint-window;
-                                    view-top: root.view-top;
-                                    view-height: root.view-height;
-                                    paint-buffer: root.paint-buffer-px;
                                 }
+                                Rectangle { height: max(0px, (rows.length - rendered-count) * row-stride); }
                             }
-                            Rectangle { height: max(0px, (rows.length - rendered-count) * row-stride); }
-                        }
 
-                        // Column titles. Sticky vertically (`view-top`), but scroll
-                        // horizontally with the columns since they share the same
-                        // content. The right edge of each title is its resize handle.
-                        Rectangle {
-                            x: 0px;
-                            // in place under the top padding, then stuck to the top
-                            // of the viewport once scrolling has passed it
-                            y: max(pad, root.view-top);
-                            width: sel-w + root.columns-w;
-                            height: header-h;
-                            background: Theme.bg-elevated;
-                            border-radius: Theme.radius-sm;
+                            // Column titles. Sticky vertically (`view-top`), but scroll
+                            // horizontally with the columns since they share the same
+                            // content. The right edge of each title is its resize handle.
+                            Rectangle {
+                                x: 0px;
+                                // in place under the top padding, then stuck to the top
+                                // of the viewport once scrolling has passed it
+                                y: max(pad, root.view-top);
+                                width: sel-w + root.columns-w;
+                                height: header-h;
+                                background: Theme.bg-elevated;
+                                border-radius: Theme.radius-sm;
 
-                            HorizontalLayout {
-                                // no select-all here: once something is ticked, this
-                                // becomes the control that unticks everything
-                                Rectangle {
-                                    width: sel-w;
-                                    if selected-count > 0: CheckBox {
-                                        x: (parent.width - self.width) / 2;
-                                        y: (parent.height - self.height) / 2;
-                                        mixed: true;
-                                    }
-                                    if selected-count > 0: TouchArea {
-                                        mouse-cursor: pointer;
-                                        clicked => { root.clear-selection(); }
-                                    }
-                                }
-                                for name[j] in columns: Rectangle {
-                                    width: Theme.px(col-widths[j] + col-wants[j] * root.grow) * root.fill;
-                                    Text {
-                                        x: Theme.px(8px);
-                                        width: parent.width - Theme.px(16px) - Theme.px(4px) - (root.sortable[j] ? Theme.px(24px) : 0px);
-                                        height: parent.height;
-                                        text: j == 0 ? root.row-column-title : name;
-                                        font-size: Theme.pt(10.5px);
-                                        font-weight: 700;
-                                        font-family: j == 0 ? Theme.font-ui : Theme.font-mono;
-                                        color: Theme.text-secondary;
-                                        vertical-alignment: center;
-                                        overflow: elide;
-                                    }
-                                    // the ordering triangles: outlined, filled for the one in effect
-                                    if root.sortable[j]: Rectangle {
-                                        x: parent.width - self.width - Theme.px(10px);
-                                        width: Theme.px(20px);
-                                        IconSortTriangle {
+                                HorizontalLayout {
+                                    // no select-all here: once something is ticked, this
+                                    // becomes the control that unticks everything
+                                    Rectangle {
+                                        width: sel-w;
+                                        if selected-count > 0: CheckBox {
                                             x: (parent.width - self.width) / 2;
                                             y: (parent.height - self.height) / 2;
-                                            size: Theme.icon-xs;
-                                            up: !(root.shown-sort-column == j && root.shown-sort-descending);
-                                            filled: root.shown-sort-column == j;
-                                            tint: self.filled || triangle-area.has-hover ? Theme.text-primary : Theme.text-tertiary;
+                                            mixed: true;
                                         }
-                                        triangle-area := TouchArea {
+                                        if selected-count > 0: TouchArea {
                                             mouse-cursor: pointer;
-                                            clicked => { root.sort-requested(j, root.shown-sort-column == j && !root.shown-sort-descending); }
+                                            clicked => { root.clear-selection(); }
                                         }
                                     }
-                                    HResizeHandle {
-                                        x: parent.width - self.width;
-                                        width: Theme.px(8px);
-                                        height: parent.height;
-                                        dragged(delta) => { root.resize-column(j, delta / Theme.zoom / root.fill); }
+                                    for name[j] in columns: Rectangle {
+                                        width: Theme.px(col-widths[j] + col-wants[j] * root.grow) * root.fill;
+                                        Text {
+                                            x: Theme.px(8px);
+                                            width: parent.width - Theme.px(16px) - Theme.px(4px) - (root.sortable[j] ? Theme.px(24px) : 0px);
+                                            height: parent.height;
+                                            text: j == 0 ? root.row-column-title : name;
+                                            font-size: Theme.pt(10.5px);
+                                            font-weight: 700;
+                                            font-family: j == 0 ? Theme.font-ui : Theme.font-mono;
+                                            color: Theme.text-secondary;
+                                            vertical-alignment: center;
+                                            overflow: elide;
+                                        }
+                                        // the ordering triangles: outlined, filled for the one in effect
+                                        if root.sortable[j]: Rectangle {
+                                            x: parent.width - self.width - Theme.px(10px);
+                                            width: Theme.px(20px);
+                                            IconSortTriangle {
+                                                x: (parent.width - self.width) / 2;
+                                                y: (parent.height - self.height) / 2;
+                                                size: Theme.icon-xs;
+                                                up: !(root.shown-sort-column == j && root.shown-sort-descending);
+                                                filled: root.shown-sort-column == j;
+                                                tint: self.filled || triangle-area.has-hover ? Theme.text-primary : Theme.text-tertiary;
+                                            }
+                                            triangle-area := TouchArea {
+                                                mouse-cursor: pointer;
+                                                clicked => { root.sort-requested(j, root.shown-sort-column == j && !root.shown-sort-descending); }
+                                            }
+                                        }
+                                        HResizeHandle {
+                                            x: parent.width - self.width;
+                                            width: Theme.px(8px);
+                                            height: parent.height;
+                                            dragged(delta) => { root.resize-column(j, delta / Theme.zoom / root.fill); }
+                                        }
+                                        Rectangle { x: parent.width - 1px; width: 1px; height: parent.height; background: Theme.border; }
                                     }
-                                    Rectangle { x: parent.width - 1px; width: 1px; height: parent.height; background: Theme.border; }
                                 }
+                                Rectangle { y: parent.height - 1px; width: parent.width; height: 1px; background: Theme.border; }
                             }
-                            Rectangle { y: parent.height - 1px; width: parent.width; height: 1px; background: Theme.border; }
+                        }
+                        // once scrolled down a little: back to the first row
+                        if root.view-top > Theme.px(120px): ScrollTopButton {
+                            x: parent.width - self.width - Theme.px(25px);
+                            y: parent.height - self.height - Theme.px(23px);
+                            clicked => { table-flick.content-y = 0px; }
                         }
                     }
-                    // once scrolled down a little: back to the first row
-                    if root.view-top > Theme.px(120px): ScrollTopButton {
-                        x: parent.width - self.width - Theme.px(18px);
-                        y: parent.height - self.height - Theme.px(16px);
-                        clicked => { table-flick.content-y = 0px; }
+                    VScrollBar {
+                        content-height: table-flick.content-height;
+                        content-y <=> table-flick.content-y;
+                        scale: Theme.view-scrollbar-scale;
+                        linger: Theme.view-scrollbar-linger;
+                        nearby: table-pointer.has-hover && table-pointer.mouse-x > table-pointer.width - Theme.view-scrollbar-reach;
                     }
                 }
-                VScrollBar {
-                    content-height: table-flick.content-height;
-                    content-y <=> table-flick.content-y;
+                HScrollBar {
+                    content-width: table-flick.content-width;
+                    content-x <=> table-flick.content-x;
+                    scale: Theme.view-scrollbar-scale;
+                    linger: Theme.view-scrollbar-linger;
+                    nearby: table-pointer.has-hover && table-pointer.mouse-y > table-pointer.height - Theme.view-scrollbar-reach;
                 }
-            }
-            HScrollBar {
-                content-width: table-flick.content-width;
-                content-x <=> table-flick.content-x;
             }
         }
     }

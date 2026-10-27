@@ -3,6 +3,7 @@ import { TitleBar } from "components/title-bar.slint";
 import { AwsProfileDropdown } from "components/cloud-picker.slint";
 import { About, AboutModal } from "components/about.slint";
 import { ValueEditor, ValueEditorModal } from "components/value-editor.slint";
+import { KeyNameDialog, KeyNameModal, KeyNameAction } from "components/key-name-dialog.slint";
 import { CloudSettings, CloudSettingsModal } from "components/cloud-settings.slint";
 import { ConnectionTransfer, ConnectionTransferModal } from "components/connection-transfer.slint";
 import { ConnectionDropdown, ConnectionModal, ConnectionRowData, ConnectionForm, ConnProfileRowData } from "components/connection-picker.slint";
@@ -20,7 +21,7 @@ import { ConnectionView, ConnectionState, ConnectionEditor, AwsAccount, Preferen
 
 // read and written by Rust: where each tab left the key panel scrolled to
 // (Rust tints the background: see Theme.env-tint)
-export { KeyScroll, ExportPrefs, Theme, About, CloudSettings, ConnectionTransfer, LineSelection, ValueLine, ValueEditor }
+export { KeyScroll, ExportPrefs, Theme, About, CloudSettings, ConnectionTransfer, LineSelection, ValueLine, ValueEditor, KeyNameDialog, KeyNameAction }
 // the enumerations Rust shares with the UI
 export { ConnectionStatus, TreeRowKind, ExportFormat, ExportTarget, LanguageSetting, ProfileTint, KeyView, SidebarView, SearchScope }
 // a badge of the key panel's field/value search bar
@@ -275,7 +276,7 @@ export component MainWindow inherits Window {
                         row-context-requested(name, x, y) => {
                             root.row-menu-name = name;
                             root.row-menu-x = min(x, root.width - Theme.px(200px) - Theme.px(4px));
-                            root.row-menu-y = min(y, root.height - Theme.px(100px));
+                            root.row-menu-y = min(y, root.height - Theme.px(190px));
                             root.row-menu-open = true;
                         }
                     }
@@ -533,6 +534,19 @@ export component MainWindow inherits Window {
             x: root.row-menu-x;
             y: root.row-menu-y;
             selection-count: KeyTree.export-mode ? KeyTree.export-count : 0;
+            on-row: root.row-menu-name != "";
+            add-key => {
+                root.row-menu-open = false;
+                KeyTree.add-key-requested(root.row-menu-name);
+            }
+            rename => {
+                root.row-menu-open = false;
+                KeyTree.rename-requested(root.row-menu-name);
+            }
+            delete => {
+                root.row-menu-open = false;
+                KeyTree.delete-requested(root.row-menu-name);
+            }
             export-row => {
                 root.row-menu-open = false;
                 KeyTree.export-row(root.row-menu-name);
@@ -642,6 +656,11 @@ export component MainWindow inherits Window {
             width: 100%;
             height: 100%;
             device-scale: root.device-scale;
+            clipboard-has-text() => { return root.clipboard-has-text(); }
+        }
+        if KeyNameDialog.open: KeyNameModal {
+            width: 100%;
+            height: 100%;
             clipboard-has-text() => { return root.clipboard-has-text(); }
         }
         if ConnectionTransfer.open: ConnectionTransferModal { }

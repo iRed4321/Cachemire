@@ -8,15 +8,18 @@ Every stable release of Cachemire; `Unreleased` is what the next one brings. Bet
 
 - **Editing**: an open row's pencil button opens its value in an editor with line numbers, colored as you type; **Format JSON** re-indents it, and **Save** writes it back to Redis once it's valid JSON (hash fields and string keys; a click outside cancels). A hash field can also be renamed, to a name the hash doesn't have yet, or deleted
 - **Table view**: a click on a cell outlines it in blue, and the arrow keys move it from cell to cell, the table scrolling to keep it in view
-
-### Changed
-
-- **Large values**: a hash field is now shown up to 4 MB (was 128 KB); past that, it shows its size with buttons to open, save or copy it, and **Try to load** to read and show it
+- **New field**: the **+** button left of a hash's export buttons opens the value editor on a new field, written once it has a name and a valid JSON value
+- **Keyspace**: right-click a key or folder to **Rename** or **Delete** it (a folder with every key under it); right-click the empty space, or a row, for **Add key…**, which makes an empty hash under the name you type (a `:` puts it in that folder) and opens its tab. Redis stores it once its first field is added
+- **Restore the last connection** (Settings, off by default): at startup, Cachemire reconnects to the connection it was closed on, with its tabs and open folders; an AWS connection signs in again first, in the browser if its session has expired
+- **Keyspace**: going back to a connection reopens the folders it had open, as it already did for its tabs
 - **Long strings**: a string over 10,000 bytes inside a value is shown as `[REDACTED: string too long]` in its own color; opening, saving or copying the value still gives it whole
+- **Large values**: a hash field is now shown up to 4 MB (was 128 KB); past that, it shows its size with buttons to open, save or copy it, and **Try to load** to read and show it
+
 
 ### Fixes
 
 - **Values**: opening a value of thousands of lines no longer crashes the app
+- **Fields and table views**: the scrollbars are easier to grab, this helps navigating horizontally
 
 ## 3.1.1 - 2026-10-22
 

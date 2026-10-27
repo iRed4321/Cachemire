@@ -18,6 +18,7 @@ mod error;
 mod i18n;
 mod key_detail;
 mod keyspace;
+mod last_session;
 mod logging;
 mod redisql;
 mod search;
@@ -124,8 +125,8 @@ fn ssh_server_label(ssh: &cachemire_core::connection::SshSettings) -> String {
 }
 
 /// Reconnects/re-verifies the store's active connection — used by the
-/// keyspace refresh button. Unlike `connect_to`, never auto-called at
-/// startup: the app starts with nothing connected.
+/// keyspace refresh button. Never called at startup, where only a
+/// restored last session connects (see `last_session`).
 pub(crate) fn connect_active(window: &MainWindow, state: Arc<AppState>, rt: &tokio::runtime::Handle) {
     let connection_id = state.connections.lock().get_active().ok().map(|c| c.id);
     match connection_id {
@@ -248,8 +249,8 @@ fn main() -> Result<(), slint::PlatformError> {
     i18n::apply(state.settings.lock().language());
     let rt = cachemire_core::runtime::spawn();
     updates::init(&window, state.clone(), rt.clone());
-    // no auto-connect here — the title bar and keyspace panel both start
-    // empty until the user picks a connection from the title bar's picker
+    // no auto-connect here unless the settings ask for the last session
+    // back (see last_session): otherwise the user picks a connection
     let app = app::install(app::App {
         window: window.as_weak(),
         key_detail: key_detail::init(&window, state.clone(), rt.clone()),
@@ -278,8 +279,10 @@ fn main() -> Result<(), slint::PlatformError> {
     server_stats::init(&window, state.clone(), rt.clone());
     redisql::saved::init(&window, state.clone());
     settings::init(&window, state, rt);
+    last_session::restore(&app, &window);
 
     let outcome = window.run();
+    last_session::save(&app, &window);
     save_window_state();
     outcome
 }
