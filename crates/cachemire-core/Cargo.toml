@@ -42,7 +42,7 @@ aws-types = "1"
 aws-smithy-types = "1"
 # the SSO sign-in's PKCE challenge and the name of its token's cache file (see src/aws/sso.rs)
 base64 = "0.23"
-getrandom = { version = "0.3", features = ["std"] }
+getrandom = { version = "0.4", features = ["std"] }
 sha1 = "0.11"
 sha2 = "0.11"
 open.workspace = true

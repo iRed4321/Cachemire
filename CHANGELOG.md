@@ -21,6 +21,13 @@ Every stable release of Cachemire; `Unreleased` is what the next one brings. Bet
 - **Values**: opening a value of thousands of lines no longer crashes the app
 - **Fields and table views**: the scrollbars are easier to grab, this helps navigating horizontally
 
+## 3.1.2 - 2026-10-27
+
+### Fixes
+
+- **Dependencies**: the libraries it's built on are updated (aws-config, aws-credential-types, aws-runtime and 68 more)
+- **Security**: crypto-bigint and ctutils updated, fixing RUSTSEC-2026-0385 and RUSTSEC-2026-0387
+
 ## 3.1.1 - 2026-10-22
 
 ### Fixes
@@ -98,4 +105,3 @@ Cachemire is made for Redis hashes full of JSON: read each value as colored JSON
 
 - Cluster mode isn't supported yet: such a server is refused with a clear message
 - Cachemire only reads: editing keys and values is planned
-

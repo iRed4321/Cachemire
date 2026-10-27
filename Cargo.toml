@@ -14,7 +14,7 @@ authors = ["Léo Parent <leoparentperso@gmail.com>"]
 dirs = "7"
 open = "5"
 # mutexes without poisoning: a task that panics holding one leaves it usable
-parking_lot = "0.12"
+parking_lot = "0.13"
 rayon = "1.12.0"
 # SSH tunnels to the Redis server; `ring` rather than the default aws-lc-rs,
 # which needs a C toolchain (cmake/nasm) to build on Windows
