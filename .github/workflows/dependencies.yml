@@ -1,12 +1,13 @@
 name: Dependencies
 
-# Renovate (.github/renovate.json), each night at 2am in Paris or by hand, then again after each merge into
+# Renovate (.github/renovate.json), each night or by hand, then again after each merge into
 # main to rebase its other pull requests. What its merges bring to main is released as a fix
 # (`cargo ship deps-release`), and each published fix or stable release is brought into next.
 on:
   schedule:
-    # 2am in Paris: 00:07 UTC in summer, 01:07 UTC in winter; the run at the other hour does nothing
-    - cron: "7 0,1 * * *"
+    # once a night (2am in Paris in winter, 3am in summer): GitHub often starts it hours
+    # later, so nothing here depends on the hour it runs at
+    - cron: "0 1 * * *"
   workflow_dispatch:
     inputs:
       everything:
@@ -39,20 +40,8 @@ jobs:
     concurrency:
       group: renovate
       cancel-in-progress: false
-    outputs:
-      ran: ${{ steps.time.outputs.run }}
     steps:
-      - id: time
-        name: Time to run
-        run: |
-          if [[ "$GITHUB_EVENT_NAME" == schedule && "$(TZ=Europe/Paris date +%H)" != 02 ]]; then
-            echo "Not 2am in Paris: the other scheduled run is the one." >> "$GITHUB_STEP_SUMMARY"
-            echo "run=false" >> "$GITHUB_OUTPUT"
-          else
-            echo "run=true" >> "$GITHUB_OUTPUT"
-          fi
-      - if: steps.time.outputs.run == 'true'
-        uses: renovatebot/github-action@v46.3.7
+      - uses: renovatebot/github-action@v46.3.7
         with:
           token: ${{ secrets.RENOVATE_TOKEN }}
         env:
@@ -68,7 +57,7 @@ jobs:
   release:
     name: Release the updates
     needs: renovate
-    if: always() && needs.renovate.outputs.ran == 'true'
+    if: always() && needs.renovate.result != 'skipped'
     runs-on: ubuntu-latest
     concurrency:
       group: dependencies-release
