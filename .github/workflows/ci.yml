@@ -6,8 +6,9 @@ on:
   pull_request:
   push:
     branches: [main, next]
-    # a push touching only text has nothing to build
-    paths-ignore: ["**.md", "docs/**", "LICENSE"]
+    # a push touching only text or the workflows has nothing to build; a pull request runs its
+    # checks anyway (`main` requires them), each step skipped then (see "Anything to test")
+    paths-ignore: ["**.md", "docs/**", "LICENSE", ".github/**"]
 
 concurrency:
   group: ci-${{ github.ref }}
@@ -32,17 +33,37 @@ jobs:
       fail-fast: false
       matrix:
         os: [ubuntu-latest, windows-latest]
+    outputs:
+      code: ${{ steps.scope.outputs.code }}
     steps:
+      # with the merge commit's parent, the base the pull request is compared with
       - uses: actions/checkout@v7
+        with:
+          fetch-depth: 2
+      # CODE set when there's something to test: always on a push, on a pull request a file
+      # other than text or the workflows (the steps below check it)
+      - name: Anything to test
+        id: scope
+        run: |
+          if [[ "$GITHUB_EVENT_NAME" != pull_request ]] \
+            || git diff --name-only HEAD^1 HEAD | grep -Evq '(\.md$|^docs/|^LICENSE$|^\.github/)'; then
+            echo "CODE=1" >> "$GITHUB_ENV"
+            echo "code=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "Only text or workflows changed: nothing to test."
+            echo "code=false" >> "$GITHUB_OUTPUT"
+          fi
       # the compiled dependencies, kept between runs (one cache per OS); saved from main, which pull
       # requests start from, and next. cache-bin off: its cleanup deletes cargo, which the other
       # cache's post step still needs
       - uses: Swatinem/rust-cache@v2
+        if: env.CODE
         with:
           cache-bin: false
           save-if: ${{ github.ref == 'refs/heads/main' || github.ref == 'refs/heads/next' }}
       # xtask's own build (target/xtask), shared by every job of the OS, in both workflows
       - uses: Swatinem/rust-cache@v2
+        if: env.CODE
         with:
           cache-bin: false
           shared-key: xtask
@@ -50,33 +71,39 @@ jobs:
           save-if: ${{ github.ref == 'refs/heads/main' }}
       # quiet: the build log then lists what gets compiled, not each crate downloaded
       - name: Fetch crates
+        if: env.CODE
         run: cargo fetch --locked --quiet
       # the same on every OS: checked once, before anything is built
       - name: Format
-        if: runner.os == 'Linux'
+        if: env.CODE && runner.os == 'Linux'
         run: cargo fmt --all --check
       - name: Install Linux libraries
-        if: runner.os == 'Linux'
+        if: env.CODE && runner.os == 'Linux'
         run: |
           sudo apt-get update
           sudo apt-get install -y pkg-config libfontconfig1-dev libfreetype6-dev \
             libxkbcommon-dev libxkbcommon-x11-dev libwayland-dev libx11-dev libxcb1-dev
       # nextest runs the tests, cargo-llvm-cov measures their coverage with rustup's LLVM tools
       - name: Install cargo-nextest and cargo-llvm-cov
+        if: env.CODE
         uses: taiki-e/install-action@v2
         with:
           tool: cargo-nextest,cargo-llvm-cov
       - name: Install the LLVM tools
+        if: env.CODE
         run: rustup component add llvm-tools-preview
       # --timings + `report-build`: what was built, for the summary job
       - name: Clippy
+        if: env.CODE
         run: cargo clippy --all-targets --timings -- -D warnings
       - name: Save the report (clippy)
+        if: env.CODE
         run: cargo xtask report-build Clippy
       # the test steps load cargo-llvm-cov's environment: it instruments the workspace's crates
       # alone, their dependencies are built as usual. cachemire and cachemire-core are always
       # built here: the cache never holds them, and clippy only checks them
       - name: Build the tests
+        if: env.CODE
         id: build
         run: |
           eval "$(cargo llvm-cov show-env --sh)"
@@ -84,6 +111,7 @@ jobs:
       # every test, the headless UI ones (the real window on Slint's software renderer) included;
       # the JUnit file is kept for the report, which still goes on when a test fails
       - name: Tests
+        if: env.CODE
         run: |
           eval "$(cargo llvm-cov show-env --sh)"
           mkdir -p target/test-output
@@ -102,7 +130,7 @@ jobs:
         run: |
           cargo xtask report-build Tests --coverage target/test-output/coverage.json --tests "Tests=target/test-output/tests.xml"
       - uses: actions/upload-artifact@v7
-        if: ${{ !cancelled() }}
+        if: ${{ !cancelled() && env.CODE }}
         with:
           name: report-${{ matrix.os }}
           path: target/reports/
@@ -112,7 +140,7 @@ jobs:
   summary:
     name: Summary
     needs: [test]
-    if: always()
+    if: ${{ always() && needs.test.outputs.code != 'false' }}
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7

@@ -1,6 +1,6 @@
 {
   "$schema": "https://docs.renovatebot.com/renovate-schema.json",
-  "description": "Run by the Dependencies workflow (docs/releasing.md). main gets every update but majors, grouped once a week, and security fixes at once: merged once their checks pass, then released as a fix. next gets the majors.",
+  "description": "Run by the Dependencies workflow (docs/releasing.md). main gets every update but majors (and 0.x minors, as breaking), grouped once a week, and security fixes at once: merged once their checks pass, then released as a fix. next gets the majors.",
   "extends": ["config:recommended"],
   "timezone": "Europe/Paris",
   "baseBranchPatterns": ["main", "next"],
@@ -10,7 +10,6 @@
   "automergeType": "pr",
   "platformAutomerge": true,
   "rebaseWhen": "behind-base-branch",
-  "minimumReleaseAge": "3 days",
   "schedule": ["* 0-11 * * 1"],
   "lockFileMaintenance": {
     "enabled": true,
@@ -30,10 +29,24 @@
       "enabled": false
     },
     {
+      "description": "Nor a 0.x minor (0.12 → 0.13), which Cargo treats as breaking: they go to next too",
+      "matchBaseBranches": ["main"],
+      "matchUpdateTypes": ["minor"],
+      "matchCurrentVersion": "/^0\\./",
+      "enabled": false
+    },
+    {
       "description": "next takes the other updates from main, through `cargo ship sync`",
       "matchBaseBranches": ["next"],
       "matchUpdateTypes": ["minor", "patch", "pin", "digest", "lockFileMaintenance"],
       "enabled": false
+    },
+    {
+      "description": "Except the 0.x minors, which main doesn't take",
+      "matchBaseBranches": ["next"],
+      "matchUpdateTypes": ["minor"],
+      "matchCurrentVersion": "/^0\\./",
+      "enabled": true
     },
     {
       "description": "The Slint fork, pinned to a commit on purpose",

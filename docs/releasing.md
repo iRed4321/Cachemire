@@ -203,8 +203,8 @@ A try build counts as a beta for the app's updates.
 | Updates | When | Into | Released |
 |---|---|---|---|
 | fixing a security advisory (RustSec, through OSV and Dependabot alerts) | the next night | `main` | as a fix, that night |
-| minor and patch, in one pull request, and the refresh of `Cargo.lock` | Monday night, once a version is 3 days old | `main` | as a fix, Monday |
-| major | Monday night | `next` | with the next beta |
+| minor and patch, in one pull request, and the refresh of `Cargo.lock` | Monday night | `main` | as a fix, Monday |
+| major, and minor of a `0.x` crate (`0.12` → `0.13`, breaking for Cargo) | Monday night | `next` | with the next beta |
 
 The Slint fork is left alone: it's pinned to a commit on purpose. The config is [`.github/renovate.json`](../.github/renovate.json).
 
