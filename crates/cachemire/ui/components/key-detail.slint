@@ -501,6 +501,7 @@ export component KeyDetail inherits Rectangle {
             clear-selection => { root.table-clear-selection(); }
             select-range(from, to) => { root.table-select-range(from, to); }
             context-requested(x, y, selected) => { root.context-requested(x, y, selected); }
+            cell-copy-requested(row, column) => { KeyPanel.copy-table-cell(row, column); }
             near-end => { root.near-end(); }
         }
         if root.loaded && root.view == KeyView.fields: AllValuesTable {

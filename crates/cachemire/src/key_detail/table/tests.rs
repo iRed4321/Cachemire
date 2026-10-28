@@ -22,9 +22,9 @@ fn columns_are_the_top_level_keys_every_sampled_object_has() {
 }
 
 #[test]
-fn only_the_first_ten_objects_decide_the_columns() {
-    let mut fields: Vec<Arc<Field>> = (0..10).map(|i| field(&format!("f{i}"), Some(json!({"id": i, "name": "n"})))).collect();
-    // the 11th lacks "name", but isn't sampled
+fn only_the_first_sampled_objects_decide_the_columns() {
+    let mut fields: Vec<Arc<Field>> = (0..TABLE_SAMPLE).map(|i| field(&format!("f{i}"), Some(json!({"id": i, "name": "n"})))).collect();
+    // the one past the sample lacks "name", but isn't sampled
     fields.push(field("late", Some(json!({"id": 99}))));
     assert_eq!(column_titles(&fields), vec!["id", "name"]);
 }

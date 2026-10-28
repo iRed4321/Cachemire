@@ -7,7 +7,7 @@ Every stable release of Cachemire; `Unreleased` is what the next one brings. Bet
 ### Added
 
 - **Editing**: an open row's pencil button opens its value in an editor with line numbers, colored as you type; **Format JSON** re-indents it, and **Save** writes it back to Redis once it's valid JSON (hash fields and string keys; a click outside cancels). A hash field can also be renamed, to a name the hash doesn't have yet, or deleted
-- **Table view**: a click on a cell outlines it in blue, and the arrow keys move it from cell to cell, the table scrolling to keep it in view
+- **Table view**: a click on a cell outlines it in blue, and the arrow keys move it from cell to cell, the table scrolling to keep it in view; **Ctrl+C** copies the outlined cell's whole value
 - **New field**: the **+** button left of a hash's export buttons opens the value editor on a new field, written once it has a name and a valid JSON value
 - **Keyspace**: right-click a key or folder to **Rename** or **Delete** it (a folder with every key under it); right-click the empty space, or a row, for **Add key…**, which makes an empty hash under the name you type (a `:` puts it in that folder) and opens its tab. Redis stores it once its first field is added
 - **Restore the last connection** (Settings, off by default): at startup, Cachemire reconnects to the connection it was closed on, with its tabs and open folders; an AWS connection signs in again first, in the browser if its session has expired
@@ -20,6 +20,8 @@ Every stable release of Cachemire; `Unreleased` is what the next one brings. Bet
 
 - **Values**: opening a value of thousands of lines no longer crashes the app
 - **Fields and table views**: the scrollbars are easier to grab, this helps navigating horizontally
+- **Table view**: shows every key the rows share, not just the first 30, judged on the first 100 rows
+- **Table view**: while searching, copying or exporting ticked rows gives those rows, no longer others from the unfiltered list
 
 ## 3.1.2 - 2026-10-27
 

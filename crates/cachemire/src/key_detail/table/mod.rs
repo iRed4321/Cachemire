@@ -15,14 +15,13 @@ use crate::{KeyPanel, MainWindow, TableRowData};
 use slint::ComponentHandle;
 
 use super::color::color_for_kind;
-use super::field::Field;
+use super::field::{Field, Fields};
 use super::highlight::{head_chars, highlight_needle_matches};
 use super::pretty_text::{ColoredParagraph, MAX_SHOWN_STRING_BYTES, colored_paragraphs_for};
+use super::search_filter::SearchFilter;
 
 /// How many rows decide the columns: the first ones that are JSON objects.
-const TABLE_SAMPLE: usize = 10;
-/// A value with hundreds of keys would mean hundreds of columns of cells.
-const MAX_TABLE_COLUMNS: usize = 30;
+const TABLE_SAMPLE: usize = 100;
 /// Rows a table shows at most: a filter that opens up arrays can produce far
 /// more than are worth building cells for.
 pub(super) const MAX_TABLE_ROWS: usize = 3000;
@@ -65,6 +64,12 @@ impl TableData {
             note: String::new(),
         }
     }
+}
+
+/// The fields a table is made of: those of `fields` the search bar's badges in `filter` leave.
+/// The table and every export of its rows go through here, so their row indices agree.
+pub(super) fn table_fields(fields: &[Arc<Field>], filter: &SearchFilter) -> Fields {
+    fields.par_iter().filter(|f| filter.matches(f)).cloned().collect()
 }
 
 /// One table row before its cells exist: the field it came from, and the value
@@ -245,7 +250,6 @@ fn table_columns(rows: &[TableSourceRow]) -> Vec<Column> {
     for object in objects.take(TABLE_SAMPLE - 1) {
         keys.retain(|key| object.contains_key(key));
     }
-    keys.truncate(MAX_TABLE_COLUMNS);
     keys.into_iter().map(Column::Key).collect()
 }
 
@@ -360,6 +364,17 @@ pub(super) fn selected_rows_json(fields: &[Arc<Field>], indices: &[usize], sort:
     let TableLayout { mut rows, .. } = table_layout(fields, sort);
     rows.truncate(MAX_TABLE_ROWS);
     Value::Array(indices.iter().filter_map(|&i| rows.get(i)).map(table_row_json).collect())
+}
+
+/// The cell at `row` and `column` (0 is "Field") of the table `fields` make, in `sort`'s
+/// order, as text: the field's name, or the cell's value whole (see [`cell_text`]).
+pub(super) fn table_cell_copy_text(fields: &[Arc<Field>], row: usize, column: usize, sort: Option<TableSort>) -> Option<String> {
+    let TableLayout { rows, columns, .. } = table_layout(fields, sort);
+    let (field, value) = *rows.get(row)?;
+    match column.checked_sub(1) {
+        None => Some(field.name.clone()),
+        Some(i) => Some(cell_text(columns.get(i)?.cell(value))),
+    }
 }
 
 pub(super) fn apply_table(window: &MainWindow, table: TableData) {

@@ -292,6 +292,8 @@ export component TableView inherits Rectangle {
     // to keep it in sight (see `reveal-cell`).
     property <int> focus-row: -1;
     property <int> focus-col: -1;
+    // Ctrl+C on the focused cell: the row and column to copy whole
+    callback cell-copy-requested(row: int, column: int);
     function move-focus(rows-by: int, cols-by: int) {
         focus-row = max(0, min(rows.length - 1, focus-row + rows-by));
         focus-col = max(0, min(columns.length - 1, focus-col + cols-by));
@@ -341,6 +343,14 @@ export component TableView inherits Rectangle {
     // the arrow keys reach it from the focused cell's text, or from itself
     if columns.length > 1: table-keys := FocusScope {
         focus-on-click: false;
+        // Ctrl+C with no text selected copies the focused cell, before the cell's text takes it
+        capture-key-pressed(event) => {
+            if root.focus-row >= 0 && root.current-selection == "" && (event.modifiers.control || event.modifiers.meta) && (event.text == "c" || event.text == "C") {
+                root.cell-copy-requested(root.focus-row, root.focus-col);
+                return accept;
+            }
+            return reject;
+        }
         key-pressed(event) => {
             if root.focus-row < 0 || event.modifiers.control || event.modifiers.alt || event.modifiers.meta {
                 return reject;

@@ -340,6 +340,8 @@ export global KeyPanel {
     // Shift-click in the table: the rows from `from` to `to` take the state of `from`
     callback table-select-range(from: int, to: int);
     callback export-selection(ExportFormat, ExportTarget);
+    // the table cell at `row`, `column` (0 is "Field") onto the clipboard, whole
+    callback copy-table-cell(row: int, column: int);
     callback filter-query-submitted();
     callback filter-badge-removed(text: string, scope: SearchScope);
     callback filter-case-sensitivity-changed();

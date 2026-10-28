@@ -7,7 +7,6 @@ use rustc_hash::{FxHashMap, FxHashSet};
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 
-use rayon::prelude::*;
 use slint::{ComponentHandle, Model, ModelRc, VecModel, Weak};
 use tokio::runtime::Handle;
 
@@ -50,7 +49,7 @@ use paging::PageDir;
 use scroll::{arm_table_scroll, disarm_scroll, set_field_expanded, sync_rows_expansion};
 use search_filter::{SearchFilter, SearchTerm};
 use suggest::Suggester;
-use table::{apply_table, build_table, reset_table_selection, select_table_range, table_sort};
+use table::{apply_table, build_table, reset_table_selection, select_table_range, table_fields, table_sort};
 use value_list::meta_text;
 
 const MAX_ITEMS: usize = 500;
@@ -201,7 +200,7 @@ impl Ctx {
             // the search bar's badges narrow the table the same way they narrow
             // the field/value list, and highlight the same way in its cells
             let needles = filter.highlight_needles();
-            let fields: Fields = fields.into_par_iter().filter(|f| filter.matches(f)).collect();
+            let fields = table_fields(&fields, &filter);
             let table = build_table(&fields, &needles, filter.case_sensitive, sort);
             let _ = weak.upgrade_in_event_loop(move |window| {
                 if latest.load(Ordering::Relaxed) == generation && window.global::<KeyPanel>().get_view() == KeyView::Table {

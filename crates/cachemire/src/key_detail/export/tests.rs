@@ -1,6 +1,9 @@
 use super::super::highlight::head_chars;
 use super::super::pretty_text::{COMPACT_PREVIEW_CHAR_BUDGET, colored_paragraphs_for};
+use super::super::search_filter::SearchTerm;
+use super::super::test_support::field;
 use super::*;
+use crate::SearchScope;
 use serde_json::{Value, json};
 
 #[test]
@@ -46,4 +49,32 @@ fn an_export_reads_in_full_only_the_values_left_out_for_their_size() {
     assert_eq!(full[1].json, Some(json!({"huge": true})));
     assert_eq!(full[1].too_long, None);
     assert_eq!((full[2].raw.as_str(), full[2].too_long), ("", Some(800_000)), "deleted since: still empty");
+}
+
+/// With search badges narrowing the table, a ticked row exports, and a cell copies, the row
+/// the table shows at that place rather than the one among every shown field.
+#[test]
+fn table_exports_take_their_rows_from_the_fields_the_search_leaves() {
+    let runtime = tokio::runtime::Builder::new_current_thread().build().unwrap();
+    let search = SearchFilter::new(vec![SearchTerm { text: "kept".into(), scope: SearchScope::Fields }], false);
+    let content = PanelContent {
+        key: "k".into(),
+        current: vec![field("skipped", Some(json!({"id": 1}))), field("kept", Some(json!({"id": 2})))],
+        search,
+        ..Default::default()
+    };
+    let exporter = Exporter {
+        rt: runtime.handle().clone(),
+        weak: Weak::default(),
+        state: Arc::new(AppState::for_tests(&cachemire_core::test_support::temp_dir("table-exports"))),
+        content: Arc::new(Mutex::new(content)),
+    };
+    let (shown, search, key) = exporter.table_source();
+    assert_eq!(key, "k");
+    let fields = table_fields(&shown, &search);
+    assert_eq!(table_cell_copy_text(&fields, 0, 0, None).as_deref(), Some("kept"), "the table's first row");
+    assert_eq!(selected_rows_json(&fields, &[0], None), json!([{"id": 2}]));
+    assert_eq!(table_cell_copy_text(&fields, 0, 1, None).as_deref(), Some("2"));
+    let csv = table_csv(&fields, Some(&[0]), None);
+    assert!(csv.contains("kept") && !csv.contains("skipped"), "{csv}");
 }

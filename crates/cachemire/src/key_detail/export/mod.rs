@@ -18,7 +18,8 @@ use cachemire_core::state::AppState;
 use slint::ComponentHandle;
 
 use super::field::{Field, FieldValue, Fields};
-use super::table::{selected_rows_json, table_csv, table_sort};
+use super::search_filter::SearchFilter;
+use super::table::{selected_rows_json, table_cell_copy_text, table_csv, table_fields, table_sort};
 use super::{Ctx, PanelContent};
 
 /// A field's value as pretty (indented) JSON.
@@ -92,13 +93,14 @@ fn with_full_values(fields: Fields, read: Vec<(String, Option<String>)>) -> Fiel
         .collect()
 }
 
-/// Builds an export's text from `fields` on a blocking thread (serializing a big value
-/// would freeze the window), then opens, saves or copies it. A download asks where to
-/// save first; the values of `key` left out for their size are then read in full.
+/// Builds an export's text from `fields` (narrowed by `search` to the table's) on a blocking
+/// thread, then opens, saves or copies it. A download asks where to save first; the values
+/// of `key` left out for their size are then read in full.
 fn run_export(
     exporter: &Exporter,
     key: String,
     fields: Fields,
+    search: Option<SearchFilter>,
     action: ExportAction,
     build: impl FnOnce(Fields) -> String + Send + 'static,
 ) {
@@ -111,6 +113,13 @@ fn run_export(
                 None => return,
             },
             _ => None,
+        };
+        let fields = match search {
+            Some(filter) => match tokio::task::spawn_blocking(move || table_fields(&fields, &filter)).await {
+                Ok(fields) => fields,
+                Err(_) => return,
+            },
+            None => fields,
         };
         let unread: Vec<String> = fields.iter().filter(|f| f.too_long.is_some()).map(|f| f.name.clone()).collect();
         let read = if unread.is_empty() {
@@ -163,6 +172,13 @@ impl Exporter {
         (content.current.clone(), content.key.clone())
     }
 
+    /// The fields shown, the search bar's badges that narrow them to the table's rows
+    /// (see [`table_fields`]), and their key.
+    fn table_source(&self) -> (Fields, SearchFilter, String) {
+        let content = self.content.lock();
+        (content.current.clone(), content.search.clone(), content.key.clone())
+    }
+
     /// Exports one row's own field, as pretty JSON or escaped. `action` gets the
     /// field's file-name-safe name to build a download name from.
     fn field(&self, name: &str, escaped: bool, action: impl FnOnce(String) -> ExportAction) {
@@ -173,7 +189,7 @@ impl Exporter {
         };
         let action = action(sanitize_filename(&field.name));
         let text = if escaped { escaped_json } else { pretty_json };
-        run_export(self, key, vec![field], action, move |fields| fields.first().map(|field| text(field)).unwrap_or_default());
+        run_export(self, key, vec![field], None, action, move |fields| fields.first().map(|field| text(field)).unwrap_or_default());
     }
 
     /// The indices of the table's ticked rows, in table order.
@@ -189,7 +205,7 @@ impl Exporter {
         if indices.is_empty() {
             return;
         }
-        let (fields, key) = self.shown();
+        let (fields, search, key) = self.table_source();
         let sort = self.weak.upgrade().and_then(|window| table_sort(&window));
         let stem = sanitize_filename(&key);
         let escaped = format == ExportFormat::Escaped;
@@ -198,7 +214,7 @@ impl Exporter {
             ExportTarget::Download => ExportAction::Download(format!("{stem}.selection.{}", if escaped { "escaped.txt" } else { "json" })),
             ExportTarget::Copy => ExportAction::Copy,
         };
-        run_export(self, key, fields, action, move |fields| {
+        run_export(self, key, fields, Some(search), action, move |fields| {
             let rows = selected_rows_json(&fields, &indices, sort);
             if escaped {
                 serde_json::to_string(&serde_json::to_string(&rows).unwrap_or_default()).unwrap_or_default()
@@ -208,10 +224,24 @@ impl Exporter {
         });
     }
 
+    /// Copies the table's cell at `row` and `column` (0 is "Field") whole, off the UI thread:
+    /// the table is laid out again from the same fields it was built from.
+    fn table_cell(&self, row: usize, column: usize) {
+        let (fields, search, _) = self.table_source();
+        let sort = self.weak.upgrade().and_then(|window| table_sort(&window));
+        let weak = self.weak.clone();
+        self.rt.spawn_blocking(move || {
+            let fields = table_fields(&fields, &search);
+            if let Some(text) = table_cell_copy_text(&fields, row, column, sort).filter(|text| !text.is_empty()) {
+                copy_text(&weak, &text);
+            }
+        });
+    }
+
     /// Saves the table the filter leaves as a CSV file: the ticked rows when
     /// there are any, every row otherwise.
     fn table_csv(&self) {
-        let (fields, key) = self.shown();
+        let (fields, search, key) = self.table_source();
         if fields.is_empty() {
             return;
         }
@@ -219,7 +249,7 @@ impl Exporter {
         let indices = self.selected_rows();
         let sort = self.weak.upgrade().and_then(|window| table_sort(&window));
         let filename = if indices.is_empty() { format!("{stem}.csv") } else { format!("{stem}.selection.csv") };
-        run_export(self, key, fields, ExportAction::Download(filename), move |fields| {
+        run_export(self, key, fields, Some(search), ExportAction::Download(filename), move |fields| {
             table_csv(&fields, (!indices.is_empty()).then_some(indices.as_slice()), sort)
         });
     }
@@ -237,7 +267,7 @@ impl Exporter {
             ExportTarget::Download => ExportAction::Download(format!("{stem}.{}", if escaped { "escaped.txt" } else { "json" })),
             ExportTarget::Copy => ExportAction::Copy,
         };
-        run_export(self, key, fields, action, move |fields| all_fields_json(&fields, escaped));
+        run_export(self, key, fields, None, action, move |fields| all_fields_json(&fields, escaped));
     }
 }
 
@@ -265,6 +295,14 @@ pub(super) fn init(window: &MainWindow, ctx: &Ctx) {
     panel.on_export_selection({
         let exporter = exporter.clone();
         move |format, target| exporter.selection(format, target)
+    });
+    panel.on_copy_table_cell({
+        let exporter = exporter.clone();
+        move |row, column| {
+            if let (Ok(row), Ok(column)) = (usize::try_from(row), usize::try_from(column)) {
+                exporter.table_cell(row, column);
+            }
+        }
     });
     panel.on_export_table_csv({
         let exporter = exporter.clone();
