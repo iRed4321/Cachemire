@@ -114,7 +114,7 @@ fn the_table_exports_as_csv_with_every_row_and_proper_quoting() {
         field("k,2", Some(json!({"id": 2, "note": "has \"quotes\", commas\nand a line break", "tags": [], "ok": null}))),
     ];
     assert_eq!(
-        table_csv(&fields, None, None),
+        table_csv(&fields, &fields, None, None),
         "Field,id,note,tags,ok\r\n\
          k1,1,plain,\"[\"\"a\"\",\"\"b\"\"]\",true\r\n\
          \"k,2\",2,\"has \"\"quotes\"\", commas\nand a line break\",[],\r\n"
@@ -122,11 +122,13 @@ fn the_table_exports_as_csv_with_every_row_and_proper_quoting() {
 
     // a filter's records: one line each, under the field's name, past the table's row cap
     let big = json!((0..MAX_TABLE_ROWS + 5).map(|i| json!({"n": i})).collect::<Vec<_>>());
-    let csv = table_csv(&[field("f", Some(big))], None, None);
+    let fields = [field("f", Some(big))];
+    let csv = table_csv(&fields, &fields, None, None);
     assert_eq!(csv.lines().count(), 1 + MAX_TABLE_ROWS + 5);
     assert!(csv.starts_with("Field,n\r\nf,0\r\n") && csv.ends_with(&format!("f,{}\r\n", MAX_TABLE_ROWS + 4)));
 
-    assert!(table_csv(&[field("only-text", None)], None, None).is_empty());
+    let text = [field("only-text", None)];
+    assert!(table_csv(&text, &text, None, None).is_empty());
 }
 
 #[test]
@@ -134,16 +136,16 @@ fn csv_of_the_ticked_rows_has_the_same_header_and_only_those_rows_in_table_order
     let fields: Fields = (0..3).map(records_field).collect();
     let (records, _) = filter_fields(&fields, parse_filter("records").unwrap().as_ref());
     // six rows (two records per field); ticking the 2nd and the 5th, in any order
-    let all = table_csv(&records, None, None);
+    let all = table_csv(&records, &records, None, None);
     assert_eq!(all.lines().count(), 1 + 6);
-    let picked = table_csv(&records, Some(&[4, 1]), None);
+    let picked = table_csv(&records, &records, Some(&[4, 1]), None);
     let lines: Vec<&str> = picked.lines().collect();
     assert_eq!(lines[0], all.lines().next().unwrap(), "the same header as the full export");
     assert_eq!(lines.len(), 3);
     assert!(lines[1].starts_with("field_2,20,"), "{}", lines[1]); // index 4: the first record of field_2
     assert!(lines[2].starts_with("field_0,1,"), "{}", lines[2]); // index 1
-    assert_eq!(table_csv(&records, Some(&[]), None).lines().count(), 1, "an empty selection is just the header");
-    assert_eq!(table_csv(&records, Some(&[99]), None).lines().count(), 1, "an index past the rows is ignored");
+    assert_eq!(table_csv(&records, &records, Some(&[]), None).lines().count(), 1, "an empty selection is just the header");
+    assert_eq!(table_csv(&records, &records, Some(&[99]), None).lines().count(), 1, "an index past the rows is ignored");
 }
 
 #[test]
@@ -151,7 +153,7 @@ fn selected_table_rows_become_one_json_array_in_table_order() {
     let fields: Fields = (0..3).map(records_field).chain([field("text", None)]).collect();
     // `records`: six rows, two records per field
     let (records, _) = filter_fields(&fields, parse_filter("records").unwrap().as_ref());
-    let picked = selected_rows_json(&records, &[0, 3, 5], None);
+    let picked = selected_rows_json(&records, &records, &[0, 3, 5], None);
     assert_eq!(
         picked,
         json!([
@@ -160,13 +162,13 @@ fn selected_table_rows_become_one_json_array_in_table_order() {
             {"record_id": 21, "label": "b", "details": {"priority": 2}},
         ])
     );
-    assert_eq!(selected_rows_json(&records, &[], None), json!([]));
-    assert_eq!(selected_rows_json(&records, &[99], None), json!([]), "an index past the rows is ignored");
+    assert_eq!(selected_rows_json(&records, &records, &[], None), json!([]));
+    assert_eq!(selected_rows_json(&records, &records, &[99], None), json!([]), "an index past the rows is ignored");
 
     // rows that are fields: a JSON field is its value, a text field its text
     let with_text: Fields =
         fields.iter().take(3).cloned().chain([Arc::new(Field::new("text".into(), "plain text".into(), None))]).collect();
-    let picked = selected_rows_json(&with_text, &[1, 3], None);
+    let picked = selected_rows_json(&with_text, &with_text, &[1, 3], None);
     assert_eq!(picked, json!([fields[1].json.clone().unwrap(), "plain text"]));
 }
 

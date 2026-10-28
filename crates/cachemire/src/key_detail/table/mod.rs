@@ -330,11 +330,12 @@ fn column_sizes(mut lengths: Vec<usize>, title_width: f32) -> (f32, f32) {
     (width, (wanted - width).max(0.0))
 }
 
-/// The table `fields` make (same columns as [`build_table`]) as CSV: every
-/// row, not just [`MAX_TABLE_ROWS`] — or, with `only`, just those indices,
-/// in order. Rows are in `sort`'s order. Empty when there's nothing to tabulate.
-pub(super) fn table_csv(fields: &[Arc<Field>], only: Option<&[usize]>, sort: Option<TableSort>) -> String {
+/// The table `fields` make (as [`build_table`] does, values from `full`) as CSV: every row,
+/// not just [`MAX_TABLE_ROWS`], or with `only` just those indices, in order. Rows are in
+/// `sort`'s order. Empty when there's nothing to tabulate.
+pub(super) fn table_csv(fields: &[Arc<Field>], full: &[Arc<Field>], only: Option<&[usize]>, sort: Option<TableSort>) -> String {
     let TableLayout { rows, columns, .. } = table_layout(fields, sort);
+    let rows = with_full_rows(rows, fields, full);
     if columns.is_empty() {
         return String::new();
     }
@@ -350,6 +351,18 @@ pub(super) fn table_csv(fields: &[Arc<Field>], only: Option<&[usize]>, sort: Opt
     out
 }
 
+/// `rows` of the table over `shown`, with the values of the fields left out for their size
+/// taken from `full` (`shown`, in the same order, with those read in full): each still the
+/// one row the table shows, so the rows keep their places.
+fn with_full_rows<'a>(mut rows: Vec<TableSourceRow<'a>>, shown: &'a [Arc<Field>], full: &'a [Arc<Field>]) -> Vec<TableSourceRow<'a>> {
+    for row in rows.iter_mut().filter(|(field, _)| field.too_long.is_some()) {
+        if let Some(field) = shown.iter().position(|f| std::ptr::eq(&**f, row.0)).and_then(|i| full.get(i)) {
+            *row = (field, field.json.as_ref());
+        }
+    }
+    rows
+}
+
 /// A table row as JSON, for copying: the row's value, or a non-JSON field's text.
 fn table_row_json(row: &TableSourceRow) -> Value {
     match row {
@@ -358,23 +371,41 @@ fn table_row_json(row: &TableSourceRow) -> Value {
     }
 }
 
-/// The rows at `indices` of the table `fields` make (the same order the table
-/// shows them in, per `sort`), each as its JSON, in one array — the "copy selection" text.
-pub(super) fn selected_rows_json(fields: &[Arc<Field>], indices: &[usize], sort: Option<TableSort>) -> Value {
+/// The rows at `indices` of the table `fields` make (in the order the table shows them, per
+/// `sort`; values from `full`), each as its JSON, in one array — the "copy selection" text.
+pub(super) fn selected_rows_json(fields: &[Arc<Field>], full: &[Arc<Field>], indices: &[usize], sort: Option<TableSort>) -> Value {
     let TableLayout { mut rows, .. } = table_layout(fields, sort);
     rows.truncate(MAX_TABLE_ROWS);
+    let rows = with_full_rows(rows, fields, full);
     Value::Array(indices.iter().filter_map(|&i| rows.get(i)).map(table_row_json).collect())
 }
 
 /// The cell at `row` and `column` (0 is "Field") of the table `fields` make, in `sort`'s
-/// order, as text: the field's name, or the cell's value whole (see [`cell_text`]).
-pub(super) fn table_cell_copy_text(fields: &[Arc<Field>], row: usize, column: usize, sort: Option<TableSort>) -> Option<String> {
+/// order, as text: the field's name, or the cell's value whole (see [`cell_text`]) from `full`.
+pub(super) fn table_cell_copy_text(
+    fields: &[Arc<Field>],
+    full: &[Arc<Field>],
+    row: usize,
+    column: usize,
+    sort: Option<TableSort>,
+) -> Option<String> {
     let TableLayout { rows, columns, .. } = table_layout(fields, sort);
+    let rows = with_full_rows(rows, fields, full);
     let (field, value) = *rows.get(row)?;
     match column.checked_sub(1) {
         None => Some(field.name.clone()),
         Some(i) => Some(cell_text(columns.get(i)?.cell(value))),
     }
+}
+
+/// The name of the field left out for its size whose value the cell at `row` and `column`
+/// of the table `fields` make (in `sort`'s order) shows, if it is one; never for "Field".
+pub(super) fn table_cell_left_out(fields: &[Arc<Field>], row: usize, column: usize, sort: Option<TableSort>) -> Option<String> {
+    if column == 0 {
+        return None;
+    }
+    let TableLayout { rows, .. } = table_layout(fields, sort);
+    rows.get(row).map(|(field, _)| *field).filter(|field| field.too_long.is_some()).map(|field| field.name.clone())
 }
 
 pub(super) fn apply_table(window: &MainWindow, table: TableData) {

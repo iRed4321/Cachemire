@@ -72,9 +72,39 @@ fn table_exports_take_their_rows_from_the_fields_the_search_leaves() {
     let (shown, search, key) = exporter.table_source();
     assert_eq!(key, "k");
     let fields = table_fields(&shown, &search);
-    assert_eq!(table_cell_copy_text(&fields, 0, 0, None).as_deref(), Some("kept"), "the table's first row");
-    assert_eq!(selected_rows_json(&fields, &[0], None), json!([{"id": 2}]));
-    assert_eq!(table_cell_copy_text(&fields, 0, 1, None).as_deref(), Some("2"));
-    let csv = table_csv(&fields, Some(&[0]), None);
+    assert_eq!(table_cell_copy_text(&fields, &fields, 0, 0, None).as_deref(), Some("kept"), "the table's first row");
+    assert_eq!(selected_rows_json(&fields, &fields, &[0], None), json!([{"id": 2}]));
+    assert_eq!(table_cell_copy_text(&fields, &fields, 0, 1, None).as_deref(), Some("2"));
+    let csv = table_csv(&fields, &fields, Some(&[0]), None);
     assert!(csv.contains("kept") && !csv.contains("skipped"), "{csv}");
+}
+
+/// A value left out for its size fills one table row; read in full for an export, an array
+/// there stays that one row, so the ticked rows after it are still the ones exported.
+#[test]
+fn a_value_read_in_full_for_an_export_keeps_the_rows_in_their_places() {
+    let shown: Fields = vec![Arc::new(Field::too_long("big".into(), 900_000)), field("after", Some(json!({"id": 2})))];
+    let full = with_full_values(shown.clone(), vec![("big".to_string(), Some("[{\"id\":10},{\"id\":11}]".to_string()))]);
+    assert_eq!(selected_rows_json(&shown, &full, &[1], None), json!([{"id": 2}]), "the row ticked after the big one");
+    assert_eq!(selected_rows_json(&shown, &full, &[0], None), json!([[{"id": 10}, {"id": 11}]]), "the big one whole");
+    assert_eq!(table_csv(&shown, &full, Some(&[1]), None), "Field,id\r\nafter,2\r\n");
+    assert_eq!(table_csv(&shown, &full, None, None).lines().count(), 3, "the header and the two rows shown");
+}
+
+/// Copying a cell whose row is a value left out for its size asks for that value only, and
+/// copies the cell from it once read in full; the "Field" cell needs nothing read.
+#[test]
+fn copying_a_cell_of_a_value_left_out_reads_that_value_only() {
+    let shown: Fields = vec![
+        Arc::new(Field::too_long("big".into(), 900_000)),
+        field("after", Some(json!({"id": 2}))),
+        Arc::new(Field::too_long("other".into(), 800_000)),
+    ];
+    assert_eq!(table_cell_left_out(&shown, 0, 1, None).as_deref(), Some("big"));
+    assert_eq!(table_cell_left_out(&shown, 0, 0, None), None, "the field's name is already there");
+    assert_eq!(table_cell_left_out(&shown, 1, 1, None), None, "a value read with its page");
+    let full = with_full_values(shown.clone(), vec![("big".to_string(), Some("{\"id\":10}".to_string()))]);
+    assert_eq!(table_cell_copy_text(&shown, &full, 0, 1, None).as_deref(), Some("10"));
+    assert_eq!(table_cell_copy_text(&shown, &shown, 0, 1, None).as_deref(), Some(""), "empty until read");
+    assert_eq!(table_cell_copy_text(&shown, &full, 1, 1, None).as_deref(), Some("2"));
 }

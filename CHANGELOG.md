@@ -21,7 +21,7 @@ Every stable release of Cachemire; `Unreleased` is what the next one brings. Bet
 - **Values**: opening a value of thousands of lines no longer crashes the app
 - **Fields and table views**: the scrollbars are easier to grab, this helps navigating horizontally
 - **Table view**: shows every key the rows share, not just the first 30, judged on the first 100 rows
-- **Table view**: while searching, copying or exporting ticked rows gives those rows, no longer others from the unfiltered list
+- **Table view**: copying or exporting ticked rows gives exactly those rows, also while searching or next to values over 4 MB
 
 ## 3.1.2 - 2026-10-27
 

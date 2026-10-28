@@ -19,7 +19,7 @@ use slint::ComponentHandle;
 
 use super::field::{Field, FieldValue, Fields};
 use super::search_filter::SearchFilter;
-use super::table::{selected_rows_json, table_cell_copy_text, table_csv, table_fields, table_sort};
+use super::table::{selected_rows_json, table_cell_copy_text, table_cell_left_out, table_csv, table_fields, table_sort};
 use super::{Ctx, PanelContent};
 
 /// A field's value as pretty (indented) JSON.
@@ -93,16 +93,16 @@ fn with_full_values(fields: Fields, read: Vec<(String, Option<String>)>) -> Fiel
         .collect()
 }
 
-/// Builds an export's text from `fields` (narrowed by `search` to the table's) on a blocking
-/// thread, then opens, saves or copies it. A download asks where to save first; the values
-/// of `key` left out for their size are then read in full.
+/// Builds an export's text from `fields` (narrowed by `search` to the table's) as shown and
+/// with the values of `key` left out for their size read in full, on a blocking thread, then
+/// opens, saves or copies it. A download asks where to save first.
 fn run_export(
     exporter: &Exporter,
     key: String,
     fields: Fields,
     search: Option<SearchFilter>,
     action: ExportAction,
-    build: impl FnOnce(Fields) -> String + Send + 'static,
+    build: impl FnOnce(&[Arc<Field>], Fields) -> String + Send + 'static,
 ) {
     let weak = exporter.weak.clone();
     let state = exporter.state.clone();
@@ -122,19 +122,9 @@ fn run_export(
             None => fields,
         };
         let unread: Vec<String> = fields.iter().filter(|f| f.too_long.is_some()).map(|f| f.name.clone()).collect();
-        let read = if unread.is_empty() {
-            Vec::new()
-        } else {
-            match explorer::hash_full_values(&state, None, &KeyName::from_id(&key), &unread).await {
-                Ok(values) => unread.into_iter().zip(values).collect(),
-                Err(e) => {
-                    tracing::warn!("reading the values left out for their size failed: {e}");
-                    return;
-                }
-            }
-        };
+        let Some(read) = read_in_full(&state, &key, unread).await else { return };
         let _ = tokio::task::spawn_blocking(move || {
-            let text = build(with_full_values(fields, read));
+            let text = build(&fields, with_full_values(fields.clone(), read));
             match (action, save_to) {
                 (ExportAction::Open(extension), _) => {
                     if let Err(e) = crate::value_actions::open_in_external_editor(&text, extension) {
@@ -152,6 +142,21 @@ fn run_export(
         })
         .await;
     });
+}
+
+/// The values of `key`'s fields named `unread` read in full, by name (`None` for one gone
+/// since); `None` if reading them failed.
+async fn read_in_full(state: &AppState, key: &str, unread: Vec<String>) -> Option<Vec<(String, Option<String>)>> {
+    if unread.is_empty() {
+        return Some(Vec::new());
+    }
+    match explorer::hash_full_values(state, None, &KeyName::from_id(key), &unread).await {
+        Ok(values) => Some(unread.into_iter().zip(values).collect()),
+        Err(e) => {
+            tracing::warn!("reading the values left out for their size failed: {e}");
+            None
+        }
+    }
 }
 
 /// What the open/download/copy pills act on: the loaded fields and the key
@@ -189,7 +194,7 @@ impl Exporter {
         };
         let action = action(sanitize_filename(&field.name));
         let text = if escaped { escaped_json } else { pretty_json };
-        run_export(self, key, vec![field], None, action, move |fields| fields.first().map(|field| text(field)).unwrap_or_default());
+        run_export(self, key, vec![field], None, action, move |_, fields| fields.first().map(|field| text(field)).unwrap_or_default());
     }
 
     /// The indices of the table's ticked rows, in table order.
@@ -214,8 +219,8 @@ impl Exporter {
             ExportTarget::Download => ExportAction::Download(format!("{stem}.selection.{}", if escaped { "escaped.txt" } else { "json" })),
             ExportTarget::Copy => ExportAction::Copy,
         };
-        run_export(self, key, fields, Some(search), action, move |fields| {
-            let rows = selected_rows_json(&fields, &indices, sort);
+        run_export(self, key, fields, Some(search), action, move |shown, full| {
+            let rows = selected_rows_json(shown, &full, &indices, sort);
             if escaped {
                 serde_json::to_string(&serde_json::to_string(&rows).unwrap_or_default()).unwrap_or_default()
             } else {
@@ -224,17 +229,32 @@ impl Exporter {
         });
     }
 
-    /// Copies the table's cell at `row` and `column` (0 is "Field") whole, off the UI thread:
-    /// the table is laid out again from the same fields it was built from.
+    /// Copies the table's cell at `row` and `column` (0 is "Field") whole, off the UI thread,
+    /// laid out again from the fields the table was built from; a value left out for its size
+    /// that the cell needs is read in full first (that one only).
     fn table_cell(&self, row: usize, column: usize) {
-        let (fields, search, _) = self.table_source();
+        let (fields, search, key) = self.table_source();
         let sort = self.weak.upgrade().and_then(|window| table_sort(&window));
         let weak = self.weak.clone();
-        self.rt.spawn_blocking(move || {
-            let fields = table_fields(&fields, &search);
-            if let Some(text) = table_cell_copy_text(&fields, row, column, sort).filter(|text| !text.is_empty()) {
-                copy_text(&weak, &text);
-            }
+        let state = self.state.clone();
+        self.rt.spawn(async move {
+            let picked = tokio::task::spawn_blocking({
+                let sort = sort.clone();
+                move || {
+                    let fields = table_fields(&fields, &search);
+                    let unread = table_cell_left_out(&fields, row, column, sort);
+                    (fields, unread)
+                }
+            });
+            let Ok((fields, unread)) = picked.await else { return };
+            let Some(read) = read_in_full(&state, &key, unread.into_iter().collect()).await else { return };
+            let _ = tokio::task::spawn_blocking(move || {
+                let full = with_full_values(fields.clone(), read);
+                if let Some(text) = table_cell_copy_text(&fields, &full, row, column, sort).filter(|text| !text.is_empty()) {
+                    copy_text(&weak, &text);
+                }
+            })
+            .await;
         });
     }
 
@@ -249,8 +269,8 @@ impl Exporter {
         let indices = self.selected_rows();
         let sort = self.weak.upgrade().and_then(|window| table_sort(&window));
         let filename = if indices.is_empty() { format!("{stem}.csv") } else { format!("{stem}.selection.csv") };
-        run_export(self, key, fields, Some(search), ExportAction::Download(filename), move |fields| {
-            table_csv(&fields, (!indices.is_empty()).then_some(indices.as_slice()), sort)
+        run_export(self, key, fields, Some(search), ExportAction::Download(filename), move |shown, full| {
+            table_csv(shown, &full, (!indices.is_empty()).then_some(indices.as_slice()), sort)
         });
     }
 
@@ -267,7 +287,7 @@ impl Exporter {
             ExportTarget::Download => ExportAction::Download(format!("{stem}.{}", if escaped { "escaped.txt" } else { "json" })),
             ExportTarget::Copy => ExportAction::Copy,
         };
-        run_export(self, key, fields, None, action, move |fields| all_fields_json(&fields, escaped));
+        run_export(self, key, fields, None, action, move |_, fields| all_fields_json(&fields, escaped));
     }
 }
 
