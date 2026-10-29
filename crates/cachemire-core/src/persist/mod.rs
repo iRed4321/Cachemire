@@ -41,6 +41,26 @@ pub fn set_aside(path: &Path) -> Option<PathBuf> {
     fs::rename(path, &target).ok().map(|()| target)
 }
 
+/// A store's file read at startup: what it holds (`None` with no file), and whether the
+/// store may save over it. A file that can't be used is moved aside first (see
+/// [`set_aside`]); one that can't be moved is never written over this run.
+pub fn load_store<T: DeserializeOwned>(path: &Path) -> (Option<T>, bool) {
+    match load(path) {
+        Loaded::Read(value) => (Some(value), true),
+        Loaded::Missing => (None, true),
+        Loaded::Unusable(why) => match set_aside(path) {
+            Some(kept) => {
+                tracing::error!("{} can't be read ({why}); kept as {}", path.display(), kept.display());
+                (None, true)
+            }
+            None => {
+                tracing::error!("{} can't be read ({why}) nor moved aside: nothing is saved over it", path.display());
+                (None, false)
+            }
+        },
+    }
+}
+
 /// Writes `value` as pretty JSON via a temp file, flushed then renamed over
 /// the original, so the file is always the old content or the whole new one
 /// — writing in place would truncate first, risking an unparseable half-write.

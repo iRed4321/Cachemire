@@ -3,6 +3,9 @@
 # has no entry. The messages in the .slint files are in */LC_MESSAGES/cachemire.po.
 _version: 2
 
+# a second launch while the app is already open
+"Cachemire is already running.":
+  fr: "Cachemire est déjà ouvert."
 "Copied":
   fr: "Copié"
 "Refreshed":
@@ -23,6 +26,8 @@ _version: 2
   fr: "Un champ doit avoir un nom"
 "This hash already has a field with this name":
   fr: "Ce hash a déjà un champ de ce nom"
+"This value isn't UTF-8 text: it can't be edited here":
+  fr: "Cette valeur n'est pas du texte UTF-8 : elle ne peut pas être modifiée ici"
 # the keyspace's right-click menu: a new key, renaming or deleting a key or a folder
 "A key needs a name":
   fr: "Une clé doit avoir un nom"

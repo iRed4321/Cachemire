@@ -5,7 +5,7 @@ use std::path::PathBuf;
 
 use serde::{Deserialize, Serialize};
 
-use crate::persist::{self, Loaded};
+use crate::persist;
 
 /// Entries kept for each connection.
 const PER_CONNECTION: usize = 50;
@@ -24,21 +24,15 @@ pub struct HistoryStore {
     file_path: PathBuf,
     /// newest first
     entries: Vec<HistoryEntry>,
+    /// false when the file couldn't be read nor moved aside: it is then never saved over
+    writable: bool,
 }
 
 impl HistoryStore {
     pub fn new(file_path: PathBuf) -> Self {
-        // a file that can't be read is kept aside, not overwritten by the next run
-        let entries = match persist::load::<Vec<HistoryEntry>>(&file_path) {
-            Loaded::Read(entries) => entries,
-            Loaded::Missing => Vec::new(),
-            Loaded::Unusable(why) => {
-                tracing::error!("{} can't be read ({why})", file_path.display());
-                persist::set_aside(&file_path);
-                Vec::new()
-            }
-        };
-        Self { file_path, entries }
+        // a file that can't be read is kept, never replaced by the next save
+        let (entries, writable) = persist::load_store::<Vec<HistoryEntry>>(&file_path);
+        Self { file_path, entries: entries.unwrap_or_default(), writable }
     }
 
     /// Adds a run of `text` on `connection_id` at the top, replacing an earlier run of the same
@@ -69,6 +63,9 @@ impl HistoryStore {
     }
 
     fn save(&self) {
+        if !self.writable {
+            return;
+        }
         if let Err(e) = persist::save(&self.file_path, &self.entries) {
             tracing::error!("saving the query history failed: {e}");
         }

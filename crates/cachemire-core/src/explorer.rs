@@ -163,25 +163,14 @@ pub struct EntriesBatch {
     pub done: bool,
 }
 
-/// Reads at most `limit` entries of each of `keys` in one pipelined round trip.
-/// If the pipeline fails (a key vanished or changed type), each key is read on
-/// its own and the failing ones are left empty.
+/// Reads at most `limit` entries of each of `keys` in one pipelined round trip; a key
+/// that can't be read (it vanished, changed type) or a failed round trip leaves them empty.
 async fn read_entries(session: &mut Session, keys: Vec<TypedKey>, limit: usize) -> Vec<KeyEntries> {
     if keys.is_empty() {
         return Vec::new();
     }
-    let heads = session.entry_heads(&keys, limit).await.ok();
-    let mut heads = heads.map(Vec::into_iter);
-    let mut out = Vec::with_capacity(keys.len());
-    for key in keys {
-        let entries = match heads.as_mut().and_then(Iterator::next) {
-            Some(entries) => entries,
-            // the pipeline failed as a whole: read this key alone
-            None => session.entry_heads(std::slice::from_ref(&key), limit).await.ok().and_then(|mut one| one.pop()).unwrap_or_default(),
-        };
-        out.push(KeyEntries { key: key.name, key_type: key.key_type, entries });
-    }
-    out
+    let mut heads = session.entry_heads(&keys, limit).await.unwrap_or_default().into_iter();
+    keys.into_iter().map(|key| KeyEntries { key: key.name, key_type: key.key_type, entries: heads.next().unwrap_or_default() }).collect()
 }
 
 /// How many keys one read of content covers: a SCAN page is split into reads of
@@ -718,12 +707,7 @@ pub async fn rename_hash_field(
     to: &str,
     value: &str,
 ) -> Result<bool, Error> {
-    let mut session = Session::open(state, connection_id).await?;
-    if !session.hash_set_new(key, to, value).await? {
-        return Ok(false);
-    }
-    session.hash_delete(key, from).await?;
-    Ok(true)
+    Session::open(state, connection_id).await?.hash_rename(key, from, to, value).await
 }
 
 /// Writes `value` into a new field `field` of hash `key` (making the hash if there is
@@ -789,8 +773,8 @@ pub async fn delete_folder(state: &AppState, connection_id: Option<&str>, prefix
 
 /// What moving a folder's keys did.
 pub enum FolderMove {
-    /// every key, as (old name, new name)
-    Moved(Vec<(KeyName, KeyName)>),
+    /// the keys moved, as (old name, new name); with why it stopped when they aren't all
+    Moved { moves: Vec<(KeyName, KeyName)>, failed: Option<Error> },
     /// nothing, since this new name is a key already
     Taken(KeyName),
 }
@@ -819,12 +803,25 @@ pub async fn rename_folder(state: &AppState, connection_id: Option<&str>, from: 
         }
     }
     let mut moved = Vec::with_capacity(moves.len());
-    for (old, new) in moves {
-        if session.rename_new(&old, &new).await? {
-            moved.push((old, new));
+    for chunk in moves.chunks(KEYS_PER_WRITE) {
+        let mut failed = None;
+        match session.rename_new_many(chunk).await {
+            Ok(renamed) => {
+                for (pair, renamed) in chunk.iter().zip(renamed) {
+                    match renamed {
+                        Ok(true) => moved.push(pair.clone()),
+                        Ok(false) => {}
+                        Err(e) => failed = failed.or(Some(e)),
+                    }
+                }
+            }
+            Err(e) => failed = Some(e),
+        }
+        if failed.is_some() {
+            return Ok(FolderMove::Moved { moves: moved, failed });
         }
     }
-    Ok(FolderMove::Moved(moved))
+    Ok(FolderMove::Moved { moves: moved, failed: None })
 }
 
 #[cfg(test)]

@@ -26,6 +26,41 @@ const DATA_FILE: &str = "databases.json";
 const KNOWN_HOSTS_FILE: &str = "ssh_known_hosts";
 const SETTINGS_FILE: &str = "settings.json";
 const HISTORY_FILE: &str = "query_history.json";
+const LOCK_FILE: &str = "cachemire.lock";
+
+/// Whether this process is the one instance saving to the data directory.
+pub enum InstanceLock {
+    /// it is, for as long as this file stays open
+    Held(std::fs::File),
+    /// another instance is running: this one must not save over its files
+    Taken,
+    /// the lock file can't be made (a read-only folder): nothing to keep apart
+    Unavailable,
+}
+
+/// Takes the data directory's instance lock, which the system releases when the
+/// process ends, however it ends.
+pub fn lock_instance() -> InstanceLock {
+    let path = resolve_data_file().with_file_name(LOCK_FILE);
+    let file = path
+        .parent()
+        .map_or(Ok(()), std::fs::create_dir_all)
+        .and_then(|()| std::fs::OpenOptions::new().create(true).truncate(false).write(true).open(&path));
+    match file {
+        Ok(file) => match file.try_lock() {
+            Ok(()) => InstanceLock::Held(file),
+            Err(std::fs::TryLockError::WouldBlock) => InstanceLock::Taken,
+            Err(std::fs::TryLockError::Error(e)) => {
+                tracing::warn!("couldn't lock {}: {e}", path.display());
+                InstanceLock::Unavailable
+            }
+        },
+        Err(e) => {
+            tracing::warn!("couldn't open {}: {e}", path.display());
+            InstanceLock::Unavailable
+        }
+    }
+}
 
 /// The directory the executable lives in: the fallback if the platform has no
 /// per-user data directory.

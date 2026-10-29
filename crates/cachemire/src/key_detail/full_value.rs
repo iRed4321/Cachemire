@@ -49,7 +49,8 @@ impl Ctx {
         let epoch = shared.view_epoch.load(Ordering::Relaxed);
         let ctx = self.clone();
         self.rt.spawn(async move {
-            let read = explorer::hash_full_values(&ctx.state, None, &KeyName::from_id(&key), std::slice::from_ref(&old.name)).await;
+            let read =
+                explorer::hash_full_values(&ctx.state, Some(&connection), &KeyName::from_id(&key), std::slice::from_ref(&old.name)).await;
             // parsing a big value would hold up the runtime's thread
             let name = old.name.clone();
             let read = tokio::task::spawn_blocking(move || -> Result<Option<Arc<Field>>, Error> {

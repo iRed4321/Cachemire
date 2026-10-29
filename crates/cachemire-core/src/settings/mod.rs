@@ -10,7 +10,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::error::{Error, Invalid};
 use crate::i18n::Language;
-use crate::persist::{self, Loaded};
+use crate::persist;
 use crate::secret_vault::{OsVault, Secrets, Vault, VaultBacked};
 use crate::updates::Channel;
 
@@ -111,19 +111,9 @@ impl SettingsStore {
     }
 
     fn with_vault(file_path: PathBuf, vault: Arc<dyn Vault>) -> Self {
-        // a file that can't be read is kept aside, not overwritten by the defaults
-        let state: StoredSettings = match persist::load(&file_path) {
-            Loaded::Read(state) => state,
-            Loaded::Missing => StoredSettings::default(),
-            Loaded::Unusable(why) => {
-                match persist::set_aside(&file_path) {
-                    Some(kept) => tracing::error!("{} can't be read ({why}); kept as {}", file_path.display(), kept.display()),
-                    None => tracing::error!("{} can't be read ({why}) and couldn't be moved aside", file_path.display()),
-                }
-                StoredSettings::default()
-            }
-        };
-        let mut state = state;
+        // a file that can't be read is kept, never replaced by the defaults
+        let (stored, writable) = persist::load_store::<StoredSettings>(&file_path);
+        let mut state = stored.unwrap_or_default();
         if !state.connection_profiles_seeded {
             state.connection_profiles_seeded = true;
             state.connection_profiles.push(StoredConnectionProfile {
@@ -134,7 +124,7 @@ impl SettingsStore {
         }
         let mut unloaded: FxHashSet<String> = state.ssh_profiles.iter().filter(|p| p.in_vault).map(|p| p.id.clone()).collect();
         unloaded.extend(cloud_entries(&mut state.cloud).filter(|(_, e)| e.ssh.as_ref().is_some_and(|s| s.in_vault)).map(|(key, _)| key));
-        Self { file_path, state, vault, unloaded, vault_usable: true, dry_run: false }
+        Self { file_path, state, vault, unloaded, vault_usable: true, dry_run: !writable }
     }
 
     /// Where the settings are saved: the app's other files sit next to it.

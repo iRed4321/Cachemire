@@ -106,6 +106,7 @@ fn run_export(
 ) {
     let weak = exporter.weak.clone();
     let state = exporter.state.clone();
+    let connection = weak.upgrade().map(|window| window.connection_id().to_string()).unwrap_or_default();
     exporter.rt.spawn(async move {
         let save_to = match &action {
             ExportAction::Download(filename) => match rfd::AsyncFileDialog::new().set_file_name(filename).save_file().await {
@@ -122,7 +123,7 @@ fn run_export(
             None => fields,
         };
         let unread: Vec<String> = fields.iter().filter(|f| f.too_long.is_some()).map(|f| f.name.clone()).collect();
-        let Some(read) = read_in_full(&state, &key, unread).await else { return };
+        let Some(read) = read_in_full(&state, &connection, &key, unread).await else { return };
         let _ = tokio::task::spawn_blocking(move || {
             let text = build(&fields, with_full_values(fields.clone(), read));
             match (action, save_to) {
@@ -144,13 +145,13 @@ fn run_export(
     });
 }
 
-/// The values of `key`'s fields named `unread` read in full, by name (`None` for one gone
-/// since); `None` if reading them failed.
-async fn read_in_full(state: &AppState, key: &str, unread: Vec<String>) -> Option<Vec<(String, Option<String>)>> {
+/// The values of `key`'s fields named `unread` read in full from `connection`, by name
+/// (`None` for one gone since); `None` if reading them failed.
+async fn read_in_full(state: &AppState, connection: &str, key: &str, unread: Vec<String>) -> Option<Vec<(String, Option<String>)>> {
     if unread.is_empty() {
         return Some(Vec::new());
     }
-    match explorer::hash_full_values(state, None, &KeyName::from_id(key), &unread).await {
+    match explorer::hash_full_values(state, Some(connection), &KeyName::from_id(key), &unread).await {
         Ok(values) => Some(unread.into_iter().zip(values).collect()),
         Err(e) => {
             tracing::warn!("reading the values left out for their size failed: {e}");
@@ -237,6 +238,7 @@ impl Exporter {
         let sort = self.weak.upgrade().and_then(|window| table_sort(&window));
         let weak = self.weak.clone();
         let state = self.state.clone();
+        let connection = weak.upgrade().map(|window| window.connection_id().to_string()).unwrap_or_default();
         self.rt.spawn(async move {
             let picked = tokio::task::spawn_blocking({
                 let sort = sort.clone();
@@ -247,7 +249,7 @@ impl Exporter {
                 }
             });
             let Ok((fields, unread)) = picked.await else { return };
-            let Some(read) = read_in_full(&state, &key, unread.into_iter().collect()).await else { return };
+            let Some(read) = read_in_full(&state, &connection, &key, unread.into_iter().collect()).await else { return };
             let _ = tokio::task::spawn_blocking(move || {
                 let full = with_full_values(fields.clone(), read);
                 if let Some(text) = table_cell_copy_text(&fields, &full, row, column, sort).filter(|text| !text.is_empty()) {

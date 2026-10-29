@@ -98,7 +98,7 @@ impl Ctx {
                 Some(fetch) => Ok(fetch),
                 None => explorer::get_key_details(
                     &ctx.state,
-                    None,
+                    Some(&cache_slot.0),
                     &KeyName::from_id(&key),
                     MAX_ITEMS,
                     HASH_PAGE_SIZE,

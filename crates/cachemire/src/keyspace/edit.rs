@@ -142,6 +142,12 @@ fn open_rename(window: &MainWindow, target: &RefCell<String>, row: &str) {
     }
 }
 
+/// Whether `connection` is still the one shown: a write that ends after a switch
+/// leaves the other connection's tree and tabs alone.
+fn shown(window: &MainWindow, connection: &str) -> bool {
+    window.connection_id().as_str() == connection
+}
+
 /// The dialog's Create: once no key has the name, the key is made (in the app only).
 fn submit_add(app: &App, window: &MainWindow, id: String) {
     let problem = check_key_name(&id);
@@ -151,14 +157,16 @@ fn submit_add(app: &App, window: &MainWindow, id: String) {
     if app.keyspace.0.tree.lock().index.leaf(&id).is_some() {
         return finish(window, Some(t!("A key with this name already exists").into_owned()));
     }
-    let state = app.state.clone();
+    let (state, connection) = (app.state.clone(), window.connection_id().to_string());
     app.rt.spawn(async move {
-        let exists = explorer::key_exists(&state, None, &KeyName::from_id(&id)).await;
+        let exists = explorer::key_exists(&state, Some(&connection), &KeyName::from_id(&id)).await;
         crate::app::later(move |app, window| match exists {
             Ok(true) => finish(window, Some(t!("A key with this name already exists").into_owned())),
             Ok(false) => {
                 finish(window, None);
-                created(app, window, id);
+                if shown(window, &connection) {
+                    created(app, window, id);
+                }
             }
             Err(e) => finish(window, Some(t!("Creating failed: %{error}", error = e.localized()).into_owned())),
         });
@@ -182,14 +190,16 @@ fn submit_rename_key(app: &App, window: &MainWindow, from: String, to: String) {
         finish(window, None);
         return moved(app, window, vec![(from, to)]);
     }
-    let state = app.state.clone();
+    let (state, connection) = (app.state.clone(), window.connection_id().to_string());
     app.rt.spawn(async move {
-        let renamed = explorer::rename_key(&state, None, &KeyName::from_id(&from), &KeyName::from_id(&to)).await;
+        let renamed = explorer::rename_key(&state, Some(&connection), &KeyName::from_id(&from), &KeyName::from_id(&to)).await;
         crate::app::later(move |app, window| match renamed {
             Ok(true) => {
                 finish(window, None);
                 crate::toast::show(window, &t!("Renamed"));
-                moved(app, window, vec![(from, to)]);
+                if shown(window, &connection) {
+                    moved(app, window, vec![(from, to)]);
+                }
             }
             Ok(false) => finish(window, Some(t!("A key with this name already exists").into_owned())),
             Err(e) => finish(window, Some(t!("Renaming failed: %{error}", error = e.localized()).into_owned())),
@@ -208,14 +218,21 @@ fn submit_rename_folder(app: &App, window: &MainWindow, from: String, text: &str
     if to == from {
         return finish(window, None);
     }
-    let state = app.state.clone();
+    let (state, connection) = (app.state.clone(), window.connection_id().to_string());
     app.rt.spawn(async move {
-        let renamed = explorer::rename_folder(&state, None, &KeyName::from_id(&from), &KeyName::from_id(&to)).await;
+        let renamed = explorer::rename_folder(&state, Some(&connection), &KeyName::from_id(&from), &KeyName::from_id(&to)).await;
         crate::app::later(move |app, window| match renamed {
-            Ok(FolderMove::Moved(moves)) => {
-                finish(window, None);
-                crate::toast::show(window, &t!("Renamed"));
-                moved(app, window, moves.into_iter().map(|(old, new)| (old.id(), new.id())).collect());
+            Ok(FolderMove::Moved { moves, failed }) => {
+                match failed {
+                    None => {
+                        finish(window, None);
+                        crate::toast::show(window, &t!("Renamed"));
+                    }
+                    Some(e) => finish(window, Some(t!("Renaming failed: %{error}", error = e.localized()).into_owned())),
+                }
+                if shown(window, &connection) {
+                    moved(app, window, moves.into_iter().map(|(old, new)| (old.id(), new.id())).collect());
+                }
             }
             Ok(FolderMove::Taken(key)) => {
                 finish(window, Some(t!("The key %{name} already exists", name = KeyName::display_id(&key.id())).into_owned()))
@@ -230,13 +247,13 @@ fn delete(app: &App, window: &MainWindow, row: String) {
     if !row.ends_with(DELIMITER) && app.key_detail.is_new(window.connection_id().as_str(), &row) {
         return removed(app, window, &row);
     }
-    let state = app.state.clone();
+    let (state, connection) = (app.state.clone(), window.connection_id().to_string());
     app.rt.spawn(async move {
         let name = KeyName::from_id(&row);
         let deleted = if row.ends_with(DELIMITER) {
-            explorer::delete_folder(&state, None, &name).await.map(Some)
+            explorer::delete_folder(&state, Some(&connection), &name).await.map(Some)
         } else {
-            explorer::delete_key(&state, None, &name).await.map(|()| None)
+            explorer::delete_key(&state, Some(&connection), &name).await.map(|()| None)
         };
         crate::app::later(move |app, window| match deleted {
             Ok(count) => {
@@ -245,7 +262,9 @@ fn delete(app: &App, window: &MainWindow, row: String) {
                     None => t!("Deleted"),
                 };
                 crate::toast::show(window, &done);
-                removed(app, window, &row);
+                if shown(window, &connection) {
+                    removed(app, window, &row);
+                }
             }
             Err(e) => crate::toast::show(window, &t!("Deleting failed: %{error}", error = e.localized())),
         });

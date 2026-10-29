@@ -35,7 +35,7 @@ mod value_actions;
 mod window_state;
 
 use cachemire_core::error::{ErrorKind, Timeout};
-use cachemire_core::state::AppState;
+use cachemire_core::state::{AppState, InstanceLock};
 use error::Localize;
 
 slint::include_modules!();
@@ -210,6 +210,18 @@ fn select_backend() -> Result<(), slint::PlatformError> {
 
 fn main() -> Result<(), slint::PlatformError> {
     let _log = logging::init(&cachemire_core::state::resolve_data_file().with_file_name("logs"));
+    // held until the process ends
+    let instance = cachemire_core::state::lock_instance();
+    if matches!(instance, InstanceLock::Taken) {
+        tracing::warn!("another instance is running: this one stops");
+        rust_i18n::set_locale(cachemire_core::i18n::Language::Automatic.resolve());
+        rfd::MessageDialog::new()
+            .set_title("Cachemire")
+            .set_description(t!("Cachemire is already running."))
+            .set_level(rfd::MessageLevel::Info)
+            .show();
+        return Ok(());
+    }
     // Wayland has no per-window icon: the shell finds it through the app id,
     // as the icon of the cachemire.desktop entry (resources/cachemire.desktop)
     select_backend()?;

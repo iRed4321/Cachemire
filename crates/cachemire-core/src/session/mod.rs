@@ -26,6 +26,14 @@ pub type StreamEntry = (String, Vec<(String, String)>);
 
 static SEARCH_SCRIPT: std::sync::LazyLock<redis::Script> = std::sync::LazyLock::new(|| redis::Script::new(include_str!("search.lua")));
 
+/// Moves a hash field to a free name with its new value in one step: 0 when the name is taken.
+static RENAME_FIELD_SCRIPT: std::sync::LazyLock<redis::Script> = std::sync::LazyLock::new(|| {
+    redis::Script::new(
+        "if redis.call('HSETNX', KEYS[1], ARGV[2], ARGV[3]) == 0 then return 0 end \
+         redis.call('HDEL', KEYS[1], ARGV[1]) return 1",
+    )
+});
+
 /// Whether the server runs in cluster mode (`cluster_enabled:1` in `INFO cluster`); a
 /// server that won't say (INFO not allowed) is taken not to.
 pub(super) async fn cluster_enabled(con: &mut RedisConnection) -> bool {
@@ -148,17 +156,23 @@ impl Session {
         Ok(RedisValueType::from(kind))
     }
 
-    /// The types of `names`, in one pipelined round trip.
+    /// The types of `names`, in one pipelined round trip; a key whose `TYPE` the server
+    /// refuses (an ACL that doesn't cover it) is of an unknown type, `Other("")`.
     pub async fn types(&mut self, names: Vec<KeyName>) -> Result<Vec<TypedKey>, Error> {
         if names.is_empty() {
             return Ok(Vec::new());
         }
         let mut pipe = redis::pipe();
+        pipe.ignore_errors();
         for name in &names {
             pipe.cmd("TYPE").arg(name);
         }
-        let kinds: Vec<String> = pipe.query_async(&mut self.con).await?;
-        Ok(names.into_iter().zip(kinds).map(|(name, kind)| TypedKey { name, key_type: RedisValueType::from(kind) }).collect())
+        let kinds: Vec<redis::RedisResult<String>> = pipe.query_async(&mut self.con).await?;
+        Ok(names
+            .into_iter()
+            .zip(kinds)
+            .map(|(name, kind)| TypedKey { name, key_type: kind.map_or(RedisValueType::Other(String::new()), RedisValueType::from) })
+            .collect())
     }
 
     /// The key's type and TTL in seconds (-1 for none, -2 for a missing key).
@@ -167,10 +181,11 @@ impl Session {
         Ok((RedisValueType::from(kind), ttl))
     }
 
-    /// At most `limit` searchable entries of each of `keys`, in one pipelined
-    /// round trip; an error when the pipeline fails as a whole.
+    /// At most `limit` searchable entries of each of `keys`, in one pipelined round
+    /// trip; a key whose read fails (gone, changed type, refused) has none.
     pub async fn entry_heads(&mut self, keys: &[TypedKey], limit: usize) -> Result<Vec<Vec<(String, String)>>, Error> {
         let mut pipe = redis::pipe();
+        pipe.ignore_errors();
         let read: Vec<bool> = keys.iter().map(|key| push_head_read(&mut pipe, key, limit)).collect();
         let mut replies = if read.contains(&true) {
             pipe.query_async::<Vec<redis::Value>>(&mut self.con).await?.into_iter()
@@ -249,6 +264,25 @@ impl Session {
         Ok(redis::cmd("HSETNX").arg(key).arg(field).arg(value).query_async(&mut self.con).await?)
     }
 
+    /// Moves field `from` of the hash to `to`, with `value` as its value, unless the hash
+    /// has a field `to` already; whether it moved. One script, so it all happens or none
+    /// of it does; a server that refuses scripts gets `HSETNX` then `HDEL`.
+    pub async fn hash_rename(&mut self, key: &KeyName, from: &str, to: &str, value: &str) -> Result<bool, Error> {
+        let moved: Result<i64, _> = RENAME_FIELD_SCRIPT.key(key).arg(from).arg(to).arg(value).invoke_async(&mut self.con).await;
+        match moved.map_err(Error::from) {
+            Ok(moved) => Ok(moved == 1),
+            Err(e) if matches!(e.kind(), ErrorKind::Redis | ErrorKind::Denied) => {
+                tracing::info!("the field rename script was refused ({e}); renaming in two steps");
+                if !self.hash_set_new(key, to, value).await? {
+                    return Ok(false);
+                }
+                self.hash_delete(key, from).await?;
+                Ok(true)
+            }
+            Err(e) => Err(e),
+        }
+    }
+
     /// Removes `field` from the hash (`HDEL`).
     pub async fn hash_delete(&mut self, key: &KeyName, field: &str) -> Result<(), Error> {
         redis::cmd("HDEL").arg(key).arg(field).query_async::<()>(&mut self.con).await?;
@@ -273,6 +307,20 @@ impl Session {
             redis::cmd("UNLINK").arg(keys).query_async::<()>(&mut self.con).await?;
         }
         Ok(())
+    }
+
+    /// `RENAMENX` of each pair, in one round trip: whether each was renamed, or why not.
+    pub async fn rename_new_many(&mut self, moves: &[(KeyName, KeyName)]) -> Result<Vec<Result<bool, Error>>, Error> {
+        if moves.is_empty() {
+            return Ok(Vec::new());
+        }
+        let mut pipe = redis::pipe();
+        pipe.ignore_errors();
+        for (from, to) in moves {
+            pipe.cmd("RENAMENX").arg(from).arg(to);
+        }
+        let renamed: Vec<redis::RedisResult<bool>> = pipe.query_async(&mut self.con).await?;
+        Ok(renamed.into_iter().map(|r| r.map_err(Error::from)).collect())
     }
 
     /// Renames `from` to `to` unless a key `to` exists (`RENAMENX`); whether it was renamed.

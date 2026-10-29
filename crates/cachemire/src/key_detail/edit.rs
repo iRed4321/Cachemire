@@ -32,6 +32,12 @@ struct EditTarget {
     key: String,
     field: Option<String>,
     creating: bool,
+    /// the text the editor opened with; saving it unchanged writes nothing
+    shown: String,
+    /// the value was text, shown as a JSON string: a string saved is written as its text
+    as_text: bool,
+    /// the value's JSON was laid out on several lines, and is written back as typed
+    multiline: bool,
 }
 
 /// What a write did to the field the editor was open on.
@@ -125,10 +131,62 @@ fn check(text: &str) -> String {
     }
 }
 
+/// `json` (valid JSON) laid out two spaces a level when `pretty`, on one line otherwise.
+/// Strings and numbers are copied as written: unlike re-serializing, no digit or escape changes.
+fn relayout(json: &str, pretty: bool) -> String {
+    let mut out = String::with_capacity(json.len() + json.len() / 2);
+    let mut depth = 0usize;
+    let newline = |out: &mut String, depth: usize| {
+        if pretty {
+            out.push('\n');
+            out.extend(std::iter::repeat_n("  ", depth));
+        }
+    };
+    let mut chars = json.chars().peekable();
+    while let Some(c) = chars.next() {
+        match c {
+            '"' => {
+                out.push(c);
+                while let Some(c) = chars.next() {
+                    out.push(c);
+                    match c {
+                        '\\' => out.extend(chars.next()),
+                        '"' => break,
+                        _ => {}
+                    }
+                }
+            }
+            '{' | '[' => {
+                out.push(c);
+                while chars.next_if(|c| c.is_ascii_whitespace()).is_some() {}
+                if let Some(close) = chars.next_if(|c| matches!(c, '}' | ']')) {
+                    out.push(close);
+                } else {
+                    depth += 1;
+                    newline(&mut out, depth);
+                }
+            }
+            '}' | ']' => {
+                depth = depth.saturating_sub(1);
+                newline(&mut out, depth);
+                out.push(c);
+            }
+            ',' => {
+                out.push(c);
+                newline(&mut out, depth);
+            }
+            ':' => out.push_str(if pretty { ": " } else { ":" }),
+            c if c.is_ascii_whitespace() => {}
+            c => out.push(c),
+        }
+    }
+    out
+}
+
 /// `text` pretty-printed when it's valid JSON, as it is otherwise.
 fn format(text: &str) -> String {
     match serde_json::from_str::<Value>(text) {
-        Ok(value) => serde_json::to_string_pretty(&value).unwrap_or_else(|_| text.to_string()),
+        Ok(_) => relayout(text, true),
         Err(_) => text.to_string(),
     }
 }
@@ -175,12 +233,24 @@ impl Ctx {
         }
         let field = self.shared.content.lock().loaded.iter().find(|f| f.name == name && f.too_long.is_none()).cloned();
         let Some(field) = field else { return };
+        // what wasn't UTF-8 was read with replacement characters: saving would write those
+        if field.raw.contains(char::REPLACEMENT_CHARACTER) || name.contains(char::REPLACEMENT_CHARACTER) {
+            crate::toast::show(&window, &t!("This value isn't UTF-8 text: it can't be edited here"));
+            return;
+        }
         let hash = panel.get_badge() == "HASH";
+        let text = match field.json {
+            Some(_) => relayout(&field.raw, true),
+            None => serde_json::to_string_pretty(&field.raw).unwrap_or_default(),
+        };
         *target.borrow_mut() = Some(EditTarget {
             connection: window.connection_id().to_string(),
             key: panel.get_key_id().to_string(),
             field: hash.then(|| name.to_string()),
             creating: false,
+            shown: text.clone(),
+            as_text: field.json.is_none(),
+            multiline: field.json.is_some() && field.raw.contains('\n'),
         });
         let editor = window.global::<ValueEditor>();
         editor.set_creating(false);
@@ -188,7 +258,7 @@ impl Ctx {
         editor.set_field(if hash { name.into() } else { Default::default() });
         editor.set_is_field(hash);
         editor.set_name(name.into());
-        editor.set_text(serde_json::to_string_pretty(&field.value()).unwrap_or_default().into());
+        editor.set_text(text.into());
         editor.set_error(Default::default());
         editor.set_saving(false);
         editor.set_open(true);
@@ -206,6 +276,9 @@ impl Ctx {
             key: panel.get_key_id().to_string(),
             field: None,
             creating: true,
+            shown: String::new(),
+            as_text: true,
+            multiline: false,
         });
         let editor = window.global::<ValueEditor>();
         editor.set_creating(true);
@@ -241,30 +314,39 @@ impl Ctx {
     }
 
     /// Writes `text` (valid JSON) to what the editor is open on, under the field name
-    /// `name` for a hash: a JSON string as its text, anything else as compact JSON.
+    /// `name` for a hash: a string as its text when the value was text, anything else as
+    /// JSON (as typed when it was on several lines, else on one); nothing when unchanged.
     fn save_value(&self, text: &str, name: &str, target: &RefCell<Option<EditTarget>>) {
         let Ok(value) = serde_json::from_str::<Value>(text) else { return };
         let Some(target) = target.borrow().clone() else { return };
-        let raw = match value {
-            Value::String(text) => text,
-            other => other.to_string(),
-        };
         let renamed = target.field.as_deref().filter(|field| *field != name).map(|_| name.to_string());
+        if !target.creating && renamed.is_none() && text == target.shown {
+            if let Some(window) = self.weak.upgrade() {
+                window.global::<ValueEditor>().set_open(false);
+            }
+            return;
+        }
+        let raw = match value {
+            Value::String(text) if target.as_text => text,
+            _ if target.multiline => text.to_string(),
+            _ => relayout(text, false),
+        };
         let added = target.creating.then(|| name.to_string());
-        self.run_write(target, t!("Saved").into_owned(), move |state, key, field| async move {
+        self.run_write(target, t!("Saved").into_owned(), move |state, connection, key, field| async move {
+            let connection = Some(connection.as_str());
             if let Some(name) = added {
-                return match explorer::write_new_hash_field(&state, None, &key, &name, &raw).await? {
+                return match explorer::write_new_hash_field(&state, connection, &key, &name, &raw).await? {
                     true => Ok(Written::Added(name)),
                     false => Err(WriteError::Refused(t!("This hash already has a field with this name").into_owned())),
                 };
             }
             let written: Result<Written, WriteError> = match (field, renamed) {
-                (Some(from), Some(to)) => match explorer::rename_hash_field(&state, None, &key, &from, &to, &raw).await? {
+                (Some(from), Some(to)) => match explorer::rename_hash_field(&state, connection, &key, &from, &to, &raw).await? {
                     true => Ok(Written::Renamed(to)),
                     false => Err(WriteError::Refused(t!("This hash already has a field with this name").into_owned())),
                 },
                 (field, _) => {
-                    explorer::write_value(&state, None, &key, field.as_deref(), &raw).await?;
+                    explorer::write_value(&state, connection, &key, field.as_deref(), &raw).await?;
                     Ok(Written::Value)
                 }
             };
@@ -275,19 +357,19 @@ impl Ctx {
     /// Removes the hash field the editor is open on.
     fn delete_field(&self, target: &RefCell<Option<EditTarget>>) {
         let Some(target) = target.borrow().clone().filter(|t| t.field.is_some()) else { return };
-        self.run_write(target, t!("Deleted").into_owned(), |state, key, field| async move {
-            explorer::delete_hash_field(&state, None, &key, field.as_deref().unwrap_or_default()).await?;
+        self.run_write(target, t!("Deleted").into_owned(), |state, connection, key, field| async move {
+            explorer::delete_hash_field(&state, Some(&connection), &key, field.as_deref().unwrap_or_default()).await?;
             Ok(Written::Deleted)
         });
     }
 
-    /// Runs `write` (given the app state, the key and the field) with the editor marked busy:
+    /// Runs `write` (given the state, connection, key and field) with the editor marked busy:
     /// once done, the editor closes and `done` is toasted, or it stays open with why it failed.
     fn run_write<F>(
         &self,
         target: EditTarget,
         done: String,
-        write: impl FnOnce(Arc<AppState>, KeyName, Option<String>) -> F + Send + 'static,
+        write: impl FnOnce(Arc<AppState>, String, KeyName, Option<String>) -> F + Send + 'static,
     ) where
         F: Future<Output = Result<Written, WriteError>> + Send,
     {
@@ -295,7 +377,7 @@ impl Ctx {
         window.global::<ValueEditor>().set_saving(true);
         let ctx = self.clone();
         self.rt.spawn(async move {
-            let written = write(ctx.state.clone(), KeyName::from_id(&target.key), target.field.clone()).await;
+            let written = write(ctx.state.clone(), target.connection.clone(), KeyName::from_id(&target.key), target.field.clone()).await;
             let _ = slint::invoke_from_event_loop(move || {
                 let Some(window) = ctx.weak.upgrade() else { return };
                 let editor = window.global::<ValueEditor>();

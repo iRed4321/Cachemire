@@ -189,7 +189,7 @@ impl Ctx {
         };
         let ctx = self.clone();
         self.rt.spawn(async move {
-            let result = explorer::hash_field_page(&ctx.state, None, &KeyName::from_id(&key), &names).await;
+            let result = explorer::hash_field_page(&ctx.state, Some(&connection), &KeyName::from_id(&key), &names).await;
             let _ = slint::invoke_from_event_loop(move || match result {
                 Ok((values, oversized)) => {
                     ctx.on_hash_page_loaded(&connection, &key, epoch, dir, build_fields(Value::Object(values), oversized, &names))
@@ -209,7 +209,7 @@ impl Ctx {
         let descending = self.weak.upgrade().is_some_and(|w| w.global::<KeyPanel>().get_sort_descending());
         let ctx = self.clone();
         self.rt.spawn(async move {
-            let result = explorer::hash_more_names(&ctx.state, None, &KeyName::from_id(&key), cursor, descending).await;
+            let result = explorer::hash_more_names(&ctx.state, Some(&connection), &KeyName::from_id(&key), cursor, descending).await;
             let _ = slint::invoke_from_event_loop(move || {
                 let shared = &ctx.shared;
                 shared.paging_in_flight.store(false, Ordering::Release);
