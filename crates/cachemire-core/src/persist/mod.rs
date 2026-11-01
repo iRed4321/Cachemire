@@ -41,6 +41,25 @@ pub fn set_aside(path: &Path) -> Option<PathBuf> {
     fs::rename(path, &target).ok().map(|()| target)
 }
 
+/// Creates (or truncates) `path` readable by its owner only, since the app's files can
+/// hold passwords; the rename in [`save`] keeps that.
+pub fn create_private(path: &Path) -> std::io::Result<fs::File> {
+    let mut options = fs::OpenOptions::new();
+    options.write(true).create(true).truncate(true);
+    #[cfg(unix)]
+    std::os::unix::fs::OpenOptionsExt::mode(&mut options, 0o600);
+    options.open(path)
+}
+
+/// Creates `dir` and its missing parents, those it creates open to their owner only.
+pub fn create_private_dir(dir: &Path) -> std::io::Result<()> {
+    let mut builder = fs::DirBuilder::new();
+    builder.recursive(true);
+    #[cfg(unix)]
+    std::os::unix::fs::DirBuilderExt::mode(&mut builder, 0o700);
+    builder.create(dir)
+}
+
 /// A store's file read at startup: what it holds (`None` with no file), and whether the
 /// store may save over it. A file that can't be used is moved aside first (see
 /// [`set_aside`]); one that can't be moved is never written over this run.
@@ -66,13 +85,13 @@ pub fn load_store<T: DeserializeOwned>(path: &Path) -> (Option<T>, bool) {
 /// — writing in place would truncate first, risking an unparseable half-write.
 pub fn save<T: Serialize>(path: &Path, value: &T) -> Result<(), Error> {
     if let Some(dir) = path.parent() {
-        fs::create_dir_all(dir).map_err(FileError::from)?;
+        create_private_dir(dir).map_err(FileError::from)?;
     }
     let json = serde_json::to_string_pretty(value).map_err(FileError::from)?;
     let name = path.file_name().ok_or_else(|| FileError::NoFileName(path.to_path_buf()))?.to_string_lossy().into_owned();
     let temporary = path.with_file_name(format!("{name}.tmp"));
     let written = (|| -> std::io::Result<()> {
-        let mut file = fs::File::create(&temporary)?;
+        let mut file = create_private(&temporary)?;
         file.write_all(json.as_bytes())?;
         file.sync_all()?;
         fs::rename(&temporary, path)

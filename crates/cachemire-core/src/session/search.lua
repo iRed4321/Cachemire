@@ -3,6 +3,7 @@
 -- KEYS: the keys to look at.
 -- ARGV[1]: the word searched for, already lowercased by the caller.
 -- ARGV[2]: how many entries of a key to read.
+-- ARGV[3]: how many bytes of a string to read.
 --
 -- Answers, for each key that could hold a hit, {key, type, status, entries}, where
 -- `entries` lists field, value, field, value... of the entries that might match.
@@ -15,6 +16,7 @@
 
 local needle = ARGV[1]
 local limit = tonumber(ARGV[2])
+local string_bytes = tonumber(ARGV[3])
 local find, lower = string.find, string.lower
 local NON_ASCII = '[\128-\255]'
 local ascii_needle = not find(needle, NON_ASCII)
@@ -44,8 +46,8 @@ for i = 1, #KEYS do
   end
 
   if kind == 'string' then
-    local value = redis.call('GET', key)
-    if value then
+    local value = redis.call('GETRANGE', key, 0, string_bytes - 1)
+    if value ~= '' then
       keep('', value)
     end
   elseif kind == 'hash' then

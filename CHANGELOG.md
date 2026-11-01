@@ -19,13 +19,28 @@ Every stable release of Cachemire; `Unreleased` is what the next one brings. Bet
 ### Fixes
 
 - **App**: a second launch now says Cachemire is already open, so two windows can't overwrite each other's saved settings
+- **App**: a task that fails unexpectedly no longer leaves its dialog or button stuck busy
+- **Connection**: taking your time at the keyring's password prompt no longer makes the connection time out
+- **Connection**: an SSH tunnel dropped by sleep or a network change is opened again by itself on the next action
+- **Connection**: a connection that died silently is noticed sooner, and the refresh button now waits for it to reopen
+- **Export**: big keys are read in chunks, so an export no longer stalls the Redis server for its other clients
+- **Export**: a key that can't be read is left out and counted, instead of stopping the export with a broken file
+- **Export**: a copy, open or save that fails now says so, instead of silently doing nothing
 - **Fields and table views**: the scrollbars are easier to grab, this helps navigating horizontally
 - **Keyspace**: a key your Redis user isn't allowed to read no longer stops the tree or a search part way
+- **Query**: a hash read while Redis resizes it no longer gives some of its rows twice
 - **Saved data**: a connections or settings file that can't be read is never overwritten, even when it can't be set aside
+- **Saved data**: settings a newer version saved are kept when an older version saves the file
+- **Search**: only a string's first megabyte is searched, so a huge string no longer holds the Redis server up
+- **Search**: a key no longer appears twice in the results, nor counts twice in the totals
+- **Security**: data files, connection exports and values opened in an editor are now readable by your user only
 - **SSH profiles**: a new password typed for a profile is now kept after restarting, instead of the old one returning
 - **Table view**: shows every key the rows share, not just the first 30, judged on the first 100 rows
 - **Table view**: copying or exporting ticked rows gives exactly those rows, also while searching or next to values over 4 MB
+- **Updates**: an interrupted or corrupted installer download is now caught before installing, instead of running a broken file
 - **Values**: opening a value of thousands of lines no longer crashes the app
+- **Values**: a stream with more entries than shown is now marked as cut short, in the key panel and in exports
+- **Values**: switching keys mid-load or mid-scroll no longer mixes the previous key's fields, text or exports into the new one
 
 ## 3.1.2 - 2026-10-27
 

@@ -99,7 +99,7 @@ pub(crate) fn disconnect(app: &App, window: &MainWindow) {
         crate::last_session::forget(&app.state);
     }
     if let Err(e) = state.connections.lock().clear_active() {
-        tracing::error!("disconnect failed: {e}");
+        crate::toast::show(window, &t!("Saving failed: %{error}", error = e.localized()));
         return;
     }
     if !id.is_empty() {
@@ -154,7 +154,7 @@ fn copy_connection_string(app: &Rc<App>, window: &MainWindow) {
     let Some(text) = app.state.connections.lock().connection_string(&id) else { return };
     match crate::value_actions::copy_to_clipboard(&text) {
         Ok(()) => crate::toast::show_copied(window),
-        Err(e) => tracing::warn!("copy failed: {e}"),
+        Err(e) => crate::toast::show(window, &t!("Copying failed: %{error}", error = e.localized())),
     }
 }
 
@@ -172,7 +172,7 @@ fn delete(app: &Rc<App>, window: &MainWindow, id: &str) {
                 rt.spawn_blocking(move || cleanup.run());
             }
             if let Err(e) = state.settings.lock().remove_saved_queries_of(id) {
-                tracing::error!("removing the connection's saved queries failed: {e}");
+                crate::toast::show(window, &t!("Saving failed: %{error}", error = e.localized()));
             }
             window.global::<ConnectionEditor>().set_open(false);
             refresh(app, window);
@@ -201,7 +201,7 @@ fn test_form(app: &Rc<App>, window: &MainWindow, form: &ConnectionForm) {
     };
     editor.set_testing(true);
     let (state, id) = (app.state.clone(), form.id.to_string());
-    app.rt.spawn(async move {
+    let task = app.rt.spawn(async move {
         let building = state.clone();
         let built = tokio::task::spawn_blocking(move || {
             staged(&building.connections, |store| {
@@ -222,6 +222,12 @@ fn test_form(app: &Rc<App>, window: &MainWindow, form: &ConnectionForm) {
             editor.set_test_ok(outcome.is_ok());
             editor.set_test_status(outcome.map_or_else(|e| e.localized(), |()| t!("Connection successful.").into_owned()).into());
         });
+    });
+    crate::app::on_panic(&app.rt, task, |_, window, error| {
+        let editor = window.global::<ConnectionEditor>();
+        editor.set_testing(false);
+        editor.set_test_ok(false);
+        editor.set_test_status(error.into());
     });
 }
 

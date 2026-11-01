@@ -376,7 +376,7 @@ impl Ctx {
         let Some(window) = self.weak.upgrade() else { return };
         window.global::<ValueEditor>().set_saving(true);
         let ctx = self.clone();
-        self.rt.spawn(async move {
+        let task = self.rt.spawn(async move {
             let written = write(ctx.state.clone(), target.connection.clone(), KeyName::from_id(&target.key), target.field.clone()).await;
             let _ = slint::invoke_from_event_loop(move || {
                 let Some(window) = ctx.weak.upgrade() else { return };
@@ -392,6 +392,11 @@ impl Ctx {
                     Err(WriteError::Failed(e)) => editor.set_error(t!("Saving failed: %{error}", error = e.localized()).as_ref().into()),
                 }
             });
+        });
+        crate::app::on_panic(&self.rt, task, |_, window, error| {
+            let editor = window.global::<ValueEditor>();
+            editor.set_saving(false);
+            editor.set_error(t!("Saving failed: %{error}", error = error).as_ref().into());
         });
     }
 

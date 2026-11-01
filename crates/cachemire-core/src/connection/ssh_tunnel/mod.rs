@@ -152,8 +152,7 @@ async fn connect(ssh: &SshSettings, known_hosts: &Path) -> Result<Handle<HostKey
 /// Accepts connections on the local end and forwards each through its own
 /// channel of the SSH session. Owns the session and every forwarding task, so
 /// dropping this future (aborting the task running it) closes them all.
-async fn forward_loop(listener: TcpListener, session: Handle<HostKeyCheck>, host: String, port: u16) {
-    let session = Arc::new(session);
+async fn forward_loop(listener: TcpListener, session: Arc<Handle<HostKeyCheck>>, host: String, port: u16) {
     let mut forwards = JoinSet::new();
     while let Ok((mut socket, peer)) = listener.accept().await {
         let session = session.clone();
@@ -172,6 +171,7 @@ async fn forward_loop(listener: TcpListener, session: Handle<HostKeyCheck>, host
 pub struct SshTunnel {
     local_port: u16,
     forwarding: JoinHandle<()>,
+    session: Arc<Handle<HostKeyCheck>>,
 }
 
 impl SshTunnel {
@@ -191,8 +191,15 @@ impl SshTunnel {
 
         let listener = TcpListener::bind(("127.0.0.1", 0)).await.map_err(TunnelError::LocalPort)?;
         let local_port = listener.local_addr().map_err(TunnelError::LocalPort)?.port();
-        let forwarding = tokio::spawn(forward_loop(listener, session, target_host.to_string(), target_port));
-        Ok(SshTunnel { local_port, forwarding })
+        let session = Arc::new(session);
+        let forwarding = tokio::spawn(forward_loop(listener, session.clone(), target_host.to_string(), target_port));
+        Ok(SshTunnel { local_port, forwarding, session })
+    }
+
+    /// Whether the SSH session still stands: once the server or the network drops it
+    /// (its keepalives unanswered), nothing goes through this tunnel any more.
+    pub fn is_alive(&self) -> bool {
+        !self.session.is_closed() && !self.forwarding.is_finished()
     }
 
     /// The port on this machine (`127.0.0.1`) that leads to the Redis server.

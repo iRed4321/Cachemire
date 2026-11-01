@@ -563,11 +563,14 @@ pub fn init(app: &Rc<App>, window: &MainWindow) {
         let app = app.clone();
         move || {
             let ctx = &app.keyspace.0;
-            if let Some(window) = ctx.weak.upgrade() {
-                crate::connect_active(&window, ctx.state.clone(), &ctx.rt);
-            }
-            let reopen = ctx.tree.lock().open_folders();
-            load_root(ctx, true, reopen);
+            let Some(window) = ctx.weak.upgrade() else { return };
+            crate::connect_active_then(&window, ctx.state.clone(), &ctx.rt, || {
+                crate::app::with(|app, _| {
+                    let ctx = &app.keyspace.0;
+                    let reopen = ctx.tree.lock().open_folders();
+                    load_root(ctx, true, reopen);
+                });
+            });
         }
     });
 }

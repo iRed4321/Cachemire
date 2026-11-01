@@ -24,6 +24,13 @@ pub type ScriptKey = (Vec<u8>, Vec<u8>, i64, Vec<Vec<u8>>);
 /// A stream entry: its id and its field/value pairs.
 pub type StreamEntry = (String, Vec<(String, String)>);
 
+/// How many entries one command reads of a big key: a bigger read takes several
+/// commands, so none holds the server up for long or makes a huge reply.
+const READ_CHUNK: usize = 1000;
+
+/// How much of a string value a search reads: its first MB.
+const SEARCH_STRING_BYTES: usize = 1024 * 1024;
+
 static SEARCH_SCRIPT: std::sync::LazyLock<redis::Script> = std::sync::LazyLock::new(|| redis::Script::new(include_str!("search.lua")));
 
 /// Moves a hash field to a free name with its new value in one step: 0 when the name is taken.
@@ -48,6 +55,15 @@ pub(super) async fn ping(con: &mut RedisConnection) -> Result<(), Error> {
 
 pub(super) fn lossy(bytes: Vec<u8>) -> String {
     String::from_utf8_lossy(&bytes).into_owned()
+}
+
+/// The smallest stream id after `id` (`ms-seq`), the start of the next page of a range.
+pub(super) fn next_stream_id(id: &str) -> Option<String> {
+    let (ms, seq) = id.split_once('-')?;
+    match seq.parse::<u64>().ok()?.checked_add(1) {
+        Some(seq) => Some(format!("{ms}-{seq}")),
+        None => Some(format!("{}-0", ms.parse::<u64>().ok()?.checked_add(1)?)),
+    }
 }
 
 /// Pairs up a flat reply (`HSCAN`'s fields, `ZRANGE ... WITHSCORES`).
@@ -93,7 +109,7 @@ fn push_head_read(pipe: &mut redis::Pipeline, key: &TypedKey, limit: usize) -> b
     let name = &key.name;
     let last = limit.saturating_sub(1);
     match key.key_type {
-        RedisValueType::String => pipe.cmd("GET").arg(name),
+        RedisValueType::String => pipe.cmd("GETRANGE").arg(name).arg(0).arg(SEARCH_STRING_BYTES - 1),
         RedisValueType::Hash => pipe.cmd("HSCAN").arg(name).arg(0).arg("COUNT").arg(limit),
         RedisValueType::List => pipe.cmd("LRANGE").arg(name).arg(0).arg(last),
         RedisValueType::Set => pipe.cmd("SSCAN").arg(name).arg(0).arg("COUNT").arg(limit),
@@ -206,7 +222,7 @@ impl Session {
     /// Runs the search script on `names`: Redis answers only the entries that may
     /// hold `needle` (lowercased), at most `depth` per key.
     pub async fn search_script(&mut self, names: &[KeyName], needle: &str, depth: usize) -> Result<Vec<ScriptKey>, Error> {
-        Ok(SEARCH_SCRIPT.key(names).arg(needle).arg(depth).invoke_async(&mut self.con).await?)
+        Ok(SEARCH_SCRIPT.key(names).arg(needle).arg(depth).arg(SEARCH_STRING_BYTES).invoke_async(&mut self.con).await?)
     }
 
     pub async fn get(&mut self, key: &KeyName) -> Result<Option<String>, Error> {
@@ -243,13 +259,15 @@ impl Session {
         Ok((next, pairs.into_iter().map(|(name, _)| name).collect()))
     }
 
-    /// The values of `fields`, in that order (`None` for a field that is gone).
+    /// The values of `fields`, in that order (`None` for a field that is gone), an `HMGET`
+    /// per [`READ_CHUNK`] fields.
     pub async fn hash_values(&mut self, key: &KeyName, fields: &[String]) -> Result<Vec<Option<String>>, Error> {
-        if fields.is_empty() {
-            return Ok(Vec::new());
+        let mut values = Vec::with_capacity(fields.len());
+        for chunk in fields.chunks(READ_CHUNK) {
+            let read: Vec<Option<Vec<u8>>> = redis::cmd("HMGET").arg(key).arg(chunk).query_async(&mut self.con).await?;
+            values.extend(read.into_iter().map(|value| value.map(lossy)));
         }
-        let values: Vec<Option<Vec<u8>>> = redis::cmd("HMGET").arg(key).arg(fields).query_async(&mut self.con).await?;
-        Ok(values.into_iter().map(|value| value.map(lossy)).collect())
+        Ok(values)
     }
 
     /// Writes `value` into `field` of the hash (`HSET`).
@@ -335,16 +353,17 @@ impl Session {
     }
 
     /// The size in bytes of each of `fields`' values, in that order (0 for a field that
-    /// is gone), from one pipelined `HSTRLEN` per field.
+    /// is gone), from one `HSTRLEN` per field, pipelined [`READ_CHUNK`] at a time.
     pub async fn hash_value_sizes(&mut self, key: &KeyName, fields: &[String]) -> Result<Vec<usize>, Error> {
-        if fields.is_empty() {
-            return Ok(Vec::new());
+        let mut sizes = Vec::with_capacity(fields.len());
+        for chunk in fields.chunks(READ_CHUNK) {
+            let mut pipe = redis::pipe();
+            for field in chunk {
+                pipe.cmd("HSTRLEN").arg(key).arg(field);
+            }
+            sizes.extend(pipe.query_async::<Vec<usize>>(&mut self.con).await?);
         }
-        let mut pipe = redis::pipe();
-        for field in fields {
-            pipe.cmd("HSTRLEN").arg(key).arg(field);
-        }
-        Ok(pipe.query_async(&mut self.con).await?)
+        Ok(sizes)
     }
 
     /// One `HSCAN` step from `cursor`: the next cursor and the field/value pairs found.
@@ -365,39 +384,70 @@ impl Session {
         Ok((next, members.into_iter().map(lossy).collect()))
     }
 
-    /// The list's length and its first `count` items.
+    /// The list's length and its first `count` items, an `LRANGE` per [`READ_CHUNK`] items.
     pub async fn list_head(&mut self, key: &KeyName, count: usize) -> Result<(usize, Vec<String>), Error> {
-        let last = count.saturating_sub(1);
-        let (len, items): (usize, Vec<Vec<u8>>) =
-            redis::pipe().cmd("LLEN").arg(key).cmd("LRANGE").arg(key).arg(0).arg(last).query_async(&mut self.con).await?;
+        let first = count.min(READ_CHUNK).saturating_sub(1);
+        let (len, mut items): (usize, Vec<Vec<u8>>) =
+            redis::pipe().cmd("LLEN").arg(key).cmd("LRANGE").arg(key).arg(0).arg(first).query_async(&mut self.con).await?;
+        let wanted = count.min(len);
+        while items.len() < wanted {
+            let last = (items.len() + READ_CHUNK).min(wanted) - 1;
+            let more: Vec<Vec<u8>> = redis::cmd("LRANGE").arg(key).arg(items.len()).arg(last).query_async(&mut self.con).await?;
+            if more.is_empty() {
+                break;
+            }
+            items.extend(more);
+        }
         Ok((len, items.into_iter().map(lossy).collect()))
     }
 
-    /// The sorted set's size and its first `count` members with their scores.
+    /// The sorted set's size and its first `count` members with their scores, a `ZRANGE`
+    /// per [`READ_CHUNK`] members.
     pub async fn zset_head(&mut self, key: &KeyName, count: usize) -> Result<(usize, Vec<(String, f64)>), Error> {
-        let last = count.saturating_sub(1);
-        let (len, members): (usize, Vec<(Vec<u8>, f64)>) = redis::pipe()
-            .cmd("ZCARD")
-            .arg(key)
-            .cmd("ZRANGE")
-            .arg(key)
-            .arg(0)
-            .arg(last)
-            .arg("WITHSCORES")
-            .query_async(&mut self.con)
-            .await?;
+        let range = |start: usize, last: usize| {
+            let mut cmd = redis::cmd("ZRANGE");
+            cmd.arg(key).arg(start).arg(last).arg("WITHSCORES");
+            cmd
+        };
+        let first = count.min(READ_CHUNK).saturating_sub(1);
+        let (len, mut members): (usize, Vec<(Vec<u8>, f64)>) =
+            redis::pipe().cmd("ZCARD").arg(key).add_command(range(0, first)).query_async(&mut self.con).await?;
+        let wanted = count.min(len);
+        while members.len() < wanted {
+            let last = (members.len() + READ_CHUNK).min(wanted) - 1;
+            let more: Vec<(Vec<u8>, f64)> = range(members.len(), last).query_async(&mut self.con).await?;
+            if more.is_empty() {
+                break;
+            }
+            members.extend(more);
+        }
         Ok((len, members.into_iter().map(|(member, score)| (lossy(member), score)).collect()))
     }
 
-    /// The stream's first `count` entries (all of them for `None`), with an explicit
-    /// `COUNT`: `limit` as the range's end id would miss real timestamp ids.
+    /// The stream's length (`XLEN`).
+    pub async fn stream_len(&mut self, key: &KeyName) -> Result<usize, Error> {
+        Ok(redis::cmd("XLEN").arg(key).query_async(&mut self.con).await?)
+    }
+
+    /// The stream's first `count` entries (all of them for `None`), an `XRANGE … COUNT`
+    /// per [`READ_CHUNK`] entries, each starting right after the last id read.
     pub async fn stream_head(&mut self, key: &KeyName, count: Option<usize>) -> Result<Vec<StreamEntry>, Error> {
-        let mut cmd = redis::cmd("XRANGE");
-        cmd.arg(key).arg("-").arg("+");
-        if let Some(count) = count {
-            cmd.arg("COUNT").arg(count);
+        let wanted = count.unwrap_or(usize::MAX);
+        let mut entries: Vec<StreamEntry> = Vec::new();
+        let mut start = "-".to_string();
+        while entries.len() < wanted {
+            let chunk = (wanted - entries.len()).min(READ_CHUNK);
+            let page: Vec<StreamEntry> =
+                redis::cmd("XRANGE").arg(key).arg(&start).arg("+").arg("COUNT").arg(chunk).query_async(&mut self.con).await?;
+            let next = page.last().and_then(|(id, _)| next_stream_id(id));
+            let full = page.len() == chunk;
+            entries.extend(page);
+            match next {
+                Some(next) if full => start = next,
+                _ => break,
+            }
         }
-        Ok(cmd.query_async(&mut self.con).await?)
+        Ok(entries)
     }
 }
 

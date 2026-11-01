@@ -54,6 +54,10 @@ _version: 2
   fr: "Ce champ n'existe plus"
 "Loading failed: %{error}":
   fr: "Échec du chargement : %{error}"
+"Copying failed: %{error}":
+  fr: "Échec de la copie : %{error}"
+"Opening failed: %{error}":
+  fr: "Échec de l'ouverture : %{error}"
 # the key tree's export
 "Choose a folder...":
   fr: "Choisissez un dossier..."
@@ -63,6 +67,8 @@ _version: 2
   fr: "Export de %{done} sur %{total}..."
 "Exported %{count} keys":
   fr: "%{count} clés exportées"
+"Exported %{count} keys, %{skipped} left out that couldn't be read":
+  fr: "%{count} clés exportées, %{skipped} laissées de côté car illisibles"
 "Export cancelled":
   fr: "Export annulé"
 "Export failed: %{error}":

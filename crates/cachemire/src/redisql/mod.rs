@@ -270,7 +270,8 @@ fn run(app: &App, window: &MainWindow, query: String, cursor: usize, anchor: usi
     app.queries.borrow_mut().navigation = Navigation::default();
     let connection_id = state.connections.lock().active_connection_id().to_string();
     let state = state.clone();
-    rt.spawn(async move {
+    let (finished, failed_id) = (done.clone(), id.clone());
+    let task = rt.spawn(async move {
         let started = std::time::Instant::now();
         let results = run_script(&state, None, &to_run.script).await;
         let script = to_run.script.clone();
@@ -285,6 +286,11 @@ fn run(app: &App, window: &MainWindow, query: String, cursor: usize, anchor: usi
         let count = results.len();
         let built: Vec<ResultTable> = results.into_iter().enumerate().map(|(i, result)| result_of(i, count, result.output)).collect();
         crate::app::later(move |app, window| apply_outcome(app, window, &id, run_number, built, error));
+    });
+    crate::app::on_panic(rt, task, move |app, window, error| {
+        finished.store(true, Ordering::Relaxed);
+        let failed = ResultTable { status: error, status_is_error: true, ..Default::default() };
+        apply_outcome(app, window, &failed_id, run_number, vec![failed], None);
     });
 }
 
@@ -572,7 +578,7 @@ pub fn init(app: &Rc<App>, window: &MainWindow) {
     });
 
     // "Save" in the query box's header: saves the box under `name` in the sidebar's
-    // Query list; a failure is only logged, as there's no place to show it.
+    // Query list; a failure is toasted.
     window.global::<QueryTab>().on_save_requested({
         let app = app.clone();
         move |name, global| {
@@ -583,7 +589,7 @@ pub fn init(app: &Rc<App>, window: &MainWindow) {
             let saved = state.settings.lock().create_saved_query(&name, &text, &connection_id);
             match saved {
                 Ok(_) => crate::redisql::saved::refresh(&window, state),
-                Err(e) => tracing::error!("save query failed: {e}"),
+                Err(e) => crate::toast::show(&window, &t!("Saving failed: %{error}", error = e.localized())),
             }
         }
     });

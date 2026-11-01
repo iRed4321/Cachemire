@@ -14,7 +14,7 @@ use cachemire_core::explorer::{self, KeyDetails};
 use cachemire_core::key_name::KeyName;
 use cachemire_core::redis_value_type::RedisValueType;
 
-use super::field::{Fields, build_fields, single_value_field};
+use super::field::{Fields, PrettyRenderings, build_fields, single_value_field};
 use super::paging::holds_field;
 use super::pretty_text::paragraphs_for;
 use super::scroll::{ScrollPos, arm_all_scroll, current_expanded_fields, disarm_scroll};
@@ -40,7 +40,7 @@ impl Ctx {
         let LoadRequest { key, scroll, reuse, announce } = request;
         let ctx = self.clone();
         let weak = &self.weak;
-        let KeyDetailShared { content, pretty_cache, view_epoch, fetched, suggester, new_keys, .. } = self.shared.clone();
+        let KeyDetailShared { content, view_epoch, fetched, suggester, new_keys, .. } = self.shared.clone();
         let epoch = view_epoch.fetch_add(1, Ordering::Relaxed) + 1;
         let cache_slot = (weak.upgrade().map(|w| w.connection_id().to_string()).unwrap_or_default(), key.clone());
         // a field asked for (a hit of a search tab): the page holding it is the one loaded
@@ -54,12 +54,6 @@ impl Ctx {
         let cached = cached.filter(|fetch| {
             (fetch.all_names.is_none() || fetch.descending == descending) && focus.as_ref().is_none_or(|f| holds_field(fetch, f))
         });
-
-        // field names can collide across keys, so the previous key's pretty text
-        // must not be served for this one; renderings still in flight are dropped
-        // on completion by comparing against the content's key
-        pretty_cache.lock().clear();
-        content.lock().key.clone_from(&key);
 
         // read on the UI thread, before spawning: on a tab switch `tabs/mod.rs`
         // writes the target tab's saved filter/expanded fields into these
@@ -90,7 +84,6 @@ impl Ctx {
             })
             .unwrap_or_default();
         content.lock().search = filter.clone();
-        let pretty_cache_for_restore = pretty_cache.clone();
         let applied = path.clone();
 
         self.rt.spawn(async move {
@@ -151,18 +144,15 @@ impl Ctx {
             let prepared = fetch.map(|FetchedKey { badge, meta, fields, editable, .. }| {
                 let (shown, matches) = filter_fields(&fields, path.as_ref());
                 let status = filter_status(path.as_ref(), matches, shown.len());
-                // rows about to reopen (`expanded`) get pretty text rendered here,
-                // on this same task, instead of on first ask — otherwise a restored
-                // row flashes "Formatting..." then grows
-                {
-                    let mut cache = pretty_cache_for_restore.lock();
-                    for f in shown.iter().filter(|f| expanded.contains(&f.name)) {
-                        cache.plain_or_insert_with(&f.name, || paragraphs_for(&f.value(), false));
-                    }
+                // rows about to reopen (`expanded`) get pretty text rendered here, so a
+                // restored row doesn't flash "Formatting..." then grow
+                let mut renderings = PrettyRenderings::default();
+                for f in shown.iter().filter(|f| expanded.contains(&f.name)) {
+                    renderings.plain_or_insert_with(&f.name, || paragraphs_for(&f.value(), false));
                 }
                 let (av_field_chars, av_rows) = build_all_values_table(&shown, &filter, &expanded);
 
-                (badge, meta, fields, editable, shown, matches, status, av_field_chars, av_rows)
+                (badge, meta, fields, editable, shown, matches, status, av_field_chars, av_rows, renderings)
             });
 
             let _ = slint::invoke_from_event_loop(move || {
@@ -177,7 +167,7 @@ impl Ctx {
                     return;
                 }
                 match prepared {
-                    Ok((badge, meta, fields, editable, shown, matches, status, av_field_chars, av_rows)) => {
+                    Ok((badge, meta, fields, editable, shown, matches, status, av_field_chars, av_rows, renderings)) => {
                         window.global::<KeyPanel>().set_badge(badge.into());
                         window.global::<KeyPanel>().set_editable(editable);
                         window.global::<KeyPanel>().set_loaded(true);
@@ -205,12 +195,7 @@ impl Ctx {
                         window.global::<KeyPanel>().set_all_values_field_chars(av_field_chars);
                         window.global::<KeyPanel>().set_all_values_rows(ModelRc::new(VecModel::from(av_rows)));
 
-                        {
-                            let mut content = content.lock();
-                            content.loaded = fields;
-                            content.current = shown;
-                            content.path = AppliedPath { path: applied, matches };
-                        }
+                        ctx.shared.install(epoch, &key, fields, shown, AppliedPath { path: applied, matches }, renderings);
                         suggester.forget();
                         ctx.show_view(&window, Some(scroll));
                         // a tab restored with an active search and a hash not
@@ -230,11 +215,7 @@ impl Ctx {
                         window.global::<KeyPanel>().set_all_values_field_chars(8);
                         window.global::<KeyPanel>().set_all_values_rows(ModelRc::new(VecModel::from(Vec::<AllValuesRowData>::new())));
                         window.global::<KeyPanel>().set_json_filter_status("".into());
-                        {
-                            let mut content = content.lock();
-                            content.loaded = Vec::new();
-                            content.current = Vec::new();
-                        }
+                        ctx.shared.install(epoch, &key, Vec::new(), Vec::new(), AppliedPath::default(), PrettyRenderings::default());
                         suggester.forget();
                         clear_table(&window);
                     }

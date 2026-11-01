@@ -158,7 +158,7 @@ fn submit_add(app: &App, window: &MainWindow, id: String) {
         return finish(window, Some(t!("A key with this name already exists").into_owned()));
     }
     let (state, connection) = (app.state.clone(), window.connection_id().to_string());
-    app.rt.spawn(async move {
+    let task = app.rt.spawn(async move {
         let exists = explorer::key_exists(&state, Some(&connection), &KeyName::from_id(&id)).await;
         crate::app::later(move |app, window| match exists {
             Ok(true) => finish(window, Some(t!("A key with this name already exists").into_owned())),
@@ -171,6 +171,7 @@ fn submit_add(app: &App, window: &MainWindow, id: String) {
             Err(e) => finish(window, Some(t!("Creating failed: %{error}", error = e.localized()).into_owned())),
         });
     });
+    crate::app::on_panic(&app.rt, task, |_, window, error| finish(window, Some(error)));
 }
 
 /// The dialog's Rename on key `from`: renamed unless `to` is a key already.
@@ -191,7 +192,7 @@ fn submit_rename_key(app: &App, window: &MainWindow, from: String, to: String) {
         return moved(app, window, vec![(from, to)]);
     }
     let (state, connection) = (app.state.clone(), window.connection_id().to_string());
-    app.rt.spawn(async move {
+    let task = app.rt.spawn(async move {
         let renamed = explorer::rename_key(&state, Some(&connection), &KeyName::from_id(&from), &KeyName::from_id(&to)).await;
         crate::app::later(move |app, window| match renamed {
             Ok(true) => {
@@ -205,6 +206,7 @@ fn submit_rename_key(app: &App, window: &MainWindow, from: String, to: String) {
             Err(e) => finish(window, Some(t!("Renaming failed: %{error}", error = e.localized()).into_owned())),
         });
     });
+    crate::app::on_panic(&app.rt, task, |_, window, error| finish(window, Some(error)));
 }
 
 /// The dialog's Rename on folder `from`: every key under it moved under `to`, unless
@@ -219,7 +221,7 @@ fn submit_rename_folder(app: &App, window: &MainWindow, from: String, text: &str
         return finish(window, None);
     }
     let (state, connection) = (app.state.clone(), window.connection_id().to_string());
-    app.rt.spawn(async move {
+    let task = app.rt.spawn(async move {
         let renamed = explorer::rename_folder(&state, Some(&connection), &KeyName::from_id(&from), &KeyName::from_id(&to)).await;
         crate::app::later(move |app, window| match renamed {
             Ok(FolderMove::Moved { moves, failed }) => {
@@ -240,6 +242,7 @@ fn submit_rename_folder(app: &App, window: &MainWindow, from: String, text: &str
             Err(e) => finish(window, Some(t!("Renaming failed: %{error}", error = e.localized()).into_owned())),
         });
     });
+    crate::app::on_panic(&app.rt, task, |_, window, error| finish(window, Some(error)));
 }
 
 /// "Delete" on key or folder `row` (the menu asked twice): removed from Redis.

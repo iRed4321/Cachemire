@@ -17,6 +17,8 @@ pub enum UpdateError {
     Io(#[from] std::io::Error),
     #[error(transparent)]
     Json(#[from] serde_json::Error),
+    #[error("the downloaded installer doesn't match its SHA-256 checksum")]
+    Checksum,
 }
 
 /// The GitHub repository the releases live in.
@@ -71,6 +73,8 @@ pub struct Release {
     pub page: String,
     /// The MSI installer attached to it, when it has one.
     pub installer: Option<String>,
+    /// The installer's SHA-256 (hex), when GitHub gives it.
+    pub installer_sha256: Option<String>,
 }
 
 pub fn repo_url() -> String {
@@ -154,31 +158,62 @@ fn parse_release(item: &Value) -> Option<Release> {
         return None;
     }
     let version = Version::parse(item["tag_name"].as_str()?.trim_start_matches('v')).ok()?;
-    let installer = item["assets"]
-        .as_array()?
-        .iter()
-        .find(|a| a["name"].as_str().is_some_and(|n| n.ends_with(".msi")))
-        .and_then(|a| a["browser_download_url"].as_str())
-        .map(str::to_string);
-    Some(Release { version, page: item["html_url"].as_str()?.to_string(), installer })
+    let asset = item["assets"].as_array()?.iter().find(|a| a["name"].as_str().is_some_and(|n| n.ends_with(".msi")));
+    let installer = asset.and_then(|a| a["browser_download_url"].as_str()).map(str::to_string);
+    let installer_sha256 = asset.and_then(|a| a["digest"].as_str()?.strip_prefix("sha256:")).map(str::to_string);
+    Some(Release { version, page: item["html_url"].as_str()?.to_string(), installer, installer_sha256 })
 }
 
-/// Downloads the installer to a temporary folder and returns its path.
+/// Downloads the installer to a temporary folder and returns its path. It's written under
+/// a `.part` name first, renamed once whole and matching `sha256` (hex) when there is one.
 #[cfg(windows)]
-pub fn download_installer(url: &str) -> Result<std::path::PathBuf, UpdateError> {
+pub fn download_installer(url: &str, sha256: Option<&str>) -> Result<std::path::PathBuf, UpdateError> {
     let dir = std::env::temp_dir().join("cachemire-update");
     std::fs::create_dir_all(&dir)?;
     let path = dir.join(url.rsplit('/').next().filter(|n| !n.is_empty()).unwrap_or("Cachemire.msi"));
+    let part = path.with_extension("msi.part");
+    let written = write_checked(url, &part, sha256);
+    if written.is_err() {
+        let _ = std::fs::remove_file(&part);
+    }
+    written?;
+    std::fs::rename(&part, &path)?;
+    Ok(path)
+}
+
+/// Writes what `url` answers to `path`, failing when it doesn't hash to `sha256`.
+#[cfg(windows)]
+fn write_checked(url: &str, path: &std::path::Path, sha256: Option<&str>) -> Result<(), UpdateError> {
+    use sha2::{Digest, Sha256};
+    use std::io::{Read, Write};
+
     let mut response = ureq::Agent::config_builder()
         .timeout_connect(Some(Duration::from_secs(30)))
-        .user_agent("cachemire")
+        .timeout_recv_response(Some(Duration::from_secs(30)))
+        .timeout_recv_body(Some(Duration::from_secs(15 * 60)))
+        .user_agent(USER_AGENT)
         .build()
         .new_agent()
         .get(url)
         .call()?;
-    let mut file = std::fs::File::create(&path)?;
-    std::io::copy(&mut response.body_mut().as_reader(), &mut file)?;
-    Ok(path)
+    let mut reader = response.body_mut().as_reader();
+    let mut file = std::fs::File::create(path)?;
+    let mut hasher = Sha256::new();
+    let mut buffer = vec![0; 64 * 1024];
+    loop {
+        let read = reader.read(&mut buffer)?;
+        if read == 0 {
+            break;
+        }
+        hasher.update(&buffer[..read]);
+        file.write_all(&buffer[..read])?;
+    }
+    file.sync_all()?;
+    let actual: String = hasher.finalize().iter().map(|byte| format!("{byte:02x}")).collect();
+    match sha256 {
+        Some(expected) if !expected.eq_ignore_ascii_case(&actual) => Err(UpdateError::Checksum),
+        _ => Ok(()),
+    }
 }
 
 /// Starts the Windows Installer on the MSI, detached from this process.

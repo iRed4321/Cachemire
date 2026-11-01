@@ -7,15 +7,18 @@ use std::rc::Rc;
 use std::sync::Arc;
 
 use tokio::runtime::Handle;
+use tokio::task::JoinHandle;
 
 use crate::MainWindow;
 use crate::cloud::Cloud;
 use crate::connections::transfer::TransferLists;
+use crate::error::Localize;
 use crate::key_detail::KeyDetail;
 use crate::keyspace::Keyspace;
 use crate::redisql::QueryTabs;
 use crate::search::SearchTabs;
 use crate::tabs::Tabs;
+use cachemire_core::error::Error;
 use cachemire_core::state::AppState;
 
 pub struct App {
@@ -61,4 +64,17 @@ pub fn with(f: impl FnOnce(&Rc<App>, &MainWindow)) {
 /// (dropped if the loop has ended), such as a Tokio task's result going back to the window.
 pub fn later(f: impl FnOnce(&Rc<App>, &MainWindow) + Send + 'static) {
     let _ = slint::invoke_from_event_loop(move || with(f));
+}
+
+/// Should `task` panic, `recover` runs as [`later`] would, with what went wrong:
+/// it takes down what was shown busy for the task and says it failed.
+pub fn on_panic<T: Send + 'static>(rt: &Handle, task: JoinHandle<T>, recover: impl FnOnce(&Rc<App>, &MainWindow, String) + Send + 'static) {
+    rt.spawn(async move {
+        if let Err(e) = task.await
+            && e.is_panic()
+        {
+            let error = Error::from(e);
+            later(move |app, window| recover(app, window, error.localized()));
+        }
+    });
 }

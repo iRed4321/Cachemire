@@ -74,6 +74,9 @@ struct StoredSettings {
     // what is set for AWS accounts and their endpoints (none of the endpoints themselves)
     #[serde(default)]
     cloud: StoredCloud,
+    // what a newer version wrote that this one doesn't know: saved back as it was
+    #[serde(flatten)]
+    extra: serde_json::Map<String, serde_json::Value>,
 }
 
 #[derive(Clone)]
@@ -222,7 +225,12 @@ impl SettingsStore {
     /// Stores `secrets` under `key` while the vault is usable: the first failure makes
     /// it unusable for the rest of the run. Whether they are stored.
     fn store_secret(&mut self, key: &str, secrets: &Secrets) -> bool {
-        self.vault_usable = self.vault_usable && self.vault.set(key, secrets).is_ok();
+        if self.vault_usable
+            && let Err(e) = self.vault.set(key, secrets)
+        {
+            tracing::warn!("the system keyring can't store passwords ({e}); they stay in the settings file this run");
+            self.vault_usable = false;
+        }
         self.vault_usable
     }
 

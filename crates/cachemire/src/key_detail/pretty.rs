@@ -5,7 +5,6 @@
 use std::cell::RefCell;
 use std::rc::Rc;
 use std::sync::Arc;
-use std::sync::atomic::Ordering;
 
 use slint::{ComponentHandle, ModelRc, VecModel};
 
@@ -164,23 +163,23 @@ pub(super) fn init(window: &MainWindow, ctx: &Ctx) {
                 }
                 return;
             }
-            let (field, key_at_request) = {
+            let (field, epoch) = {
                 let content = shared.content.lock();
                 let Some(field) = content.field(&name) else { return };
-                (field, content.key.clone())
+                (field, content.epoch)
             };
-            let epoch_at_request = shared.view_epoch.load(Ordering::Relaxed);
             let content = shared.content.clone();
-            let view_epoch = shared.view_epoch.clone();
             let pretty_cache = shared.pretty_cache.clone();
             let weak = ctx.weak.clone();
             ctx.rt.spawn_blocking(move || {
                 let paragraphs = Arc::new(paragraphs_for(&field.value(), escaped));
-                // the key changed, or a filter was applied, while rendering: this is for stale contents
-                if content.lock().key != key_at_request || view_epoch.load(Ordering::Relaxed) != epoch_at_request {
+                // held while inserting, so the contents can't be replaced in between
+                let content = content.lock();
+                if content.epoch != epoch {
                     return;
                 }
                 pretty_cache.lock().insert(name, escaped, paragraphs);
+                drop(content);
                 let _ = weak.upgrade_in_event_loop(move |window| {
                     signal_pretty_ready(&window);
                 });

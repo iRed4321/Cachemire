@@ -477,7 +477,7 @@ async fn read_set_bounded(session: &mut Session, key: &KeyName, max_items: usize
 
     let mut items: Vec<String> = Vec::new();
     let mut cursor: u64 = 0;
-    let count_hint = max_items.max(10);
+    let count_hint = max_items.clamp(10, 1000);
     while items.len() < max_items {
         let (next_cursor, chunk) = session.set_scan(key, cursor, count_hint).await?;
         let room = max_items - items.len();
@@ -512,7 +512,10 @@ async fn read_value(session: &mut Session, key: &KeyName, value_type: &RedisValu
                 ),
             })
         }
-        RedisValueType::Stream => Ok(no_truncation(Value::Array(read_stream(session, key, Some(max_items)).await?))),
+        RedisValueType::Stream => {
+            let total = session.stream_len(key).await?;
+            Ok(ReadValueResult { value: Value::Array(read_stream(session, key, Some(max_items)).await?), truncated: total > max_items })
+        }
         // (get_key_details answers a missing key before it reads anything)
         RedisValueType::Missing => Err(NotFound::Key.into()),
         RedisValueType::Other(other) => Ok(no_truncation(Value::String(format!("[unsupported type: {other}]")))),

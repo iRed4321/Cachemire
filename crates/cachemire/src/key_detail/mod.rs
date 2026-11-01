@@ -43,7 +43,7 @@ pub(crate) use highlight::{search_plain_text, search_value_text};
 pub use scroll::{ScrollPos, current_expanded_fields, current_scroll, restore_expanded_fields};
 pub use table::clear_table;
 
-use field::{Fields, PrettyCache};
+use field::{Fields, PrettyCache, PrettyRenderings};
 use load::LoadRequest;
 use paging::PageDir;
 use scroll::{arm_table_scroll, disarm_scroll, set_field_expanded, sync_rows_expansion};
@@ -123,9 +123,8 @@ struct KeyDetailShared {
     // bumped whenever a table build is started or the view is switched off, so
     // a build that finishes late (a newer key, the switch turned off) is dropped
     table_generation: Arc<AtomicU64>,
-    // bumped when a key starts loading and when the filter is applied, so work
-    // started for the previous contents (a load, a filter, a pretty rendering)
-    // is dropped when it finishes late
+    // bumped when a key starts loading and when the filter is applied, so a load
+    // or filter overtaken by a newer one is dropped when it finishes late
     view_epoch: Arc<AtomicU64>,
     fetched: FetchedCache,
     // completions of the filter bar's path, from the loaded fields
@@ -142,8 +141,10 @@ struct KeyDetailShared {
 /// The key the panel shows and what of it is shown.
 #[derive(Default)]
 struct PanelContent {
-    // the key whose fields these are: a background rendering that finishes after
-    // the key changed must not land in the (new key's) cache
+    // the view epoch these contents were put in under: work started on them
+    // (a page, a rendering, a rebuild) is dropped if they were replaced since
+    epoch: u64,
+    // the key whose fields these are
     key: String,
     // the key's fields as loaded; `current` is these after the filter bar's path
     // (the same list when there's none), and what everything else shows
@@ -303,6 +304,23 @@ impl Ctx {
 }
 
 impl KeyDetailShared {
+    /// Puts the fields of `key` in the panel, as made under view `epoch`, with the
+    /// open-row renderings already made of them.
+    fn install(&self, epoch: u64, key: &str, loaded: Fields, current: Fields, path: AppliedPath, renderings: PrettyRenderings) {
+        let mut content = self.content.lock();
+        content.epoch = epoch;
+        key.clone_into(&mut content.key);
+        content.loaded = loaded;
+        content.current = current;
+        content.path = path;
+        *self.pretty_cache.lock() = renderings;
+    }
+
+    /// Whether the panel still shows the contents put in under view `epoch`.
+    fn shows(&self, epoch: u64) -> bool {
+        self.content.lock().epoch == epoch
+    }
+
     /// The filter's text once completion `index` of the list is taken, and where its
     /// cursor goes; the text unchanged (cursor -1) when there is no such completion.
     fn complete_suggestion(&self, text: slint::SharedString, cursor: i32, index: i32) -> CompletionEdit {
@@ -330,7 +348,7 @@ pub(crate) fn show_key_name(window: &MainWindow, id: &str) {
 
 /// Empties the panel: no key and no rows are shown, and what a load still on its way brings is dropped.
 fn show_nothing(window: &MainWindow, shared: &KeyDetailShared) {
-    shared.view_epoch.fetch_add(1, Ordering::Relaxed);
+    let epoch = shared.view_epoch.fetch_add(1, Ordering::Relaxed) + 1;
     disarm_scroll(window);
     window.global::<KeyPanel>().set_badge("".into());
     window.global::<KeyPanel>().set_loaded(false);
@@ -340,11 +358,7 @@ fn show_nothing(window: &MainWindow, shared: &KeyDetailShared) {
     window.global::<KeyPanel>().set_all_values_field_chars(8);
     window.global::<KeyPanel>().set_all_values_rows(ModelRc::new(VecModel::from(Vec::<AllValuesRowData>::new())));
     window.global::<KeyPanel>().set_json_filter_status("".into());
-    {
-        let mut content = shared.content.lock();
-        content.loaded = Vec::new();
-        content.current = Vec::new();
-    }
+    shared.install(epoch, "", Vec::new(), Vec::new(), AppliedPath::default(), PrettyRenderings::default());
     shared.suggester.forget();
     clear_table(window);
 }

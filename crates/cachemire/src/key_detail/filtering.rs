@@ -25,17 +25,27 @@ impl Ctx {
         let filter = current_search_filter(&window);
         // a snapshot of the pointers, so the lock isn't held while building; the
         // expanded set is read off the window, since this doesn't touch which rows are open
-        let fields: Fields = {
+        let (fields, epoch) = {
             let mut content = self.shared.content.lock();
             content.search = filter.clone();
-            content.current.clone()
+            (content.current.clone(), content.epoch)
         };
         let expanded = current_expanded_fields(&window);
-        let rows_weak = self.weak.clone();
+        let ctx = self.clone();
         self.rt.spawn_blocking(move || {
             let (av_field_chars, av_rows) = build_all_values_table(&fields, &filter, &expanded);
 
-            let _ = rows_weak.upgrade_in_event_loop(move |window| {
+            let _ = slint::invoke_from_event_loop(move || {
+                let Some(window) = ctx.weak.upgrade() else { return };
+                // other contents, or newer badges, are shown since: their own rebuild has the last word
+                if !ctx.shared.shows(epoch) || current_search_filter(&window) != filter {
+                    return;
+                }
+                // a page landed while building: the rows are built again with it
+                if ctx.shared.content.lock().current.len() != fields.len() {
+                    ctx.on_search_changed();
+                    return;
+                }
                 window.global::<KeyPanel>().set_all_values_field_chars(av_field_chars);
                 window.global::<KeyPanel>().set_all_values_rows(ModelRc::new(VecModel::from(av_rows)));
             });
@@ -119,11 +129,12 @@ impl Ctx {
                 disarm_scroll(&window);
                 {
                     let mut content = shared.content.lock();
+                    content.epoch = epoch;
                     content.current = fields;
                     content.path = AppliedPath { path, matches };
+                    // the cached renderings are of the previous contents
+                    shared.pretty_cache.lock().clear();
                 }
-                // the cached renderings are of the previous contents
-                shared.pretty_cache.lock().clear();
                 window.global::<KeyPanel>().set_json_filter_status(status.into());
                 window.global::<KeyPanel>().set_all_values_field_chars(av_field_chars);
                 window.global::<KeyPanel>().set_all_values_rows(ModelRc::new(VecModel::from(av_rows)));

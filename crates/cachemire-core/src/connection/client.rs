@@ -1,4 +1,8 @@
+use std::time::Duration;
+
 use redis::aio::{ConnectionManager, ConnectionManagerConfig};
+use redis::io::tcp::TcpSettings;
+use redis::io::tcp::socket2::TcpKeepalive;
 
 use crate::connection::ConnectionItem;
 use crate::error::Error;
@@ -36,7 +40,10 @@ fn build_client(connection: &ConnectionItem, via_local_port: Option<u16>) -> Res
     } else {
         redis::ConnectionAddr::Tcp(endpoint.host, endpoint.port)
     };
-    let info = addr.into_connection_info()?.set_redis_settings(redis_settings);
+    // keepalive probes find a socket that died silently (sleep, a dropped NAT mapping)
+    let keepalive = TcpKeepalive::new().with_time(Duration::from_secs(30)).with_interval(Duration::from_secs(10));
+    let tcp = TcpSettings::default().set_nodelay(true).set_keepalive(keepalive);
+    let info = addr.into_connection_info()?.set_redis_settings(redis_settings).set_tcp_settings(tcp);
 
     Ok(redis::Client::open(info)?)
 }
@@ -47,8 +54,8 @@ fn build_client(connection: &ConnectionItem, via_local_port: Option<u16>) -> Res
 pub async fn create_connection(connection: &ConnectionItem, via_local_port: Option<u16>) -> Result<ConnectionManager, Error> {
     let client = build_client(connection, via_local_port)?;
     let config = ConnectionManagerConfig::new()
-        .set_connection_timeout(Some(std::time::Duration::from_secs(20)))
-        .set_response_timeout(Some(std::time::Duration::from_secs(60)))
+        .set_connection_timeout(Some(Duration::from_secs(20)))
+        .set_response_timeout(Some(Duration::from_secs(60)))
         .set_number_of_retries(0);
     Ok(ConnectionManager::new_with_config(client, config).await?)
 }

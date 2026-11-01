@@ -113,7 +113,7 @@ pub fn init(app: &Rc<App>, window: &MainWindow) {
             window.global::<AwsAccount>().set_error("".into());
             window.global::<AwsAccount>().set_busy(true);
             let page = sign_in_page();
-            app.rt.spawn(async move {
+            let task = app.rt.spawn(async move {
                 let result = aws::login(&page).await;
                 let names: Vec<slint::SharedString> = aws::profiles().await.into_iter().map(|p| p.name.into()).collect();
                 crate::app::later(move |app, window| {
@@ -141,6 +141,10 @@ pub fn init(app: &Rc<App>, window: &MainWindow) {
                         }
                     }
                 });
+            });
+            crate::app::on_panic(&app.rt, task, |_, window, error| {
+                window.global::<AwsAccount>().set_busy(false);
+                window.global::<AwsAccount>().set_error(error.into());
             });
         }
     });
@@ -171,7 +175,7 @@ pub fn init(app: &Rc<App>, window: &MainWindow) {
             window.global::<AwsAccount>().set_busy(true);
 
             let page = sign_in_page();
-            app.rt.spawn(async move {
+            let task = app.rt.spawn(async move {
                 let result = aws::redis_connections(&name, &page).await;
                 crate::app::later(move |app, window| {
                     if app.cloud.borrow().generation != generation {
@@ -214,6 +218,12 @@ pub fn init(app: &Rc<App>, window: &MainWindow) {
                         }
                     }
                 });
+            });
+            crate::app::on_panic(&app.rt, task, move |app, window, error| {
+                if app.cloud.borrow().generation == generation {
+                    window.global::<AwsAccount>().set_busy(false);
+                    window.global::<AwsAccount>().set_error(error.into());
+                }
             });
         }
     });

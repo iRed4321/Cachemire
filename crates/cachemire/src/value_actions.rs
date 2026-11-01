@@ -2,15 +2,34 @@
 //! toolbar: open in the system's default editor for the file type, or copy
 //! to the clipboard. None of this is Redis-specific.
 
+use std::io::Write;
+use std::time::Duration;
+
 use crate::error::Error;
 use cachemire_core::now_ms;
+use cachemire_core::persist;
+
+/// Removes the values opened in an editor more than a day ago: they may hold secrets.
+fn remove_old_files(dir: &std::path::Path) {
+    let Ok(entries) = std::fs::read_dir(dir) else { return };
+    for entry in entries.flatten() {
+        let old =
+            entry.metadata().and_then(|m| m.modified()).is_ok_and(|at| at.elapsed().unwrap_or_default() > Duration::from_secs(86_400));
+        if old {
+            let _ = std::fs::remove_file(entry.path());
+        }
+    }
+}
 
 /// Writes `text` to a temp file and opens it in a real editor — not via
 /// `xdg-open`: MIME sniffing often routes JSON-looking content to a
 /// browser regardless of extension. Tries known GUI editors, falling back to the OS default.
 pub fn open_in_external_editor(text: &str, extension: &str) -> Result<(), Error> {
-    let path = std::env::temp_dir().join(format!("cachemire-value-{}.{extension}", now_ms()));
-    std::fs::write(&path, text)?;
+    let dir = std::env::temp_dir().join("cachemire-values");
+    persist::create_private_dir(&dir)?;
+    remove_old_files(&dir);
+    let path = dir.join(format!("cachemire-value-{}.{extension}", now_ms()));
+    persist::create_private(&path)?.write_all(text.as_bytes())?;
 
     #[cfg(target_os = "windows")]
     const EDITORS: &[&str] = &["code", "notepad++", "notepad"];

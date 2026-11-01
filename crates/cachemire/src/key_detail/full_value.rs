@@ -2,7 +2,6 @@
 //! size, and shows it with the row opened.
 
 use std::sync::Arc;
-use std::sync::atomic::Ordering;
 
 use rust_i18n::t;
 use slint::{ComponentHandle, Model};
@@ -39,14 +38,13 @@ impl Ctx {
     pub(super) fn load_full_value(&self, name: &str) {
         let Some(window) = self.weak.upgrade() else { return };
         let shared = &self.shared;
-        let (key, old) = {
+        let (key, old, epoch) = {
             let content = shared.content.lock();
             let Some(old) = content.loaded.iter().find(|f| f.name == name && f.too_long.is_some()).cloned() else { return };
-            (content.key.clone(), old)
+            (content.key.clone(), old, content.epoch)
         };
         update_row(&window, name, |row| row.loading = true);
         let connection = window.connection_id().to_string();
-        let epoch = shared.view_epoch.load(Ordering::Relaxed);
         let ctx = self.clone();
         self.rt.spawn(async move {
             let read =
@@ -64,10 +62,10 @@ impl Ctx {
     }
 
     /// Puts a field read in full in place of `old` (the one shown by its size), unless the
-    /// key was loaded again since (`epoch`): its row opens.
+    /// contents were replaced since (`epoch`): its row opens.
     fn show_full_value(&self, connection: &str, key: &str, epoch: u64, old: &Arc<Field>, read: Result<Option<Arc<Field>>, Error>) {
         let shared = &self.shared;
-        let Some(window) = self.weak.upgrade().filter(|_| shared.view_epoch.load(Ordering::Relaxed) == epoch) else { return };
+        let Some(window) = self.weak.upgrade().filter(|_| shared.shows(epoch)) else { return };
         let new = match read {
             Ok(Some(new)) => new,
             Ok(None) => {

@@ -297,7 +297,7 @@ fn run_import(app: &Rc<App>, window: &MainWindow) {
     }
     global.set_busy(true);
     let state = app.state.clone();
-    app.rt.spawn_blocking(move || {
+    let task = app.rt.spawn_blocking(move || {
         // the names are chosen once, so the rehearsal and the real run save the same thing
         let mut taken: FxHashSet<String> =
             state.connections.lock().list_state().connections.iter().map(|c| c.name.to_lowercase()).collect();
@@ -328,6 +328,13 @@ fn run_import(app: &Rc<App>, window: &MainWindow) {
             }
         });
     });
+    crate::app::on_panic(&app.rt, task, busy_failed);
+}
+
+/// The transfer task panicked: the dialog stops being busy and says why.
+fn busy_failed(_: &Rc<App>, window: &MainWindow, error: String) {
+    window.global::<ConnectionTransfer>().set_busy(false);
+    set_message(window, error, false);
 }
 
 /// Asks where to save the ticked connections of the export list, then writes them there.
@@ -342,7 +349,7 @@ fn run_export(app: &Rc<App>, window: &MainWindow) {
     let passwords = global.get_export_passwords();
     global.set_busy(true);
     let state = app.state.clone();
-    app.rt.spawn(async move {
+    let task = app.rt.spawn(async move {
         let now = now_ms();
         let (year, month, day, hour, minute, second, _) = utc_parts(now);
         let stamp = format!("{year:04}{month:02}{day:02}-{hour:02}{minute:02}{second:02}");
@@ -375,6 +382,7 @@ fn run_export(app: &Rc<App>, window: &MainWindow) {
             }
         });
     });
+    crate::app::on_panic(&app.rt, task, busy_failed);
 }
 
 /// Writes the connections `ids` to `path` as an export made at `now` (ms since the

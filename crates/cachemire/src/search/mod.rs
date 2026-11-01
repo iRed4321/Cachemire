@@ -3,7 +3,7 @@
 //! `search-*` properties while active; the search itself runs on Tokio.
 
 use crate::error::Localize;
-use rustc_hash::FxHashMap;
+use rustc_hash::{FxHashMap, FxHashSet};
 use std::rc::Rc;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
@@ -11,7 +11,7 @@ use std::time::{Duration, Instant};
 
 use rayon::prelude::*;
 use rust_i18n::t;
-use slint::{ModelRc, VecModel};
+use slint::{ModelRc, SharedString, VecModel};
 use tokio::sync::watch;
 
 use crate::app::App;
@@ -219,13 +219,13 @@ fn hits_in_key(KeyEntries { key, key_type, entries }: KeyEntries, needle: &str) 
 }
 
 /// What a page of keys holds that matches `needle` (lowercase): a row per matching
-/// entry, or one for the key alone when only its name matches. Each key's scan
-/// (`hits_in_key`) is independent, so a batch is spread across cores.
+/// entry, or one for the key alone when only its name matches. A key already in
+/// `keys_with_hits` (SCAN can give one twice) is skipped; keys are scanned across cores.
 fn hits_in(
     batch_keys: Vec<KeyEntries>,
     needle: &str,
     room: usize,
-    keys_with_hits: &mut usize,
+    keys_with_hits: &mut FxHashSet<SharedString>,
     longest: &mut Longest,
 ) -> Vec<SearchRowData> {
     if room == 0 {
@@ -233,8 +233,7 @@ fn hits_in(
     }
     let mut rows = Vec::new();
     for (key_rows, key_longest) in batch_keys.into_par_iter().map(|k| hits_in_key(k, needle)).collect::<Vec<_>>() {
-        if !key_rows.is_empty() {
-            *keys_with_hits += 1;
+        if key_rows.first().is_some_and(|row| keys_with_hits.insert(row.key_name.clone())) {
             longest.key = longest.key.max(key_longest.key);
             longest.field = longest.field.max(key_longest.field);
             rows.extend(key_rows);
@@ -357,7 +356,7 @@ fn submit(app: &App, window: &MainWindow, query: &str) {
     let (state, needle) = (state.clone(), query.to_lowercase());
     rt.spawn(async move {
         let mut found = 0usize;
-        let mut keys_with_hits = 0usize;
+        let mut keys_with_hits = FxHashSet::default();
         let mut longest = Longest::default();
         let enough = AtomicBool::new(false);
         let mut last_report = Instant::now();
@@ -382,7 +381,7 @@ fn submit(app: &App, window: &MainWindow, query: &str) {
                     return;
                 }
                 last_report = Instant::now();
-                let status = status_text(&query, scanned, total, found, keys_with_hits, finished, capped);
+                let status = status_text(&query, scanned, total, found, keys_with_hits.len(), finished, capped);
                 report(
                     &id,
                     run,

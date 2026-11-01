@@ -1,7 +1,7 @@
 //! A saved connection to a Redis server and how one is reached: its settings, the
 //! store that keeps them, the client and pool, and the SSH tunnel in between.
 
-use crate::error::{Error, Invalid, NotFound, Timeout};
+use crate::error::{Error, Invalid, NotFound};
 use crate::secret_vault::staged;
 use crate::state::{AppState, resolve_connection};
 use std::sync::Arc;
@@ -171,9 +171,7 @@ pub async fn test_connection(state: &Arc<AppState>, mut connection: ConnectionIt
     if let Some(ssh) = connection.ssh.as_mut() {
         state.settings.lock().fill_ssh(ssh)?;
     }
-    tokio::time::timeout(Duration::from_secs(15), state.redis_connections.test(&connection))
-        .await
-        .map_err(|_| Timeout::Connect { seconds: 15 })?
+    state.redis_connections.test(&connection).await
 }
 
 #[cfg(test)]

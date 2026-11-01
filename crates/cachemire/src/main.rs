@@ -34,7 +34,7 @@ mod updates;
 mod value_actions;
 mod window_state;
 
-use cachemire_core::error::{ErrorKind, Timeout};
+use cachemire_core::error::ErrorKind;
 use cachemire_core::state::{AppState, InstanceLock};
 use error::Localize;
 
@@ -47,23 +47,29 @@ impl MainWindow {
     }
 }
 
-/// How long an attempt to connect gets before it is reported as failed.
-const CONNECT_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(10);
-
 /// Connects to a saved connection by id off the UI thread and shows the outcome in
 /// the title bar; `announce` also raises `connection-established` on success. Only
 /// the latest attempt counts: a superseded one's outcome is dropped.
 pub(crate) fn connect_to(window: &MainWindow, state: Arc<AppState>, rt: &tokio::runtime::Handle, connection_id: String, announce: bool) {
+    connect_then(window, state, rt, connection_id, announce, || {});
+}
+
+/// [`connect_to`], with `then` run on the UI thread once connected.
+fn connect_then(
+    window: &MainWindow,
+    state: Arc<AppState>,
+    rt: &tokio::runtime::Handle,
+    connection_id: String,
+    announce: bool,
+    then: impl FnOnce() + Send + 'static,
+) {
     let attempt = state.connect_attempt.fetch_add(1, Ordering::SeqCst) + 1;
     let connection = window.global::<ConnectionState>();
     connection.set_view(ConnectionView { connecting: true, ..connection.get_view() });
     let weak = window.as_weak();
     rt.spawn(async move {
-        let outcome =
-            match tokio::time::timeout(CONNECT_TIMEOUT, cachemire_core::connection::connect_connection(&state, &connection_id)).await {
-                Ok(outcome) => outcome,
-                Err(_) => Err(Timeout::Connect { seconds: CONNECT_TIMEOUT.as_secs() }.into()),
-            };
+        // (the keyring may ask for its password first: only opening the connection is timed)
+        let outcome = cachemire_core::connection::connect_connection(&state, &connection_id).await;
         // resolved from the saved connection itself, not the attempt's outcome,
         // so the status glyph can still show its lock (see TitleBar) when this
         // connection uses SSH but the attempt just failed
@@ -112,6 +118,9 @@ pub(crate) fn connect_to(window: &MainWindow, state: Arc<AppState>, rt: &tokio::
             if connected && announce {
                 window.global::<ConnectionState>().invoke_established();
             }
+            if connected {
+                then();
+            }
         });
     });
 }
@@ -124,13 +133,23 @@ fn ssh_server_label(ssh: &cachemire_core::connection::SshSettings) -> String {
     }
 }
 
-/// Reconnects/re-verifies the store's active connection — used by the
-/// keyspace refresh button. Never called at startup, where only a
-/// restored last session connects (see `last_session`).
+/// Reconnects/re-verifies the store's active connection. Never called at startup,
+/// where only a restored last session connects (see `last_session`).
 pub(crate) fn connect_active(window: &MainWindow, state: Arc<AppState>, rt: &tokio::runtime::Handle) {
+    connect_active_then(window, state, rt, || {});
+}
+
+/// [`connect_active`], with `then` run once connected: the keyspace refresh button's
+/// new walk waits for a stale connection to be found and opened again.
+pub(crate) fn connect_active_then(
+    window: &MainWindow,
+    state: Arc<AppState>,
+    rt: &tokio::runtime::Handle,
+    then: impl FnOnce() + Send + 'static,
+) {
     let connection_id = state.connections.lock().get_active().ok().map(|c| c.id);
     match connection_id {
-        Some(id) => connect_to(window, state, rt, id, false),
+        Some(id) => connect_then(window, state, rt, id, false, then),
         None => {
             // nothing to connect to: an attempt still under way is no longer wanted
             state.connect_attempt.fetch_add(1, Ordering::SeqCst);

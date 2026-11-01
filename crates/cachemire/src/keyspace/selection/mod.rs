@@ -352,7 +352,7 @@ fn start(ctx: &ScanContext, plan: Plan) {
     global.set_export_progress(if sole_file.is_some() { t!("Choose a file...") } else { t!("Choose a folder...") }.as_ref().into());
     ctx.export_cancel.store(false, Ordering::Relaxed);
     let (weak, state, cancel, rt) = (ctx.weak.clone(), ctx.state.clone(), ctx.export_cancel.clone(), ctx.rt.clone());
-    rt.spawn(async move {
+    let task = rt.spawn(async move {
         let (dir, file_name) = match &sole_file {
             Some(default) => {
                 let chosen = rfd::AsyncFileDialog::new().set_file_name(default).add_filter("JSON", &["json"]).save_file().await;
@@ -388,11 +388,22 @@ fn start(ctx: &ScanContext, plan: Plan) {
             window.global::<KeyTree>().set_export_progress("".into());
             let text = match result {
                 Ok(outcome) if outcome.cancelled => t!("Export cancelled").into_owned(),
+                Ok(outcome) if outcome.skipped > 0 => t!(
+                    "Exported %{count} keys, %{skipped} left out that couldn't be read",
+                    count = outcome.keys - outcome.skipped,
+                    skipped = outcome.skipped
+                )
+                .into_owned(),
                 Ok(outcome) => t!("Exported %{count} keys", count = outcome.keys).into_owned(),
                 Err(e) => t!("Export failed: %{error}", error = e.localized()).into_owned(),
             };
             crate::toast::show(&window, &text);
         });
+    });
+    crate::app::on_panic(&rt, task, |_, window, error| {
+        window.global::<KeyTree>().set_export_busy(false);
+        window.global::<KeyTree>().set_export_progress("".into());
+        crate::toast::show(window, &t!("Export failed: %{error}", error = error));
     });
 }
 

@@ -60,12 +60,12 @@ struct BuiltPage {
 }
 
 impl Ctx {
-    /// A hash page just landed: merges it into the reuse cache and, if `key` is still
-    /// shown and unreloaded since (`epoch`), into `loaded`, then adds its rows (under the
-    /// applied path and the search bar) before or after those shown, off the UI thread.
+    /// A hash page just landed: merges it into the reuse cache and, if the contents it
+    /// was read for (`epoch`) are still shown, into `loaded`, then adds its rows (under
+    /// the applied path and the search bar) before or after those shown, off the UI thread.
     fn on_hash_page_loaded(&self, connection: &str, key: &str, epoch: u64, dir: PageDir, new_fields: Fields) {
         let shared = &self.shared;
-        let Some(window) = self.weak.upgrade().filter(|_| shared.view_epoch.load(Ordering::Relaxed) == epoch) else {
+        let Some(window) = self.weak.upgrade().filter(|_| shared.shows(epoch)) else {
             self.page_done();
             return;
         };
@@ -107,11 +107,11 @@ impl Ctx {
         let BuiltPage { shown, matches, search, field_chars, rows } = page;
         let shared = &self.shared;
         let Some(window) = self.weak.upgrade() else { return };
-        if shared.view_epoch.load(Ordering::Relaxed) != epoch {
-            return;
-        }
         let status = {
             let mut content = shared.content.lock();
+            if content.epoch != epoch {
+                return;
+            }
             match dir {
                 PageDir::Next => content.current.extend(shown),
                 PageDir::Previous => {
@@ -160,6 +160,16 @@ impl Ctx {
         self.kick_off_scan_if_active();
     }
 
+    /// A page fetch failed: the next one waits for a scroll, unless what it was for
+    /// was replaced since, whose own pages may start at once.
+    fn page_failed(&self, epoch: u64) {
+        if self.shared.shows(epoch) {
+            self.shared.paging_in_flight.store(false, Ordering::Release);
+        } else {
+            self.page_done();
+        }
+    }
+
     /// Fetches the next or previous page of the shown hash's field values unless one is
     /// already being fetched. While a search badge or the JSON path filter is active,
     /// each landed page chains on (`fetch_more`) until the whole hash is read.
@@ -173,8 +183,10 @@ impl Ctx {
             return;
         };
         let connection = window.connection_id().to_string();
-        let key = window.global::<KeyPanel>().get_key_id().to_string();
-        let epoch = shared.view_epoch.load(Ordering::Relaxed);
+        let (key, epoch) = {
+            let content = shared.content.lock();
+            (content.key.clone(), content.epoch)
+        };
         let (names, cursor) = match shared.fetched.lock().get(&(connection.clone(), key.clone())) {
             Some(fetch) => (hash_page(fetch, dir), fetch.names_cursor.filter(|_| dir == PageDir::Next)),
             None => (None, None),
@@ -195,7 +207,7 @@ impl Ctx {
                     ctx.on_hash_page_loaded(&connection, &key, epoch, dir, build_fields(Value::Object(values), oversized, &names))
                 }
                 // not retried right away: the next scroll near the end asks again
-                Err(_) => ctx.shared.paging_in_flight.store(false, Ordering::Release),
+                Err(_) => ctx.page_failed(epoch),
             });
         });
     }
@@ -212,11 +224,11 @@ impl Ctx {
             let result = explorer::hash_more_names(&ctx.state, Some(&connection), &KeyName::from_id(&key), cursor, descending).await;
             let _ = slint::invoke_from_event_loop(move || {
                 let shared = &ctx.shared;
-                shared.paging_in_flight.store(false, Ordering::Release);
-                let Ok((batch, next)) = result else { return };
-                if shared.view_epoch.load(Ordering::Relaxed) != epoch {
-                    return;
+                let Ok((batch, next)) = result else { return ctx.page_failed(epoch) };
+                if !shared.shows(epoch) {
+                    return ctx.page_done();
                 }
+                shared.paging_in_flight.store(false, Ordering::Release);
                 let meta = {
                     let mut fetched = shared.fetched.lock();
                     let Some(fetch) = fetched.get_mut(&(connection, key)) else { return };
@@ -240,8 +252,8 @@ impl Ctx {
     /// The next page of the shown hash, else (once its end is reached) the page before
     /// the loaded fields.
     fn fetch_more(&self) {
-        let key = self.weak.upgrade().map(|w| (w.connection_id().to_string(), w.global::<KeyPanel>().get_key_id().to_string()));
-        let Some(key) = key else { return };
+        let Some(window) = self.weak.upgrade() else { return };
+        let key = (window.connection_id().to_string(), self.shared.content.lock().key.clone());
         let dir = match self.shared.fetched.lock().get(&key) {
             Some(fetch) if !has_next(fetch) => PageDir::Previous,
             _ => PageDir::Next,

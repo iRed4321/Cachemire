@@ -54,6 +54,9 @@ struct StoredConnection {
     // the passwords and passphrase are in the credential store, not in this file
     #[serde(default)]
     in_vault: bool,
+    // what a newer version wrote that this one doesn't know: saved back as it was
+    #[serde(flatten)]
+    extra: serde_json::Map<String, serde_json::Value>,
 }
 
 impl StoredConnection {
@@ -89,6 +92,7 @@ impl Default for StoredConnection {
             ssh_passphrase: String::new(),
             profile_id: String::new(),
             in_vault: false,
+            extra: Default::default(),
         }
     }
 }
@@ -98,6 +102,9 @@ impl Default for StoredConnection {
 struct StoredState {
     active_connection_id: String,
     connections: Vec<StoredConnection>,
+    // what a newer version wrote that this one doesn't know: saved back as it was
+    #[serde(flatten)]
+    extra: serde_json::Map<String, serde_json::Value>,
 }
 
 /// The saved connections, kept in memory and written through to a JSON
@@ -280,6 +287,7 @@ fn initial_state() -> StoredState {
             password: std::env::var("REDIS_PASSWORD").unwrap_or_default(),
             ..Default::default()
         }],
+        extra: Default::default(),
     };
     give_urls(&mut state);
     state
@@ -403,7 +411,8 @@ impl ConnectionStore {
             conn.in_vault = self.vault_usable
                 && match self.vault.set(&conn.id, &secrets) {
                     Ok(()) => true,
-                    Err(_) => {
+                    Err(e) => {
+                        tracing::warn!("the system keyring can't store passwords ({e}); they stay in the data file this run");
                         self.vault_usable = false;
                         false
                     }

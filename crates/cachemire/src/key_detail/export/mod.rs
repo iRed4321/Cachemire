@@ -5,11 +5,13 @@
 use parking_lot::Mutex;
 use std::sync::Arc;
 
+use rust_i18n::t;
 use rustc_hash::FxHashMap;
 use serde::Serialize;
 use slint::{Model, Weak};
 use tokio::runtime::Handle;
 
+use crate::error::Localize;
 use crate::value_actions::sanitize_filename;
 use crate::{ExportFormat, ExportTarget, KeyPanel, MainWindow};
 use cachemire_core::explorer;
@@ -63,8 +65,13 @@ fn copy_text(weak: &Weak<MainWindow>, text: &str) {
                 crate::toast::show_copied(&window);
             });
         }
-        Err(e) => tracing::warn!("copy failed: {e}"),
+        Err(e) => show_failure(weak, t!("Copying failed: %{error}", error = e.localized()).into_owned()),
     }
+}
+
+/// Toasts `text` (why an export didn't go through) once the event loop gets to it.
+fn show_failure(weak: &Weak<MainWindow>, text: String) {
+    let _ = weak.upgrade_in_event_loop(move |window| crate::toast::show(&window, &text));
 }
 
 /// What to do with an export's text once it's built.
@@ -123,18 +130,18 @@ fn run_export(
             None => fields,
         };
         let unread: Vec<String> = fields.iter().filter(|f| f.too_long.is_some()).map(|f| f.name.clone()).collect();
-        let Some(read) = read_in_full(&state, &connection, &key, unread).await else { return };
+        let Some(read) = read_in_full(&weak, &state, &connection, &key, unread).await else { return };
         let _ = tokio::task::spawn_blocking(move || {
             let text = build(&fields, with_full_values(fields.clone(), read));
             match (action, save_to) {
                 (ExportAction::Open(extension), _) => {
                     if let Err(e) = crate::value_actions::open_in_external_editor(&text, extension) {
-                        tracing::warn!("open in editor failed: {e}");
+                        show_failure(&weak, t!("Opening failed: %{error}", error = e.localized()).into_owned());
                     }
                 }
                 (ExportAction::Download(_), Some(path)) => {
                     if let Err(e) = std::fs::write(&path, text) {
-                        tracing::warn!("download to {} failed: {e}", path.display());
+                        show_failure(&weak, t!("Saving failed: %{error}", error = e).into_owned());
                     }
                 }
                 (ExportAction::Download(_), None) => {}
@@ -146,15 +153,21 @@ fn run_export(
 }
 
 /// The values of `key`'s fields named `unread` read in full from `connection`, by name
-/// (`None` for one gone since); `None` if reading them failed.
-async fn read_in_full(state: &AppState, connection: &str, key: &str, unread: Vec<String>) -> Option<Vec<(String, Option<String>)>> {
+/// (`None` for one gone since); `None` if reading them failed, which is toasted.
+async fn read_in_full(
+    weak: &Weak<MainWindow>,
+    state: &AppState,
+    connection: &str,
+    key: &str,
+    unread: Vec<String>,
+) -> Option<Vec<(String, Option<String>)>> {
     if unread.is_empty() {
         return Some(Vec::new());
     }
     match explorer::hash_full_values(state, Some(connection), &KeyName::from_id(key), &unread).await {
         Ok(values) => Some(unread.into_iter().zip(values).collect()),
         Err(e) => {
-            tracing::warn!("reading the values left out for their size failed: {e}");
+            show_failure(weak, t!("Loading failed: %{error}", error = e.localized()).into_owned());
             None
         }
     }
@@ -249,7 +262,7 @@ impl Exporter {
                 }
             });
             let Ok((fields, unread)) = picked.await else { return };
-            let Some(read) = read_in_full(&state, &connection, &key, unread.into_iter().collect()).await else { return };
+            let Some(read) = read_in_full(&weak, &state, &connection, &key, unread.into_iter().collect()).await else { return };
             let _ = tokio::task::spawn_blocking(move || {
                 let full = with_full_values(fields.clone(), read);
                 if let Some(text) = table_cell_copy_text(&fields, &full, row, column, sort).filter(|text| !text.is_empty()) {

@@ -52,11 +52,16 @@ async fn load_records(session: &mut Session, key: &str) -> Result<(Vec<Map<Strin
         RedisValueType::Missing => Err(QueryError::KeyNotFound(key.to_string()).into()),
         RedisValueType::Hash => {
             let mut records = Vec::new();
+            // a scan may give a field twice
+            let mut seen = rustc_hash::FxHashSet::default();
             let mut cursor: u64 = 0;
             loop {
                 let (next_cursor, fields) = session.hash_scan(&name, cursor, 500).await?;
-                for (field, raw) in &fields {
-                    records.push(hash_record(key, field, raw)?);
+                for (field, raw) in fields {
+                    let record = hash_record(key, &field, &raw)?;
+                    if seen.insert(field) {
+                        records.push(record);
+                    }
                 }
                 cursor = next_cursor;
                 if cursor == 0 || records.len() >= MAX_SOURCE_FIELDS {
