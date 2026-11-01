@@ -13,6 +13,8 @@ rust_i18n::i18n!("../../resources/lang", fallback = "en");
 mod app;
 mod cloud;
 mod connections;
+#[cfg(windows)]
+mod drag_latch;
 mod error;
 mod i18n;
 mod key_detail;
@@ -80,12 +82,16 @@ fn install_window_events(window: &MainWindow) {
     let weak = window.as_weak();
     #[cfg(windows)]
     let mut icon_applied = false;
+    #[cfg(windows)]
+    let mut cursor = slint::winit_030::winit::dpi::PhysicalPosition::new(-1.0, -1.0);
     window.window().on_winit_window_event(move |window, event| {
         if let Some(main) = weak.upgrade() {
             toast::on_window_event(&main, window, event);
         }
         #[cfg(windows)]
         use_exe_icon(window, event, &mut icon_applied);
+        #[cfg(windows)]
+        drag_latch::on_window_event(window, event, &mut cursor);
         slint::winit_030::EventResult::Propagate
     });
 }
@@ -135,6 +141,8 @@ fn main() -> Result<(), slint::PlatformError> {
         move || {
             let Some(window) = weak.upgrade() else { return };
             window.window().with_winit_window(|winit_window| {
+                #[cfg(windows)]
+                drag_latch::clear(winit_window);
                 let _ = winit_window.drag_window();
             });
         }

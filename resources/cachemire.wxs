@@ -13,6 +13,8 @@
 
     <MajorUpgrade AllowSameVersionUpgrades="yes" DowngradeErrorMessage="A newer version of Cachemire is already installed." />
     <MediaTemplate EmbedCab="yes" />
+    <!-- no System Restore point first: saving one holds the install up, before the administrator prompt -->
+    <Property Id="MSIFASTINSTALL" Value="1" />
 
     <Icon Id="CachemireIcon" SourceFile="resources/icon.ico" />
     <Property Id="ARPPRODUCTICON" Value="CachemireIcon" />

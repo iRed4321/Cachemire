@@ -50,10 +50,12 @@ Every stable release of Cachemire; `Unreleased` is what the next one brings. Bet
 - **Table view**: copying or exporting ticked rows gives exactly those rows, also while searching or next to values over 4 MB
 - **Table view**: keeps updating while a search reads through a big hash, instead of waiting for the end
 - **Updates**: an interrupted or corrupted installer download is now caught before installing, instead of running a broken file
+- **Updates**: the installer no longer makes a System Restore point first, so the administrator prompt comes up sooner
 - **Values**: opening a value of thousands of lines no longer crashes the app
 - **Values**: a stream with more entries than shown is now marked as cut short, in the key panel and in exports
 - **Values**: switching keys mid-load or mid-scroll no longer mixes the previous key's fields, text or exports into the new one
 - **Values**: scrolling through a big hash no longer makes the window stutter while each page is prepared
+- **Window**: on Windows, moving or resizing the window no longer stops working until a restart
 
 ## 3.1.2 - 2026-10-27
 
