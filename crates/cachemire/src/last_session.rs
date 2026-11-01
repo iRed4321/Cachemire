@@ -144,6 +144,6 @@ pub fn restore(app: &App, window: &MainWindow) {
     if is_cloud {
         crate::cloud::resume(app, window, session.cloud_profile, session.connection);
     } else {
-        crate::connect_to(window, app.state.clone(), &app.rt, session.connection, true);
+        crate::connections::connect_to(window, app.state.clone(), &app.rt, session.connection, true);
     }
 }

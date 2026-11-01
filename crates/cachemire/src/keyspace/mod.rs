@@ -568,7 +568,7 @@ pub fn init(app: &Rc<App>, window: &MainWindow) {
         move || {
             let ctx = &app.keyspace.0;
             let Some(window) = ctx.weak.upgrade() else { return };
-            crate::connect_active_then(&window, ctx.state.clone(), &ctx.rt, || {
+            crate::connections::connect_active_then(&window, ctx.state.clone(), &ctx.rt, || {
                 crate::app::with(|app, _| {
                     let ctx = &app.keyspace.0;
                     let reopen = ctx.tree.lock().open_folders();

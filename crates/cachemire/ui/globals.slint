@@ -35,8 +35,6 @@ export global ConnectionState {
     // raised from Rust once a connection picked in the dropdown has connected
     callback established();
     callback disconnect-requested();
-    // the connection in use changed (or was lost): the tabs shown are those of the new one
-    callback switched();
 }
 
 // The form that creates or edits a saved connection.

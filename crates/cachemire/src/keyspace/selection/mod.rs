@@ -340,13 +340,12 @@ fn start(ctx: &ScanContext, plan: Plan) {
     if total == 0 || global.get_export_busy() {
         return;
     }
-    let connection_id = match ctx.state.connections.lock().get_active() {
-        Ok(connection) => connection.id,
-        Err(e) => {
-            crate::toast::show(&window, &t!("Export failed: %{error}", error = e.localized()));
-            return;
-        }
-    };
+    let connection_id = window.connection_id().to_string();
+    if connection_id.is_empty() {
+        let error = cachemire_core::error::Error::from(cachemire_core::error::NotFound::ActiveConnection);
+        crate::toast::show(&window, &t!("Export failed: %{error}", error = error.localized()));
+        return;
+    }
     global.set_export_busy(true);
     let sole_file = plan.sole_file();
     global.set_export_progress(if sole_file.is_some() { t!("Choose a file...") } else { t!("Choose a folder...") }.as_ref().into());

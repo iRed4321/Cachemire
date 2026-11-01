@@ -163,6 +163,7 @@ fn install_app(
         state: state.clone(),
         rt,
         tabs: Default::default(),
+        picked: Default::default(),
         searches: Default::default(),
         queries: Default::default(),
         transfer: Default::default(),

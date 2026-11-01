@@ -11,8 +11,8 @@ use crate::key_detail::{ScrollPos, current_expanded_fields, current_scroll, rest
 use crate::redisql;
 use crate::search;
 use crate::{
-    AllValuesRowData, BadgeData, ConnectionState, ExportPrefs, KeyPanel, KeyTree, KeyView, MainWindow, Preferences, SavedQueries,
-    SearchScope, SearchTab, TabData, TabStrip,
+    AllValuesRowData, BadgeData, ExportPrefs, KeyPanel, KeyTree, KeyView, MainWindow, Preferences, SavedQueries, SearchScope, SearchTab,
+    TabData, TabStrip,
 };
 use cachemire_core::key_name::KeyName;
 use rust_i18n::t;
@@ -424,7 +424,7 @@ pub fn open_query(app: &App, text: String) {
 /// Each connection has its own tabs: switching hides the ones on screen and
 /// shows the new connection's (a failed connect or a delete leaves no
 /// connection, so nothing shows). The key panel follows the active tab.
-fn on_connection_changed(app: &App, window: &MainWindow) {
+pub(crate) fn follow_connection(app: &App, window: &MainWindow) {
     let state = &app.state;
     let connection = window.connection_id().to_string();
     crate::redisql::saved::refresh(window, state);
@@ -547,8 +547,6 @@ pub fn init(app: &Rc<App>, window: &MainWindow) {
         }
     }
 
-    let changed = on(app, |app, window, ()| on_connection_changed(app, window));
-    window.global::<ConnectionState>().on_switched(move || changed(()));
     let new_search = on(app, |app, _, ()| open_search(app));
     window.global::<TabStrip>().on_new_search_clicked(move || new_search(()));
     let new_query = on(app, |app, _, ()| open_query(app, String::new()));

@@ -80,9 +80,6 @@ export component MainWindow inherits Window {
     property <bool> connection-chosen: ConnectionState.view.connected;
     // the last attempt failed
     property <bool> connection-failed: !ConnectionState.view.connected && ConnectionState.view.status-detail != "";
-    // the tabs shown follow the connection in use
-    property <string> connection-id: ConnectionState.view.connection-id;
-    changed connection-id => { ConnectionState.switched(); }
     // opening or closing the connection profile form drops what the last action said
     property <bool> conn-profile-editing: Preferences.conn-profile-editing;
     changed conn-profile-editing => { Preferences.error = ""; }

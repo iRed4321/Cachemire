@@ -130,15 +130,17 @@ impl AppState {
     }
 }
 
-/// Resolves an explicit connection id if provided, otherwise falls back to
-/// whichever connection is marked active. An SSH tunnel with no username of
-/// its own comes back completed with the active SSH profile.
+/// Resolves an explicit connection id if provided (`""` being none), otherwise the
+/// connection marked active. An SSH tunnel with no username of its own comes back
+/// completed with the active SSH profile.
 pub fn resolve_connection(state: &AppState, connection_id: Option<&str>) -> Result<ConnectionItem, Error> {
     let (mut connection, cloud_key) = {
         let store = state.connections.lock();
+        // `Some("")`: a window on no connection, which never means the active one
         let connection = match connection_id {
-            Some(id) if !id.trim().is_empty() => store.get(id).ok_or_else(|| NotFound::Connection.into()),
-            _ => store.get_active(),
+            Some("") => Err(NotFound::ActiveConnection.into()),
+            Some(id) => store.get(id).ok_or_else(|| NotFound::Connection.into()),
+            None => store.get_active(),
         }?;
         let cloud_key = store.cloud_key(&connection.id);
         (connection, cloud_key)
@@ -196,7 +198,8 @@ mod tests {
         assert_eq!((ssh.username.as_str(), ssh.password.as_str()), ("deploy", "s3cret"));
 
         assert_eq!(resolve_connection(&state, None).unwrap().id, "plain");
-        assert_eq!(resolve_connection(&state, Some("  ")).unwrap().id, "plain", "a blank id is no id");
+        let blank = resolve_connection(&state, Some(""));
+        assert!(matches!(blank, Err(Error::NotFound(NotFound::ActiveConnection))), "a window on no connection never gets the active one");
         assert!(matches!(resolve_connection(&state, Some("gone")), Err(Error::NotFound(NotFound::Connection))));
         std::fs::remove_dir_all(&dir).unwrap();
     }

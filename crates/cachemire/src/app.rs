@@ -37,6 +37,8 @@ pub struct App {
     pub key_detail: KeyDetail,
     /// the keyspace tree
     pub keyspace: Keyspace,
+    /// the connection last picked, which a retry connects to ("" for none)
+    pub picked: RefCell<String>,
 }
 
 thread_local! {

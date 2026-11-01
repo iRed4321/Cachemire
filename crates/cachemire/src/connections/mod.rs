@@ -18,8 +18,11 @@ use cachemire_core::error::{Error, Invalid};
 use cachemire_core::secret_vault::staged;
 use cachemire_core::settings::ConnectionProfile;
 
+mod connect;
 pub mod profiles;
 pub mod transfer;
+
+pub(crate) use connect::{connect_active, connect_active_then, connect_to, keep_active_in_step};
 
 pub(crate) fn refresh(app: &App, window: &MainWindow) {
     let state = &app.state;
@@ -94,6 +97,7 @@ pub(crate) fn refresh(app: &App, window: &MainWindow) {
 pub(crate) fn disconnect(app: &App, window: &MainWindow) {
     let (state, rt) = (&app.state, &app.rt);
     let id = window.connection_id().to_string();
+    app.picked.borrow_mut().clear();
     if !id.is_empty() {
         app.tabs.borrow_mut().discard_on_leave();
         crate::last_session::forget(&app.state);
@@ -107,10 +111,11 @@ pub(crate) fn disconnect(app: &App, window: &MainWindow) {
         tracing::info!(connection = %id, "disconnected");
     }
     refresh(app, window);
-    crate::connect_active(window, state.clone(), rt);
+    connect_active(window, state.clone(), rt);
     let connection = window.global::<ConnectionState>();
     connection.set_view(ConnectionView { status_detail: "".into(), ..connection.get_view() });
     crate::keyspace::reload(app);
+    crate::tabs::follow_connection(app, window);
 }
 
 /// Wires the connection list, the title bar's pill and the edit form. The keyspace
@@ -120,8 +125,7 @@ pub fn init(app: &Rc<App>, window: &MainWindow) {
 
     let connection = window.global::<ConnectionState>();
     connection.on_copy_connection_string(|| crate::app::with(copy_connection_string));
-    connection
-        .on_selected(|id| crate::app::with(|app, window| crate::connect_to(window, app.state.clone(), &app.rt, id.to_string(), true)));
+    connection.on_selected(|id| crate::app::with(|app, window| connect_to(window, app.state.clone(), &app.rt, id.to_string(), true)));
     connection.on_established(|| {
         crate::app::with(|app, window| {
             refresh(app, window);
@@ -178,9 +182,10 @@ fn delete(app: &Rc<App>, window: &MainWindow, id: &str) {
             refresh(app, window);
             crate::redisql::saved::refresh(window, state);
             if window.connection_id() == id {
-                // nothing is active any more, so this resets the title bar
-                crate::connect_active(window, state.clone(), rt);
+                // the connection picked is gone, so this resets the title bar
+                connect_active(window, state.clone(), rt);
                 crate::keyspace::reload(app);
+                crate::tabs::follow_connection(app, window);
             }
         }
         Err(e) => window.global::<ConnectionEditor>().set_error(e.localized().into()),
@@ -249,6 +254,8 @@ fn save_form(app: &Rc<App>, window: &MainWindow, form: &ConnectionForm) {
         }
         crate::app::later(move |app, window| match result {
             Ok(_) => {
+                // a connection created is made the active one in the store: the one in use stays
+                keep_active_in_step(app, window);
                 window.global::<ConnectionEditor>().set_error("".into());
                 window.global::<ConnectionEditor>().set_open(false);
                 refresh(app, window);

@@ -203,7 +203,7 @@ pub fn init(app: &Rc<App>, window: &MainWindow) {
                                 && state.connections.lock().get(&r.connection).is_some()
                         });
                         if let Some(resume) = resume {
-                            crate::connect_to(window, state.clone(), &app.rt, resume.connection, true);
+                            crate::connections::connect_to(window, state.clone(), &app.rt, resume.connection, true);
                         }
                     }
                     Err(e) => {

@@ -407,6 +407,7 @@ fn a_saved_query_appears_in_the_sidebar_and_its_own_x_removes_it() {
         state: state.clone(),
         rt,
         tabs: Default::default(),
+        picked: Default::default(),
         searches: Default::default(),
         queries: Default::default(),
         transfer: Default::default(),

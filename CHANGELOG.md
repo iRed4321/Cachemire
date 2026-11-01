@@ -24,6 +24,8 @@ Every stable release of Cachemire; `Unreleased` is what the next one brings. Bet
 - **Connection**: an SSH tunnel dropped by sleep or a network change is opened again by itself on the next action
 - **Connection**: a connection that died silently is noticed sooner, and the refresh button now waits for it to reopen
 - **Connection**: opening a key stays quick while the tree loads, a search runs or an export is under way
+- **Connection**: after a failed switch, the refresh button retries the connection picked, not the previous one
+- **Connection**: the memory figure and query completion now follow the connection in use, even after a failed switch
 - **Export**: big keys are read in chunks, so an export no longer stalls the Redis server for its other clients
 - **Export**: a key that can't be read is left out and counted, instead of stopping the export with a broken file
 - **Export**: a copy, open or save that fails now says so, instead of silently doing nothing

@@ -82,13 +82,14 @@ pub(super) fn start_walk(ctx: &ScanContext) {
     let generation = ctx.generation.fetch_add(1, Ordering::Relaxed) + 1;
     let (weak, state, tree, latest) = (ctx.weak.clone(), ctx.state.clone(), ctx.tree.clone(), ctx.generation.clone());
     let reveal_ctx = ctx.clone();
+    let connection = ctx.weak.upgrade().map(|window| window.connection_id().to_string()).unwrap_or_default();
     ctx.rt.spawn(async move {
         let result = {
             let (weak, tree, latest) = (weak.clone(), tree.clone(), latest.clone());
             let still_wanted = latest.clone();
             explorer::walk_keyspace(
                 &state,
-                None,
+                Some(&connection),
                 MAX_INDEXED_KEYS,
                 move || still_wanted.load(Ordering::Relaxed) == generation,
                 move |batch| {

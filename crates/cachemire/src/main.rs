@@ -4,7 +4,6 @@
 
 use rust_i18n::t;
 use std::sync::Arc;
-use std::sync::atomic::Ordering;
 
 use slint::ComponentHandle;
 use slint::winit_030::WinitWindowAccessor;
@@ -34,9 +33,7 @@ mod updates;
 mod value_actions;
 mod window_state;
 
-use cachemire_core::error::ErrorKind;
 use cachemire_core::state::{AppState, InstanceLock};
-use error::Localize;
 
 slint::include_modules!();
 
@@ -44,123 +41,6 @@ impl MainWindow {
     /// The saved-connection id of the connection in use ("" when none is).
     pub fn connection_id(&self) -> slint::SharedString {
         self.global::<ConnectionState>().get_view().connection_id
-    }
-}
-
-/// Connects to a saved connection by id off the UI thread and shows the outcome in
-/// the title bar; `announce` also raises `connection-established` on success. Only
-/// the latest attempt counts: a superseded one's outcome is dropped.
-pub(crate) fn connect_to(window: &MainWindow, state: Arc<AppState>, rt: &tokio::runtime::Handle, connection_id: String, announce: bool) {
-    connect_then(window, state, rt, connection_id, announce, || {});
-}
-
-/// [`connect_to`], with `then` run on the UI thread once connected.
-fn connect_then(
-    window: &MainWindow,
-    state: Arc<AppState>,
-    rt: &tokio::runtime::Handle,
-    connection_id: String,
-    announce: bool,
-    then: impl FnOnce() + Send + 'static,
-) {
-    let attempt = state.connect_attempt.fetch_add(1, Ordering::SeqCst) + 1;
-    let connection = window.global::<ConnectionState>();
-    connection.set_view(ConnectionView { connecting: true, ..connection.get_view() });
-    let weak = window.as_weak();
-    rt.spawn(async move {
-        // (the keyring may ask for its password first: only opening the connection is timed)
-        let outcome = cachemire_core::connection::connect_connection(&state, &connection_id).await;
-        // resolved from the saved connection itself, not the attempt's outcome,
-        // so the status glyph can still show its lock (see TitleBar) when this
-        // connection uses SSH but the attempt just failed
-        let ssh_via = state.connections.lock().get(&connection_id).and_then(|c| c.ssh.as_ref().map(ssh_server_label)).unwrap_or_default();
-
-        let _ = weak.upgrade_in_event_loop(move |window| {
-            // (checked here, on the UI thread, where the attempts are numbered: nothing
-            // can start between this check and the connection being made the active one)
-            if state.connect_attempt.load(Ordering::SeqCst) != attempt {
-                return;
-            }
-            // status/detail drive the title bar's dot + tooltip; ssh_failed
-            // marks the SSH tunnel itself as the failure (not the Redis endpoint
-            // past it) — the SSH badge colors red for that, not the dot
-            let outcome = outcome.and_then(|c| {
-                state.connections.lock().set_active(&connection_id)?;
-                Ok(c)
-            });
-            let view = match outcome {
-                Ok(c) => {
-                    tracing::info!(name = %c.name, address = %c.address(), "connected");
-                    ConnectionView {
-                        connected: true,
-                        status: ConnectionStatus::Connected,
-                        connection_id: connection_id.into(),
-                        address: c.address().into(),
-                        name: c.name.into(),
-                        ssh_via: ssh_via.into(),
-                        ..Default::default()
-                    }
-                }
-                Err(e) => {
-                    tracing::warn!(connection = %connection_id, kind = ?e.kind(), "couldn't connect: {e}");
-                    ConnectionView {
-                        status: ConnectionStatus::Disconnected,
-                        status_detail: e.localized().into(),
-                        ssh_failed: e.kind() == ErrorKind::Tunnel,
-                        ssh_via: ssh_via.into(),
-                        ..Default::default()
-                    }
-                }
-            };
-            let connected = view.connected;
-            window.global::<ConnectionState>().set_view(view);
-            connections::profiles::apply_tint(&window, &state);
-            if connected && announce {
-                window.global::<ConnectionState>().invoke_established();
-            }
-            if connected {
-                then();
-            }
-        });
-    });
-}
-
-/// `user@host` (with `:port` when it isn't 22) of an SSH tunnel's server.
-fn ssh_server_label(ssh: &cachemire_core::connection::SshSettings) -> String {
-    match ssh.port {
-        22 => format!("{}@{}", ssh.username, ssh.host),
-        port => format!("{}@{}:{port}", ssh.username, ssh.host),
-    }
-}
-
-/// Reconnects/re-verifies the store's active connection. Never called at startup,
-/// where only a restored last session connects (see `last_session`).
-pub(crate) fn connect_active(window: &MainWindow, state: Arc<AppState>, rt: &tokio::runtime::Handle) {
-    connect_active_then(window, state, rt, || {});
-}
-
-/// [`connect_active`], with `then` run once connected: the keyspace refresh button's
-/// new walk waits for a stale connection to be found and opened again.
-pub(crate) fn connect_active_then(
-    window: &MainWindow,
-    state: Arc<AppState>,
-    rt: &tokio::runtime::Handle,
-    then: impl FnOnce() + Send + 'static,
-) {
-    let connection_id = state.connections.lock().get_active().ok().map(|c| c.id);
-    match connection_id {
-        Some(id) => connect_then(window, state, rt, id, false, then),
-        None => {
-            // nothing to connect to: an attempt still under way is no longer wanted
-            state.connect_attempt.fetch_add(1, Ordering::SeqCst);
-            let view = ConnectionView {
-                status: ConnectionStatus::None,
-                status_detail: t!("No saved connection").as_ref().into(),
-                ..Default::default()
-            };
-            window.global::<ConnectionState>().set_view(view);
-            connections::profiles::apply_tint(window, &state);
-        }
     }
 }
 
@@ -289,6 +169,7 @@ fn main() -> Result<(), slint::PlatformError> {
         state: state.clone(),
         rt: rt.clone(),
         tabs: Default::default(),
+        picked: Default::default(),
         searches: Default::default(),
         queries: Default::default(),
         transfer: Default::default(),
@@ -310,6 +191,8 @@ fn main() -> Result<(), slint::PlatformError> {
     server_stats::init(&window, state.clone(), rt.clone());
     redisql::saved::init(&window, state.clone());
     settings::init(&window, state, rt);
+    // nothing is connected yet: no connection stays active from the last run
+    connections::keep_active_in_step(&app, &window);
     last_session::restore(&app, &window);
     last_session::keep_saved();
 

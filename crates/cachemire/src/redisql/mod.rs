@@ -274,12 +274,12 @@ fn run(app: &App, window: &MainWindow, query: String, cursor: usize, anchor: usi
     }
 
     app.queries.borrow_mut().navigation = Navigation::default();
-    let connection_id = state.connections.lock().active_connection_id().to_string();
+    let connection_id = window.connection_id().to_string();
     let state = state.clone();
     let finished = done.clone();
     let run = async move {
         let started = std::time::Instant::now();
-        let results = run_script(&state, None, &to_run.script).await;
+        let results = run_script(&state, Some(&connection_id), &to_run.script).await;
         let script = to_run.script.clone();
         let error = results.last().and_then(|result| result.error_span.clone()).and_then(|span| to_run.to_box(span));
         done.store(true, Ordering::Relaxed);
