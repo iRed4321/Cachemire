@@ -15,9 +15,9 @@ use crate::connection::ssh_tunnel::SshTunnel;
 use crate::error::{Error, Timeout};
 use crate::session::{Session, cluster_enabled, ping};
 
-/// Physical connections kept per saved connection id. Redis serves one
-/// connection's commands strictly in order, so a single shared connection
-/// lets a big reply head-of-line-block everything queued behind it.
+/// Physical connections kept per saved connection id: the first for long reads, the
+/// others for what clicks ask. Redis serves one connection's commands strictly in
+/// order, so a big reply on a shared one would hold up everything queued behind it.
 const POOL_SIZE: usize = 3;
 
 /// Opening a pool (its SSH tunnel, then its connections) must finish within this.
@@ -84,9 +84,15 @@ impl ConnectionPool {
             .map_err(|_| Timeout::Connect { seconds: OPEN_TIMEOUT.as_secs() })?
     }
 
+    /// The next connection for a short read or write, in turn.
     pub(crate) fn pick(&self) -> RedisConnection {
-        let index = self.next.fetch_add(1, Ordering::Relaxed) % self.connections.len();
+        let index = 1 + self.next.fetch_add(1, Ordering::Relaxed) % (self.connections.len() - 1);
         self.connections[index].clone()
+    }
+
+    /// The connection for long reads (the walk, searches, exports, queries).
+    pub(crate) fn background(&self) -> RedisConnection {
+        self.connections[0].clone()
     }
 }
 

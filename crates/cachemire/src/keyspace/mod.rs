@@ -9,7 +9,7 @@ use std::rc::Rc;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, AtomicU64};
 
-use slint::{ComponentHandle, Model, ModelRc, VecModel, Weak};
+use slint::{ComponentHandle, Model, ModelRc, Weak};
 use tokio::runtime::Handle;
 
 use crate::{KeyTree, KeyspaceRowData, MainWindow, TreeRowKind};
@@ -19,11 +19,13 @@ use cachemire_core::state::AppState;
 
 mod edit;
 mod index;
+mod rows;
 mod search;
 mod selection;
 mod walk;
 
 use index::{CachedChild, Index};
+use rows::TreeRows;
 use search::{Search, start_search};
 use selection::Selection;
 use walk::{Walk, load_root};
@@ -190,9 +192,9 @@ impl Tree {
 type SharedTree = Arc<Mutex<Tree>>;
 
 /// The panel's row model, as installed by `init`.
-fn with_model(window: &MainWindow, f: impl FnOnce(&VecModel<KeyspaceRowData>)) {
+fn with_model(window: &MainWindow, f: impl FnOnce(&TreeRows)) {
     let rows = window.global::<KeyTree>().get_rows();
-    if let Some(model) = rows.as_any().downcast_ref::<VecModel<KeyspaceRowData>>() {
+    if let Some(model) = rows.as_any().downcast_ref::<TreeRows>() {
         f(model);
     }
 }
@@ -217,50 +219,50 @@ fn subtree_end(tree: &Tree, pos: usize) -> usize {
 }
 
 /// Merges `new` into `parent`'s direct children (`None` = root), keeping
-/// [`Node::cmp_sibling`] order via one forward merge over the sorted level —
-/// O(N log N + M), not O(N·M). Drops duplicates.
+/// [`Node::cmp_sibling`] order: one pass over the parent's rows, whatever the
+/// number added. Drops duplicates.
 fn merge_children(window: &MainWindow, tree: &mut Tree, parent: Option<usize>, mut new: Vec<Node>) {
     if new.is_empty() {
         return;
     }
     new.sort_by(|a, b| a.cmp_sibling(b));
 
-    let (parent_indent, mut idx) = match parent {
-        Some(p) => (tree.nodes[p].indent, p + 1),
-        None => (-1, 0),
+    let (parent_indent, start, end) = match parent {
+        Some(p) => (tree.nodes[p].indent, p + 1, subtree_end(tree, p)),
+        None => (-1, 0, tree.nodes.len()),
     };
     let child_indent = parent_indent + 1;
-    let mut inserted = 0usize;
-
-    with_model(window, |model| {
-        for mut node in new {
-            // advance past existing siblings (and their subtrees) that sort
-            // before `node`; stop at the end of the parent's subtree
-            let mut duplicate = false;
-            while idx < tree.nodes.len() && tree.nodes[idx].indent > parent_indent {
-                let existing = &tree.nodes[idx];
-                if existing.indent == child_indent {
-                    match existing.cmp_sibling(&node) {
-                        std::cmp::Ordering::Greater => break,
-                        std::cmp::Ordering::Equal if existing.full_name == node.full_name => {
-                            duplicate = true;
-                            break;
-                        }
-                        _ => {}
+    let mut old = tree.nodes.drain(start..end).collect::<Vec<_>>().into_iter().peekable();
+    let mut merged = Vec::with_capacity(old.len() + new.len());
+    let (mut positions, mut rows) = (Vec::new(), Vec::new());
+    for mut node in new {
+        // past the siblings (and their subtrees) that sort before `node`
+        let mut duplicate = false;
+        while let Some(existing) = old.peek() {
+            if existing.indent == child_indent {
+                match existing.cmp_sibling(&node) {
+                    std::cmp::Ordering::Greater => break,
+                    std::cmp::Ordering::Equal if existing.full_name == node.full_name => {
+                        duplicate = true;
+                        break;
                     }
+                    _ => {}
                 }
-                idx += 1;
             }
-            if duplicate {
-                continue;
-            }
-            node.checked = tree.export.check_of(&node.full_name, node.is_folder);
-            model.insert(idx, node.row_data());
-            tree.nodes.insert(idx, node);
-            idx += 1;
-            inserted += 1;
+            merged.extend(old.next());
         }
-    });
+        if duplicate {
+            continue;
+        }
+        node.checked = tree.export.check_of(&node.full_name, node.is_folder);
+        positions.push(start + merged.len());
+        rows.push(node.row_data());
+        merged.push(node);
+    }
+    merged.extend(old);
+    tree.nodes.splice(start..start, merged);
+    let inserted = positions.len();
+    with_model(window, |model| model.insert_at(&positions, rows));
 
     if let Some(p) = parent
         && inserted > 0
@@ -287,11 +289,7 @@ fn nodes_from_children(index: &Index, indent: i32, children: &[CachedChild]) -> 
 
 fn collapse(window: &MainWindow, tree: &mut Tree, pos: usize) {
     let end = subtree_end(tree, pos);
-    with_model(window, |model| {
-        for _ in pos + 1..end {
-            model.remove(pos + 1);
-        }
-    });
+    with_model(window, |model| model.remove_range(pos + 1..end));
     tree.nodes.drain(pos + 1..end);
     tree.nodes[pos].expanded = false;
     refresh_row(window, tree, pos);
@@ -308,12 +306,17 @@ fn show_additions(window: &MainWindow, tree: &mut Tree, added: Vec<(String, Cach
     // shallowest first, so a folder is in place before its own children
     let mut parents: Vec<(String, Vec<CachedChild>)> = by_parent.into_iter().collect();
     parents.sort_by(|(a, _), (b, _)| a.matches(DELIMITER).count().cmp(&b.matches(DELIMITER).count()).then_with(|| a.cmp(b)));
+    // the folders' rows by name, made again once rows have moved
+    let mut folders: Option<FxHashMap<String, usize>> = None;
     for (parent, children) in parents {
         let parent_pos = if parent.is_empty() {
             None
         } else {
-            match position_of(tree, &parent) {
-                Some(pos) => Some(pos),
+            let folders = folders.get_or_insert_with(|| {
+                tree.nodes.iter().enumerate().filter(|(_, n)| n.is_folder).map(|(pos, n)| (n.full_name.clone(), pos)).collect()
+            });
+            match folders.get(&parent) {
+                Some(&pos) => Some(pos),
                 None => continue, // inside a folder that isn't shown
             }
         };
@@ -335,6 +338,7 @@ fn show_additions(window: &MainWindow, tree: &mut Tree, added: Vec<(String, Cach
             }
         }
         merge_children(window, tree, parent_pos, nodes);
+        folders = None;
     }
 }
 
@@ -482,7 +486,7 @@ impl Keyspace {
     pub fn new(window: &MainWindow, state: Arc<AppState>, rt: Handle) -> Self {
         // one persistent model, mutated incrementally (insert/remove/set_row_data)
         // so a batch of new rows never rebuilds the rows already on screen
-        window.global::<KeyTree>().set_rows(ModelRc::new(VecModel::<KeyspaceRowData>::default()));
+        window.global::<KeyTree>().set_rows(ModelRc::new(TreeRows::default()));
         let tree = Tree {
             nodes: Vec::new(),
             index: Index::default(),

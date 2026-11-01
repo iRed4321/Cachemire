@@ -40,13 +40,21 @@ pub fn cell_text(value: Option<&Value>) -> String {
 }
 
 /// One CSV row (RFC 4180): fields holding a comma, quote or line break are quoted
-/// with quotes doubled; lines end in CRLF.
+/// with quotes doubled; lines end in CRLF. A field a spreadsheet would run as a
+/// formula (`=…`, `+…`, `@…`, but not a number like `-5`) gets a leading `'`.
 pub fn push_csv_row<S: AsRef<str>>(out: &mut String, cells: impl IntoIterator<Item = S>) {
     for (i, cell) in cells.into_iter().enumerate() {
         if i > 0 {
             out.push(',');
         }
         let cell = cell.as_ref();
+        let guarded;
+        let cell = if cell.starts_with(['=', '+', '-', '@', '\t', '\r']) && cell.parse::<f64>().is_err() {
+            guarded = format!("'{cell}");
+            guarded.as_str()
+        } else {
+            cell
+        };
         if cell.contains(['"', ',', '\n', '\r']) {
             out.push('"');
             out.push_str(&cell.replace('"', "\"\""));

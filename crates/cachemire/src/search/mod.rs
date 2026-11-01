@@ -354,7 +354,8 @@ fn submit(app: &App, window: &MainWindow, query: &str) {
         (settings.server_search(), settings.search_depth() as usize)
     };
     let (state, needle) = (state.clone(), query.to_lowercase());
-    rt.spawn(async move {
+    let failed_id = id.clone();
+    let search = async move {
         let mut found = 0usize;
         let mut keys_with_hits = FxHashSet::default();
         let mut longest = Longest::default();
@@ -404,6 +405,13 @@ fn submit(app: &App, window: &MainWindow, query: &str) {
                     longest: Longest::default(),
                 },
             );
+        }
+    };
+    // a search that panicked ends like one that failed
+    crate::app::spawn(rt, search, move |_, _, outcome| {
+        if let Err(error) = outcome {
+            let status = t!("search failed: %{error}", error = error.localized()).into_owned();
+            report(&failed_id, run, Report::Finished { rows: Vec::new(), status, longest: Longest::default() });
         }
     });
 }

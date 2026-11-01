@@ -45,19 +45,20 @@ impl Ctx {
         };
         update_row(&window, name, |row| row.loading = true);
         let connection = window.connection_id().to_string();
-        let ctx = self.clone();
-        self.rt.spawn(async move {
-            let read =
-                explorer::hash_full_values(&ctx.state, Some(&connection), &KeyName::from_id(&key), std::slice::from_ref(&old.name)).await;
+        let (state, asked, name, field) = (self.state.clone(), connection.clone(), KeyName::from_id(&key), old.name.clone());
+        let read = async move {
+            let read = explorer::hash_full_values(&state, Some(&asked), &name, std::slice::from_ref(&field)).await;
             // parsing a big value would hold up the runtime's thread
-            let name = old.name.clone();
-            let read = tokio::task::spawn_blocking(move || -> Result<Option<Arc<Field>>, Error> {
-                Ok(read?.into_iter().next().flatten().map(|raw| Arc::new(Field::hash_value(name, raw))))
+            tokio::task::spawn_blocking(move || -> Result<Option<Arc<Field>>, Error> {
+                Ok(read?.into_iter().next().flatten().map(|raw| Arc::new(Field::hash_value(field, raw))))
             })
             .await
             .map_err(Error::from)
-            .and_then(|read| read);
-            let _ = slint::invoke_from_event_loop(move || ctx.show_full_value(&connection, &key, epoch, &old, read));
+            .flatten()
+        };
+        let ctx = self.clone();
+        crate::app::spawn(&self.rt, read, move |_, _, read| {
+            ctx.show_full_value(&connection, &key, epoch, &old, read.map_err(Error::from).flatten())
         });
     }
 

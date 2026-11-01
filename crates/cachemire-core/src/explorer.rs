@@ -6,7 +6,7 @@ use crate::key_name::KeyName;
 use serde_json::Value;
 
 use crate::redis_value_type::RedisValueType;
-use crate::session::{ScriptKey, Session, TypedKey, lossy, pairs, stream_fields};
+use crate::session::{KeyScan, ScriptKey, Session, TypedKey, lossy, pairs, stream_fields};
 use crate::state::AppState;
 
 /// One increment of a level listing from [`scan_namespaces`]. `folders`
@@ -52,13 +52,10 @@ pub async fn scan_namespaces(
         if prefix.is_empty() { (b"*".to_vec(), 1000) } else { ([glob_escape(prefix), b"*".to_vec()].concat(), 10_000) };
 
     let mut seen_folders: FxHashSet<Vec<u8>> = FxHashSet::default();
-    let mut cursor: u64 = 0;
+    let mut scan = KeyScan::new(Some(match_pattern), count);
 
-    loop {
-        if !keep_going() {
-            return Ok(());
-        }
-        let (next_cursor, batch) = session.scan(cursor, Some(&match_pattern), count).await?;
+    while keep_going() {
+        let Some(batch) = scan.next(&mut session).await? else { break };
 
         let mut folders: Vec<KeyName> = Vec::new();
         let mut leaf_keys: Vec<KeyName> = Vec::new();
@@ -85,15 +82,11 @@ pub async fn scan_namespaces(
         }
 
         let keys = session.types(leaf_keys).await?;
-
-        cursor = next_cursor;
         if !folders.is_empty() || !keys.is_empty() {
             on_batch(NamespaceBatch { folders, keys });
         }
-        if cursor == 0 {
-            return Ok(());
-        }
     }
+    Ok(())
 }
 
 /// One page of [`walk_keyspace`]: the keys of one SCAN page, typed (SCAN may
@@ -119,24 +112,21 @@ pub async fn walk_keyspace(
     keep_going: impl Fn() -> bool,
     mut on_batch: impl FnMut(WalkBatch),
 ) -> Result<(), Error> {
-    let mut session = Session::open(state, connection_id).await?;
+    let mut session = Session::open_background(state, connection_id).await?;
     let total = session.dbsize().await.unwrap_or(0);
-    let (mut cursor, mut scanned) = (0u64, 0usize);
-    loop {
-        if !keep_going() {
-            return Ok(());
-        }
-        let (next, names) = session.scan(cursor, None, 1000).await?;
+    let (mut scan, mut scanned) = (KeyScan::new(None, 1000), 0usize);
+    while keep_going() {
+        let Some(names) = scan.next(&mut session).await? else { break };
         scanned += names.len();
         let keys = session.types(names).await?;
-        cursor = next;
-        let capped = cursor != 0 && scanned >= max_keys;
-        let done = cursor == 0 || capped;
+        let capped = !scan.finished() && scanned >= max_keys;
+        let done = scan.finished() || capped;
         on_batch(WalkBatch { keys, scanned, total, done, capped });
         if done {
-            return Ok(());
+            break;
         }
     }
+    Ok(())
 }
 
 // ---------------------------------------------------------------------------
@@ -210,20 +200,14 @@ type ScanPage = Result<Vec<KeyName>, Error>;
 /// channel's room). Ends, closing the channel, with the last page or the error
 /// that stopped it.
 async fn scan_pages(mut session: Session, pages: tokio::sync::mpsc::Sender<ScanPage>) {
-    let mut cursor: u64 = 0;
+    let mut scan = KeyScan::new(None, 500);
     loop {
-        match session.scan(cursor, None, 500).await {
-            Ok((next, names)) => {
-                // (a closed channel: nobody is reading any more)
-                if pages.send(Ok(names)).await.is_err() || next == 0 {
-                    return;
-                }
-                cursor = next;
-            }
-            Err(e) => {
-                let _ = pages.send(Err(e)).await;
-                return;
-            }
+        let page = scan.next(&mut session).await.transpose();
+        let Some(page) = page else { return };
+        let failed = page.is_err();
+        // (a closed channel: nobody is reading any more)
+        if pages.send(page).await.is_err() || failed || scan.finished() {
+            return;
         }
     }
 }
@@ -303,7 +287,7 @@ pub async fn scan_entries(
     mut paused: tokio::sync::watch::Receiver<bool>,
     mut on_batch: impl FnMut(EntriesBatch),
 ) -> Result<(), Error> {
-    let mut session = Session::open(state, connection_id).await?;
+    let mut session = Session::open_background(state, connection_id).await?;
     let total = session.dbsize().await.unwrap_or(0);
     let filter = server_filter
         .map(|needle| ServerFilter { needle: needle.into(), working: std::sync::Arc::new(std::sync::atomic::AtomicBool::new(true)) });
@@ -750,15 +734,11 @@ pub async fn rename_key(state: &AppState, connection_id: Option<&str>, from: &Ke
 async fn keys_under(session: &mut Session, prefix: &KeyName) -> Result<Vec<KeyName>, Error> {
     let mut pattern = glob_escape(prefix.as_bytes());
     pattern.push(b'*');
-    let (mut cursor, mut keys) = (0u64, FxHashSet::default());
-    loop {
-        let (next, names) = session.scan(cursor, Some(&pattern), 1000).await?;
+    let (mut scan, mut keys) = (KeyScan::new(Some(pattern), 1000), FxHashSet::default());
+    while let Some(names) = scan.next(session).await? {
         keys.extend(names);
-        cursor = next;
-        if cursor == 0 {
-            return Ok(keys.into_iter().collect());
-        }
     }
+    Ok(keys.into_iter().collect())
 }
 
 /// How many keys one `UNLINK` or one round of renames takes.
@@ -766,7 +746,7 @@ const KEYS_PER_WRITE: usize = 500;
 
 /// Removes every key whose name starts with `prefix` (a folder); how many there were.
 pub async fn delete_folder(state: &AppState, connection_id: Option<&str>, prefix: &KeyName) -> Result<usize, Error> {
-    let mut session = Session::open(state, connection_id).await?;
+    let mut session = Session::open_background(state, connection_id).await?;
     let keys = keys_under(&mut session, prefix).await?;
     for chunk in keys.chunks(KEYS_PER_WRITE) {
         session.unlink(chunk).await?;
@@ -785,7 +765,7 @@ pub enum FolderMove {
 /// Moves every key whose name starts with `from` to the same name starting with `to`,
 /// once none of the new names is taken.
 pub async fn rename_folder(state: &AppState, connection_id: Option<&str>, from: &KeyName, to: &KeyName) -> Result<FolderMove, Error> {
-    let mut session = Session::open(state, connection_id).await?;
+    let mut session = Session::open_background(state, connection_id).await?;
     let renamed = |key: &KeyName| {
         let mut name = to.as_bytes().to_vec();
         name.extend_from_slice(&key.as_bytes()[from.as_bytes().len()..]);

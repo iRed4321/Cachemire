@@ -20,7 +20,9 @@ use super::pretty_text::paragraphs_for;
 use super::scroll::{ScrollPos, arm_all_scroll, current_expanded_fields, disarm_scroll};
 use super::table::clear_table;
 use super::value_list::{build_all_values_table, filter_fields, filter_status, meta_text, parse_filter};
-use super::{AppliedPath, Ctx, FetchedKey, HASH_PAGE_SIZE, KeyDetailShared, KeyView, MAX_ITEMS, current_search_filter, show_key_name};
+use super::{
+    AppliedPath, Ctx, FetchedKey, HASH_PAGE_SIZE, KeyDetailShared, KeyView, MAX_ITEMS, PanelContent, current_search_filter, show_key_name,
+};
 
 /// A `load_key` call: what to show and how.
 pub(super) struct LoadRequest {
@@ -86,13 +88,15 @@ impl Ctx {
         content.lock().search = filter.clone();
         let applied = path.clone();
 
-        self.rt.spawn(async move {
-            let fetch = match cached {
-                Some(fetch) => Ok(fetch),
+        let (state, asked) = (ctx.state.clone(), key.clone());
+        let load = async move {
+            // Ok: what was fetched before, reused; Err: what was just read, to build it from
+            let reused_or_read = match cached {
+                Some(fetch) => Ok(Ok(fetch)),
                 None => explorer::get_key_details(
-                    &ctx.state,
+                    &state,
                     Some(&cache_slot.0),
-                    &KeyName::from_id(&key),
+                    &KeyName::from_id(&asked),
                     MAX_ITEMS,
                     HASH_PAGE_SIZE,
                     focus.as_deref(),
@@ -104,123 +108,142 @@ impl Ctx {
                     Error::NotFound(NotFound::Key) if is_new => Ok(KeyDetails::empty_hash()),
                     e => Err(e),
                 })
-                .map(|details| {
-                    let fields: Fields = if details.key_type == RedisValueType::Hash {
-                        let names = details.all_field_names.as_deref().unwrap_or_default();
-                        let page = &names[details.page_start.min(names.len())..(details.page_start + HASH_PAGE_SIZE).min(names.len())];
-                        build_fields(details.value, details.oversized, page)
-                    } else {
-                        vec![Arc::new(single_value_field(details.value))]
-                    };
-                    // a hash's true field count is known from the start (`HLEN`), so
-                    // it's never marked truncated: the rest just hasn't been paged in yet
-                    let badge = details.key_type.as_str().to_uppercase();
-                    let mut fetch = FetchedKey {
-                        badge,
-                        meta: String::new(),
-                        fields,
-                        all_names: details.all_field_names,
-                        start: details.page_start,
-                        field_count: details.field_count,
-                        ttl: details.ttl,
-                        names_cursor: details.names_cursor,
-                        descending,
-                        editable: details.key_type == RedisValueType::Hash
-                            || (details.key_type == RedisValueType::String && !details.truncated),
-                    };
-                    fetch.meta = if details.key_type == RedisValueType::Hash {
-                        fetch.hash_meta()
-                    } else {
-                        meta_text(&details.key_type, details.ttl, fetch.fields.len(), details.truncated, None)
-                    };
-                    fetched.lock().insert(cache_slot, fetch.clone());
-                    fetch
-                }),
+                .map(Err),
             };
 
-            // parsing, coloring and pretty-printing every field scales with the
-            // field count, so it all happens here rather than in the event-loop
+            // parsing, coloring and pretty-printing every field scales with the field
+            // count, so it all happens on a blocking thread rather than in the event-loop
             // closure below, which only wraps models and sets properties
-            let prepared = fetch.map(|FetchedKey { badge, meta, fields, editable, .. }| {
-                let (shown, matches) = filter_fields(&fields, path.as_ref());
-                let status = filter_status(path.as_ref(), matches, shown.len());
-                // rows about to reopen (`expanded`) get pretty text rendered here, so a
-                // restored row doesn't flash "Formatting..." then grow
-                let mut renderings = PrettyRenderings::default();
-                for f in shown.iter().filter(|f| expanded.contains(&f.name)) {
-                    renderings.plain_or_insert_with(&f.name, || paragraphs_for(&f.value(), false));
-                }
-                let (av_field_chars, av_rows) = build_all_values_table(&shown, &filter, &expanded);
+            tokio::task::spawn_blocking(move || {
+                let fetch = reused_or_read.map(|got| {
+                    got.unwrap_or_else(|details| {
+                        let fetch = fetched_key(details, descending);
+                        fetched.lock().insert(cache_slot, fetch.clone());
+                        fetch
+                    })
+                });
+                fetch.map(|FetchedKey { key_type, meta, fields, editable, .. }| {
+                    let (shown, matches) = filter_fields(&fields, path.as_ref());
+                    let status = filter_status(path.as_ref(), matches, shown.len());
+                    // rows about to reopen (`expanded`) get pretty text rendered here, so a
+                    // restored row doesn't flash "Formatting..." then grow
+                    let mut renderings = PrettyRenderings::default();
+                    for f in shown.iter().filter(|f| expanded.contains(&f.name)) {
+                        renderings.plain_or_insert_with(&f.name, || paragraphs_for(&f.value(), false));
+                    }
+                    let (av_field_chars, av_rows) = build_all_values_table(&shown, &filter, &expanded);
 
-                (badge, meta, fields, editable, shown, matches, status, av_field_chars, av_rows, renderings)
-            });
+                    (key_type, meta, fields, editable, shown, matches, status, av_field_chars, av_rows, renderings)
+                })
+            })
+            .await
+            .map_err(Error::from)
+            .flatten()
+        };
+        let task = crate::app::spawn(&self.rt, load, move |_, window, prepared| {
+            let prepared = prepared.flatten();
+            // only clear our own flag: a newer load for another key may have
+            // replaced it in the meantime, and that one is still in flight
+            if window.global::<KeyTree>().get_loading_key().as_str() == key {
+                window.global::<KeyTree>().set_loading_key("".into());
+            }
+            // a newer load (or a filter applied since) has taken over
+            if view_epoch.load(Ordering::Relaxed) != epoch {
+                return;
+            }
+            match prepared {
+                Ok((key_type, meta, fields, editable, shown, matches, status, av_field_chars, av_rows, renderings)) => {
+                    let badge = key_type.as_ref().map(|t| t.as_str().to_uppercase()).unwrap_or_default();
+                    window.global::<KeyPanel>().set_badge(badge.into());
+                    window.global::<KeyPanel>().set_editable(editable);
+                    window.global::<KeyPanel>().set_loaded(true);
+                    show_key_name(window, &key);
+                    window.global::<KeyPanel>().set_meta(meta.into());
+                    window.global::<KeyPanel>().set_json_filter_status(status.into());
 
-            let _ = slint::invoke_from_event_loop(move || {
-                let Some(window) = ctx.weak.upgrade() else { return };
-                // only clear our own flag: a newer load for another key may have
-                // replaced it in the meantime, and that one is still in flight
-                if window.global::<KeyTree>().get_loading_key().as_str() == key {
-                    window.global::<KeyTree>().set_loading_key("".into());
-                }
-                // a newer load (or a filter applied since) has taken over
-                if view_epoch.load(Ordering::Relaxed) != epoch {
-                    return;
-                }
-                match prepared {
-                    Ok((badge, meta, fields, editable, shown, matches, status, av_field_chars, av_rows, renderings)) => {
-                        window.global::<KeyPanel>().set_badge(badge.into());
-                        window.global::<KeyPanel>().set_editable(editable);
-                        window.global::<KeyPanel>().set_loaded(true);
-                        show_key_name(&window, &key);
-                        window.global::<KeyPanel>().set_meta(meta.into());
-                        window.global::<KeyPanel>().set_json_filter_status(status.into());
-
-                        // the view that shows this content takes the jump when the content
-                        // reaches it: the value list right here, the table once it is built
-                        disarm_scroll(&window);
-                        if window.global::<KeyPanel>().get_view() == KeyView::Fields {
-                            arm_all_scroll(&window, scroll);
-                        }
-                        // a row asked for (a click on a hit of a search tab): where it is
-                        // among these rows, so the list builds up to it and scrolls there
-                        {
-                            let scroll = window.global::<crate::KeyScroll>();
-                            if scroll.get_reveal_pending() {
-                                let field = scroll.get_reveal_field();
-                                let index = av_rows.iter().position(|row| row.field == field);
-                                scroll.set_reveal_index(index.map_or(-1, |i| i as i32));
-                                scroll.set_reveal_pending(index.is_some());
-                            }
-                        }
-                        window.global::<KeyPanel>().set_all_values_field_chars(av_field_chars);
-                        window.global::<KeyPanel>().set_all_values_rows(ModelRc::new(VecModel::from(av_rows)));
-
-                        ctx.shared.install(epoch, &key, fields, shown, AppliedPath { path: applied, matches }, renderings);
-                        suggester.forget();
-                        ctx.show_view(&window, Some(scroll));
-                        // a tab restored with an active search and a hash not
-                        // fully loaded yet: keep paging through the rest of it
-                        ctx.kick_off_scan_if_active();
-                        if announce {
-                            crate::toast::show_refreshed(&window);
+                    // the view that shows this content takes the jump when the content
+                    // reaches it: the value list right here, the table once it is built
+                    disarm_scroll(window);
+                    if window.global::<KeyPanel>().get_view() == KeyView::Fields {
+                        arm_all_scroll(window, scroll);
+                    }
+                    // a row asked for (a click on a hit of a search tab): where it is
+                    // among these rows, so the list builds up to it and scrolls there
+                    {
+                        let scroll = window.global::<crate::KeyScroll>();
+                        if scroll.get_reveal_pending() {
+                            let field = scroll.get_reveal_field();
+                            let index = av_rows.iter().position(|row| row.field == field);
+                            scroll.set_reveal_index(index.map_or(-1, |i| i as i32));
+                            scroll.set_reveal_pending(index.is_some());
                         }
                     }
-                    Err(e) => {
-                        disarm_scroll(&window);
-                        window.global::<KeyPanel>().set_badge("".into());
-                        window.global::<KeyPanel>().set_loaded(false);
-                        window.global::<KeyPanel>().set_editable(false);
-                        show_key_name(&window, &key);
-                        window.global::<KeyPanel>().set_meta(t!("failed to load: %{error}", error = e.localized()).as_ref().into());
-                        window.global::<KeyPanel>().set_all_values_field_chars(8);
-                        window.global::<KeyPanel>().set_all_values_rows(ModelRc::new(VecModel::from(Vec::<AllValuesRowData>::new())));
-                        window.global::<KeyPanel>().set_json_filter_status("".into());
-                        ctx.shared.install(epoch, &key, Vec::new(), Vec::new(), AppliedPath::default(), PrettyRenderings::default());
-                        suggester.forget();
-                        clear_table(&window);
+                    window.global::<KeyPanel>().set_all_values_field_chars(av_field_chars);
+                    window.global::<KeyPanel>().set_all_values_rows(ModelRc::new(VecModel::from(av_rows)));
+
+                    let path = AppliedPath { path: applied, matches };
+                    let next =
+                        PanelContent { epoch, key: key.clone(), key_type, loaded: fields, current: shown, path, ..PanelContent::default() };
+                    ctx.shared.install(next, renderings);
+                    suggester.forget();
+                    ctx.show_view(window, Some(scroll));
+                    // a tab restored with an active search and a hash not
+                    // fully loaded yet: keep paging through the rest of it
+                    ctx.kick_off_scan_if_active();
+                    if announce {
+                        crate::toast::show_refreshed(window);
                     }
                 }
-            });
+                Err(e) => {
+                    disarm_scroll(window);
+                    window.global::<KeyPanel>().set_badge("".into());
+                    window.global::<KeyPanel>().set_loaded(false);
+                    window.global::<KeyPanel>().set_editable(false);
+                    show_key_name(window, &key);
+                    window.global::<KeyPanel>().set_meta(t!("failed to load: %{error}", error = e.localized()).as_ref().into());
+                    window.global::<KeyPanel>().set_all_values_field_chars(8);
+                    window.global::<KeyPanel>().set_all_values_rows(ModelRc::new(VecModel::from(Vec::<AllValuesRowData>::new())));
+                    window.global::<KeyPanel>().set_json_filter_status("".into());
+                    ctx.shared.install(PanelContent { epoch, key: key.clone(), ..PanelContent::default() }, PrettyRenderings::default());
+                    suggester.forget();
+                    clear_table(window);
+                }
+            }
         });
+        if let Some(previous) = self.shared.load_task.lock().replace(task) {
+            previous.abort();
+        }
     }
+}
+
+/// What the panel keeps of a key just read: its fields (a hash's first page of them), its
+/// type's badge and the meta line.
+fn fetched_key(details: KeyDetails, descending: bool) -> FetchedKey {
+    let fields: Fields = if details.key_type == RedisValueType::Hash {
+        let names = details.all_field_names.as_deref().unwrap_or_default();
+        let page = &names[details.page_start.min(names.len())..(details.page_start + HASH_PAGE_SIZE).min(names.len())];
+        build_fields(details.value, details.oversized, page)
+    } else {
+        vec![Arc::new(single_value_field(details.value))]
+    };
+    // a hash's true field count is known from the start (`HLEN`), so
+    // it's never marked truncated: the rest just hasn't been paged in yet
+    let mut fetch = FetchedKey {
+        key_type: Some(details.key_type.clone()),
+        meta: String::new(),
+        fields,
+        all_names: details.all_field_names.map(Arc::new),
+        start: details.page_start,
+        field_count: details.field_count,
+        ttl: details.ttl,
+        names_cursor: details.names_cursor,
+        descending,
+        editable: details.key_type == RedisValueType::Hash || (details.key_type == RedisValueType::String && !details.truncated),
+    };
+    fetch.meta = if details.key_type == RedisValueType::Hash {
+        fetch.hash_meta()
+    } else {
+        meta_text(&details.key_type, details.ttl, fetch.fields.len(), details.truncated, None)
+    };
+    fetch
 }

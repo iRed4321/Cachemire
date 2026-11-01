@@ -1,6 +1,7 @@
 //! Paging through a hash: its next or previous page of values, its next batch of
 //! names, and the scan through the rest while a search or the path filter is active.
 
+use std::sync::Arc;
 use std::sync::atomic::Ordering;
 
 use rustc_hash::FxHashSet;
@@ -199,16 +200,16 @@ impl Ctx {
             }
             return;
         };
+        let (state, asked, name) = (self.state.clone(), connection.clone(), KeyName::from_id(&key));
+        let page = async move {
+            let (values, oversized) = explorer::hash_field_page(&state, Some(&asked), &name, &names).await?;
+            Ok(tokio::task::spawn_blocking(move || build_fields(Value::Object(values), oversized, &names)).await?)
+        };
         let ctx = self.clone();
-        self.rt.spawn(async move {
-            let result = explorer::hash_field_page(&ctx.state, Some(&connection), &KeyName::from_id(&key), &names).await;
-            let _ = slint::invoke_from_event_loop(move || match result {
-                Ok((values, oversized)) => {
-                    ctx.on_hash_page_loaded(&connection, &key, epoch, dir, build_fields(Value::Object(values), oversized, &names))
-                }
-                // not retried right away: the next scroll near the end asks again
-                Err(_) => ctx.page_failed(epoch),
-            });
+        crate::app::spawn(&self.rt, page, move |_, _, page| match page.flatten() {
+            Ok(fields) => ctx.on_hash_page_loaded(&connection, &key, epoch, dir, fields),
+            // not retried right away: the next scroll near the end asks again
+            Err(_) => ctx.page_failed(epoch),
         });
     }
 
@@ -219,33 +220,30 @@ impl Ctx {
             return;
         }
         let descending = self.weak.upgrade().is_some_and(|w| w.global::<KeyPanel>().get_sort_descending());
+        let (state, asked, name) = (self.state.clone(), connection.clone(), KeyName::from_id(&key));
+        let more = async move { explorer::hash_more_names(&state, Some(&asked), &name, cursor, descending).await };
         let ctx = self.clone();
-        self.rt.spawn(async move {
-            let result = explorer::hash_more_names(&ctx.state, Some(&connection), &KeyName::from_id(&key), cursor, descending).await;
-            let _ = slint::invoke_from_event_loop(move || {
-                let shared = &ctx.shared;
-                let Ok((batch, next)) = result else { return ctx.page_failed(epoch) };
-                if !shared.shows(epoch) {
-                    return ctx.page_done();
-                }
-                shared.paging_in_flight.store(false, Ordering::Release);
-                let meta = {
-                    let mut fetched = shared.fetched.lock();
-                    let Some(fetch) = fetched.get_mut(&(connection, key)) else { return };
-                    let names = fetch.all_names.get_or_insert_with(Vec::new);
-                    // a scan may repeat a name it already gave
-                    let known: FxHashSet<&String> = names.iter().collect();
-                    let fresh: Vec<String> = batch.into_iter().filter(|name| !known.contains(name)).collect();
-                    names.extend(fresh);
-                    fetch.names_cursor = next;
-                    fetch.meta = fetch.hash_meta();
-                    fetch.meta.clone()
-                };
-                if let Some(window) = ctx.weak.upgrade() {
-                    window.global::<KeyPanel>().set_meta(meta.into());
-                }
-                ctx.fetch_page(PageDir::Next);
-            });
+        crate::app::spawn(&self.rt, more, move |_, window, result| {
+            let shared = &ctx.shared;
+            let Ok((batch, next)) = result.flatten() else { return ctx.page_failed(epoch) };
+            if !shared.shows(epoch) {
+                return ctx.page_done();
+            }
+            shared.paging_in_flight.store(false, Ordering::Release);
+            let meta = {
+                let mut fetched = shared.fetched.lock();
+                let Some(fetch) = fetched.get_mut(&(connection, key)) else { return };
+                let names = Arc::make_mut(fetch.all_names.get_or_insert_with(Arc::default));
+                // a scan may repeat a name it already gave
+                let known: FxHashSet<&String> = names.iter().collect();
+                let fresh: Vec<String> = batch.into_iter().filter(|name| !known.contains(name)).collect();
+                names.extend(fresh);
+                fetch.names_cursor = next;
+                fetch.meta = fetch.hash_meta();
+                fetch.meta.clone()
+            };
+            window.global::<KeyPanel>().set_meta(meta.into());
+            ctx.fetch_page(PageDir::Next);
         });
     }
 

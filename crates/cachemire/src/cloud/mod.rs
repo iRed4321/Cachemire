@@ -113,38 +113,34 @@ pub fn init(app: &Rc<App>, window: &MainWindow) {
             window.global::<AwsAccount>().set_error("".into());
             window.global::<AwsAccount>().set_busy(true);
             let page = sign_in_page();
-            let task = app.rt.spawn(async move {
-                let result = aws::login(&page).await;
-                let names: Vec<slint::SharedString> = aws::profiles().await.into_iter().map(|p| p.name.into()).collect();
-                crate::app::later(move |app, window| {
-                    window.global::<AwsAccount>().set_busy(false);
-                    bring_to_front(window);
-                    match result {
-                        Ok(()) => {
-                            tracing::info!(profiles = names.len(), "signed in to AWS");
-                            let resumed = {
-                                let mut cloud = app.cloud.borrow_mut();
-                                cloud.resume = cloud.resume.take().filter(|r| names.iter().any(|n| n.as_str() == r.profile));
-                                cloud.resume.as_ref().map(|r| r.profile.clone())
-                            };
-                            window.global::<AwsAccount>().set_profiles(ModelRc::new(VecModel::from(names)));
-                            app.cloud.borrow_mut().connected = true;
-                            window.global::<AwsAccount>().set_connected(true);
-                            if let Some(profile) = resumed {
-                                window.global::<AwsAccount>().invoke_profile_selected(profile.into());
-                            }
-                        }
-                        Err(e) => {
-                            tracing::warn!("aws sign-in failed: {e}");
-                            app.cloud.borrow_mut().resume = None;
-                            window.global::<AwsAccount>().set_error(e.localized().into());
+            let signed_in = async move {
+                aws::login(&page).await?;
+                Ok(aws::profiles().await.into_iter().map(|p| slint::SharedString::from(p.name)).collect::<Vec<_>>())
+            };
+            crate::app::spawn(&app.rt, signed_in, |app, window, signed_in| {
+                window.global::<AwsAccount>().set_busy(false);
+                bring_to_front(window);
+                match signed_in.flatten() {
+                    Ok(names) => {
+                        tracing::info!(profiles = names.len(), "signed in to AWS");
+                        let resumed = {
+                            let mut cloud = app.cloud.borrow_mut();
+                            cloud.resume = cloud.resume.take().filter(|r| names.iter().any(|n| n.as_str() == r.profile));
+                            cloud.resume.as_ref().map(|r| r.profile.clone())
+                        };
+                        window.global::<AwsAccount>().set_profiles(ModelRc::new(VecModel::from(names)));
+                        app.cloud.borrow_mut().connected = true;
+                        window.global::<AwsAccount>().set_connected(true);
+                        if let Some(profile) = resumed {
+                            window.global::<AwsAccount>().invoke_profile_selected(profile.into());
                         }
                     }
-                });
-            });
-            crate::app::on_panic(&app.rt, task, |_, window, error| {
-                window.global::<AwsAccount>().set_busy(false);
-                window.global::<AwsAccount>().set_error(error.into());
+                    Err(e) => {
+                        tracing::warn!("aws sign-in failed: {e}");
+                        app.cloud.borrow_mut().resume = None;
+                        window.global::<AwsAccount>().set_error(e.localized().into());
+                    }
+                }
             });
         }
     });
@@ -175,54 +171,46 @@ pub fn init(app: &Rc<App>, window: &MainWindow) {
             window.global::<AwsAccount>().set_busy(true);
 
             let page = sign_in_page();
-            let task = app.rt.spawn(async move {
-                let result = aws::redis_connections(&name, &page).await;
-                crate::app::later(move |app, window| {
-                    if app.cloud.borrow().generation != generation {
-                        return;
-                    }
-                    let state = &app.state;
-                    window.global::<AwsAccount>().set_busy(false);
-                    bring_to_front(window);
-                    match result {
-                        Ok(aws::Listing { account, region, mut items }) => {
-                            tracing::info!(%account, %region, endpoints = items.len(), "listed the cloud connections");
-                            // a complete listing: counts the endpoints with settings that it lacks
-                            let present: FxHashSet<String> = items.iter().map(|item| item.name.clone()).collect();
-                            let cleanups = {
-                                let mut settings = state.settings.lock();
-                                let cleanups = settings.observe_cloud_listing(&account, &region, &present).unwrap_or_else(|e| {
-                                    tracing::error!("pruning the cloud settings failed: {e}");
-                                    Vec::new()
-                                });
-                                settings.apply_cloud(&account, &region, &mut items);
-                                cleanups
-                            };
-                            app.rt.spawn_blocking(move || cleanups.into_iter().for_each(|cleanup| cleanup.run()));
-                            state.connections.lock().set_cloud_connections(&account, &region, items);
-                            window.global::<AwsAccount>().set_account_known(true);
-                            crate::connections::refresh(app, window);
-                            // the last session's connection, unless one was picked since
-                            let resume = app.cloud.borrow_mut().resume.take().filter(|r| {
-                                r.attempt == state.connect_attempt.load(Ordering::SeqCst)
-                                    && state.connections.lock().get(&r.connection).is_some()
+            let listed = async move { aws::redis_connections(&name, &page).await };
+            crate::app::spawn(&app.rt, listed, move |app, window, result| {
+                if app.cloud.borrow().generation != generation {
+                    return;
+                }
+                let state = &app.state;
+                window.global::<AwsAccount>().set_busy(false);
+                bring_to_front(window);
+                match result.flatten() {
+                    Ok(aws::Listing { account, region, mut items }) => {
+                        tracing::info!(%account, %region, endpoints = items.len(), "listed the cloud connections");
+                        // a complete listing: counts the endpoints with settings that it lacks
+                        let present: FxHashSet<String> = items.iter().map(|item| item.name.clone()).collect();
+                        let cleanups = {
+                            let mut settings = state.settings.lock();
+                            let cleanups = settings.observe_cloud_listing(&account, &region, &present).unwrap_or_else(|e| {
+                                tracing::error!("pruning the cloud settings failed: {e}");
+                                Vec::new()
                             });
-                            if let Some(resume) = resume {
-                                crate::connect_to(window, state.clone(), &app.rt, resume.connection, true);
-                            }
-                        }
-                        Err(e) => {
-                            app.cloud.borrow_mut().resume = None;
-                            tracing::warn!("listing the cloud connections failed: {e}");
-                            window.global::<AwsAccount>().set_error(e.localized().into());
+                            settings.apply_cloud(&account, &region, &mut items);
+                            cleanups
+                        };
+                        app.rt.spawn_blocking(move || cleanups.into_iter().for_each(|cleanup| cleanup.run()));
+                        state.connections.lock().set_cloud_connections(&account, &region, items);
+                        window.global::<AwsAccount>().set_account_known(true);
+                        crate::connections::refresh(app, window);
+                        // the last session's connection, unless one was picked since
+                        let resume = app.cloud.borrow_mut().resume.take().filter(|r| {
+                            r.attempt == state.connect_attempt.load(Ordering::SeqCst)
+                                && state.connections.lock().get(&r.connection).is_some()
+                        });
+                        if let Some(resume) = resume {
+                            crate::connect_to(window, state.clone(), &app.rt, resume.connection, true);
                         }
                     }
-                });
-            });
-            crate::app::on_panic(&app.rt, task, move |app, window, error| {
-                if app.cloud.borrow().generation == generation {
-                    window.global::<AwsAccount>().set_busy(false);
-                    window.global::<AwsAccount>().set_error(error.into());
+                    Err(e) => {
+                        app.cloud.borrow_mut().resume = None;
+                        tracing::warn!("listing the cloud connections failed: {e}");
+                        window.global::<AwsAccount>().set_error(e.localized().into());
+                    }
                 }
             });
         }

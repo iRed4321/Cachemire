@@ -5,7 +5,7 @@ use rustc_hash::FxHashMap;
 
 use serde_json::{Map, Value};
 
-use super::ast::{Query, Select, WhereOp};
+use super::ast::{Join, Query, Select, WhereCond, WhereOp};
 use super::{Located, QueryError};
 use crate::error::Error;
 use crate::key_name::KeyName;
@@ -119,10 +119,10 @@ fn json_kind(value: &Value) -> &'static str {
 /// One matched row while joining: the record found so far for each alias
 /// mentioned, in the order they were joined in. A handful of aliases at
 /// most, so a linear scan by name is simpler (and just as fast) as a map.
-type Row = Vec<(String, Map<String, Value>)>;
+type Row<'a> = Vec<(&'a str, &'a Map<String, Value>)>;
 
-fn row_get<'a>(row: &'a Row, alias: &str) -> Option<&'a Map<String, Value>> {
-    row.iter().find(|(a, _)| a.eq_ignore_ascii_case(alias)).map(|(_, r)| r)
+fn row_get<'a>(row: &Row<'a>, alias: &str) -> Option<&'a Map<String, Value>> {
+    row.iter().find(|(a, _)| a.eq_ignore_ascii_case(alias)).map(|(_, r)| *r)
 }
 
 /// `record`'s fields, each keyed as `alias.field` when `prefix` (several
@@ -189,49 +189,91 @@ pub async fn execute(session: &mut Session, query: &Query) -> Result<QueryOutput
 /// Joins, filters and shapes the rows of `datasets` (each key's, by lowercased alias)
 /// as `query` says: the rows under its limit, and whether more matched.
 fn run(query: &Query, datasets: &FxHashMap<String, Vec<Map<String, Value>>>) -> (Vec<Map<String, Value>>, bool) {
-    let mut rows: Vec<Row> =
-        datasets[&query.base.alias.to_lowercase()].iter().map(|record| vec![(query.base.alias.clone(), record.clone())]).collect();
-
-    for join in &query.joins {
-        let right = &datasets[&join.alias.to_lowercase()];
-        let mut index: FxHashMap<String, Vec<&Map<String, Value>>> = FxHashMap::default();
-        for record in right {
-            if let Some(value) = get_ci(record, &join.join_field).and_then(normalize) {
-                index.entry(value).or_default().push(record);
-            }
+    let aliases: Vec<&str> = std::iter::once(query.base.alias.as_str()).chain(query.joins.iter().map(|j| j.alias.as_str())).collect();
+    // each WHERE is checked as soon as the record of its alias joins the row
+    let mut checks: Vec<Vec<&WhereCond>> = vec![Vec::new(); aliases.len()];
+    for condition in &query.wheres {
+        match aliases.iter().position(|alias| alias.eq_ignore_ascii_case(&condition.alias)) {
+            Some(stage) => checks[stage].push(condition),
+            None => return (Vec::new(), false),
         }
-        let mut joined = Vec::new();
-        for row in &rows {
-            let Some(anchor) = row_get(row, &join.anchor_alias) else { continue };
-            let Some(anchor_value) = get_ci(anchor, &join.anchor_field).and_then(normalize) else { continue };
-            if let Some(matches) = index.get(&anchor_value) {
-                for m in matches {
-                    let mut next = row.clone();
-                    next.push((join.alias.clone(), (*m).clone()));
-                    joined.push(next);
+    }
+    let indexes = query
+        .joins
+        .iter()
+        .map(|join| {
+            let mut index: FxHashMap<String, Vec<&Map<String, Value>>> = FxHashMap::default();
+            for record in &datasets[&join.alias.to_lowercase()] {
+                if let Some(value) = get_ci(record, &join.join_field).and_then(normalize) {
+                    index.entry(value).or_default().push(record);
                 }
             }
+            index
+        })
+        .collect::<Vec<_>>();
+    let mut joiner = Joiner { query, indexes: &indexes, checks: &checks, rows: Vec::new(), matched: 0 };
+    for record in &datasets[&query.base.alias.to_lowercase()] {
+        joiner.grow(&mut vec![(query.base.alias.as_str(), record)]);
+        if joiner.matched > query.limit {
+            break;
         }
-        rows = joined;
     }
+    (joiner.rows, joiner.matched > query.limit)
+}
 
-    if !query.wheres.is_empty() {
-        rows.retain(|row| {
-            query.wheres.iter().all(|w| {
-                let Some(record) = row_get(row, &w.alias) else { return false };
-                match get_ci(record, &w.field).and_then(normalize) {
-                    Some(value) => match w.op {
-                        WhereOp::Eq => value == w.values[0],
-                        WhereOp::In => w.values.contains(&value),
-                    },
-                    None => false,
-                }
-            })
-        });
+/// The join, made depth first so it holds no more than the rows kept, and stops one
+/// row past the limit.
+struct Joiner<'a> {
+    query: &'a Query,
+    // each join's records by the value of its join field
+    indexes: &'a [FxHashMap<String, Vec<&'a Map<String, Value>>>],
+    // the WHEREs on each alias, in join order
+    checks: &'a [Vec<&'a WhereCond>],
+    rows: Vec<Map<String, Value>>,
+    matched: usize,
+}
+
+impl<'a> Joiner<'a> {
+    /// Takes `row` (its last record just joined) through the joins left, keeping each
+    /// complete row that passes every WHERE until one past the limit matched.
+    fn grow(&mut self, row: &mut Row<'a>) {
+        let stage = row.len() - 1;
+        if !self.checks[stage].iter().all(|condition| passes(row, condition)) {
+            return;
+        }
+        let Some(join) = self.query.joins.get(stage) else {
+            self.matched += 1;
+            if self.rows.len() < self.query.limit {
+                self.rows.push(materialize_row(row, &self.query.selects));
+            }
+            return;
+        };
+        let Join { anchor_alias, anchor_field, alias, .. } = join;
+        let Some(anchor) = row_get(row, anchor_alias) else { return };
+        let Some(value) = get_ci(anchor, anchor_field).and_then(normalize) else { return };
+        let indexes = self.indexes;
+        let Some(matches) = indexes[stage].get(&value) else { return };
+        for &record in matches {
+            row.push((alias.as_str(), record));
+            self.grow(row);
+            row.pop();
+            if self.matched > self.query.limit {
+                return;
+            }
+        }
     }
+}
 
-    let truncated = rows.len() > query.limit;
-    (rows.into_iter().take(query.limit).map(|row| materialize_row(&row, &query.selects)).collect(), truncated)
+/// Whether `row`'s record for the condition's alias meets it.
+fn passes(row: &Row, condition: &WhereCond) -> bool {
+    let Some(record) = row_get(row, &condition.alias) else { return false };
+    match get_ci(record, &condition.field).and_then(normalize) {
+        Some(value) => match condition.op {
+            WhereOp::Eq => value == condition.values[0],
+            WhereOp::In => condition.values.contains(&value),
+        },
+        None => false,
+    }
 }
 
 /// The most field names `field_names` lists.

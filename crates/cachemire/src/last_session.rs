@@ -1,8 +1,10 @@
 //! The connection the app was closed on, with its tabs and the folders open in its
-//! tree (`last_session.json`, next to the settings): written at exit and reopened at
-//! the next start when the settings ask for it.
+//! tree (`last_session.json`, next to the settings): written at exit and while the app
+//! runs, and reopened at the next start when the settings ask for it.
 
+use std::cell::RefCell;
 use std::path::PathBuf;
+use std::time::Duration;
 
 use serde::{Deserialize, Serialize};
 
@@ -13,6 +15,13 @@ use cachemire_core::persist::{self, Loaded};
 use cachemire_core::state::AppState;
 
 const FILE: &str = "last_session.json";
+/// How often the session is written while the app runs, when it changed.
+const SAVE_INTERVAL: Duration = Duration::from_secs(30);
+
+thread_local! {
+    // what was last written, so an unchanged session isn't written again
+    static WRITTEN: RefCell<Option<LastSession>> = const { RefCell::new(None) };
+}
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(tag = "kind", rename_all = "camelCase")]
@@ -44,6 +53,7 @@ fn path(state: &AppState) -> PathBuf {
 
 /// Drops what was kept of the last session.
 pub fn forget(state: &AppState) {
+    WRITTEN.take();
     if let Err(e) = std::fs::remove_file(path(state))
         && e.kind() != std::io::ErrorKind::NotFound
     {
@@ -84,9 +94,20 @@ pub fn save(app: &App, window: &MainWindow) {
         cloud_profile,
         tabs,
     };
-    if let Err(e) = persist::save(&path(&app.state), &session) {
-        tracing::warn!("can't save the last session: {e}");
+    if WRITTEN.with_borrow(|written| written.as_ref() == Some(&session)) {
+        return;
     }
+    match persist::save(&path(&app.state), &session) {
+        Ok(()) => WRITTEN.set(Some(session)),
+        Err(e) => tracing::warn!("can't save the last session: {e}"),
+    }
+}
+
+/// Saves the session every [`SAVE_INTERVAL`] as `save` would, so a crash loses little of it.
+pub fn keep_saved() {
+    let timer = slint::Timer::default();
+    timer.start(slint::TimerMode::Repeated, SAVE_INTERVAL, || crate::app::with(|app, window| save(app, window)));
+    std::mem::forget(timer);
 }
 
 /// At start, when the settings ask for it: the last session's tabs and folders wait

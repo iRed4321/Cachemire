@@ -120,10 +120,40 @@ fn push_head_read(pipe: &mut redis::Pipeline, key: &TypedKey, limit: usize) -> b
     true
 }
 
+/// A walk of the keyspace with `SCAN`, matching `pattern` when there is one, `count`
+/// names asked for per step. A page may repeat a name an earlier one gave.
+pub struct KeyScan {
+    pattern: Option<Vec<u8>>,
+    count: usize,
+    // where the next step starts; `None` once the walk is over
+    cursor: Option<u64>,
+}
+
+impl KeyScan {
+    pub fn new(pattern: Option<Vec<u8>>, count: usize) -> Self {
+        Self { pattern, count, cursor: Some(0) }
+    }
+
+    /// The next page of names, `None` once the walk is over.
+    pub async fn next(&mut self, session: &mut Session) -> Result<Option<Vec<KeyName>>, Error> {
+        let Some(cursor) = self.cursor else { return Ok(None) };
+        let (next, names) = session.scan(cursor, self.pattern.as_deref(), self.count).await?;
+        self.cursor = (next != 0).then_some(next);
+        Ok(Some(names))
+    }
+
+    /// Whether the last page was the walk's last.
+    pub fn finished(&self) -> bool {
+        self.cursor.is_none()
+    }
+}
+
 /// A connection to one saved connection's server, taken from its pool.
 pub struct Session {
     con: RedisConnection,
     pool: Arc<ConnectionPool>,
+    // on the pool's connection for long reads (see `open_background`)
+    background: bool,
 }
 
 impl Session {
@@ -135,13 +165,25 @@ impl Session {
         Ok(Self::on(pool))
     }
 
+    /// `open`, on the connection kept for long reads, so they don't hold up the
+    /// short ones a click makes; its siblings stay on it.
+    pub async fn open_background(state: &AppState, connection_id: Option<&str>) -> Result<Self, Error> {
+        let connection = resolve_connection(state, connection_id)?;
+        let pool = state.redis_connections.pool(&connection).await?;
+        Ok(Self { con: pool.background(), pool, background: true })
+    }
+
     pub(super) fn on(pool: Arc<ConnectionPool>) -> Self {
-        Self { con: pool.pick(), pool }
+        Self { con: pool.pick(), pool, background: false }
     }
 
     /// Another session on the same pool, for commands run beside this one's.
     pub fn sibling(&self) -> Self {
-        Self::on(self.pool.clone())
+        if self.background {
+            Self { con: self.pool.background(), pool: self.pool.clone(), background: true }
+        } else {
+            Self::on(self.pool.clone())
+        }
     }
 
     pub async fn ping(&mut self) -> Result<(), Error> {
@@ -158,7 +200,7 @@ impl Session {
     }
 
     /// One `SCAN` step from `cursor`: the next cursor (0 once done) and the names found.
-    pub async fn scan(&mut self, cursor: u64, pattern: Option<&[u8]>, count: usize) -> Result<(u64, Vec<KeyName>), Error> {
+    async fn scan(&mut self, cursor: u64, pattern: Option<&[u8]>, count: usize) -> Result<(u64, Vec<KeyName>), Error> {
         let mut cmd = redis::cmd("SCAN");
         cmd.arg(cursor);
         if let Some(pattern) = pattern {
@@ -346,10 +388,23 @@ impl Session {
         Ok(redis::cmd("RENAMENX").arg(from).arg(to).query_async(&mut self.con).await?)
     }
 
-    /// Replaces the string's value, its TTL kept (`SET … KEEPTTL`, Redis 6+).
+    /// Replaces the string's value, its TTL kept: `SET … KEEPTTL`, or before Redis 6,
+    /// `SET … PX` with the TTL it had.
     pub async fn string_set(&mut self, key: &KeyName, value: &str) -> Result<(), Error> {
-        redis::cmd("SET").arg(key).arg(value).arg("KEEPTTL").query_async::<()>(&mut self.con).await?;
-        Ok(())
+        let kept: Result<(), _> = redis::cmd("SET").arg(key).arg(value).arg("KEEPTTL").query_async(&mut self.con).await;
+        match kept.map_err(Error::from) {
+            Err(e) if e.kind() == ErrorKind::Redis => {
+                let ttl: i64 = redis::cmd("PTTL").arg(key).query_async(&mut self.con).await?;
+                let mut set = redis::cmd("SET");
+                set.arg(key).arg(value);
+                if ttl > 0 {
+                    set.arg("PX").arg(ttl);
+                }
+                set.query_async::<()>(&mut self.con).await?;
+                Ok(())
+            }
+            kept => kept,
+        }
     }
 
     /// The size in bytes of each of `fields`' values, in that order (0 for a field that

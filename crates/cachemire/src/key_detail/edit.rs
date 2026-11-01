@@ -238,7 +238,7 @@ impl Ctx {
             crate::toast::show(&window, &t!("This value isn't UTF-8 text: it can't be edited here"));
             return;
         }
-        let hash = panel.get_badge() == "HASH";
+        let hash = self.shared.content.lock().is_hash();
         let text = match field.json {
             Some(_) => relayout(&field.raw, true),
             None => serde_json::to_string_pretty(&field.raw).unwrap_or_default(),
@@ -268,7 +268,7 @@ impl Ctx {
     fn add_field(&self, target: &RefCell<Option<EditTarget>>) {
         let Some(window) = self.weak.upgrade() else { return };
         let panel = window.global::<KeyPanel>();
-        if !panel.get_editable() || panel.get_badge() != "HASH" {
+        if !panel.get_editable() || !self.shared.content.lock().is_hash() {
             return;
         }
         *target.borrow_mut() = Some(EditTarget {
@@ -371,32 +371,25 @@ impl Ctx {
         done: String,
         write: impl FnOnce(Arc<AppState>, String, KeyName, Option<String>) -> F + Send + 'static,
     ) where
-        F: Future<Output = Result<Written, WriteError>> + Send,
+        F: Future<Output = Result<Written, WriteError>> + Send + 'static,
     {
         let Some(window) = self.weak.upgrade() else { return };
         window.global::<ValueEditor>().set_saving(true);
+        let (connection, key, field) = (target.connection.clone(), KeyName::from_id(&target.key), target.field.clone());
+        let written = write(self.state.clone(), connection, key, field);
         let ctx = self.clone();
-        let task = self.rt.spawn(async move {
-            let written = write(ctx.state.clone(), target.connection.clone(), KeyName::from_id(&target.key), target.field.clone()).await;
-            let _ = slint::invoke_from_event_loop(move || {
-                let Some(window) = ctx.weak.upgrade() else { return };
-                let editor = window.global::<ValueEditor>();
-                editor.set_saving(false);
-                match written {
-                    Ok(written) => {
-                        editor.set_open(false);
-                        crate::toast::show(&window, &done);
-                        ctx.show_written(&window, &target, written);
-                    }
-                    Err(WriteError::Refused(why)) => editor.set_error(why.into()),
-                    Err(WriteError::Failed(e)) => editor.set_error(t!("Saving failed: %{error}", error = e.localized()).as_ref().into()),
-                }
-            });
-        });
-        crate::app::on_panic(&self.rt, task, |_, window, error| {
+        crate::app::spawn(&self.rt, written, move |_, window, written| {
             let editor = window.global::<ValueEditor>();
             editor.set_saving(false);
-            editor.set_error(t!("Saving failed: %{error}", error = error).as_ref().into());
+            match written.unwrap_or_else(|e| Err(WriteError::Failed(e))) {
+                Ok(written) => {
+                    editor.set_open(false);
+                    crate::toast::show(window, &done);
+                    ctx.show_written(window, &target, written);
+                }
+                Err(WriteError::Refused(why)) => editor.set_error(why.into()),
+                Err(WriteError::Failed(e)) => editor.set_error(t!("Saving failed: %{error}", error = e.localized()).as_ref().into()),
+            }
         });
     }
 

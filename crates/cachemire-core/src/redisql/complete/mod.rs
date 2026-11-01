@@ -13,7 +13,7 @@ use crate::key_name::KeyName;
 use crate::redisql::field_names;
 use crate::state::AppState;
 
-const KEYWORDS: [&str; 11] = ["FROM", "JOIN", "KEY", "AS", "ON", "WHERE", "SELECT", "LIMIT", "AND", "OR", "IN"];
+const KEYWORDS: [&str; 10] = ["FROM", "JOIN", "KEY", "AS", "ON", "WHERE", "SELECT", "LIMIT", "AND", "IN"];
 /// Most items offered at once.
 const MAX_ITEMS: usize = 50;
 /// How long a listing of one keyspace level may take, and how many names it keeps.

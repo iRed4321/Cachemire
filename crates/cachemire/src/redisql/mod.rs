@@ -62,6 +62,8 @@ struct TabQuery {
     error: Option<(Range<usize>, String)>,
     /// bumped to drop what a running query still sends (a newer run, a closed tab)
     run: Arc<AtomicU64>,
+    /// the run under way, stopped by a newer one or when the tab closes
+    task: Option<tokio::task::AbortHandle>,
 }
 
 impl Default for TabQuery {
@@ -76,6 +78,7 @@ impl Default for TabQuery {
             active: 0,
             error: None,
             run: Arc::new(AtomicU64::new(0)),
+            task: None,
         }
     }
 }
@@ -130,6 +133,9 @@ impl QueryTabs {
     pub fn forget(&mut self, id: &str) {
         if let Some(tab) = self.tabs.remove(id) {
             tab.run.fetch_add(1, Ordering::Relaxed);
+            if let Some(task) = tab.task {
+                task.abort();
+            }
         }
         self.drop_active(id);
     }
@@ -270,8 +276,8 @@ fn run(app: &App, window: &MainWindow, query: String, cursor: usize, anchor: usi
     app.queries.borrow_mut().navigation = Navigation::default();
     let connection_id = state.connections.lock().active_connection_id().to_string();
     let state = state.clone();
-    let (finished, failed_id) = (done.clone(), id.clone());
-    let task = rt.spawn(async move {
+    let finished = done.clone();
+    let run = async move {
         let started = std::time::Instant::now();
         let results = run_script(&state, None, &to_run.script).await;
         let script = to_run.script.clone();
@@ -284,14 +290,28 @@ fn run(app: &App, window: &MainWindow, query: String, cursor: usize, anchor: usi
             state.history.lock().record(entry);
         }
         let count = results.len();
-        let built: Vec<ResultTable> = results.into_iter().enumerate().map(|(i, result)| result_of(i, count, result.output)).collect();
-        crate::app::later(move |app, window| apply_outcome(app, window, &id, run_number, built, error));
-    });
-    crate::app::on_panic(rt, task, move |app, window, error| {
+        let built = tokio::task::spawn_blocking(move || {
+            results.into_iter().enumerate().map(|(i, result)| result_of(i, count, result.output)).collect::<Vec<ResultTable>>()
+        })
+        .await;
+        built.map(|built| (built, error))
+    };
+    let shown_in = id.clone();
+    let task = crate::app::spawn(rt, run, move |app, window, outcome| {
         finished.store(true, Ordering::Relaxed);
-        let failed = ResultTable { status: error, status_is_error: true, ..Default::default() };
-        apply_outcome(app, window, &failed_id, run_number, vec![failed], None);
+        match outcome.and_then(|built| built.map_err(Into::into)) {
+            Ok((built, error)) => apply_outcome(app, window, &shown_in, run_number, built, error),
+            Err(e) => {
+                let failed = ResultTable { status: e.localized(), status_is_error: true, ..Default::default() };
+                apply_outcome(app, window, &shown_in, run_number, vec![failed], None);
+            }
+        }
     });
+    if let Some(tab) = app.queries.borrow_mut().tabs.get_mut(&id)
+        && let Some(previous) = tab.task.replace(task)
+    {
+        previous.abort();
+    }
 }
 
 /// Where Ctrl+Up / Ctrl+Down are in the connection's history: the entry shown and what was in the
@@ -336,7 +356,10 @@ fn result_of(index: usize, count: usize, output: Result<QueryOutput, Error>) -> 
 }
 
 fn status_text(shown: usize, truncated: bool, sources_truncated: bool) -> String {
-    let base = if truncated {
+    let base = if truncated && shown >= cachemire_core::redisql::MAX_LIMIT {
+        t!("%{shown} rows shown (more matched; a query shows %{max} at most)", shown = shown, max = cachemire_core::redisql::MAX_LIMIT)
+            .into_owned()
+    } else if truncated {
         t!("%{shown} rows shown (more matched; raise LIMIT to see them)", shown = shown).into_owned()
     } else {
         t!("%{count} rows", count = shown).into_owned()

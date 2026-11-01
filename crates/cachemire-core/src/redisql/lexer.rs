@@ -69,13 +69,23 @@ pub fn tokenize(text: &str) -> Result<Vec<Token>, Located> {
         } else if text[i..].starts_with("--") {
             i = text[i..].find('\n').map_or(text.len(), |n| i + n);
         } else if c == '\'' || c == '"' {
-            let Some(len) = text[i + 1..].find(c) else {
-                let line_end = text[i..].find('\n').map_or(text.len(), |n| i + n);
-                let error = QueryError::UnterminatedQuote(text[i..line_end].to_string());
-                return Err(Located::parse(error, Some(i..line_end)));
+            // inside, the quote written twice stands for itself
+            let (mut value, mut at) = (String::new(), i + 1);
+            let close = loop {
+                let Some(len) = text[at..].find(c) else {
+                    let line_end = text[i..].find('\n').map_or(text.len(), |n| i + n);
+                    let error = QueryError::UnterminatedQuote(text[i..line_end].to_string());
+                    return Err(Located::parse(error, Some(i..line_end)));
+                };
+                value.push_str(&text[at..at + len]);
+                if !text[at + len + 1..].starts_with(c) {
+                    break at + len;
+                }
+                value.push(c);
+                at += len + 2;
             };
-            tokens.push(token(Tok::Str(text[i + 1..i + 1 + len].to_string()), len + 2));
-            i += len + 2;
+            tokens.push(token(Tok::Str(value), close + 1 - i));
+            i = close + 1;
         } else if c.is_ascii_digit() || (c == '-' && text[i + 1..].starts_with(|n: char| n.is_ascii_digit())) {
             let end = bare_end(text, i, true);
             tokens.push(token(Tok::Number(text[i..end].to_string()), end - i));

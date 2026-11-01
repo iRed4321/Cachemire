@@ -158,20 +158,18 @@ fn submit_add(app: &App, window: &MainWindow, id: String) {
         return finish(window, Some(t!("A key with this name already exists").into_owned()));
     }
     let (state, connection) = (app.state.clone(), window.connection_id().to_string());
-    let task = app.rt.spawn(async move {
-        let exists = explorer::key_exists(&state, Some(&connection), &KeyName::from_id(&id)).await;
-        crate::app::later(move |app, window| match exists {
-            Ok(true) => finish(window, Some(t!("A key with this name already exists").into_owned())),
-            Ok(false) => {
-                finish(window, None);
-                if shown(window, &connection) {
-                    created(app, window, id);
-                }
+    let (asked, name) = (connection.clone(), KeyName::from_id(&id));
+    let exists = async move { explorer::key_exists(&state, Some(&asked), &name).await };
+    crate::app::spawn(&app.rt, exists, move |app, window, exists| match exists.flatten() {
+        Ok(true) => finish(window, Some(t!("A key with this name already exists").into_owned())),
+        Ok(false) => {
+            finish(window, None);
+            if shown(window, &connection) {
+                created(app, window, id);
             }
-            Err(e) => finish(window, Some(t!("Creating failed: %{error}", error = e.localized()).into_owned())),
-        });
+        }
+        Err(e) => finish(window, Some(t!("Creating failed: %{error}", error = e.localized()).into_owned())),
     });
-    crate::app::on_panic(&app.rt, task, |_, window, error| finish(window, Some(error)));
 }
 
 /// The dialog's Rename on key `from`: renamed unless `to` is a key already.
@@ -192,21 +190,19 @@ fn submit_rename_key(app: &App, window: &MainWindow, from: String, to: String) {
         return moved(app, window, vec![(from, to)]);
     }
     let (state, connection) = (app.state.clone(), window.connection_id().to_string());
-    let task = app.rt.spawn(async move {
-        let renamed = explorer::rename_key(&state, Some(&connection), &KeyName::from_id(&from), &KeyName::from_id(&to)).await;
-        crate::app::later(move |app, window| match renamed {
-            Ok(true) => {
-                finish(window, None);
-                crate::toast::show(window, &t!("Renamed"));
-                if shown(window, &connection) {
-                    moved(app, window, vec![(from, to)]);
-                }
+    let (asked, old, new) = (connection.clone(), KeyName::from_id(&from), KeyName::from_id(&to));
+    let renamed = async move { explorer::rename_key(&state, Some(&asked), &old, &new).await };
+    crate::app::spawn(&app.rt, renamed, move |app, window, renamed| match renamed.flatten() {
+        Ok(true) => {
+            finish(window, None);
+            crate::toast::show(window, &t!("Renamed"));
+            if shown(window, &connection) {
+                moved(app, window, vec![(from, to)]);
             }
-            Ok(false) => finish(window, Some(t!("A key with this name already exists").into_owned())),
-            Err(e) => finish(window, Some(t!("Renaming failed: %{error}", error = e.localized()).into_owned())),
-        });
+        }
+        Ok(false) => finish(window, Some(t!("A key with this name already exists").into_owned())),
+        Err(e) => finish(window, Some(t!("Renaming failed: %{error}", error = e.localized()).into_owned())),
     });
-    crate::app::on_panic(&app.rt, task, |_, window, error| finish(window, Some(error)));
 }
 
 /// The dialog's Rename on folder `from`: every key under it moved under `to`, unless
@@ -221,28 +217,26 @@ fn submit_rename_folder(app: &App, window: &MainWindow, from: String, text: &str
         return finish(window, None);
     }
     let (state, connection) = (app.state.clone(), window.connection_id().to_string());
-    let task = app.rt.spawn(async move {
-        let renamed = explorer::rename_folder(&state, Some(&connection), &KeyName::from_id(&from), &KeyName::from_id(&to)).await;
-        crate::app::later(move |app, window| match renamed {
-            Ok(FolderMove::Moved { moves, failed }) => {
-                match failed {
-                    None => {
-                        finish(window, None);
-                        crate::toast::show(window, &t!("Renamed"));
-                    }
-                    Some(e) => finish(window, Some(t!("Renaming failed: %{error}", error = e.localized()).into_owned())),
+    let asked = connection.clone();
+    let renamed = async move { explorer::rename_folder(&state, Some(&asked), &KeyName::from_id(&from), &KeyName::from_id(&to)).await };
+    crate::app::spawn(&app.rt, renamed, move |app, window, renamed| match renamed.flatten() {
+        Ok(FolderMove::Moved { moves, failed }) => {
+            match failed {
+                None => {
+                    finish(window, None);
+                    crate::toast::show(window, &t!("Renamed"));
                 }
-                if shown(window, &connection) {
-                    moved(app, window, moves.into_iter().map(|(old, new)| (old.id(), new.id())).collect());
-                }
+                Some(e) => finish(window, Some(t!("Renaming failed: %{error}", error = e.localized()).into_owned())),
             }
-            Ok(FolderMove::Taken(key)) => {
-                finish(window, Some(t!("The key %{name} already exists", name = KeyName::display_id(&key.id())).into_owned()))
+            if shown(window, &connection) {
+                moved(app, window, moves.into_iter().map(|(old, new)| (old.id(), new.id())).collect());
             }
-            Err(e) => finish(window, Some(t!("Renaming failed: %{error}", error = e.localized()).into_owned())),
-        });
+        }
+        Ok(FolderMove::Taken(key)) => {
+            finish(window, Some(t!("The key %{name} already exists", name = KeyName::display_id(&key.id())).into_owned()))
+        }
+        Err(e) => finish(window, Some(t!("Renaming failed: %{error}", error = e.localized()).into_owned())),
     });
-    crate::app::on_panic(&app.rt, task, |_, window, error| finish(window, Some(error)));
 }
 
 /// "Delete" on key or folder `row` (the menu asked twice): removed from Redis.
@@ -251,26 +245,26 @@ fn delete(app: &App, window: &MainWindow, row: String) {
         return removed(app, window, &row);
     }
     let (state, connection) = (app.state.clone(), window.connection_id().to_string());
-    app.rt.spawn(async move {
-        let name = KeyName::from_id(&row);
-        let deleted = if row.ends_with(DELIMITER) {
-            explorer::delete_folder(&state, Some(&connection), &name).await.map(Some)
+    let (asked, name, folder) = (connection.clone(), KeyName::from_id(&row), row.ends_with(DELIMITER));
+    let deleted = async move {
+        if folder {
+            explorer::delete_folder(&state, Some(&asked), &name).await.map(Some)
         } else {
-            explorer::delete_key(&state, Some(&connection), &name).await.map(|()| None)
-        };
-        crate::app::later(move |app, window| match deleted {
-            Ok(count) => {
-                let done = match count {
-                    Some(count) => t!("%{count} keys deleted", count = count),
-                    None => t!("Deleted"),
-                };
-                crate::toast::show(window, &done);
-                if shown(window, &connection) {
-                    removed(app, window, &row);
-                }
+            explorer::delete_key(&state, Some(&asked), &name).await.map(|()| None)
+        }
+    };
+    crate::app::spawn(&app.rt, deleted, move |app, window, deleted| match deleted.flatten() {
+        Ok(count) => {
+            let done = match count {
+                Some(count) => t!("%{count} keys deleted", count = count),
+                None => t!("Deleted"),
+            };
+            crate::toast::show(window, &done);
+            if shown(window, &connection) {
+                removed(app, window, &row);
             }
-            Err(e) => crate::toast::show(window, &t!("Deleting failed: %{error}", error = e.localized())),
-        });
+        }
+        Err(e) => crate::toast::show(window, &t!("Deleting failed: %{error}", error = e.localized())),
     });
 }
 

@@ -311,6 +311,7 @@ fn main() -> Result<(), slint::PlatformError> {
     redisql::saved::init(&window, state.clone());
     settings::init(&window, state, rt);
     last_session::restore(&app, &window);
+    last_session::keep_saved();
 
     let outcome = window.run();
     last_session::save(&app, &window);

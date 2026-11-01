@@ -201,7 +201,7 @@ fn test_form(app: &Rc<App>, window: &MainWindow, form: &ConnectionForm) {
     };
     editor.set_testing(true);
     let (state, id) = (app.state.clone(), form.id.to_string());
-    let task = app.rt.spawn(async move {
+    let test = async move {
         let building = state.clone();
         let built = tokio::task::spawn_blocking(move || {
             staged(&building.connections, |store| {
@@ -212,22 +212,17 @@ fn test_form(app: &Rc<App>, window: &MainWindow, form: &ConnectionForm) {
         .await
         .map_err(Error::from)
         .flatten();
-        let outcome = match built {
+        match built {
             Ok(connection) => cachemire_core::connection::test_connection(&state, connection).await,
             Err(e) => Err(e),
-        };
-        crate::app::later(move |_, window| {
-            let editor = window.global::<ConnectionEditor>();
-            editor.set_testing(false);
-            editor.set_test_ok(outcome.is_ok());
-            editor.set_test_status(outcome.map_or_else(|e| e.localized(), |()| t!("Connection successful.").into_owned()).into());
-        });
-    });
-    crate::app::on_panic(&app.rt, task, |_, window, error| {
+        }
+    };
+    crate::app::spawn(&app.rt, test, |_, window, outcome| {
+        let outcome = outcome.flatten();
         let editor = window.global::<ConnectionEditor>();
         editor.set_testing(false);
-        editor.set_test_ok(false);
-        editor.set_test_status(error.into());
+        editor.set_test_ok(outcome.is_ok());
+        editor.set_test_status(outcome.map_or_else(|e| e.localized(), |()| t!("Connection successful.").into_owned()).into());
     });
 }
 
