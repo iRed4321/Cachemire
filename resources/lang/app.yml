@@ -394,7 +394,7 @@ _version: 2
 "%{ago} · %{ms} ms":
   fr: "%{ago} · %{ms} ms"
 
-# the About window's update check
+# the About page's update check
 "Download and install":
   fr: "Télécharger et installer"
 "Open the release page":

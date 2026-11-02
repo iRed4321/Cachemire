@@ -1,8 +1,7 @@
 import { Theme } from "theme.slint";
-import { ConnectionStatus } from "types.slint";
+import { ConnectionStatus, SettingsCategory } from "types.slint";
 import { IconCloud, IconSpinner, IconChevron, IconMinimize, IconMaximize, IconClose, IconDot, IconCopy, IconSettings } from "icons.slint";
-import { ConnectionState, AwsAccount } from "../globals.slint";
-import { About } from "about.slint";
+import { ConnectionState, AwsAccount, Preferences } from "../globals.slint";
 import { Hint } from "widgets.slint";
 
 // The connection's status, at the start of the middle pill: a dot colored
@@ -535,7 +534,7 @@ export component TitleBar inherits Rectangle {
 
         HorizontalLayout {
             info-btn := WinControlButton {
-                clicked => { About.open = true; }
+                clicked => { Preferences.show(SettingsCategory.about); }
                 Text {
                     text: "i";
                     font-size: Theme.pt(15px);

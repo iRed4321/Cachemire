@@ -1,7 +1,6 @@
 import { Theme } from "components/theme.slint";
 import { TitleBar } from "components/title-bar.slint";
 import { AwsProfileDropdown } from "components/cloud-picker.slint";
-import { About, AboutModal } from "components/about.slint";
 import { ValueEditor, ValueEditorModal } from "components/value-editor.slint";
 import { KeyNameDialog, KeyNameModal, KeyNameAction } from "components/key-name-dialog.slint";
 import { CloudSettings, CloudSettingsModal } from "components/cloud-settings.slint";
@@ -16,14 +15,14 @@ import { TableRowData } from "components/key-detail-types.slint";
 import { FloatingCard, Hint, HResizeHandle, SquareIconButton } from "components/widgets.slint";
 import { IconSidebar } from "components/icons.slint";
 import { SettingsModal, SshProfileRowData, SshProfileForm, ConnProfileForm } from "components/settings.slint";
-import { ConnectionStatus, TreeRowKind, ExportFormat, ExportTarget, LanguageSetting, ProfileTint, KeyView, SidebarView, SearchScope } from "components/types.slint";
-import { ConnectionView, ConnectionState, ConnectionEditor, AwsAccount, Preferences, KeyTree, SavedQueries, TabStrip, SearchTab, QueryTab, KeyPanel } from "globals.slint";
+import { ConnectionStatus, TreeRowKind, ExportFormat, ExportTarget, LanguageSetting, SettingsCategory, ProfileTint, KeyView, SidebarView, SearchScope } from "components/types.slint";
+import { ConnectionView, ConnectionState, ConnectionEditor, AwsAccount, About, Preferences, KeyTree, SavedQueries, TabStrip, SearchTab, QueryTab, KeyPanel } from "globals.slint";
 
 // read and written by Rust: where each tab left the key panel scrolled to
 // (Rust tints the background: see Theme.env-tint)
 export { KeyScroll, ExportPrefs, Theme, About, CloudSettings, ConnectionTransfer, LineSelection, ValueLine, ValueEditor, KeyNameDialog, KeyNameAction }
 // the enumerations Rust shares with the UI
-export { ConnectionStatus, TreeRowKind, ExportFormat, ExportTarget, LanguageSetting, ProfileTint, KeyView, SidebarView, SearchScope }
+export { ConnectionStatus, TreeRowKind, ExportFormat, ExportTarget, LanguageSetting, SettingsCategory, ProfileTint, KeyView, SidebarView, SearchScope }
 // a badge of the key panel's field/value search bar
 export { BadgeData, HistoryRow }
 // a saved query of the left panel's Search/Query view
@@ -232,11 +231,8 @@ export component MainWindow inherits Window {
                         root.aws-profiles-open = !root.aws-profiles-open;
                     }
                     settings-clicked => {
-                        Preferences.error = "";
-                        Preferences.ssh-profile-editing = false;
-                        Preferences.conn-profile-editing = false;
                         root.connections-open = false;
-                        Preferences.open = true;
+                        Preferences.show(Preferences.category);
                     }
                     expanded: root.connections-open;
                     bar-clicked => {
@@ -648,7 +644,6 @@ export component MainWindow inherits Window {
             clipboard-has-text() => { return root.clipboard-has-text(); }
         }
 
-        if About.open: AboutModal { }
         if ValueEditor.open: ValueEditorModal {
             width: 100%;
             height: 100%;

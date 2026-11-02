@@ -1,8 +1,8 @@
-//! The windows over the app: Settings, the info window (version and updates), and the
+//! The windows over the app: Settings (with its About page: version and updates), and the
 //! connections' import and export.
 
 use super::*;
-use crate::{About, ConnectionTransfer, Preferences};
+use crate::{About, ConnectionTransfer, Preferences, SettingsCategory};
 use cachemire_core::connection::ConnectionPayloadInput;
 use cachemire_core::updates::{Channel, Release};
 
@@ -18,11 +18,12 @@ fn settings_open(state: &std::sync::Arc<cachemire_core::state::AppState>) -> (Ha
     (h, runtime)
 }
 
-/// Puts the Settings window back on its lists, open, after a click that left them.
+/// Puts the Settings window back open on its first page, after a click that left it.
 fn back_to_settings(h: &Harness) {
     let preferences = h.window.global::<Preferences>();
     preferences.set_ssh_profile_editing(false);
     preferences.set_conn_profile_editing(false);
+    preferences.set_category(crate::SettingsCategory::Defaults);
     preferences.set_open(true);
 }
 
@@ -69,7 +70,7 @@ fn the_search_depth_buttons_save_the_depth_picked() {
     assert_eq!(state.settings.lock().search_depth(), 60);
 }
 
-/// The info window, its callbacks wired, and its link to the repository kept from opening a browser.
+/// The About page, its callbacks wired, and its link to the repository kept from opening a browser.
 fn info_window(state: &std::sync::Arc<cachemire_core::state::AppState>) -> (Harness, tokio::runtime::Runtime, Rc<std::cell::Cell<usize>>) {
     let runtime = tokio::runtime::Builder::new_current_thread().enable_all().build().unwrap();
     let mut h = Harness::new();
@@ -81,13 +82,19 @@ fn info_window(state: &std::sync::Arc<cachemire_core::state::AppState>) -> (Harn
         let downloads = downloads.clone();
         move || downloads.set(downloads.get() + 1)
     });
-    about.set_open(true);
+    h.window.global::<Preferences>().invoke_show(SettingsCategory::About);
     h.frame();
     (h, runtime, downloads)
 }
 
 fn reopen_info(h: &Harness) {
-    h.window.global::<About>().set_open(true);
+    h.window.global::<Preferences>().invoke_show(SettingsCategory::About);
+}
+
+/// Whether the settings window is open on its About page.
+fn on_about(h: &Harness) -> bool {
+    let preferences = h.window.global::<Preferences>();
+    preferences.get_open() && preferences.get_category() == SettingsCategory::About
 }
 
 #[test]
@@ -115,27 +122,28 @@ fn the_channel_toggle_saves_the_channel_picked() {
 }
 
 #[test]
-fn an_update_found_at_startup_opens_the_info_window_with_its_button() {
+fn an_update_found_at_startup_opens_the_about_page_with_its_button() {
     let (mut h, _rt, downloads) = info_window(&test_state());
-    let about = h.window.global::<About>();
-    about.set_open(false);
+    let preferences = h.window.global::<Preferences>();
+    preferences.set_open(false);
+    preferences.set_category(SettingsCategory::Defaults);
     let release = Release {
         version: semver::Version::new(9, 9, 9),
         page: "https://example.invalid/r".into(),
         installer: Some("https://example.invalid/i.msi".into()),
         installer_sha256: None,
     };
-    crate::updates::show_found(&about, release.clone(), true);
+    crate::updates::show_found(&h.window, release.clone(), true);
     h.frame();
     let about = h.window.global::<About>();
-    assert!(about.get_open(), "found at startup: the window opens by itself");
+    assert!(on_about(&h), "found at startup: the page opens by itself");
     assert!(about.get_status().contains("9.9.9"), "{}", about.get_status());
     let label = if cfg!(windows) { "Download and install" } else { "Open the release page" };
     assert_eq!(about.get_download_label(), label);
 
     // a click on Check or on the other channel takes the release back, as it should: it is
     // offered again after each miss
-    let offer_again = |h: &Harness| crate::updates::show_found(&h.window.global::<About>(), release.clone(), true);
+    let offer_again = |h: &Harness| crate::updates::show_found(&h.window, release.clone(), true);
     let clicked = |_: &Harness| downloads.get() > 0;
     sweep(&mut h, 500..800, 200..600, 4, offer_again, clicked).expect("the window shows the download button");
 }
@@ -143,12 +151,11 @@ fn an_update_found_at_startup_opens_the_info_window_with_its_button() {
 #[test]
 fn an_update_found_by_the_button_doesnt_open_a_closed_window() {
     let (h, _rt, _) = info_window(&test_state());
-    let about = h.window.global::<About>();
-    about.set_open(false);
+    h.window.global::<Preferences>().set_open(false);
     let release = Release { version: semver::Version::new(9, 9, 9), page: String::new(), installer: None, installer_sha256: None };
-    crate::updates::show_found(&about, release, false);
-    assert!(!about.get_open());
-    assert!(about.get_update_available(), "it is offered the next time the window opens");
+    crate::updates::show_found(&h.window, release, false);
+    assert!(!h.window.global::<Preferences>().get_open());
+    assert!(h.window.global::<About>().get_update_available(), "it is offered the next time the window opens");
 }
 
 /// The import and export window, open, over a state holding `names` as connections.

@@ -1,4 +1,4 @@
-//! The About window's update check, also made at startup when the setting asks: looks for a newer
+//! The About page's update check, also made at startup when the setting asks: looks for a newer
 //! release on the picked channel (stable, or betas too), then downloads and runs its installer
 //! (Windows) or opens its page (elsewhere).
 
@@ -10,7 +10,7 @@ use rust_i18n::t;
 use semver::Version;
 use slint::ComponentHandle;
 
-use crate::{About, MainWindow};
+use crate::{About, MainWindow, Preferences, SettingsCategory};
 use cachemire_core::state::AppState;
 use cachemire_core::updates::{self, Channel, Release};
 
@@ -19,11 +19,9 @@ thread_local! {
     static FOUND: RefCell<Option<Release>> = const { RefCell::new(None) };
 }
 
-/// Runs `f` on the UI thread with the window's About global.
-fn on_ui(weak: slint::Weak<MainWindow>, f: impl FnOnce(&About<'_>) + Send + 'static) {
-    let _ = weak.upgrade_in_event_loop(move |window| {
-        f(&window.global::<About>());
-    });
+/// Runs `f` on the UI thread with the window.
+fn on_ui(weak: slint::Weak<MainWindow>, f: impl FnOnce(&MainWindow) + Send + 'static) {
+    let _ = weak.upgrade_in_event_loop(move |window| f(&window));
 }
 
 fn say(about: &About, status: String, busy: bool) {
@@ -49,18 +47,19 @@ fn segment(channel: Channel) -> i32 {
     i32::from(channel == Channel::Beta)
 }
 
-/// Offers `release` in the About window, which opens for it `at_startup`.
-pub(crate) fn show_found(about: &About, release: Release, at_startup: bool) {
-    say(about, t!("Version %{version} is available.", version = release.version.to_string()).into_owned(), false);
+/// Offers `release` on the About page, which the settings window opens on `at_startup`.
+pub(crate) fn show_found(window: &MainWindow, release: Release, at_startup: bool) {
+    let about = window.global::<About>();
+    say(&about, t!("Version %{version} is available.", version = release.version.to_string()).into_owned(), false);
     about.set_update_available(true);
     FOUND.set(Some(release));
     if at_startup {
-        about.set_open(true);
+        window.global::<Preferences>().invoke_show(SettingsCategory::About);
     }
 }
 
-/// Looks for a newer release on `channel` off the UI thread, and shows what it found in the
-/// About window. `at_startup`, only a newer release is shown, and it opens the window.
+/// Looks for a newer release on `channel` off the UI thread, and shows what it found on the
+/// About page. `at_startup`, only a newer release is shown, and it opens the page.
 fn look_for_update(weak: slint::Weak<MainWindow>, rt: &tokio::runtime::Handle, channel: Channel, at_startup: bool) {
     let current = current_version();
     rt.spawn(async move {
@@ -73,12 +72,12 @@ fn look_for_update(weak: slint::Weak<MainWindow>, rt: &tokio::runtime::Handle, c
             Ok(None) => tracing::info!(at_startup, "no update available"),
             Err(error) => tracing::warn!(at_startup, "the update check failed: {error}"),
         }
-        on_ui(weak, move |about| match found {
-            Ok(Some(release)) => show_found(about, release, at_startup),
+        on_ui(weak, move |window| match found {
+            Ok(Some(release)) => show_found(window, release, at_startup),
             // nothing to say unasked
             _ if at_startup => {}
-            Ok(None) => say(about, t!("Cachemire is up to date.").into_owned(), false),
-            Err(error) => say(about, t!("Couldn't check for updates: %{error}", error = error).into_owned(), false),
+            Ok(None) => say(&window.global::<About>(), t!("Cachemire is up to date.").into_owned(), false),
+            Err(error) => say(&window.global::<About>(), t!("Couldn't check for updates: %{error}", error = error).into_owned(), false),
         });
     });
 }
@@ -151,12 +150,14 @@ pub fn init(window: &MainWindow, state: Arc<AppState>, rt: tokio::runtime::Handl
                     .await
                     .map_err(|e| e.to_string())
                     .and_then(|r| r);
-                on_ui(weak, move |about| match installed {
+                on_ui(weak, move |window| match installed {
                     // the installer replaces the app's files: it must not be running
                     Ok(()) => {
                         let _ = slint::quit_event_loop();
                     }
-                    Err(error) => say(about, t!("Couldn't download the update: %{error}", error = error).into_owned(), false),
+                    Err(error) => {
+                        say(&window.global::<About>(), t!("Couldn't download the update: %{error}", error = error).into_owned(), false)
+                    }
                 });
             });
         }

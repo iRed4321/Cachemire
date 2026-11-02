@@ -584,6 +584,69 @@ export component IconSidebar inherits Rectangle {
     }
 }
 
+// a flask: what's experimental
+export component IconFlask inherits Rectangle {
+    in property <color> tint: Theme.text-secondary;
+    in property <length> size: 14px;
+    width: size;
+    height: size;
+
+    Path {
+        width: 100%;
+        height: 100%;
+        viewbox-width: 24;
+        viewbox-height: 24;
+        commands: "M9 3 H15 M10 3 V9 L4.6 18.5 A1.7 1.7 0 0 0 6.1 21 H17.9 A1.7 1.7 0 0 0 19.4 18.5 L14 9 V3 M7.2 15 H16.8";
+        fill: transparent;
+        stroke: tint;
+        stroke-width: 1.6px;
+        stroke-line-cap: round;
+        stroke-line-join: round;
+    }
+}
+
+// an "i" in a circle: about the app
+export component IconInfo inherits Rectangle {
+    in property <color> tint: Theme.text-secondary;
+    in property <length> size: 14px;
+    width: size;
+    height: size;
+
+    Path {
+        width: 100%;
+        height: 100%;
+        viewbox-width: 24;
+        viewbox-height: 24;
+        commands: "M12 3 A9 9 0 1 0 12 21 A9 9 0 1 0 12 3 Z M12 11 V16.5 M12 7.6 V7.7";
+        fill: transparent;
+        stroke: tint;
+        stroke-width: 1.8px;
+        stroke-line-cap: round;
+        stroke-line-join: round;
+    }
+}
+
+// a painter's palette: the color tints of the connection profiles
+export component IconPalette inherits Rectangle {
+    in property <color> tint: Theme.text-secondary;
+    in property <length> size: 14px;
+    width: size;
+    height: size;
+
+    Path {
+        width: 100%;
+        height: 100%;
+        viewbox-width: 24;
+        viewbox-height: 24;
+        commands: "M12 3 A9 9 0 1 0 12 21 C13.4 21 14 20.1 13.5 19 C12.9 17.6 13.8 16 15.4 16 H17.5 A3.5 3.5 0 0 0 21 12.5 C21 7.3 17 3 12 3 Z M7.5 12.5 A1 1 0 1 0 7.5 10.5 A1 1 0 1 0 7.5 12.5 Z M10 8.5 A1 1 0 1 0 10 6.5 A1 1 0 1 0 10 8.5 Z M15 8.5 A1 1 0 1 0 15 6.5 A1 1 0 1 0 15 8.5 Z";
+        fill: transparent;
+        stroke: tint;
+        stroke-width: 1.6px;
+        stroke-line-cap: round;
+        stroke-line-join: round;
+    }
+}
+
 // Small filled triangle, pointing up or down: the sort direction of a column.
 // Two paths rather than a rotation (the software renderer ignores `transform-rotation`).
 export component IconSortTriangle inherits Rectangle {

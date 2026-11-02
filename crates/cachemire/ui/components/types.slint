@@ -83,6 +83,16 @@ export enum LanguageSetting {
     french,
 }
 
+// the page of the settings window shown next to its list of categories
+export enum SettingsCategory {
+    defaults,
+    ssh-profiles,
+    conn-profiles,
+    experimental,
+    // the version, the repository and the updates
+    about,
+}
+
 // The rows and forms Rust and the UI exchange, shared by the components and
 // globals.slint (which the components import, so these can live in neither).
 

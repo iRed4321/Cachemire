@@ -4,6 +4,10 @@ Every stable release of Cachemire; `Unreleased` is what the next one brings. Bet
 
 ## Unreleased
 
+### Added
+
+- **Settings**: the window now lists its categories on the left (default behaviors, SSH profiles, connection profiles, experimental, about) and shows the one picked beside them. The title bar's **i** button opens its About page, which replaces the separate info window
+
 ## 3.2.0 - 2026-11-02
 
 ### Added

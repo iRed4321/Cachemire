@@ -1,6 +1,6 @@
 // What Rust reads and writes, grouped by feature: each global is one feature's
 // state and the callbacks Rust answers. `main.slint` binds the components to them.
-import { ConnectionStatus, LanguageSetting, ProfileTint, KeyView, SearchScope, ExportFormat, ExportTarget } from "components/types.slint";
+import { ConnectionStatus, LanguageSetting, SettingsCategory, ProfileTint, KeyView, SearchScope, ExportFormat, ExportTarget } from "components/types.slint";
 import { ConnectionRowData, ConnProfileRowData, ConnectionForm, SshProfileRowData, SshProfileForm, ConnProfileForm, KeyspaceRowData, SavedQueryRowData, TabData, SearchRowData, HistoryRow } from "components/types.slint";
 import { AllValuesRowData, FindResult, LineSelection, ValueLine, TableRowData, SuggestionRow, CompletionEdit, BadgeData } from "components/key-detail-types.slint";
 
@@ -101,10 +101,35 @@ export global AwsAccount {
     callback profile-selected(name: string);
 }
 
+// The About page of the settings window: which version this is and whether a newer one
+// exists (all set by Rust).
+export global About {
+    in property <string> version: "";
+    in property <string> status: "";
+    in property <bool> busy: false;
+    in property <bool> update-available: false;
+    in property <string> download-label: "";
+    // the releases the check looks among: 0 stable only, 1 betas too
+    in property <int> channel: 0;
+    callback channel-picked(index: int);
+    callback open-repo();
+    callback check();
+    callback download();
+}
+
 // The settings window: preferences, SSH profiles (never their passwords) and
 // connection profiles (a name and a tint), with the forms that edit them.
 export global Preferences {
     in-out property <bool> open: false;
+    in-out property <SettingsCategory> category: SettingsCategory.defaults;
+    // opens the window on `page`, with its forms closed
+    public function show(page: SettingsCategory) {
+        self.error = "";
+        self.ssh-profile-editing = false;
+        self.conn-profile-editing = false;
+        self.category = page;
+        self.open = true;
+    }
     in-out property <string> error: "";
     in-out property <LanguageSetting> language: LanguageSetting.automatic;
     callback language-selected(setting: LanguageSetting);
@@ -114,7 +139,7 @@ export global Preferences {
     // experimental: the global search lets Redis filter with a script
     in-out property <bool> server-search: false;
     callback server-search-toggled(enabled: bool);
-    // looks for an update on the About window's channel each time the app starts
+    // looks for an update on the About page's channel each time the app starts
     in-out property <bool> check-updates-at-startup: false;
     callback check-updates-at-startup-toggled(enabled: bool);
     // reopens the connection the app was closed on, with its tabs and open folders
