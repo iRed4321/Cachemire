@@ -7,6 +7,7 @@ use std::rc::Rc;
 use std::sync::Arc;
 
 use tokio::runtime::Handle;
+use tokio::task::AbortHandle;
 
 use crate::MainWindow;
 use crate::cloud::Cloud;
@@ -16,6 +17,7 @@ use crate::keyspace::Keyspace;
 use crate::redisql::QueryTabs;
 use crate::search::SearchTabs;
 use crate::tabs::Tabs;
+use cachemire_core::error::{Error, SystemError};
 use cachemire_core::state::AppState;
 
 pub struct App {
@@ -35,6 +37,8 @@ pub struct App {
     pub key_detail: KeyDetail,
     /// the keyspace tree
     pub keyspace: Keyspace,
+    /// the connection last picked, which a retry connects to ("" for none)
+    pub picked: RefCell<String>,
 }
 
 thread_local! {
@@ -61,4 +65,39 @@ pub fn with(f: impl FnOnce(&Rc<App>, &MainWindow)) {
 /// (dropped if the loop has ended), such as a Tokio task's result going back to the window.
 pub fn later(f: impl FnOnce(&Rc<App>, &MainWindow) + Send + 'static) {
     let _ = slint::invoke_from_event_loop(move || with(f));
+}
+
+/// Runs `task` on the runtime, then `then` with what it gave as [`later`] would; a panic
+/// of the task reaches `then` as an error. Aborting the task (the handle) skips `then`.
+pub fn spawn<T: Send + 'static>(
+    rt: &Handle,
+    task: impl Future<Output = T> + Send + 'static,
+    then: impl FnOnce(&Rc<App>, &MainWindow, Result<T, Error>) + Send + 'static,
+) -> AbortHandle {
+    let task = rt.spawn(task);
+    let abort = task.abort_handle();
+    rt.spawn(async move {
+        let outcome = match task.await {
+            Ok(value) => Ok(value),
+            Err(e) if e.is_panic() => Err(Error::from(e)),
+            Err(_) => return,
+        };
+        later(move |app, window| then(app, window, outcome));
+    });
+    abort
+}
+
+/// [`spawn`] for blocking work, run on the runtime's blocking threads.
+pub fn spawn_blocking<T: Send + 'static>(
+    rt: &Handle,
+    work: impl FnOnce() -> T + Send + 'static,
+    then: impl FnOnce(&Rc<App>, &MainWindow, Result<T, Error>) + Send + 'static,
+) {
+    rt.spawn_blocking(move || {
+        let outcome = std::panic::catch_unwind(std::panic::AssertUnwindSafe(work)).map_err(|panic| {
+            let why = panic.downcast_ref::<&str>().map(|why| why.to_string()).or_else(|| panic.downcast_ref::<String>().cloned());
+            Error::from(SystemError::Panicked(why.unwrap_or_default()))
+        });
+        later(move |app, window| then(app, window, outcome));
+    });
 }

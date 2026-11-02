@@ -4,13 +4,14 @@ fn obj(pairs: &[(&str, Value)]) -> Map<String, Value> {
     pairs.iter().map(|(k, v)| (k.to_string(), v.clone())).collect()
 }
 
-fn row(pairs: &[(&str, Map<String, Value>)]) -> Row {
-    pairs.iter().map(|(a, r)| (a.to_string(), r.clone())).collect()
+fn row<'a>(pairs: &'a [(&'a str, Map<String, Value>)]) -> Row<'a> {
+    pairs.iter().map(|(a, r)| (*a, r)).collect()
 }
 
 #[test]
 fn select_star_preserves_key_order_for_one_source() {
-    let r = row(&[("src", obj(&[("id", Value::from(1)), ("label", Value::from("Widget"))]))]);
+    let pairs = [("src", obj(&[("id", Value::from(1)), ("label", Value::from("Widget"))]))];
+    let r = row(&pairs);
     let materialized =
         materialize_row(&r, &[Select { alias: "*".to_string(), field: "*".to_string(), alias_span: 0..0, explicit_alias: true }]);
     assert_eq!(materialized.keys().collect::<Vec<_>>(), vec!["id", "label"]);
@@ -18,7 +19,8 @@ fn select_star_preserves_key_order_for_one_source() {
 
 #[test]
 fn columns_are_prefixed_once_more_than_one_alias_is_involved() {
-    let r = row(&[("o", obj(&[("id", Value::from(1))])), ("p", obj(&[("label", Value::from("Widget"))]))]);
+    let pairs = [("o", obj(&[("id", Value::from(1))])), ("p", obj(&[("label", Value::from("Widget"))]))];
+    let r = row(&pairs);
     let selects = vec![
         Select { alias: "o".to_string(), field: "id".to_string(), alias_span: 0..0, explicit_alias: true },
         Select { alias: "p".to_string(), field: "label".to_string(), alias_span: 0..0, explicit_alias: true },
@@ -30,7 +32,8 @@ fn columns_are_prefixed_once_more_than_one_alias_is_involved() {
 
 #[test]
 fn a_missing_alias_in_select_becomes_a_null_column() {
-    let r = row(&[("o", obj(&[("id", Value::from(1))]))]);
+    let pairs = [("o", obj(&[("id", Value::from(1))]))];
+    let r = row(&pairs);
     let selects = vec![Select { alias: "p".to_string(), field: "label".to_string(), alias_span: 0..0, explicit_alias: true }];
     assert_eq!(materialize_row(&r, &selects).get("p.label"), Some(&Value::Null));
 }

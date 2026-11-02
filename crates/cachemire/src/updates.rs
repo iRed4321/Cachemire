@@ -146,7 +146,11 @@ pub fn init(window: &MainWindow, state: Arc<AppState>, rt: tokio::runtime::Handl
             say(&about, t!("Downloading version %{version}...", version = release.version.to_string()).into_owned(), true);
             let weak = weak.clone();
             rt.spawn(async move {
-                let installed = tokio::task::spawn_blocking(move || launch(&installer)).await.map_err(|e| e.to_string()).and_then(|r| r);
+                let sha256 = release.installer_sha256;
+                let installed = tokio::task::spawn_blocking(move || launch(&installer, sha256.as_deref()))
+                    .await
+                    .map_err(|e| e.to_string())
+                    .and_then(|r| r);
                 on_ui(weak, move |about| match installed {
                     // the installer replaces the app's files: it must not be running
                     Ok(()) => {
@@ -160,11 +164,11 @@ pub fn init(window: &MainWindow, state: Arc<AppState>, rt: tokio::runtime::Handl
 }
 
 #[cfg(windows)]
-fn launch(url: &str) -> Result<(), String> {
-    updates::download_installer(url).and_then(|installer| updates::run_installer(&installer)).map_err(|e| e.to_string())
+fn launch(url: &str, sha256: Option<&str>) -> Result<(), String> {
+    updates::download_installer(url, sha256).and_then(|installer| updates::run_installer(&installer)).map_err(|e| e.to_string())
 }
 
 #[cfg(not(windows))]
-fn launch(_url: &str) -> Result<(), String> {
+fn launch(_url: &str, _sha256: Option<&str>) -> Result<(), String> {
     Err(String::new())
 }

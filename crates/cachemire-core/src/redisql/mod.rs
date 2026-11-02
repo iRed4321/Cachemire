@@ -17,6 +17,7 @@ use crate::error::{Error, ErrorKind};
 use crate::session::Session;
 use crate::state::AppState;
 
+pub use ast::MAX_LIMIT;
 pub use exec::{QueryOutput, field_names};
 pub use script::{is_declaration, split_statements, variable_ranges};
 
@@ -155,7 +156,7 @@ async fn run_statement(
     let mut tokens = lexer::tokenize(text)?;
     script::substitute_variables(&mut tokens, vars)?;
     let query = parser::parse_query(text, &tokens)?;
-    let mut session = Session::open(state, connection_id).await?;
+    let mut session = Session::open_background(state, connection_id).await?;
     exec::execute(&mut session, &query).await
 }
 

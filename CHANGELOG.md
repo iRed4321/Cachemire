@@ -4,6 +4,33 @@ Every stable release of Cachemire; `Unreleased` is what the next one brings. Bet
 
 ## Unreleased
 
+## 3.2.0 - 2026-11-02
+
+### Added
+
+- **Value editor**: a row's pencil button edits its value as JSON, with line numbers and colors, then saves it to Redis. The **+** button adds a field to a hash, and a field can be renamed or deleted
+- **Keyspace**: right-click a key or folder to rename or delete it, or the empty space to add a key. A connection's open folders come back when you return to it
+- **Table view**: click a cell and move with the arrow keys; **Ctrl+C** copies its value
+- **Restore the last connection** (Settings, off by default): at startup, Cachemire reopens the connection it was closed on, with its tabs and folders
+- **Large values**: hash fields are shown up to 4 MB (was 128 KB), and strings over 10,000 bytes are shortened on screen; bigger values can still be opened, saved or copied whole
+
+### Fixes
+
+- **App**: a second launch says Cachemire is already open; a failed task no longer leaves a dialog or button stuck busy
+- **Connection**: recovers from dropped SSH tunnels and silent disconnects, waits through a slow keyring prompt, and handles failed switches cleanly
+- **Export**: unreadable keys are skipped and counted, folder exports never overwrite existing files, and failed copies or saves are reported
+- **Keyspace**: keys your Redis user can't read no longer stop the tree or a search; results no longer list keys twice
+- **Performance**: exports and searches no longer stall Redis on big keys or strings; big keyspaces and hashes don't freeze the window
+- **Query**: big joins no longer run out of memory, rows no longer repeat, and re-run or closed queries stop reading Redis
+- **Query**: `'it''s'` finds it's, a result capped at 5,000 rows says so, and completion no longer offers `OR`
+- **Saved data**: an unreadable settings or connections file is never overwritten, and settings saved by a newer version are kept
+- **Security**: data files, exports and opened values are readable by your user only; CSV exports can't trigger spreadsheet formulas
+- **SSH profiles**: a changed password is now kept after restarting
+- **Table view**: shows every shared key, copies exactly the ticked rows, and keeps updating during a search
+- **Updates**: a corrupted installer download is caught before installing, and the administrator prompt comes up sooner
+- **Values**: long values no longer crash the app, nor show the previous key's data after switching; truncated streams say so
+- **Window**: scrollbars are easier to grab, and on Windows moving or resizing no longer stops working until a restart
+
 ## 3.1.3 - 2026-11-02
 
 ### Fixes
@@ -94,4 +121,3 @@ Cachemire is made for Redis hashes full of JSON: read each value as colored JSON
 
 - Cluster mode isn't supported yet: such a server is refused with a clear message
 - Cachemire only reads: editing keys and values is planned
-

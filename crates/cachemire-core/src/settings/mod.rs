@@ -3,14 +3,14 @@
 //! Passwords live in the OS credential store.
 
 use rustc_hash::FxHashSet;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
 use serde::{Deserialize, Serialize};
 
 use crate::error::{Error, Invalid};
 use crate::i18n::Language;
-use crate::persist::{self, Loaded};
+use crate::persist;
 use crate::secret_vault::{OsVault, Secrets, Vault, VaultBacked};
 use crate::updates::Channel;
 
@@ -53,6 +53,9 @@ struct StoredSettings {
     // whether the app looks for an update on that channel each time it starts
     #[serde(default)]
     check_updates_at_startup: bool,
+    // whether the app reopens the last connection with its tabs and open folders
+    #[serde(default)]
+    restore_session: bool,
     // experimental: the global search filters inside Redis, with a script
     #[serde(default)]
     server_search: bool,
@@ -71,6 +74,9 @@ struct StoredSettings {
     // what is set for AWS accounts and their endpoints (none of the endpoints themselves)
     #[serde(default)]
     cloud: StoredCloud,
+    // what a newer version wrote that this one doesn't know: saved back as it was
+    #[serde(flatten)]
+    extra: serde_json::Map<String, serde_json::Value>,
 }
 
 #[derive(Clone)]
@@ -108,19 +114,9 @@ impl SettingsStore {
     }
 
     fn with_vault(file_path: PathBuf, vault: Arc<dyn Vault>) -> Self {
-        // a file that can't be read is kept aside, not overwritten by the defaults
-        let state: StoredSettings = match persist::load(&file_path) {
-            Loaded::Read(state) => state,
-            Loaded::Missing => StoredSettings::default(),
-            Loaded::Unusable(why) => {
-                match persist::set_aside(&file_path) {
-                    Some(kept) => tracing::error!("{} can't be read ({why}); kept as {}", file_path.display(), kept.display()),
-                    None => tracing::error!("{} can't be read ({why}) and couldn't be moved aside", file_path.display()),
-                }
-                StoredSettings::default()
-            }
-        };
-        let mut state = state;
+        // a file that can't be read is kept, never replaced by the defaults
+        let (stored, writable) = persist::load_store::<StoredSettings>(&file_path);
+        let mut state = stored.unwrap_or_default();
         if !state.connection_profiles_seeded {
             state.connection_profiles_seeded = true;
             state.connection_profiles.push(StoredConnectionProfile {
@@ -131,7 +127,12 @@ impl SettingsStore {
         }
         let mut unloaded: FxHashSet<String> = state.ssh_profiles.iter().filter(|p| p.in_vault).map(|p| p.id.clone()).collect();
         unloaded.extend(cloud_entries(&mut state.cloud).filter(|(_, e)| e.ssh.as_ref().is_some_and(|s| s.in_vault)).map(|(key, _)| key));
-        Self { file_path, state, vault, unloaded, vault_usable: true, dry_run: false }
+        Self { file_path, state, vault, unloaded, vault_usable: true, dry_run: !writable }
+    }
+
+    /// Where the settings are saved: the app's other files sit next to it.
+    pub fn file_path(&self) -> &Path {
+        &self.file_path
     }
 
     pub fn language(&self) -> Language {
@@ -186,6 +187,17 @@ impl SettingsStore {
         self.commit(next, false)
     }
 
+    /// Whether the app reopens, at start, the connection it was closed on, with its tabs and open folders.
+    pub fn restore_session(&self) -> bool {
+        self.state.restore_session
+    }
+
+    pub fn set_restore_session(&mut self, enabled: bool) -> Result<(), Error> {
+        let mut next = self.state.clone();
+        next.restore_session = enabled;
+        self.commit(next, false)
+    }
+
     pub fn export_escaped(&self) -> bool {
         self.state.export_escaped
     }
@@ -213,7 +225,12 @@ impl SettingsStore {
     /// Stores `secrets` under `key` while the vault is usable: the first failure makes
     /// it unusable for the rest of the run. Whether they are stored.
     fn store_secret(&mut self, key: &str, secrets: &Secrets) -> bool {
-        self.vault_usable = self.vault_usable && self.vault.set(key, secrets).is_ok();
+        if self.vault_usable
+            && let Err(e) = self.vault.set(key, secrets)
+        {
+            tracing::warn!("the system keyring can't store passwords ({e}); they stay in the settings file this run");
+            self.vault_usable = false;
+        }
         self.vault_usable
     }
 

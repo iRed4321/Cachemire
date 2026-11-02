@@ -1,20 +1,22 @@
 use super::super::test_support::field;
 use super::*;
+use cachemire_core::redis_value_type::RedisValueType;
 
 /// A hash of `total` names `f000`..., with the page `start..start + loaded` read, and
 /// its name scan ongoing when `more`.
 fn hash(total: usize, start: usize, loaded: usize, more: bool) -> FetchedKey {
     let names: Vec<String> = (0..total).map(|i| format!("f{i:03}")).collect();
     FetchedKey {
-        badge: "hash".into(),
+        key_type: Some(RedisValueType::Hash),
         meta: String::new(),
         fields: names[start..start + loaded].iter().map(|n| field(n, None)).collect(),
-        all_names: Some(names),
+        all_names: Some(Arc::new(names)),
         start,
         field_count: total,
         ttl: -1,
         names_cursor: more.then_some(7),
         descending: false,
+        editable: true,
     }
 }
 

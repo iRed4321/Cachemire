@@ -126,6 +126,7 @@ impl Localize for SystemError {
     fn localized(&self) -> String {
         match self {
             SystemError::Task(error) => t!("A background task failed: %{error}", error = error).into_owned(),
+            SystemError::Panicked(why) => t!("A background task failed: %{error}", error = why).into_owned(),
         }
     }
 }

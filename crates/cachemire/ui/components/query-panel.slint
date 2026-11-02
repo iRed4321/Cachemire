@@ -349,46 +349,45 @@ export component QueryEditor inherits Rectangle {
                         wrap: word-wrap;
                     }
 
-                    // a row of text as it is drawn in the box (the colored read, which the edit box lines up
-                    // with), and as a plain Text measures it: a line's rows are counted with the Text, and
-                    // each is as tall as the drawn one
-                    property <length> text-line-h: text-probe.preferred-height;
-                    property <length> input-line-h: drawn-probe.preferred-height / 10;
-                    text-probe := Text {
-                        text: "x";
-                        font-size: Theme.pt(11.5px);
-                        font-family: Theme.font-mono;
-                        opacity: 0;
-                    }
+                    // the step from one drawn row to the next, off a 100-row text: a text's measured
+                    // height is rounded up to a whole pixel, which a single row would add to every line
+                    property <length> input-line-h: drawn-probe.preferred-height / 100;
+                    property <string> ten-rows: "0\n0\n0\n0\n0\n0\n0\n0\n0\n0";
                     drawn-probe := StyledText {
+                        x: 0px;
+                        y: 0px;
                         width: Theme.px(40px);
-                        text: root.highlight-query("x\nx\nx\nx\nx\nx\nx\nx\nx\nx");
+                        text: root.highlight-query(ten-rows + "\n" + ten-rows + "\n" + ten-rows + "\n" + ten-rows + "\n" + ten-rows + "\n" + ten-rows + "\n" + ten-rows + "\n" + ten-rows + "\n" + ten-rows + "\n" + ten-rows);
                         default-font-family: Theme.font-mono;
                         default-font-size: Theme.pt(11.5px);
                         opacity: 0;
                     }
 
-                    // the line numbers, scrolled with the text. Each line is measured with the text's own
-                    // wrapping (an invisible copy), so its number stays level with the line's first row
-                    gutter := Flickable {
+                    // the line numbers and the text scroll as one: an invisible copy of each line, drawn
+                    // like the text, counts its rows, so its number stays level with its first row
+                    query-flick := Flickable {
                         x: Theme.px(8px);
                         y: Theme.px(6px);
-                        width: box.gutter-w;
+                        width: parent.width - Theme.px(16px);
                         height: parent.height - Theme.px(12px);
-                        interactive: false;
-                        content-y: query-flick.content-y;
+                        content-height: max(self.height, input.preferred-height);
+                        interactive: true;
+                        property <length> text-dx: box.text-x - Theme.px(8px);
+
                         VerticalLayout {
+                            x: 0px;
+                            y: 0px;
+                            width: box.gutter-w;
                             alignment: start;
                             for line[i] in root.lines: Rectangle {
-                                height: max(1, round(measure.preferred-height / box.text-line-h)) * box.input-line-h;
-                                measure := Text {
+                                height: max(1, round(measure.preferred-height / box.input-line-h)) * box.input-line-h;
+                                measure := StyledText {
                                     x: 0px;
                                     y: 0px;
                                     width: box.text-w;
-                                    text: line == "" ? " " : line;
-                                    wrap: word-wrap;
-                                    font-size: Theme.pt(11.5px);
-                                    font-family: Theme.font-mono;
+                                    text: root.highlight-query(line);
+                                    default-font-family: Theme.font-mono;
+                                    default-font-size: Theme.pt(11.5px);
                                     opacity: 0;
                                 }
                                 Text {
@@ -403,23 +402,14 @@ export component QueryEditor inherits Rectangle {
                                 }
                             }
                         }
-                    }
-
-                    query-flick := Flickable {
-                        x: box.text-x;
-                        y: Theme.px(6px);
-                        width: box.text-w;
-                        height: parent.height - Theme.px(12px);
-                        content-height: max(self.height, input.preferred-height);
-                        interactive: true;
 
                         // the colored read of `query`, drawn under the actual (invisible-text) edit box
                         // since StyledText can't be typed into; x/y are pinned so it isn't centered when
                         // the box is taller than a short query
                         StyledText {
-                            x: 0px;
+                            x: query-flick.text-dx;
                             y: 0px;
-                            width: parent.width;
+                            width: box.text-w;
                             text: root.highlight-query(root.query);
                             default-color: Theme.text-primary;
                             default-font-family: Theme.font-mono;
@@ -429,9 +419,9 @@ export component QueryEditor inherits Rectangle {
                         // right-click menu: a TouchArea wrapping the input rather than behind it, so the
                         // input keeps its own mouse handling (cursor placement, drag-to-select)
                         input-area := TouchArea {
-                            x: 0px;
+                            x: query-flick.text-dx;
                             y: 0px;
-                            width: parent.width;
+                            width: box.text-w;
                             height: max(parent.height, input.preferred-height);
                             mouse-cursor: MouseCursor.text;
                             property <length> click-x;
@@ -493,7 +483,7 @@ export component QueryEditor inherits Rectangle {
                                     root.suggest(root.query, self.cursor-position-byte-offset, false);
                                 }
                                 cursor-position-changed(position) => {
-                                    caret.x = position.x;
+                                    caret.x = query-flick.text-dx + position.x;
                                     caret.y = position.y;
                                     caret-blink-on = true;
                                     // keeps the caret in view, and the list under it
@@ -533,7 +523,7 @@ export component QueryEditor inherits Rectangle {
                             // overwritten as soon as the cursor moves once
                             // (see `input`'s cursor-position-changed);
                             // pinned so it doesn't start centered
-                            x: 0px;
+                            x: query-flick.text-dx;
                             y: 0px;
                             width: input.text-cursor-width;
                             height: input.font-size * 1.3;

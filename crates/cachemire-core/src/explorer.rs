@@ -6,7 +6,7 @@ use crate::key_name::KeyName;
 use serde_json::Value;
 
 use crate::redis_value_type::RedisValueType;
-use crate::session::{ScriptKey, Session, TypedKey, lossy, pairs, stream_fields};
+use crate::session::{KeyScan, ScriptKey, Session, TypedKey, lossy, pairs, stream_fields};
 use crate::state::AppState;
 
 /// One increment of a level listing from [`scan_namespaces`]. `folders`
@@ -52,13 +52,10 @@ pub async fn scan_namespaces(
         if prefix.is_empty() { (b"*".to_vec(), 1000) } else { ([glob_escape(prefix), b"*".to_vec()].concat(), 10_000) };
 
     let mut seen_folders: FxHashSet<Vec<u8>> = FxHashSet::default();
-    let mut cursor: u64 = 0;
+    let mut scan = KeyScan::new(Some(match_pattern), count);
 
-    loop {
-        if !keep_going() {
-            return Ok(());
-        }
-        let (next_cursor, batch) = session.scan(cursor, Some(&match_pattern), count).await?;
+    while keep_going() {
+        let Some(batch) = scan.next(&mut session).await? else { break };
 
         let mut folders: Vec<KeyName> = Vec::new();
         let mut leaf_keys: Vec<KeyName> = Vec::new();
@@ -85,15 +82,11 @@ pub async fn scan_namespaces(
         }
 
         let keys = session.types(leaf_keys).await?;
-
-        cursor = next_cursor;
         if !folders.is_empty() || !keys.is_empty() {
             on_batch(NamespaceBatch { folders, keys });
         }
-        if cursor == 0 {
-            return Ok(());
-        }
     }
+    Ok(())
 }
 
 /// One page of [`walk_keyspace`]: the keys of one SCAN page, typed (SCAN may
@@ -119,24 +112,21 @@ pub async fn walk_keyspace(
     keep_going: impl Fn() -> bool,
     mut on_batch: impl FnMut(WalkBatch),
 ) -> Result<(), Error> {
-    let mut session = Session::open(state, connection_id).await?;
+    let mut session = Session::open_background(state, connection_id).await?;
     let total = session.dbsize().await.unwrap_or(0);
-    let (mut cursor, mut scanned) = (0u64, 0usize);
-    loop {
-        if !keep_going() {
-            return Ok(());
-        }
-        let (next, names) = session.scan(cursor, None, 1000).await?;
+    let (mut scan, mut scanned) = (KeyScan::new(None, 1000), 0usize);
+    while keep_going() {
+        let Some(names) = scan.next(&mut session).await? else { break };
         scanned += names.len();
         let keys = session.types(names).await?;
-        cursor = next;
-        let capped = cursor != 0 && scanned >= max_keys;
-        let done = cursor == 0 || capped;
+        let capped = !scan.finished() && scanned >= max_keys;
+        let done = scan.finished() || capped;
         on_batch(WalkBatch { keys, scanned, total, done, capped });
         if done {
-            return Ok(());
+            break;
         }
     }
+    Ok(())
 }
 
 // ---------------------------------------------------------------------------
@@ -163,25 +153,14 @@ pub struct EntriesBatch {
     pub done: bool,
 }
 
-/// Reads at most `limit` entries of each of `keys` in one pipelined round trip.
-/// If the pipeline fails (a key vanished or changed type), each key is read on
-/// its own and the failing ones are left empty.
+/// Reads at most `limit` entries of each of `keys` in one pipelined round trip; a key
+/// that can't be read (it vanished, changed type) or a failed round trip leaves them empty.
 async fn read_entries(session: &mut Session, keys: Vec<TypedKey>, limit: usize) -> Vec<KeyEntries> {
     if keys.is_empty() {
         return Vec::new();
     }
-    let heads = session.entry_heads(&keys, limit).await.ok();
-    let mut heads = heads.map(Vec::into_iter);
-    let mut out = Vec::with_capacity(keys.len());
-    for key in keys {
-        let entries = match heads.as_mut().and_then(Iterator::next) {
-            Some(entries) => entries,
-            // the pipeline failed as a whole: read this key alone
-            None => session.entry_heads(std::slice::from_ref(&key), limit).await.ok().and_then(|mut one| one.pop()).unwrap_or_default(),
-        };
-        out.push(KeyEntries { key: key.name, key_type: key.key_type, entries });
-    }
-    out
+    let mut heads = session.entry_heads(&keys, limit).await.unwrap_or_default().into_iter();
+    keys.into_iter().map(|key| KeyEntries { key: key.name, key_type: key.key_type, entries: heads.next().unwrap_or_default() }).collect()
 }
 
 /// How many keys one read of content covers: a SCAN page is split into reads of
@@ -221,20 +200,14 @@ type ScanPage = Result<Vec<KeyName>, Error>;
 /// channel's room). Ends, closing the channel, with the last page or the error
 /// that stopped it.
 async fn scan_pages(mut session: Session, pages: tokio::sync::mpsc::Sender<ScanPage>) {
-    let mut cursor: u64 = 0;
+    let mut scan = KeyScan::new(None, 500);
     loop {
-        match session.scan(cursor, None, 500).await {
-            Ok((next, names)) => {
-                // (a closed channel: nobody is reading any more)
-                if pages.send(Ok(names)).await.is_err() || next == 0 {
-                    return;
-                }
-                cursor = next;
-            }
-            Err(e) => {
-                let _ = pages.send(Err(e)).await;
-                return;
-            }
+        let page = scan.next(&mut session).await.transpose();
+        let Some(page) = page else { return };
+        let failed = page.is_err();
+        // (a closed channel: nobody is reading any more)
+        if pages.send(page).await.is_err() || failed || scan.finished() {
+            return;
         }
     }
 }
@@ -314,7 +287,7 @@ pub async fn scan_entries(
     mut paused: tokio::sync::watch::Receiver<bool>,
     mut on_batch: impl FnMut(EntriesBatch),
 ) -> Result<(), Error> {
-    let mut session = Session::open(state, connection_id).await?;
+    let mut session = Session::open_background(state, connection_id).await?;
     let total = session.dbsize().await.unwrap_or(0);
     let filter = server_filter
         .map(|needle| ServerFilter { needle: needle.into(), working: std::sync::Arc::new(std::sync::atomic::AtomicBool::new(true)) });
@@ -450,8 +423,8 @@ pub const HASH_NAMES_BATCH: usize = 10_000;
 pub const MAX_STRING_BYTES: usize = 4 * 1024 * 1024;
 
 /// The biggest hash field value the key panel reads with its page; a bigger one is
-/// shown by its size, and read only when it's opened, saved or copied.
-pub const MAX_FIELD_BYTES: usize = 128 * 1024;
+/// shown by its size, and read only when it's opened, saved, copied or asked for.
+pub const MAX_FIELD_BYTES: usize = 4 * 1024 * 1024;
 
 /// The field names of `key` from `HSCAN` cursor `cursor` on, until `limit` are read
 /// or the scan ends (cursor 0), without the duplicates a scan may repeat. Each step
@@ -488,7 +461,7 @@ async fn read_set_bounded(session: &mut Session, key: &KeyName, max_items: usize
 
     let mut items: Vec<String> = Vec::new();
     let mut cursor: u64 = 0;
-    let count_hint = max_items.max(10);
+    let count_hint = max_items.clamp(10, 1000);
     while items.len() < max_items {
         let (next_cursor, chunk) = session.set_scan(key, cursor, count_hint).await?;
         let room = max_items - items.len();
@@ -523,7 +496,10 @@ async fn read_value(session: &mut Session, key: &KeyName, value_type: &RedisValu
                 ),
             })
         }
-        RedisValueType::Stream => Ok(no_truncation(Value::Array(read_stream(session, key, Some(max_items)).await?))),
+        RedisValueType::Stream => {
+            let total = session.stream_len(key).await?;
+            Ok(ReadValueResult { value: Value::Array(read_stream(session, key, Some(max_items)).await?), truncated: total > max_items })
+        }
         // (get_key_details answers a missing key before it reads anything)
         RedisValueType::Missing => Err(NotFound::Key.into()),
         RedisValueType::Other(other) => Ok(no_truncation(Value::String(format!("[unsupported type: {other}]")))),
@@ -569,6 +545,24 @@ pub struct KeyDetails {
     /// (`None` once every name is read).
     pub field_count: usize,
     pub names_cursor: Option<u64>,
+}
+
+impl KeyDetails {
+    /// A hash with no field yet: one made in the app, which Redis only stores
+    /// once it has a field.
+    pub fn empty_hash() -> Self {
+        Self {
+            key_type: RedisValueType::Hash,
+            ttl: -1,
+            value: Value::Object(serde_json::Map::new()),
+            truncated: false,
+            all_field_names: Some(Vec::new()),
+            oversized: FxHashMap::default(),
+            page_start: 0,
+            field_count: 0,
+            names_cursor: None,
+        }
+    }
 }
 
 /// Fetches a key's type, TTL, and value, bounded to `max_items` entries for
@@ -672,6 +666,145 @@ pub async fn hash_full_values(
 ) -> Result<Vec<Option<String>>, Error> {
     let mut session = Session::open(state, connection_id).await?;
     session.hash_values(key, names).await
+}
+
+/// Writes `value` as what `key` holds: the value of its field `field` for a hash
+/// (`Some`), its whole value, TTL kept, for a string (`None`).
+pub async fn write_value(
+    state: &AppState,
+    connection_id: Option<&str>,
+    key: &KeyName,
+    field: Option<&str>,
+    value: &str,
+) -> Result<(), Error> {
+    let mut session = Session::open(state, connection_id).await?;
+    match field {
+        Some(field) => session.hash_set(key, field, value).await,
+        None => session.string_set(key, value).await,
+    }
+}
+
+/// Moves hash `key`'s field `from` to the new name `to`, with `value` as its value:
+/// false, nothing changed, when the hash has a field `to` already.
+pub async fn rename_hash_field(
+    state: &AppState,
+    connection_id: Option<&str>,
+    key: &KeyName,
+    from: &str,
+    to: &str,
+    value: &str,
+) -> Result<bool, Error> {
+    Session::open(state, connection_id).await?.hash_rename(key, from, to, value).await
+}
+
+/// Writes `value` into a new field `field` of hash `key` (making the hash if there is
+/// none): false, nothing changed, when it has that field already.
+pub async fn write_new_hash_field(
+    state: &AppState,
+    connection_id: Option<&str>,
+    key: &KeyName,
+    field: &str,
+    value: &str,
+) -> Result<bool, Error> {
+    Session::open(state, connection_id).await?.hash_set_new(key, field, value).await
+}
+
+/// Removes field `field` from hash `key`.
+pub async fn delete_hash_field(state: &AppState, connection_id: Option<&str>, key: &KeyName, field: &str) -> Result<(), Error> {
+    Session::open(state, connection_id).await?.hash_delete(key, field).await
+}
+
+/// Whether `key` exists.
+pub async fn key_exists(state: &AppState, connection_id: Option<&str>, key: &KeyName) -> Result<bool, Error> {
+    let mut session = Session::open(state, connection_id).await?;
+    Ok(session.existing(std::slice::from_ref(key)).await?.first().copied().unwrap_or(false))
+}
+
+/// Removes `key`.
+pub async fn delete_key(state: &AppState, connection_id: Option<&str>, key: &KeyName) -> Result<(), Error> {
+    Session::open(state, connection_id).await?.unlink(std::slice::from_ref(key)).await
+}
+
+/// Renames `from` to `to`: false, nothing changed, when a key `to` exists already.
+pub async fn rename_key(state: &AppState, connection_id: Option<&str>, from: &KeyName, to: &KeyName) -> Result<bool, Error> {
+    Session::open(state, connection_id).await?.rename_new(from, to).await
+}
+
+/// Every key whose name starts with `prefix`.
+async fn keys_under(session: &mut Session, prefix: &KeyName) -> Result<Vec<KeyName>, Error> {
+    let mut pattern = glob_escape(prefix.as_bytes());
+    pattern.push(b'*');
+    let (mut scan, mut keys) = (KeyScan::new(Some(pattern), 1000), FxHashSet::default());
+    while let Some(names) = scan.next(session).await? {
+        keys.extend(names);
+    }
+    Ok(keys.into_iter().collect())
+}
+
+/// How many keys one `UNLINK` or one round of renames takes.
+const KEYS_PER_WRITE: usize = 500;
+
+/// Removes every key whose name starts with `prefix` (a folder); how many there were.
+pub async fn delete_folder(state: &AppState, connection_id: Option<&str>, prefix: &KeyName) -> Result<usize, Error> {
+    let mut session = Session::open_background(state, connection_id).await?;
+    let keys = keys_under(&mut session, prefix).await?;
+    for chunk in keys.chunks(KEYS_PER_WRITE) {
+        session.unlink(chunk).await?;
+    }
+    Ok(keys.len())
+}
+
+/// What moving a folder's keys did.
+pub enum FolderMove {
+    /// the keys moved, as (old name, new name); with why it stopped when they aren't all
+    Moved { moves: Vec<(KeyName, KeyName)>, failed: Option<Error> },
+    /// nothing, since this new name is a key already
+    Taken(KeyName),
+}
+
+/// Moves every key whose name starts with `from` to the same name starting with `to`,
+/// once none of the new names is taken.
+pub async fn rename_folder(state: &AppState, connection_id: Option<&str>, from: &KeyName, to: &KeyName) -> Result<FolderMove, Error> {
+    let mut session = Session::open_background(state, connection_id).await?;
+    let renamed = |key: &KeyName| {
+        let mut name = to.as_bytes().to_vec();
+        name.extend_from_slice(&key.as_bytes()[from.as_bytes().len()..]);
+        KeyName::from(name)
+    };
+    let moves: Vec<(KeyName, KeyName)> = keys_under(&mut session, from)
+        .await?
+        .into_iter()
+        .map(|key| {
+            let new = renamed(&key);
+            (key, new)
+        })
+        .collect();
+    for chunk in moves.chunks(KEYS_PER_WRITE) {
+        let targets: Vec<KeyName> = chunk.iter().map(|(_, new)| new.clone()).collect();
+        if let Some(i) = session.existing(&targets).await?.iter().position(|taken| *taken) {
+            return Ok(FolderMove::Taken(targets[i].clone()));
+        }
+    }
+    let mut moved = Vec::with_capacity(moves.len());
+    for chunk in moves.chunks(KEYS_PER_WRITE) {
+        let mut failed = None;
+        match session.rename_new_many(chunk).await {
+            Ok(renamed) => {
+                for (pair, renamed) in chunk.iter().zip(renamed) {
+                    match renamed {
+                        Ok(true) => moved.push(pair.clone()),
+                        Ok(false) => {}
+                        Err(e) => failed = failed.or(Some(e)),
+                    }
+                }
+            }
+            Err(e) => failed = Some(e),
+        }
+        if failed.is_some() {
+            return Ok(FolderMove::Moved { moves: moved, failed });
+        }
+    }
+    Ok(FolderMove::Moved { moves: moved, failed: None })
 }
 
 #[cfg(test)]

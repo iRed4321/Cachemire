@@ -10,7 +10,10 @@ use slint::private_unstable_api::re_exports::StyledText;
 use crate::theme_colors::{ACCENT_ORANGE, ACCENT_YELLOW, BG_APP_BASE, HIGHLIGHT_FIND};
 
 use super::field::FieldValue;
-use super::pretty_text::{COMPACT_PREVIEW_CHAR_BUDGET, ColorSpans, ColoredParagraph, colored_paragraphs_for, escaped_paragraphs};
+use super::pretty_text::{
+    COMPACT_PREVIEW_CHAR_BUDGET, ColorSpans, ColoredParagraph, MAX_SHOWN_STRING_BYTES, colored_paragraphs_for,
+    compact_paragraphs_with_whole_strings, escaped_paragraphs,
+};
 
 // Matches are marked with a background, like a marker pen; the text on it is dark
 const HIGHLIGHT_FILTER: Color = ACCENT_YELLOW; // the header value filter's matches
@@ -18,7 +21,7 @@ const HIGHLIGHT_CURRENT: Color = ACCENT_ORANGE; // the current find match
 const HIGHLIGHT_TEXT: Color = BG_APP_BASE;
 
 /// One match: paragraph index plus byte range within that paragraph.
-type Match = (usize, Range<usize>);
+pub(super) type Match = (usize, Range<usize>);
 
 /// `text` lowercased, with the offset in `text` of each of its bytes that starts the
 /// lowercase of a character of `text` (and of its end): `None` inside one.
@@ -147,46 +150,41 @@ pub(super) fn overlay_highlights(
         .collect()
 }
 
-/// Builds the on-screen text for a cached pretty rendering: the search bar's
-/// active badges' matches in yellow, the find query's in orange, and the
-/// `current`-th find match in cyan.
-pub(super) fn pretty_styled_text_with_highlights(
+/// The marks of `paragraphs[range]`, indexed from its start: the search bar's `needles`,
+/// and the find matches `finds` (of every paragraph, in order) over them, the
+/// `current`-th apart.
+pub(super) fn window_highlights(
     paragraphs: &[ColoredParagraph],
-    filter_needles: &[String],
-    filter_case_sensitive: bool,
-    query: &str,
+    range: Range<usize>,
+    needles: &[String],
+    case_sensitive: bool,
+    finds: &[Match],
     current: i32,
-) -> StyledText {
-    let filter_color = HIGHLIGHT_FILTER;
+) -> Vec<(usize, Range<usize>, Color)> {
+    let shown = &paragraphs[range.clone()];
     let mut highlights: Vec<(usize, Range<usize>, Color)> = merge_overlapping(
-        filter_needles
+        needles
             .iter()
-            .flat_map(|needle| find_matches(paragraphs, needle, filter_case_sensitive).into_iter().map(|(p, r)| (p, r, filter_color)))
+            .flat_map(|needle| find_matches(shown, needle, case_sensitive).into_iter().map(|(p, r)| (p, r, HIGHLIGHT_FILTER)))
             .collect(),
     );
-    let finds = find_matches(paragraphs, query, false);
-    if !finds.is_empty() {
-        let current = (current.rem_euclid(finds.len() as i32)) as usize;
-        let find_color = HIGHLIGHT_FIND;
-        let current_color = HIGHLIGHT_CURRENT;
-        // find matches win over filter matches where they overlap; `finds` is
-        // in (paragraph, start) order and non-overlapping, so a binary search
-        // lands on the only find that could overlap a given filter match
-        highlights.retain(|(p, r, _)| {
-            let i = finds.partition_point(|(fp, fr)| (*fp, fr.end) <= (*p, r.start));
-            !finds.get(i).is_some_and(|(fp, fr)| fp == p && fr.start < r.end)
-        });
-        for (i, (p, r)) in finds.into_iter().enumerate() {
-            highlights.push((p, r, if i == current { current_color } else { find_color }));
-        }
-        highlights.sort_by_key(|(p, r, _)| (*p, r.start));
+    if finds.is_empty() {
+        return highlights;
     }
-    let rendered = if highlights.is_empty() {
-        paragraphs.iter().map(|(text, spans)| (text.clone(), spans.clone(), Vec::new())).collect()
-    } else {
-        overlay_highlights(paragraphs, &highlights)
-    };
-    StyledText::from_highlighted_paragraphs(rendered)
+    let current = (current.rem_euclid(finds.len() as i32)) as usize;
+    let first = finds.partition_point(|(p, _)| *p < range.start);
+    let mine: Vec<Match> = finds[first..].iter().take_while(|(p, _)| *p < range.end).map(|(p, r)| (p - range.start, r.clone())).collect();
+    // find matches win over filter matches where they overlap; `mine` is in (paragraph,
+    // start) order and non-overlapping, so a binary search lands on the only one that could
+    highlights.retain(|(p, r, _)| {
+        let i = mine.partition_point(|(fp, fr)| (*fp, fr.end) <= (*p, r.start));
+        !mine.get(i).is_some_and(|(fp, fr)| fp == p && fr.start < r.end)
+    });
+    for (i, (p, r)) in mine.into_iter().enumerate() {
+        highlights.push((p, r, if first + i == current { HIGHLIGHT_CURRENT } else { HIGHLIGHT_FIND }));
+    }
+    highlights.sort_by_key(|(p, r, _)| (*p, r.start));
+    highlights
 }
 
 /// The first `n` characters of `s`.
@@ -217,9 +215,10 @@ pub(super) fn highlight_needle_matches(paragraphs: Vec<ColoredParagraph>, needle
 /// Collapsed one-line preview, with the search bar's active badges' matches
 /// highlighted, as plain and as escaped into a JSON string.
 pub(super) fn compact_styled_texts_for(value: FieldValue<'_>, needles: &[String], case_sensitive: bool) -> (StyledText, StyledText) {
-    // a long text only ever shows its start, so it's cut before being
-    // serialized (escapes only add characters, never remove any)
+    // a long text only ever shows its start, so it's cut before being serialized
+    // (escapes only add characters); one too long to show is cut just past the limit
     let value = match value {
+        FieldValue::Text(text) if text.len() > MAX_SHOWN_STRING_BYTES => FieldValue::Text(head_chars(text, MAX_SHOWN_STRING_BYTES + 1)),
         FieldValue::Text(text) => FieldValue::Text(head_chars(text, COMPACT_PREVIEW_CHAR_BUDGET)),
         json => json,
     };
@@ -285,7 +284,7 @@ pub(crate) fn search_value_text(raw: &str, needle: &str) -> StyledText {
         Some(json) => FieldValue::Json(json),
         None => FieldValue::Text(raw),
     };
-    let paragraphs = colored_paragraphs_for(&value, false, 20_000);
+    let paragraphs = compact_paragraphs_with_whole_strings(&value, 20_000);
     let paragraph = paragraphs.into_iter().next().unwrap_or_default();
     mark_hit(paragraph, needle)
 }

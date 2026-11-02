@@ -82,13 +82,14 @@ pub(super) fn start_walk(ctx: &ScanContext) {
     let generation = ctx.generation.fetch_add(1, Ordering::Relaxed) + 1;
     let (weak, state, tree, latest) = (ctx.weak.clone(), ctx.state.clone(), ctx.tree.clone(), ctx.generation.clone());
     let reveal_ctx = ctx.clone();
+    let connection = ctx.weak.upgrade().map(|window| window.connection_id().to_string()).unwrap_or_default();
     ctx.rt.spawn(async move {
         let result = {
             let (weak, tree, latest) = (weak.clone(), tree.clone(), latest.clone());
             let still_wanted = latest.clone();
             explorer::walk_keyspace(
                 &state,
-                None,
+                Some(&connection),
                 MAX_INDEXED_KEYS,
                 move || still_wanted.load(Ordering::Relaxed) == generation,
                 move |batch| {
@@ -116,22 +117,18 @@ pub(super) fn start_walk(ctx: &ScanContext) {
 }
 
 /// Walks the keyspace afresh into a new index (on connecting, and on refresh). The
-/// folders open now reopen once the walk reaches them; a search shown with
+/// `reopen` folders open once the walk reaches them; a search shown with
 /// `keep_search` stays, its matches found again as the walk goes.
-pub(super) fn load_root(ctx: &ScanContext, keep_search: bool) {
+pub(super) fn load_root(ctx: &ScanContext, keep_search: bool, mut reopen: Vec<String>) {
     {
         let mut tree = ctx.tree.lock();
         // shallowest first, so a folder is never looked for before the parent that reveals it
-        let mut reexpand: Vec<String> = Vec::new();
-        if tree.search.is_none() {
-            reexpand = tree.nodes.iter().filter(|n| n.is_folder && n.expanded).map(|n| n.full_name.clone()).collect();
-            reexpand.sort_by_key(|name| name.matches(DELIMITER).count());
-        }
+        reopen.sort_by_key(|name| name.matches(DELIMITER).count());
         tree.nodes.clear();
         tree.index = Index::default();
         tree.walk = Walk::default();
         tree.pending_reveal = None;
-        tree.pending_expand = reexpand;
+        tree.pending_expand = reopen;
         if keep_search {
             if let Some(search) = tree.search.as_mut() {
                 search.index = Index::default();

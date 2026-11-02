@@ -4,13 +4,13 @@
 use std::collections::BTreeMap;
 use std::fs::File;
 use std::io::{BufWriter, Write};
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, Ordering};
 
 use rustc_hash::FxHashSet;
 use serde_json::{Value, json};
 
-use crate::error::{Error, FileError};
+use crate::error::{Error, ErrorKind, FileError};
 use crate::explorer::{self, ExportedKey};
 use crate::key_name::KeyName;
 use crate::session::Session;
@@ -43,6 +43,8 @@ impl Plan {
 pub struct Outcome {
     pub keys: usize,
     pub cancelled: bool,
+    /// keys the server wouldn't give (changed type meanwhile, not allowed): left out
+    pub skipped: usize,
 }
 
 /// One file to write: many keys under a folder prefix, or a single key.
@@ -64,6 +66,18 @@ fn file_safe(value: &str) -> String {
     }
     let out: String = out.trim().chars().take(120).collect();
     if out.is_empty() { "export".to_string() } else { out }
+}
+
+/// `dir/file`, or `dir/stem (2).json` and so on when a file already has that name.
+fn free_path(dir: &Path, file: &str) -> PathBuf {
+    let stem = file.strip_suffix(".json").unwrap_or(file);
+    let mut path = dir.join(file);
+    let mut n = 2;
+    while path.exists() {
+        path = dir.join(format!("{stem} ({n}).json"));
+        n += 1;
+    }
+    path
 }
 
 /// `stem` plus `.json`, numbered when another file of this export already has that name,
@@ -145,16 +159,20 @@ pub async fn run(
     mut progress: impl FnMut(usize, usize),
 ) -> Result<Outcome, Error> {
     let total = plan.total();
-    let mut session = Session::open(state, Some(connection_id)).await?;
+    let mut session = Session::open_background(state, Some(connection_id)).await?;
     std::fs::create_dir_all(dir).map_err(io_error)?;
-    let mut done = 0;
+    let (mut done, mut skipped) = (0, 0);
     let sole = plan.sole_file().and(file_name);
     for output in outputs(plan) {
         let (file, keys): (&str, &[String]) = match &output {
             Output::Items { file, keys, .. } => (file, keys),
             Output::Single { file, key } => (file, std::slice::from_ref(key)),
         };
-        let path = dir.join(sole.unwrap_or(file));
+        // the file picked in the dialog is replaced; the others never replace one already there
+        let path = match sole {
+            Some(name) => dir.join(name),
+            None => free_path(dir, file),
+        };
         let mut writer: Option<BufWriter<File>> = None;
         let mut written = 0;
         for key in keys {
@@ -162,9 +180,26 @@ pub async fn run(
                 if writer.take().is_some() {
                     let _ = std::fs::remove_file(&path);
                 }
-                return Ok(Outcome { keys: done, cancelled: true });
+                return Ok(Outcome { keys: done, cancelled: true, skipped });
             }
-            match explorer::read_for_export(&mut session, &KeyName::from_id(key)).await? {
+            let read = match explorer::read_for_export(&mut session, &KeyName::from_id(key)).await {
+                Ok(read) => read,
+                Err(e) if matches!(e.kind(), ErrorKind::Redis | ErrorKind::Denied) => {
+                    tracing::warn!(key = %KeyName::display_id(key), "key couldn't be read ({e}); left out");
+                    skipped += 1;
+                    done += 1;
+                    progress(done, total);
+                    continue;
+                }
+                Err(e) => {
+                    // no half-written file is left behind
+                    if writer.take().is_some() {
+                        let _ = std::fs::remove_file(&path);
+                    }
+                    return Err(e);
+                }
+            };
+            match read {
                 Some(read) => {
                     let writer = match &mut writer {
                         Some(writer) => writer,
@@ -193,7 +228,7 @@ pub async fn run(
             writer.flush().map_err(io_error)?;
         }
     }
-    Ok(Outcome { keys: done, cancelled: false })
+    Ok(Outcome { keys: done, cancelled: false, skipped })
 }
 
 #[cfg(test)]

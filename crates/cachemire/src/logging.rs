@@ -36,7 +36,7 @@ pub fn init(dir: &Path) -> Option<WorkerGuard> {
 
     let report = std::panic::take_hook();
     std::panic::set_hook(Box::new(move |info| {
-        tracing::error!("{info}");
+        tracing::error!("{info}\n{}", std::backtrace::Backtrace::force_capture());
         report(info);
     }));
     tracing::info!(version = env!("CARGO_PKG_VERSION"), "Cachemire starting");

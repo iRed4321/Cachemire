@@ -20,6 +20,8 @@ const MIN_SIZE: (u32, u32) = (720, 300);
 const POLL_INTERVAL: Duration = Duration::from_millis(100);
 /// How many looks the window gets to settle into its saved place.
 const SETTLE_TICKS: u32 = 30;
+/// How many looks a changed place must stay the same for before it's saved.
+const SAVE_AFTER_TICKS: u32 = 5;
 
 #[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
 struct Rect {
@@ -83,6 +85,8 @@ struct Tracker {
     wants_maximized: bool,
     settling_ticks: Cell<u32>,
     matching_ticks: Cell<u32>,
+    // looks left before a changed place is saved (0: nothing to save)
+    unsaved_ticks: Cell<u32>,
 }
 
 impl Tracker {
@@ -131,7 +135,7 @@ impl Tracker {
         }
     }
 
-    /// Takes the window's current place into the state, and saves it when it changed.
+    /// Takes the window's current place into the state, saved once it stops changing.
     fn record(&self, window: &winit::window::Window) {
         if window.is_minimized().unwrap_or(false) || window.fullscreen().is_some() {
             return;
@@ -151,7 +155,12 @@ impl Tracker {
         }
         if state != self.state.get() {
             self.state.set(state);
-            self.save();
+            self.unsaved_ticks.set(SAVE_AFTER_TICKS);
+        } else if self.unsaved_ticks.get() > 0 {
+            self.unsaved_ticks.set(self.unsaved_ticks.get() - 1);
+            if self.unsaved_ticks.get() == 0 {
+                self.save();
+            }
         }
     }
 }
@@ -184,6 +193,7 @@ pub fn install(window: &MainWindow) -> impl Fn() + use<> {
         wants_maximized: state.maximized,
         settling_ticks: Cell::new(if start.is_some() { SETTLE_TICKS } else { 0 }),
         matching_ticks: Cell::new(0),
+        unsaved_ticks: Cell::new(0),
     });
     // polled rather than driven by winit's move/resize events: it is the one way that
     // is certain to see every change, a maximize and a drag included

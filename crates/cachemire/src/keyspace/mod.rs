@@ -9,7 +9,7 @@ use std::rc::Rc;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, AtomicU64};
 
-use slint::{ComponentHandle, Model, ModelRc, VecModel, Weak};
+use slint::{ComponentHandle, Model, ModelRc, Weak};
 use tokio::runtime::Handle;
 
 use crate::{KeyTree, KeyspaceRowData, MainWindow, TreeRowKind};
@@ -17,12 +17,15 @@ use cachemire_core::key_name::KeyName;
 use cachemire_core::redis_value_type::RedisValueType;
 use cachemire_core::state::AppState;
 
+mod edit;
 mod index;
+mod rows;
 mod search;
 mod selection;
 mod walk;
 
 use index::{CachedChild, Index};
+use rows::TreeRows;
 use search::{Search, start_search};
 use selection::Selection;
 use walk::{Walk, load_root};
@@ -162,12 +165,24 @@ struct Tree {
     pending_expand: Vec<String>,
     // what export mode has ticked
     export: Selection,
+    // the connection the tree shows ("" for none), and the folders each one
+    // left open when another was connected, reopened when it comes back
+    connection: String,
+    parked_folders: FxHashMap<String, Vec<String>>,
 }
 
 impl Tree {
     /// The index the rows come from: the search's while there is one.
     fn shown(&self) -> &Index {
         self.search.as_ref().map_or(&self.index, |s| &s.index)
+    }
+
+    /// The folders open in the browse listing (none while a search is shown).
+    fn open_folders(&self) -> Vec<String> {
+        if self.search.is_some() {
+            return Vec::new();
+        }
+        self.nodes.iter().filter(|n| n.is_folder && n.expanded).map(|n| n.full_name.clone()).collect()
     }
 }
 
@@ -177,9 +192,9 @@ impl Tree {
 type SharedTree = Arc<Mutex<Tree>>;
 
 /// The panel's row model, as installed by `init`.
-fn with_model(window: &MainWindow, f: impl FnOnce(&VecModel<KeyspaceRowData>)) {
+fn with_model(window: &MainWindow, f: impl FnOnce(&TreeRows)) {
     let rows = window.global::<KeyTree>().get_rows();
-    if let Some(model) = rows.as_any().downcast_ref::<VecModel<KeyspaceRowData>>() {
+    if let Some(model) = rows.as_any().downcast_ref::<TreeRows>() {
         f(model);
     }
 }
@@ -204,50 +219,50 @@ fn subtree_end(tree: &Tree, pos: usize) -> usize {
 }
 
 /// Merges `new` into `parent`'s direct children (`None` = root), keeping
-/// [`Node::cmp_sibling`] order via one forward merge over the sorted level —
-/// O(N log N + M), not O(N·M). Drops duplicates.
+/// [`Node::cmp_sibling`] order: one pass over the parent's rows, whatever the
+/// number added. Drops duplicates.
 fn merge_children(window: &MainWindow, tree: &mut Tree, parent: Option<usize>, mut new: Vec<Node>) {
     if new.is_empty() {
         return;
     }
     new.sort_by(|a, b| a.cmp_sibling(b));
 
-    let (parent_indent, mut idx) = match parent {
-        Some(p) => (tree.nodes[p].indent, p + 1),
-        None => (-1, 0),
+    let (parent_indent, start, end) = match parent {
+        Some(p) => (tree.nodes[p].indent, p + 1, subtree_end(tree, p)),
+        None => (-1, 0, tree.nodes.len()),
     };
     let child_indent = parent_indent + 1;
-    let mut inserted = 0usize;
-
-    with_model(window, |model| {
-        for mut node in new {
-            // advance past existing siblings (and their subtrees) that sort
-            // before `node`; stop at the end of the parent's subtree
-            let mut duplicate = false;
-            while idx < tree.nodes.len() && tree.nodes[idx].indent > parent_indent {
-                let existing = &tree.nodes[idx];
-                if existing.indent == child_indent {
-                    match existing.cmp_sibling(&node) {
-                        std::cmp::Ordering::Greater => break,
-                        std::cmp::Ordering::Equal if existing.full_name == node.full_name => {
-                            duplicate = true;
-                            break;
-                        }
-                        _ => {}
+    let mut old = tree.nodes.drain(start..end).collect::<Vec<_>>().into_iter().peekable();
+    let mut merged = Vec::with_capacity(old.len() + new.len());
+    let (mut positions, mut rows) = (Vec::new(), Vec::new());
+    for mut node in new {
+        // past the siblings (and their subtrees) that sort before `node`
+        let mut duplicate = false;
+        while let Some(existing) = old.peek() {
+            if existing.indent == child_indent {
+                match existing.cmp_sibling(&node) {
+                    std::cmp::Ordering::Greater => break,
+                    std::cmp::Ordering::Equal if existing.full_name == node.full_name => {
+                        duplicate = true;
+                        break;
                     }
+                    _ => {}
                 }
-                idx += 1;
             }
-            if duplicate {
-                continue;
-            }
-            node.checked = tree.export.check_of(&node.full_name, node.is_folder);
-            model.insert(idx, node.row_data());
-            tree.nodes.insert(idx, node);
-            idx += 1;
-            inserted += 1;
+            merged.extend(old.next());
         }
-    });
+        if duplicate {
+            continue;
+        }
+        node.checked = tree.export.check_of(&node.full_name, node.is_folder);
+        positions.push(start + merged.len());
+        rows.push(node.row_data());
+        merged.push(node);
+    }
+    merged.extend(old);
+    tree.nodes.splice(start..start, merged);
+    let inserted = positions.len();
+    with_model(window, |model| model.insert_at(&positions, rows));
 
     if let Some(p) = parent
         && inserted > 0
@@ -274,11 +289,7 @@ fn nodes_from_children(index: &Index, indent: i32, children: &[CachedChild]) -> 
 
 fn collapse(window: &MainWindow, tree: &mut Tree, pos: usize) {
     let end = subtree_end(tree, pos);
-    with_model(window, |model| {
-        for _ in pos + 1..end {
-            model.remove(pos + 1);
-        }
-    });
+    with_model(window, |model| model.remove_range(pos + 1..end));
     tree.nodes.drain(pos + 1..end);
     tree.nodes[pos].expanded = false;
     refresh_row(window, tree, pos);
@@ -295,12 +306,17 @@ fn show_additions(window: &MainWindow, tree: &mut Tree, added: Vec<(String, Cach
     // shallowest first, so a folder is in place before its own children
     let mut parents: Vec<(String, Vec<CachedChild>)> = by_parent.into_iter().collect();
     parents.sort_by(|(a, _), (b, _)| a.matches(DELIMITER).count().cmp(&b.matches(DELIMITER).count()).then_with(|| a.cmp(b)));
+    // the folders' rows by name, made again once rows have moved
+    let mut folders: Option<FxHashMap<String, usize>> = None;
     for (parent, children) in parents {
         let parent_pos = if parent.is_empty() {
             None
         } else {
-            match position_of(tree, &parent) {
-                Some(pos) => Some(pos),
+            let folders = folders.get_or_insert_with(|| {
+                tree.nodes.iter().enumerate().filter(|(_, n)| n.is_folder).map(|(pos, n)| (n.full_name.clone(), pos)).collect()
+            });
+            match folders.get(&parent) {
+                Some(&pos) => Some(pos),
                 None => continue, // inside a folder that isn't shown
             }
         };
@@ -322,6 +338,7 @@ fn show_additions(window: &MainWindow, tree: &mut Tree, added: Vec<(String, Cach
             }
         }
         merge_children(window, tree, parent_pos, nodes);
+        folders = None;
     }
 }
 
@@ -350,6 +367,26 @@ fn expand(window: &MainWindow, tree: &mut Tree, pos: usize) {
     tree.nodes[pos].child_count = Some(0);
     merge_children(window, tree, Some(pos), nodes);
     refresh_row(window, tree, pos);
+}
+
+/// Builds the rows anew from the shown index (after keys left it), the folders
+/// that were open, and still exist, opened again.
+fn rebuild(window: &MainWindow, tree: &mut Tree) {
+    let mut open: Vec<String> = tree.nodes.iter().filter(|n| n.is_folder && n.expanded).map(|n| n.full_name.clone()).collect();
+    open.sort_by_key(|name| name.matches(DELIMITER).count());
+    tree.nodes.clear();
+    with_model(window, |model| model.set_vec(Vec::new()));
+    let nodes = nodes_from_children(tree.shown(), 0, &tree.shown().children(""));
+    merge_children(window, tree, None, nodes);
+    for name in open {
+        if let Some(pos) = position_of(tree, &name) {
+            expand(window, tree, pos);
+        }
+    }
+    walk::show_footer(window, tree);
+    if tree.export.on {
+        selection::refresh(window, tree);
+    }
 }
 
 /// The folders `key` lives under, shallowest first: `a:b:c` yields `a:`, `a:b:`.
@@ -449,7 +486,7 @@ impl Keyspace {
     pub fn new(window: &MainWindow, state: Arc<AppState>, rt: Handle) -> Self {
         // one persistent model, mutated incrementally (insert/remove/set_row_data)
         // so a batch of new rows never rebuilds the rows already on screen
-        window.global::<KeyTree>().set_rows(ModelRc::new(VecModel::<KeyspaceRowData>::default()));
+        window.global::<KeyTree>().set_rows(ModelRc::new(TreeRows::default()));
         let tree = Tree {
             nodes: Vec::new(),
             index: Index::default(),
@@ -458,6 +495,8 @@ impl Keyspace {
             search: None,
             pending_expand: Vec::new(),
             export: Selection::default(),
+            connection: String::new(),
+            parked_folders: FxHashMap::default(),
         };
         Self(ScanContext {
             weak: window.as_weak(),
@@ -472,20 +511,45 @@ impl Keyspace {
 
 /// Connecting (possibly to a different server): the keyspace is walked anew, and
 /// any search belonged to the previous one, so the box is cleared with the tree.
+/// The folders open are kept for the connection left, and its own come back open.
 pub fn reload(app: &App) {
     let ctx = &app.keyspace.0;
-    if let Some(window) = ctx.weak.upgrade() {
-        window.global::<KeyTree>().set_search_text("".into());
-    }
+    let Some(window) = ctx.weak.upgrade() else { return };
+    window.global::<KeyTree>().set_search_text("".into());
+    let connection = window.connection_id().to_string();
     selection::reset(ctx);
-    // no rows left to re-expand: another connection starts with its folders closed
-    ctx.tree.lock().nodes.clear();
-    load_root(ctx, false);
+    let reopen = {
+        let mut tree = ctx.tree.lock();
+        let leaving = std::mem::replace(&mut tree.connection, connection.clone());
+        // no connection left (a disconnect, a delete): its folders go with its tabs
+        if !leaving.is_empty() && !connection.is_empty() {
+            let open = tree.open_folders();
+            tree.parked_folders.insert(leaving, open);
+        }
+        tree.parked_folders.remove(&connection).unwrap_or_default()
+    };
+    load_root(ctx, false, reopen);
+}
+
+/// The folders open in the tree of the connection shown.
+pub fn open_folders(app: &App) -> Vec<String> {
+    app.keyspace.0.tree.lock().open_folders()
+}
+
+/// Keeps `folders` as those `connection` reopens once it is connected.
+pub fn park_folders(app: &App, connection: &str, folders: Vec<String>) {
+    app.keyspace.0.tree.lock().parked_folders.insert(connection.to_string(), folders);
+}
+
+/// Drops what is kept of a connection that was deleted.
+pub fn forget(app: &App, connection: &str) {
+    app.keyspace.0.tree.lock().parked_folders.remove(connection);
 }
 
 /// Wires the tree's rows, its search box and its refresh button.
 pub fn init(app: &Rc<App>, window: &MainWindow) {
     selection::init(app, window);
+    edit::init(app, window);
     window.global::<KeyTree>().on_row_clicked({
         let app = app.clone();
         move |full_name| on_row_clicked(&app, full_name.to_string())
@@ -503,10 +567,14 @@ pub fn init(app: &Rc<App>, window: &MainWindow) {
         let app = app.clone();
         move || {
             let ctx = &app.keyspace.0;
-            if let Some(window) = ctx.weak.upgrade() {
-                crate::connect_active(&window, ctx.state.clone(), &ctx.rt);
-            }
-            load_root(ctx, true);
+            let Some(window) = ctx.weak.upgrade() else { return };
+            crate::connections::connect_active_then(&window, ctx.state.clone(), &ctx.rt, || {
+                crate::app::with(|app, _| {
+                    let ctx = &app.keyspace.0;
+                    let reopen = ctx.tree.lock().open_folders();
+                    load_root(ctx, true, reopen);
+                });
+            });
         }
     });
 }

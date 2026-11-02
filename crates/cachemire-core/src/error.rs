@@ -121,6 +121,9 @@ pub enum FileError {
 pub enum SystemError {
     #[error("A background task failed: {0}")]
     Task(#[from] tokio::task::JoinError),
+    /// work on a blocking thread panicked, with what it said
+    #[error("A background task failed: {0}")]
+    Panicked(String),
 }
 
 /// What an error means for the UI.

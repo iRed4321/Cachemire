@@ -7,9 +7,9 @@ use rustc_hash::{FxHashMap, FxHashSet};
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 
-use rayon::prelude::*;
 use slint::{ComponentHandle, Model, ModelRc, VecModel, Weak};
 use tokio::runtime::Handle;
+use tokio::task::AbortHandle;
 
 use crate::{AllValuesRowData, CompletionEdit, KeyPanel, KeyView, MainWindow, SuggestionRow};
 use cachemire_core::json_path::JsonPath;
@@ -18,9 +18,11 @@ use cachemire_core::redis_value_type::RedisValueType;
 use cachemire_core::state::AppState;
 
 mod color;
+mod edit;
 mod export;
 mod field;
 mod filtering;
+mod full_value;
 mod highlight;
 mod load;
 mod paging;
@@ -34,6 +36,7 @@ mod table;
 mod test_support;
 #[cfg(test)]
 pub(crate) mod tests;
+mod value_lines;
 mod value_list;
 mod word;
 
@@ -41,13 +44,13 @@ pub(crate) use highlight::{search_plain_text, search_value_text};
 pub use scroll::{ScrollPos, current_expanded_fields, current_scroll, restore_expanded_fields};
 pub use table::clear_table;
 
-use field::{Fields, PrettyCache};
+use field::{Fields, PrettyCache, PrettyRenderings};
 use load::LoadRequest;
 use paging::PageDir;
 use scroll::{arm_table_scroll, disarm_scroll, set_field_expanded, sync_rows_expansion};
 use search_filter::{SearchFilter, SearchTerm};
 use suggest::Suggester;
-use table::{apply_table, build_table, reset_table_selection, select_table_range, table_sort};
+use table::{TableData, TableSort, apply_table, build_table, reset_table_selection, select_table_range, table_fields, table_sort};
 use value_list::meta_text;
 
 const MAX_ITEMS: usize = 500;
@@ -71,12 +74,13 @@ fn current_search_filter(window: &MainWindow) -> SearchFilter {
 /// until the header's refresh button fetches it anew.
 #[derive(Clone)]
 struct FetchedKey {
-    badge: String,
+    // `None` for a query's rows, shown with no type
+    key_type: Option<RedisValueType>,
     meta: String,
     fields: Fields,
     // for a hash: the field names read so far, sorted; `fields` holds the values of
     // `names[start..start + fields.len()]`. `None` for every other type.
-    all_names: Option<Vec<String>>,
+    all_names: Option<Arc<Vec<String>>>,
     start: usize,
     // for a hash: its field count and TTL (for the header), and where the scan of
     // its names goes on (`None` once they're all read)
@@ -85,12 +89,14 @@ struct FetchedKey {
     names_cursor: Option<u64>,
     // for a hash: whether its names are sorted descending rather than ascending
     descending: bool,
+    // whether its values can be written back: a hash's fields, or a string read whole
+    editable: bool,
 }
 
 impl FetchedKey {
     /// The header's size and TTL for a hash, as many names as are read so far.
     fn hash_meta(&self) -> String {
-        let loaded = self.names_cursor.and(self.all_names.as_ref()).map(Vec::len);
+        let loaded = self.names_cursor.and(self.all_names.as_ref()).map(|names| names.len());
         meta_text(&RedisValueType::Hash, self.ttl, self.field_count, false, loaded)
     }
 }
@@ -116,13 +122,14 @@ struct KeyDetailShared {
     // window's pretty-ready-* properties; request-pretty-value then serves
     // from here without computing
     pretty_cache: PrettyCache,
-    // bumped whenever a table build is started or the view is switched off, so
-    // a build that finishes late (a newer key, the switch turned off) is dropped
+    // bumped when the table view is switched off, so a build finishing after is dropped
     table_generation: Arc<AtomicU64>,
-    // bumped when a key starts loading and when the filter is applied, so work
-    // started for the previous contents (a load, a filter, a pretty rendering)
-    // is dropped when it finishes late
+    table_builds: Arc<Mutex<TableBuilds>>,
+    // bumped when a key starts loading and when the filter is applied, so a load
+    // or filter overtaken by a newer one is dropped when it finishes late
     view_epoch: Arc<AtomicU64>,
+    // the key load under way, stopped when a newer one starts or the panel empties
+    load_task: Arc<Mutex<Option<AbortHandle>>>,
     fetched: FetchedCache,
     // completions of the filter bar's path, from the loaded fields
     suggester: Arc<Suggester>,
@@ -130,14 +137,38 @@ struct KeyDetailShared {
     // loaded, or the next step of a search/filter's scan through the rest —
     // from overlapping another one already under way for the same key
     paging_in_flight: Arc<AtomicBool>,
+    // keys made in the app, by (connection, key): an empty hash Redis doesn't hold
+    // yet, shown as such until its first field is written
+    new_keys: Arc<Mutex<FxHashSet<(String, String)>>>,
+}
+
+/// The table view's builds: one at a time, and at most one more asked for meanwhile.
+#[derive(Default)]
+struct TableBuilds {
+    running: bool,
+    // asked for while one was running, with the scroll it should land at
+    queued: Option<Option<ScrollPos>>,
+}
+
+/// A table build done: what it was made from, and the table (`None` if it failed).
+struct TableBuilt {
+    generation: u64,
+    epoch: u64,
+    filter: SearchFilter,
+    sort: Option<TableSort>,
+    scroll: Option<ScrollPos>,
+    table: Option<TableData>,
 }
 
 /// The key the panel shows and what of it is shown.
 #[derive(Default)]
 struct PanelContent {
-    // the key whose fields these are: a background rendering that finishes after
-    // the key changed must not land in the (new key's) cache
+    // the view epoch these contents were put in under: work started on them
+    // (a page, a rendering, a rebuild) is dropped if they were replaced since
+    epoch: u64,
+    // the key whose fields these are, and its type (`None`: a query's rows)
     key: String,
+    key_type: Option<RedisValueType>,
     // the key's fields as loaded; `current` is these after the filter bar's path
     // (the same list when there's none), and what everything else shows
     loaded: Fields,
@@ -150,6 +181,11 @@ struct PanelContent {
 }
 
 impl PanelContent {
+    /// Whether the shown key is a hash.
+    fn is_hash(&self) -> bool {
+        self.key_type == Some(RedisValueType::Hash)
+    }
+
     /// The shown field named `name`.
     fn field(&self, name: &str) -> Option<Arc<field::Field>> {
         self.current.iter().find(|f| f.name == name).cloned()
@@ -177,33 +213,70 @@ struct Ctx {
 impl Ctx {
     /// Builds the table view's data from the loaded fields, off the UI thread,
     /// and shows it if that's still wanted when it's ready, scrolled to `scroll`
-    /// when there is one (a tab being loaded again).
+    /// when there is one (a tab being loaded again). Waits for a build under way.
     fn spawn_table_build(&self, scroll: Option<ScrollPos>) {
         let shared = &self.shared;
-        let generation = shared.table_generation.fetch_add(1, Ordering::Relaxed) + 1;
-        let latest = shared.table_generation.clone();
+        {
+            let mut builds = shared.table_builds.lock();
+            if builds.running {
+                let queued = builds.queued.take().flatten();
+                builds.queued = Some(scroll.or(queued));
+                return;
+            }
+            builds.running = true;
+        }
+        let generation = shared.table_generation.load(Ordering::Relaxed);
         // a snapshot of the pointers, so the lock isn't held while building
-        let (fields, filter) = {
+        let (fields, filter, epoch) = {
             let content = shared.content.lock();
-            (content.current.clone(), content.search.clone())
+            (content.current.clone(), content.search.clone(), content.epoch)
         };
-        let weak = self.weak.clone();
         let sort = self.weak.upgrade().and_then(|window| table_sort(&window));
-        self.rt.spawn_blocking(move || {
-            // the search bar's badges narrow the table the same way they narrow
-            // the field/value list, and highlight the same way in its cells
-            let needles = filter.highlight_needles();
-            let fields: Fields = fields.into_par_iter().filter(|f| filter.matches(f)).collect();
-            let table = build_table(&fields, &needles, filter.case_sensitive, sort);
-            let _ = weak.upgrade_in_event_loop(move |window| {
-                if latest.load(Ordering::Relaxed) == generation && window.global::<KeyPanel>().get_view() == KeyView::Table {
-                    if let Some(scroll) = scroll {
-                        arm_table_scroll(&window, scroll);
-                    }
-                    apply_table(&window, table);
-                }
-            });
+        let build = {
+            let (filter, sort) = (filter.clone(), sort.clone());
+            self.rt.spawn_blocking(move || {
+                // the search bar's badges narrow the table the same way they narrow
+                // the field/value list, and highlight the same way in its cells
+                let needles = filter.highlight_needles();
+                let fields = table_fields(&fields, &filter);
+                build_table(&fields, &needles, filter.case_sensitive, sort)
+            })
+        };
+        let ctx = self.clone();
+        self.rt.spawn(async move {
+            let table = build.await.ok();
+            let built = TableBuilt { generation, epoch, filter, sort, scroll, table };
+            let _ = slint::invoke_from_event_loop(move || ctx.table_built(built));
         });
+    }
+
+    /// Shows a finished table build unless the view was switched off, or the contents,
+    /// badges or sort it was made from changed since; then starts the one asked for meanwhile.
+    fn table_built(&self, built: TableBuilt) {
+        let shared = &self.shared;
+        let queued = {
+            let mut builds = shared.table_builds.lock();
+            builds.running = false;
+            builds.queued.take()
+        };
+        if let Some(window) = self.weak.upgrade()
+            && let Some(table) = built.table
+        {
+            let current = shared.table_generation.load(Ordering::Relaxed) == built.generation
+                && window.global::<KeyPanel>().get_view() == KeyView::Table
+                && shared.content.lock().search == built.filter
+                && shared.shows(built.epoch)
+                && table_sort(&window) == built.sort;
+            if current {
+                if let Some(scroll) = built.scroll {
+                    arm_table_scroll(&window, scroll);
+                }
+                apply_table(&window, table);
+            }
+        }
+        if let Some(scroll) = queued {
+            self.spawn_table_build(scroll);
+        }
     }
 
     /// Fills the table view from `current` if it is the view shown, otherwise empties
@@ -214,6 +287,7 @@ impl Ctx {
             KeyView::Table => self.spawn_table_build(scroll),
             KeyView::Fields => {
                 self.shared.table_generation.fetch_add(1, Ordering::Relaxed);
+                self.shared.table_builds.lock().queued = None;
                 clear_table(window);
             }
         }
@@ -266,7 +340,7 @@ impl Ctx {
     fn sort_table(&self, column: i32, descending: bool) {
         let Some(window) = self.weak.upgrade() else { return };
         let panel = window.global::<KeyPanel>();
-        if column == 0 && panel.get_badge() == "HASH" {
+        if column == 0 && self.shared.content.lock().is_hash() {
             panel.set_table_sort_column(-1);
             if descending != panel.get_sort_descending() {
                 self.toggle_sort();
@@ -296,6 +370,20 @@ impl Ctx {
 }
 
 impl KeyDetailShared {
+    /// Puts `next` in the panel (the search bar's badges in effect stay), with the
+    /// open-row renderings already made of it.
+    fn install(&self, mut next: PanelContent, renderings: PrettyRenderings) {
+        let mut content = self.content.lock();
+        next.search = std::mem::take(&mut content.search);
+        *content = next;
+        *self.pretty_cache.lock() = renderings;
+    }
+
+    /// Whether the panel still shows the contents put in under view `epoch`.
+    fn shows(&self, epoch: u64) -> bool {
+        self.content.lock().epoch == epoch
+    }
+
     /// The filter's text once completion `index` of the list is taken, and where its
     /// cursor goes; the text unchanged (cursor -1) when there is no such completion.
     fn complete_suggestion(&self, text: slint::SharedString, cursor: i32, index: i32) -> CompletionEdit {
@@ -323,20 +411,21 @@ pub(crate) fn show_key_name(window: &MainWindow, id: &str) {
 
 /// Empties the panel: no key and no rows are shown, and what a load still on its way brings is dropped.
 fn show_nothing(window: &MainWindow, shared: &KeyDetailShared) {
-    shared.view_epoch.fetch_add(1, Ordering::Relaxed);
+    let epoch = shared.view_epoch.fetch_add(1, Ordering::Relaxed) + 1;
+    if let Some(load) = shared.load_task.lock().take() {
+        load.abort();
+    }
+    window.global::<crate::KeyTree>().set_loading_key("".into());
     disarm_scroll(window);
     window.global::<KeyPanel>().set_badge("".into());
     window.global::<KeyPanel>().set_loaded(false);
     show_key_name(window, "");
     window.global::<KeyPanel>().set_meta("".into());
+    window.global::<KeyPanel>().set_editable(false);
     window.global::<KeyPanel>().set_all_values_field_chars(8);
     window.global::<KeyPanel>().set_all_values_rows(ModelRc::new(VecModel::from(Vec::<AllValuesRowData>::new())));
     window.global::<KeyPanel>().set_json_filter_status("".into());
-    {
-        let mut content = shared.content.lock();
-        content.loaded = Vec::new();
-        content.current = Vec::new();
-    }
+    shared.install(PanelContent { epoch, ..PanelContent::default() }, PrettyRenderings::default());
     shared.suggester.forget();
     clear_table(window);
 }
@@ -348,10 +437,13 @@ pub fn init(window: &MainWindow, state: Arc<AppState>, rt: Handle) -> KeyDetail 
         content: Arc::default(),
         pretty_cache: PrettyCache::default(),
         table_generation: Arc::new(AtomicU64::new(0)),
+        table_builds: Arc::default(),
         view_epoch: Arc::new(AtomicU64::new(0)),
+        load_task: Arc::default(),
         fetched: Arc::new(Mutex::new(FxHashMap::default())),
         suggester: Arc::new(Suggester::default()),
         paging_in_flight: Arc::new(AtomicBool::new(false)),
+        new_keys: Arc::default(),
     };
     let ctx = Ctx { weak: window.as_weak(), state, rt, shared };
     let panel = window.global::<KeyPanel>();
@@ -398,6 +490,11 @@ pub fn init(window: &MainWindow, state: Arc<AppState>, rt: Handle) -> KeyDetail 
 
     pretty::init(window, &ctx);
     export::init(window, &ctx);
+    edit::init(window, &ctx);
+    panel.on_load_value({
+        let ctx = ctx.clone();
+        move |field| ctx.load_full_value(&field)
+    });
 
     panel.on_table_clear_selection({
         let weak = window.as_weak();
@@ -455,7 +552,7 @@ impl KeyDetail {
         ctx.shared.fetched.lock().insert(
             slot,
             FetchedKey {
-                badge: String::new(),
+                key_type: None,
                 meta: String::new(),
                 fields,
                 all_names: None,
@@ -464,6 +561,7 @@ impl KeyDetail {
                 ttl: -1,
                 names_cursor: None,
                 descending: false,
+                editable: false,
             },
         );
         ctx.load_key(LoadRequest { key: id, scroll, reuse: true, announce: false });
@@ -472,5 +570,21 @@ impl KeyDetail {
     /// Drops what was fetched for a connection's key (`Some`), or all its keys (`None`).
     pub fn forget(&self, connection: &str, key: Option<&str>) {
         self.0.shared.fetched.lock().retain(|(c, k), _| c != connection || key.is_some_and(|key| key != k));
+    }
+
+    /// Shows `key` of `connection` as an empty hash while Redis doesn't hold it (a key
+    /// just made in the app: Redis stores a hash once it has a field).
+    pub fn mark_new(&self, connection: &str, key: &str) {
+        self.0.shared.new_keys.lock().insert((connection.to_string(), key.to_string()));
+    }
+
+    /// Whether `key` of `connection` is a new hash Redis doesn't hold yet (see [`Self::mark_new`]).
+    pub fn is_new(&self, connection: &str, key: &str) -> bool {
+        self.0.shared.new_keys.lock().contains(&(connection.to_string(), key.to_string()))
+    }
+
+    /// The new hashes of `connection` picked by `gone` (deleted or renamed) are no longer shown as such.
+    pub fn forget_new(&self, connection: &str, gone: impl Fn(&str) -> bool) {
+        self.0.shared.new_keys.lock().retain(|(c, k)| c != connection || !gone(k));
     }
 }

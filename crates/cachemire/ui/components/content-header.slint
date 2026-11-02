@@ -359,6 +359,8 @@ export component TabBar inherits Rectangle {
 
 component MenuRow inherits Rectangle {
     in property <string> label;
+    // a destructive entry: its label is red
+    in property <bool> danger: false;
     callback clicked <=> area.clicked;
     height: Theme.px(28px);
     border-radius: Theme.radius-sm;
@@ -371,7 +373,7 @@ component MenuRow inherits Rectangle {
         Text {
             text: label;
             font-size: Theme.pt(12px);
-            color: Theme.text-primary;
+            color: root.danger ? Theme.accent-red : Theme.text-primary;
             vertical-alignment: center;
         }
     }
@@ -435,14 +437,21 @@ export component TabContextMenu inherits Rectangle {
 // mode), plus the ticked rows' export when there are any. Same ownership as TabContextMenu.
 export component RowContextMenu inherits Rectangle {
     in property <int> selection-count: 0;
+    // opened on a row (a key or a folder), or on the tree's empty space: then only "Add key"
+    in property <bool> on-row: true;
     callback export-row();
     callback select-row();
     callback export-selection();
+    callback add-key();
+    callback rename();
+    // deleting is one click to arm, a second to do it
+    callback delete();
+    property <bool> confirming-delete: false;
 
     property <length> row-h: Theme.px(28px);
     property <length> pad: Theme.px(4px);
     width: Theme.px(200px);
-    height: (selection-count > 0 ? 3 : 2) * row-h + 2 * pad;
+    height: (!on-row ? 1 : (selection-count > 0 ? 6 : 5)) * row-h + 2 * pad;
     background: Theme.bg-elevated;
     border-radius: Theme.radius-md;
     border-width: 1px;
@@ -455,8 +464,21 @@ export component RowContextMenu inherits Rectangle {
 
     VerticalLayout {
         padding: pad;
-        MenuRow { label: @tr("Export…"); clicked => { root.export-row(); } }
-        MenuRow { label: @tr("Select for export"); clicked => { root.select-row(); } }
-        if root.selection-count > 0: MenuRow { label: @tr("Export {} selected…", root.selection-count); clicked => { root.export-selection(); } }
+        if root.on-row: MenuRow { label: @tr("Export…"); clicked => { root.export-row(); } }
+        if root.on-row: MenuRow { label: @tr("Select for export"); clicked => { root.select-row(); } }
+        if root.on-row && root.selection-count > 0: MenuRow { label: @tr("Export {} selected…", root.selection-count); clicked => { root.export-selection(); } }
+        MenuRow { label: @tr("Add key…"); clicked => { root.add-key(); } }
+        if root.on-row: MenuRow { label: @tr("Rename…"); clicked => { root.rename(); } }
+        if root.on-row: MenuRow {
+            label: root.confirming-delete ? @tr("Click again to delete") : @tr("Delete");
+            danger: true;
+            clicked => {
+                if root.confirming-delete {
+                    root.delete();
+                } else {
+                    root.confirming-delete = true;
+                }
+            }
+        }
     }
 }

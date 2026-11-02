@@ -340,19 +340,19 @@ fn start(ctx: &ScanContext, plan: Plan) {
     if total == 0 || global.get_export_busy() {
         return;
     }
-    let connection_id = match ctx.state.connections.lock().get_active() {
-        Ok(connection) => connection.id,
-        Err(e) => {
-            crate::toast::show(&window, &t!("Export failed: %{error}", error = e.localized()));
-            return;
-        }
-    };
+    let connection_id = window.connection_id().to_string();
+    if connection_id.is_empty() {
+        let error = cachemire_core::error::Error::from(cachemire_core::error::NotFound::ActiveConnection);
+        crate::toast::show(&window, &t!("Export failed: %{error}", error = error.localized()));
+        return;
+    }
     global.set_export_busy(true);
     let sole_file = plan.sole_file();
     global.set_export_progress(if sole_file.is_some() { t!("Choose a file...") } else { t!("Choose a folder...") }.as_ref().into());
     ctx.export_cancel.store(false, Ordering::Relaxed);
     let (weak, state, cancel, rt) = (ctx.weak.clone(), ctx.state.clone(), ctx.export_cancel.clone(), ctx.rt.clone());
-    rt.spawn(async move {
+    // `None`: no file or folder was picked
+    let export = async move {
         let (dir, file_name) = match &sole_file {
             Some(default) => {
                 let chosen = rfd::AsyncFileDialog::new().set_file_name(default).add_filter("JSON", &["json"]).save_file().await;
@@ -362,12 +362,7 @@ fn start(ctx: &ScanContext, plan: Plan) {
             }
             None => (rfd::AsyncFileDialog::new().pick_folder().await.map(|folder| folder.path().to_path_buf()), None),
         };
-        let Some(dir) = dir else {
-            let _ = weak.upgrade_in_event_loop(move |window| {
-                window.global::<KeyTree>().set_export_busy(false);
-            });
-            return;
-        };
+        let dir = dir?;
         let mut last = Instant::now();
         let progress_weak = weak.clone();
         let result = export_files::run(&state, &connection_id, plan, &dir, file_name.as_deref(), &cancel, |done, total| {
@@ -383,16 +378,28 @@ fn start(ctx: &ScanContext, plan: Plan) {
             });
         })
         .await;
-        let _ = weak.upgrade_in_event_loop(move |window| {
-            window.global::<KeyTree>().set_export_busy(false);
-            window.global::<KeyTree>().set_export_progress("".into());
-            let text = match result {
-                Ok(outcome) if outcome.cancelled => t!("Export cancelled").into_owned(),
-                Ok(outcome) => t!("Exported %{count} keys", count = outcome.keys).into_owned(),
-                Err(e) => t!("Export failed: %{error}", error = e.localized()).into_owned(),
-            };
-            crate::toast::show(&window, &text);
-        });
+        Some(result)
+    };
+    crate::app::spawn(&rt, export, |_, window, outcome| {
+        window.global::<KeyTree>().set_export_busy(false);
+        window.global::<KeyTree>().set_export_progress("".into());
+        let result = match outcome {
+            Ok(None) => return,
+            Ok(Some(result)) => result,
+            Err(e) => Err(e),
+        };
+        let text = match result {
+            Ok(outcome) if outcome.cancelled => t!("Export cancelled").into_owned(),
+            Ok(outcome) if outcome.skipped > 0 => t!(
+                "Exported %{count} keys, %{skipped} left out that couldn't be read",
+                count = outcome.keys - outcome.skipped,
+                skipped = outcome.skipped
+            )
+            .into_owned(),
+            Ok(outcome) => t!("Exported %{count} keys", count = outcome.keys).into_owned(),
+            Err(e) => t!("Export failed: %{error}", error = e.localized()).into_owned(),
+        };
+        crate::toast::show(window, &text);
     });
 }
 

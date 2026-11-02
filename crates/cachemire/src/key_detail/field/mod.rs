@@ -38,7 +38,7 @@ pub(super) struct Field {
     pub(super) raw: String,
     pub(super) json: Option<Value>,
     // the value's size in bytes when it was too big to be read with the others
-    // (`raw` is then empty, until an export reads it)
+    // (`raw` is then empty, until it's read)
     pub(super) too_long: Option<usize>,
     // lowercased on first use by a case-insensitive search, then kept for
     // every later keystroke/badge — `raw` especially can be a large JSON
@@ -55,6 +55,12 @@ impl Field {
     /// A hash field whose value, `size` bytes long, was left out for its size.
     pub(super) fn too_long(name: String, size: usize) -> Field {
         Field { too_long: Some(size), ..Field::new(name, String::new(), None) }
+    }
+
+    /// A hash field read as `raw`, parsed when it is JSON.
+    pub(super) fn hash_value(name: String, raw: String) -> Field {
+        let json = serde_json::from_str::<Value>(&raw).ok();
+        Field::new(name, raw, json)
     }
 
     /// A field holding `value`: a string stays plain text (shown as a JSON
@@ -110,8 +116,7 @@ pub(super) fn build_fields(details_value: Value, mut oversized: FxHashMap<String
                     Value::String(s) => s,
                     other => other.to_string(),
                 };
-                let json = serde_json::from_str::<Value>(&raw).ok();
-                Arc::new(Field::new(name, raw, json))
+                Arc::new(Field::hash_value(name, raw))
             }
             Err(size) => Arc::new(Field::too_long(name, size)),
         })

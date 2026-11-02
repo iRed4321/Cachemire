@@ -2,7 +2,7 @@
 // state and the callbacks Rust answers. `main.slint` binds the components to them.
 import { ConnectionStatus, LanguageSetting, ProfileTint, KeyView, SearchScope, ExportFormat, ExportTarget } from "components/types.slint";
 import { ConnectionRowData, ConnProfileRowData, ConnectionForm, SshProfileRowData, SshProfileForm, ConnProfileForm, KeyspaceRowData, SavedQueryRowData, TabData, SearchRowData, HistoryRow } from "components/types.slint";
-import { AllValuesRowData, FindResult, SelectionRange, TableRowData, SuggestionRow, CompletionEdit, BadgeData } from "components/key-detail-types.slint";
+import { AllValuesRowData, FindResult, LineSelection, ValueLine, TableRowData, SuggestionRow, CompletionEdit, BadgeData } from "components/key-detail-types.slint";
 
 // The connection in use, as the title bar shows it; Rust sets it whole.
 export struct ConnectionView {
@@ -35,8 +35,6 @@ export global ConnectionState {
     // raised from Rust once a connection picked in the dropdown has connected
     callback established();
     callback disconnect-requested();
-    // the connection in use changed (or was lost): the tabs shown are those of the new one
-    callback switched();
 }
 
 // The form that creates or edits a saved connection.
@@ -119,6 +117,9 @@ export global Preferences {
     // looks for an update on the About window's channel each time the app starts
     in-out property <bool> check-updates-at-startup: false;
     callback check-updates-at-startup-toggled(enabled: bool);
+    // reopens the connection the app was closed on, with its tabs and open folders
+    in-out property <bool> restore-session: false;
+    callback restore-session-toggled(enabled: bool);
     // how many entries of a key the global search reads
     in-out property <int> search-depth: 1000;
     callback search-depth-selected(depth: int);
@@ -178,6 +179,11 @@ export global KeyTree {
     // the row menu's entries: export just this row, or tick it (which opens the mode)
     callback export-row(name: string);
     callback export-select-row(name: string);
+    // and writing: a new key (its name starting with `prefix`), renaming or deleting a
+    // row's key or folder (its name ends with the delimiter)
+    callback add-key-requested(prefix: string);
+    callback rename-requested(name: string);
+    callback delete-requested(name: string);
 }
 
 // The left panel's saved queries (Rust filters them on `filter`).
@@ -332,21 +338,36 @@ export global KeyPanel {
     // Shift-click in the table: the rows from `from` to `to` take the state of `from`
     callback table-select-range(from: int, to: int);
     callback export-selection(ExportFormat, ExportTarget);
+    // the table cell at `row`, `column` (0 is "Field") onto the clipboard, whole
+    callback copy-table-cell(row: int, column: int);
     callback filter-query-submitted();
     callback filter-badge-removed(text: string, scope: SearchScope);
     callback filter-case-sensitivity-changed();
-    // An open row's pretty text, find matches highlighted, from Rust's cache: valid once
-    // `request-pretty-value-async` answered. Each takes whether the value shows escaped.
-    callback request-pretty-value(field: string, query: string, current: int, escaped: bool) -> styled-text;
+    // An open row's pretty text (valid once `request-pretty-value-async` answered), drawn a
+    // line at a time wrapped to `columns`: its line count, and lines `first`.. with matches
+    // highlighted. Each takes whether it shows escaped; a position is a line and byte offset.
+    callback value-line-count(field: string, escaped: bool, columns: int) -> int;
+    callback request-value-lines(field: string, query: string, current: int, escaped: bool, columns: int, first: int, count: int) -> [ValueLine];
     callback request-pretty-value-async(field: string, escaped: bool);
-    callback find-in-value(field: string, query: string, current: int, escaped: bool) -> FindResult;
-    // what a double click (the word at the byte offset) or a triple click (`whole`) selects
-    callback value-selection(field: string, offset: int, whole: bool, escaped: bool) -> SelectionRange;
+    callback find-in-value(field: string, query: string, current: int, escaped: bool, columns: int) -> FindResult;
+    // the byte offset in `line` of its `column`-th character (its end past the last one)
+    callback value-offset-at(field: string, escaped: bool, columns: int, line: int, column: int) -> int;
+    // what a double click (the word at the position) or a triple click (`whole`) selects
+    callback value-selection(field: string, escaped: bool, columns: int, line: int, offset: int, whole: bool) -> LineSelection;
+    callback value-selected-text(field: string, escaped: bool, columns: int, selection: LineSelection) -> string;
     callback pretty-is-ready(field: string, escaped: bool) -> bool;
     // one row's field as pretty JSON, or as an escaped JSON string
     callback open-value(field: string, escaped: bool);
     callback download-value(field: string, escaped: bool);
     callback copy-value(field: string, escaped: bool);
+    // whether the shown key's values can be written (a hash, or a string read whole), and
+    // opening the editor on one row's field
+    in property <bool> editable: false;
+    callback edit-value(field: string);
+    // the header's + on a hash: the editor, open on a new field
+    callback add-field();
+    // reads a row's value left out for its size (see AllValuesRowData.too-long)
+    callback load-value(field: string);
     callback export-all-fields(format: ExportFormat, target: ExportTarget);
     callback copy-key-name();
     callback refresh-key();

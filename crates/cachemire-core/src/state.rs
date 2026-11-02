@@ -26,6 +26,41 @@ const DATA_FILE: &str = "databases.json";
 const KNOWN_HOSTS_FILE: &str = "ssh_known_hosts";
 const SETTINGS_FILE: &str = "settings.json";
 const HISTORY_FILE: &str = "query_history.json";
+const LOCK_FILE: &str = "cachemire.lock";
+
+/// Whether this process is the one instance saving to the data directory.
+pub enum InstanceLock {
+    /// it is, for as long as this file stays open
+    Held(std::fs::File),
+    /// another instance is running: this one must not save over its files
+    Taken,
+    /// the lock file can't be made (a read-only folder): nothing to keep apart
+    Unavailable,
+}
+
+/// Takes the data directory's instance lock, which the system releases when the
+/// process ends, however it ends.
+pub fn lock_instance() -> InstanceLock {
+    let path = resolve_data_file().with_file_name(LOCK_FILE);
+    let file = path
+        .parent()
+        .map_or(Ok(()), std::fs::create_dir_all)
+        .and_then(|()| std::fs::OpenOptions::new().create(true).truncate(false).write(true).open(&path));
+    match file {
+        Ok(file) => match file.try_lock() {
+            Ok(()) => InstanceLock::Held(file),
+            Err(std::fs::TryLockError::WouldBlock) => InstanceLock::Taken,
+            Err(std::fs::TryLockError::Error(e)) => {
+                tracing::warn!("couldn't lock {}: {e}", path.display());
+                InstanceLock::Unavailable
+            }
+        },
+        Err(e) => {
+            tracing::warn!("couldn't open {}: {e}", path.display());
+            InstanceLock::Unavailable
+        }
+    }
+}
 
 /// The directory the executable lives in: the fallback if the platform has no
 /// per-user data directory.
@@ -95,15 +130,17 @@ impl AppState {
     }
 }
 
-/// Resolves an explicit connection id if provided, otherwise falls back to
-/// whichever connection is marked active. An SSH tunnel with no username of
-/// its own comes back completed with the active SSH profile.
+/// Resolves an explicit connection id if provided (`""` being none), otherwise the
+/// connection marked active. An SSH tunnel with no username of its own comes back
+/// completed with the active SSH profile.
 pub fn resolve_connection(state: &AppState, connection_id: Option<&str>) -> Result<ConnectionItem, Error> {
     let (mut connection, cloud_key) = {
         let store = state.connections.lock();
+        // `Some("")`: a window on no connection, which never means the active one
         let connection = match connection_id {
-            Some(id) if !id.trim().is_empty() => store.get(id).ok_or_else(|| NotFound::Connection.into()),
-            _ => store.get_active(),
+            Some("") => Err(NotFound::ActiveConnection.into()),
+            Some(id) => store.get(id).ok_or_else(|| NotFound::Connection.into()),
+            None => store.get_active(),
         }?;
         let cloud_key = store.cloud_key(&connection.id);
         (connection, cloud_key)
@@ -161,7 +198,8 @@ mod tests {
         assert_eq!((ssh.username.as_str(), ssh.password.as_str()), ("deploy", "s3cret"));
 
         assert_eq!(resolve_connection(&state, None).unwrap().id, "plain");
-        assert_eq!(resolve_connection(&state, Some("  ")).unwrap().id, "plain", "a blank id is no id");
+        let blank = resolve_connection(&state, Some(""));
+        assert!(matches!(blank, Err(Error::NotFound(NotFound::ActiveConnection))), "a window on no connection never gets the active one");
         assert!(matches!(resolve_connection(&state, Some("gone")), Err(Error::NotFound(NotFound::Connection))));
         std::fs::remove_dir_all(&dir).unwrap();
     }

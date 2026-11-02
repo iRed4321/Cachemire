@@ -11,16 +11,16 @@ fn key(name: &str, entries: &[(&str, &str)]) -> KeyEntries {
 #[test]
 fn a_search_tab_id_is_never_a_key() {
     let mut tabs = SearchTabs::default();
-    let id = tabs.create();
+    let id = tabs.create(String::new());
     assert!(is_search_id(&id));
     assert!(!is_search_id("search:1"));
-    assert_ne!(id, tabs.create());
+    assert_ne!(id, tabs.create(String::new()));
     tabs.forget(&id);
 }
 
 #[test]
 fn hits_are_the_entries_that_hold_the_word_or_the_key_alone() {
-    let mut keys = 0;
+    let mut keys = FxHashSet::default();
     let rows = hits_in(
         vec![
             key("user:1", &[("name", "Ada Lovelace"), ("city", "London")]),
@@ -35,12 +35,12 @@ fn hits_are_the_entries_that_hold_the_word_or_the_key_alone() {
     );
     // Ada's name, and the key "lovely:key" (matched on its own name, without an entry)
     assert_eq!(rows.len(), 2);
-    assert_eq!(keys, 2);
+    assert_eq!(keys.len(), 2);
 }
 
 #[test]
 fn a_page_never_exceeds_the_room_left() {
-    let mut keys = 0;
+    let mut keys = FxHashSet::default();
     let entries: Vec<(String, String)> = (0..50).map(|i| (format!("f{i}"), "hit".to_string())).collect();
     let many = KeyEntries { key: "k".into(), key_type: RedisValueType::Hash, entries };
     assert_eq!(hits_in(vec![many], "hit", 10, &mut keys, &mut Longest::default()).len(), 10);
@@ -49,7 +49,13 @@ fn a_page_never_exceeds_the_room_left() {
 #[test]
 fn the_key_and_field_columns_fit_their_longest_cell_within_bounds() {
     let mut longest = Longest::default();
-    let rows = hits_in(vec![key("session:long-key-name", &[("f", "hit"), ("a-longer-field", "hit")])], "hit", 10, &mut 0, &mut longest);
+    let rows = hits_in(
+        vec![key("session:long-key-name", &[("f", "hit"), ("a-longer-field", "hit")])],
+        "hit",
+        10,
+        &mut FxHashSet::default(),
+        &mut longest,
+    );
     assert_eq!(rows.len(), 2);
     assert_eq!((longest.key, longest.field), (21, 14));
     let (key_w, field_w) = longest.widths();

@@ -18,8 +18,11 @@ use cachemire_core::error::{Error, Invalid};
 use cachemire_core::secret_vault::staged;
 use cachemire_core::settings::ConnectionProfile;
 
+mod connect;
 pub mod profiles;
 pub mod transfer;
+
+pub(crate) use connect::{connect_active, connect_active_then, connect_to, keep_active_in_step};
 
 pub(crate) fn refresh(app: &App, window: &MainWindow) {
     let state = &app.state;
@@ -90,15 +93,17 @@ pub(crate) fn refresh(app: &App, window: &MainWindow) {
 }
 
 /// Drops the connection in use and returns to "No connection": it stops being
-/// the active one, its pool closes and its tabs are dropped.
+/// the active one, its pool closes and its tabs are dropped, with the last session.
 pub(crate) fn disconnect(app: &App, window: &MainWindow) {
     let (state, rt) = (&app.state, &app.rt);
     let id = window.connection_id().to_string();
+    app.picked.borrow_mut().clear();
     if !id.is_empty() {
         app.tabs.borrow_mut().discard_on_leave();
+        crate::last_session::forget(&app.state);
     }
     if let Err(e) = state.connections.lock().clear_active() {
-        tracing::error!("disconnect failed: {e}");
+        crate::toast::show(window, &t!("Saving failed: %{error}", error = e.localized()));
         return;
     }
     if !id.is_empty() {
@@ -106,10 +111,11 @@ pub(crate) fn disconnect(app: &App, window: &MainWindow) {
         tracing::info!(connection = %id, "disconnected");
     }
     refresh(app, window);
-    crate::connect_active(window, state.clone(), rt);
+    connect_active(window, state.clone(), rt);
     let connection = window.global::<ConnectionState>();
     connection.set_view(ConnectionView { status_detail: "".into(), ..connection.get_view() });
     crate::keyspace::reload(app);
+    crate::tabs::follow_connection(app, window);
 }
 
 /// Wires the connection list, the title bar's pill and the edit form. The keyspace
@@ -119,8 +125,7 @@ pub fn init(app: &Rc<App>, window: &MainWindow) {
 
     let connection = window.global::<ConnectionState>();
     connection.on_copy_connection_string(|| crate::app::with(copy_connection_string));
-    connection
-        .on_selected(|id| crate::app::with(|app, window| crate::connect_to(window, app.state.clone(), &app.rt, id.to_string(), true)));
+    connection.on_selected(|id| crate::app::with(|app, window| connect_to(window, app.state.clone(), &app.rt, id.to_string(), true)));
     connection.on_established(|| {
         crate::app::with(|app, window| {
             refresh(app, window);
@@ -153,7 +158,7 @@ fn copy_connection_string(app: &Rc<App>, window: &MainWindow) {
     let Some(text) = app.state.connections.lock().connection_string(&id) else { return };
     match crate::value_actions::copy_to_clipboard(&text) {
         Ok(()) => crate::toast::show_copied(window),
-        Err(e) => tracing::warn!("copy failed: {e}"),
+        Err(e) => crate::toast::show(window, &t!("Copying failed: %{error}", error = e.localized())),
     }
 }
 
@@ -166,19 +171,21 @@ fn delete(app: &Rc<App>, window: &MainWindow, id: &str) {
         Ok(cleanup) => {
             // drops its pooled connections and its SSH tunnel
             state.redis_connections.invalidate(id);
+            crate::keyspace::forget(app, id);
             if let Some(cleanup) = cleanup {
                 rt.spawn_blocking(move || cleanup.run());
             }
             if let Err(e) = state.settings.lock().remove_saved_queries_of(id) {
-                tracing::error!("removing the connection's saved queries failed: {e}");
+                crate::toast::show(window, &t!("Saving failed: %{error}", error = e.localized()));
             }
             window.global::<ConnectionEditor>().set_open(false);
             refresh(app, window);
             crate::redisql::saved::refresh(window, state);
             if window.connection_id() == id {
-                // nothing is active any more, so this resets the title bar
-                crate::connect_active(window, state.clone(), rt);
+                // the connection picked is gone, so this resets the title bar
+                connect_active(window, state.clone(), rt);
                 crate::keyspace::reload(app);
+                crate::tabs::follow_connection(app, window);
             }
         }
         Err(e) => window.global::<ConnectionEditor>().set_error(e.localized().into()),
@@ -199,7 +206,7 @@ fn test_form(app: &Rc<App>, window: &MainWindow, form: &ConnectionForm) {
     };
     editor.set_testing(true);
     let (state, id) = (app.state.clone(), form.id.to_string());
-    app.rt.spawn(async move {
+    let test = async move {
         let building = state.clone();
         let built = tokio::task::spawn_blocking(move || {
             staged(&building.connections, |store| {
@@ -210,16 +217,17 @@ fn test_form(app: &Rc<App>, window: &MainWindow, form: &ConnectionForm) {
         .await
         .map_err(Error::from)
         .flatten();
-        let outcome = match built {
+        match built {
             Ok(connection) => cachemire_core::connection::test_connection(&state, connection).await,
             Err(e) => Err(e),
-        };
-        crate::app::later(move |_, window| {
-            let editor = window.global::<ConnectionEditor>();
-            editor.set_testing(false);
-            editor.set_test_ok(outcome.is_ok());
-            editor.set_test_status(outcome.map_or_else(|e| e.localized(), |()| t!("Connection successful.").into_owned()).into());
-        });
+        }
+    };
+    crate::app::spawn(&app.rt, test, |_, window, outcome| {
+        let outcome = outcome.flatten();
+        let editor = window.global::<ConnectionEditor>();
+        editor.set_testing(false);
+        editor.set_test_ok(outcome.is_ok());
+        editor.set_test_status(outcome.map_or_else(|e| e.localized(), |()| t!("Connection successful.").into_owned()).into());
     });
 }
 
@@ -246,6 +254,8 @@ fn save_form(app: &Rc<App>, window: &MainWindow, form: &ConnectionForm) {
         }
         crate::app::later(move |app, window| match result {
             Ok(_) => {
+                // a connection created is made the active one in the store: the one in use stays
+                keep_active_in_step(app, window);
                 window.global::<ConnectionEditor>().set_error("".into());
                 window.global::<ConnectionEditor>().set_open(false);
                 refresh(app, window);

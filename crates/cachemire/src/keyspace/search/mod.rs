@@ -76,7 +76,7 @@ fn class_match(pattern: &[u8], open: usize, c: u8) -> Option<usize> {
 }
 
 /// Whether key `id` matches glob `pattern` (matched on the key's bytes).
-fn id_matches(pattern: &[u8], id: &str) -> bool {
+pub(super) fn id_matches(pattern: &[u8], id: &str) -> bool {
     if id.contains('\\') { glob_match(pattern, KeyName::from_id(id).as_bytes()) } else { glob_match(pattern, id.as_bytes()) }
 }
 

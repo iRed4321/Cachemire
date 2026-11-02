@@ -17,7 +17,7 @@ fn tabs_ready() -> (Harness, Rc<crate::app::App>, tokio::runtime::Runtime, Event
 /// Makes `id` the connection shown, as a connect does.
 fn connect_to(h: &Harness, id: &str) {
     h.window.global::<ConnectionState>().set_view(ConnectionView { connected: true, connection_id: id.into(), ..Default::default() });
-    h.window.global::<ConnectionState>().invoke_switched();
+    crate::app::with(|app, window| crate::tabs::follow_connection(app, window));
 }
 
 /// The tab bar's tabs, by id, and which one is active.

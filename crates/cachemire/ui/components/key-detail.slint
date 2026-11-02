@@ -1,9 +1,9 @@
 import { Theme } from "theme.slint";
 import { ExportFormat, ExportTarget, KeyView, SearchScope } from "types.slint";
 import { IconButton } from "widgets.slint";
-import { IconCopy, IconRefresh, IconChevron, IconHash } from "icons.slint";
+import { IconCopy, IconRefresh, IconChevron, IconHash, IconPlus } from "icons.slint";
 import { ExportGroup, ExportButton, SearchField, ViewSwitcher, ViewOption, ScopeSwitch, SearchBadge, SuggestionPopup } from "key-detail-widgets.slint";
-import { KeyScroll, ExportPrefs, AllValuesRowData, TableRowData, FindResult, SelectionRange, SuggestionRow, CompletionEdit, BadgeData } from "key-detail-types.slint";
+import { KeyScroll, ExportPrefs, AllValuesRowData, TableRowData, FindResult, LineSelection, ValueLine, SuggestionRow, CompletionEdit, BadgeData } from "key-detail-types.slint";
 import { AllValuesTable } from "key-detail-values.slint";
 import { TableView } from "key-detail-table.slint";
 import { TabStrip, KeyPanel, KeyTree } from "../globals.slint";
@@ -11,7 +11,7 @@ import { TabStrip, KeyPanel, KeyTree } from "../globals.slint";
 // re-exported so main.slint (and anything else importing "key-detail.slint",
 // the historical entry point) keeps seeing these here, though they now live
 // in key-detail-types.slint alongside the row/table components that share them
-export { KeyScroll, ExportPrefs, AllValuesRowData, FindResult, SelectionRange, TableRowData, SuggestionRow, CompletionEdit, BadgeData }
+export { KeyScroll, ExportPrefs, AllValuesRowData, FindResult, LineSelection, ValueLine, TableRowData, SuggestionRow, CompletionEdit, BadgeData }
 
 export component KeyDetail inherits Rectangle {
     // transparent: sits inside the main FloatingCard, which already paints
@@ -277,6 +277,13 @@ export component KeyDetail inherits Rectangle {
                             removed => { root.filter-badge-removed(badge.text, badge.scope); }
                         }
                     }
+                    // a new field of the hash, in the value editor
+                    if loaded && !root.query-mode && KeyPanel.editable && root.badge == "HASH": IconButton {
+                        box-size: Theme.px(32px);
+                        hint: @tr("Add a field");
+                        clicked => { KeyPanel.add-field(); }
+                        IconPlus { size: Theme.icon-sm; tint: Theme.text-tertiary; }
+                    }
                     // The table's ticked rows, once there are any: how many, and the
                     // export pill, working on them as one JSON array. In this row, at
                     // the pills' own height, so ticking a row moves nothing below it.
@@ -494,6 +501,7 @@ export component KeyDetail inherits Rectangle {
             clear-selection => { root.table-clear-selection(); }
             select-range(from, to) => { root.table-select-range(from, to); }
             context-requested(x, y, selected) => { root.context-requested(x, y, selected); }
+            cell-copy-requested(row, column) => { KeyPanel.copy-table-cell(row, column); }
             near-end => { root.near-end(); }
         }
         if root.loaded && root.view == KeyView.fields: AllValuesTable {

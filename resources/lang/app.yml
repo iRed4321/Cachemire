@@ -3,10 +3,61 @@
 # has no entry. The messages in the .slint files are in */LC_MESSAGES/cachemire.po.
 _version: 2
 
+# a second launch while the app is already open
+"Cachemire is already running.":
+  fr: "Cachemire est déjà ouvert."
 "Copied":
   fr: "Copié"
 "Refreshed":
   fr: "Actualisé"
+# in a value, in place of a string too long to show
+"[REDACTED: string too long]":
+  fr: "[MASQUÉ : chaîne trop longue]"
+# the value editor
+"Not valid JSON: line %{line}, column %{column}":
+  fr: "JSON invalide : ligne %{line}, colonne %{column}"
+"Saving failed: %{error}":
+  fr: "Échec de l'enregistrement : %{error}"
+"Saved":
+  fr: "Enregistré"
+"Deleted":
+  fr: "Supprimé"
+"A field needs a name":
+  fr: "Un champ doit avoir un nom"
+"This hash already has a field with this name":
+  fr: "Ce hash a déjà un champ de ce nom"
+"This value isn't UTF-8 text: it can't be edited here":
+  fr: "Cette valeur n'est pas du texte UTF-8 : elle ne peut pas être modifiée ici"
+# the keyspace's right-click menu: a new key, renaming or deleting a key or a folder
+"A key needs a name":
+  fr: "Une clé doit avoir un nom"
+"A key name can't end with ':'":
+  fr: "Le nom d'une clé ne peut pas finir par ':'"
+"A key with this name already exists":
+  fr: "Une clé de ce nom existe déjà"
+"A folder needs a name":
+  fr: "Un dossier doit avoir un nom"
+"The key %{name} already exists":
+  fr: "La clé %{name} existe déjà"
+"Creating failed: %{error}":
+  fr: "Échec de la création : %{error}"
+"Renaming failed: %{error}":
+  fr: "Échec du renommage : %{error}"
+"Deleting failed: %{error}":
+  fr: "Échec de la suppression : %{error}"
+"Renamed":
+  fr: "Renommé"
+"%{count} keys deleted":
+  fr: "%{count} clés supprimées"
+# a value-list row's "Try to load", reading a value left out for its size
+"This field no longer exists":
+  fr: "Ce champ n'existe plus"
+"Loading failed: %{error}":
+  fr: "Échec du chargement : %{error}"
+"Copying failed: %{error}":
+  fr: "Échec de la copie : %{error}"
+"Opening failed: %{error}":
+  fr: "Échec de l'ouverture : %{error}"
 # the key tree's export
 "Choose a folder...":
   fr: "Choisissez un dossier..."
@@ -16,6 +67,8 @@ _version: 2
   fr: "Export de %{done} sur %{total}..."
 "Exported %{count} keys":
   fr: "%{count} clés exportées"
+"Exported %{count} keys, %{skipped} left out that couldn't be read":
+  fr: "%{count} clés exportées, %{skipped} laissées de côté car illisibles"
 "Export cancelled":
   fr: "Export annulé"
 "Export failed: %{error}":
@@ -220,6 +273,8 @@ _version: 2
   fr: "%{count} lignes"
 "%{shown} rows shown (more matched; raise LIMIT to see them)":
   fr: "%{shown} lignes affichées (davantage correspondaient ; augmentez LIMIT pour les voir)"
+"%{shown} rows shown (more matched; a query shows %{max} at most)":
+  fr: "%{shown} lignes affichées (davantage correspondaient ; une requête en affiche %{max} au plus)"
 "The query is empty.":
   fr: "La requête est vide."
 "Unterminated quote: %{text}":

@@ -247,6 +247,10 @@ export component SettingsModal inherits Rectangle {
     in property <bool> check-updates-at-startup: Preferences.check-updates-at-startup;
     callback check-updates-at-startup-toggled(enabled: bool);
     check-updates-at-startup-toggled(enabled) => { Preferences.check-updates-at-startup-toggled(enabled); }
+    // reopens the last connection with its tabs and open folders at startup
+    in property <bool> restore-session: Preferences.restore-session;
+    callback restore-session-toggled(enabled: bool);
+    restore-session-toggled(enabled) => { Preferences.restore-session-toggled(enabled); }
     // the form is showing instead of the list
     in-out property <bool> editing <=> Preferences.ssh-profile-editing;
     in-out property <string> field-id <=> Preferences.ssh-profile-id;
@@ -403,10 +407,22 @@ export component SettingsModal inherits Rectangle {
                     VerticalLayout {
                         spacing: Theme.px(4px);
                         Text {
-                            text: @tr("Updates");
+                            text: @tr("Startup");
                             font-size: Theme.pt(12px);
                             font-weight: 600;
                             color: Theme.text-primary;
+                        }
+                        CheckRow {
+                            text: @tr("Restore the last connection");
+                            checked: root.restore-session;
+                            toggled => { root.restore-session-toggled(!root.restore-session); }
+                        }
+                        Text {
+                            text: @tr("Cachemire reconnects to the connection it was closed on, with its tabs and open folders. An AWS connection signs in again first, in the browser if its session has expired.");
+                            height: Theme.pt(42px);
+                            font-size: Theme.pt(10.5px);
+                            color: Theme.text-tertiary;
+                            wrap: word-wrap;
                         }
                         CheckRow {
                             text: @tr("Check for Updates at startup");

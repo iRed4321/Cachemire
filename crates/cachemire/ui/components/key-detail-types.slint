@@ -48,8 +48,10 @@ export struct AllValuesRowData {
     value-compact: styled-text, // single line, colored, no indentation
     value-compact-escaped: styled-text, // the same, escaped into a JSON string
     // the value's size when it was too big to be read with the page ("" otherwise):
-    // the row then shows that instead, with buttons that read it to open, save or copy
+    // the row then shows that instead, with buttons that read it to open, save or copy,
+    // or to show it (`loading` while it is read)
     too-long: string,
+    loading: bool,
     // whether this row should open right away — Rust sets this from the tab's
     // saved set of expanded fields (see KeyScroll.all-values-expanded) when it
     // builds the rows, so a tab switched back to reopens what was open
@@ -72,9 +74,19 @@ export struct CompletionEdit {
 }
 
 // a range of a value's text to select, in bytes (a negative start: nothing)
-export struct SelectionRange {
-    start: int,
-    end: int,
+// a selection in an open row's text, from a line and byte offset in it to another
+// (`start-line` -1: none)
+export struct LineSelection {
+    start-line: int,
+    start-offset: int,
+    end-line: int,
+    end-offset: int,
+}
+
+// one line of an open row's text as drawn, and its length in bytes
+export struct ValueLine {
+    text: styled-text,
+    len: int,
 }
 
 export struct FindResult {

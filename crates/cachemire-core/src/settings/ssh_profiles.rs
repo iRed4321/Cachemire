@@ -106,12 +106,13 @@ impl SettingsStore {
         if let Some(password) = new_password {
             profile.password = password.to_string();
         }
-        self.commit(next, true)?;
-        if new_password.is_some() {
-            // the new password is what's in memory now
-            self.unloaded.remove(id);
+        // a new password is loaded as of now, so the commit stores it in the vault
+        let was_unloaded = new_password.is_some() && self.unloaded.remove(id);
+        let committed = self.commit(next, true);
+        if committed.is_err() && was_unloaded {
+            self.unloaded.insert(id.to_string());
         }
-        Ok(())
+        committed
     }
 
     /// Removes a profile (and stops it being the active one). What it had in the

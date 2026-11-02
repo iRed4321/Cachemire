@@ -15,14 +15,13 @@ use crate::{KeyPanel, MainWindow, TableRowData};
 use slint::ComponentHandle;
 
 use super::color::color_for_kind;
-use super::field::Field;
+use super::field::{Field, Fields};
 use super::highlight::{head_chars, highlight_needle_matches};
-use super::pretty_text::{ColoredParagraph, colored_paragraphs_for};
+use super::pretty_text::{ColoredParagraph, MAX_SHOWN_STRING_BYTES, colored_paragraphs_for};
+use super::search_filter::SearchFilter;
 
 /// How many rows decide the columns: the first ones that are JSON objects.
-const TABLE_SAMPLE: usize = 10;
-/// A value with hundreds of keys would mean hundreds of columns of cells.
-const MAX_TABLE_COLUMNS: usize = 30;
+const TABLE_SAMPLE: usize = 100;
 /// Rows a table shows at most: a filter that opens up arrays can produce far
 /// more than are worth building cells for.
 pub(super) const MAX_TABLE_ROWS: usize = 3000;
@@ -65,6 +64,12 @@ impl TableData {
             note: String::new(),
         }
     }
+}
+
+/// The fields a table is made of: those of `fields` the search bar's badges in `filter` leave.
+/// The table and every export of its rows go through here, so their row indices agree.
+pub(super) fn table_fields(fields: &[Arc<Field>], filter: &SearchFilter) -> Fields {
+    fields.par_iter().filter(|f| filter.matches(f)).cloned().collect()
 }
 
 /// One table row before its cells exist: the field it came from, and the value
@@ -245,17 +250,16 @@ fn table_columns(rows: &[TableSourceRow]) -> Vec<Column> {
     for object in objects.take(TABLE_SAMPLE - 1) {
         keys.retain(|key| object.contains_key(key));
     }
-    keys.truncate(MAX_TABLE_COLUMNS);
     keys.into_iter().map(Column::Key).collect()
 }
 
-/// One cell, always a single line: strings in the string color (line breaks become
-/// spaces), numbers and booleans as in the value view, nested values as compact
-/// colored JSON; the search badges' matches are highlighted.
+/// One cell, always a single line: strings in the string color (line breaks become spaces,
+/// one too long to show a placeholder), numbers and booleans as in the value view, nested
+/// values as compact colored JSON; the search badges' matches are highlighted.
 fn table_cell_text(value: Option<&Value>, needles: &[String], case_sensitive: bool) -> StyledText {
     let paragraphs: Vec<ColoredParagraph> = match value {
         None => vec![(String::new(), Vec::new())],
-        Some(Value::String(text)) => {
+        Some(Value::String(text)) if text.len() <= MAX_SHOWN_STRING_BYTES => {
             let line: String = head_chars(text, TABLE_CELL_BUDGET).replace(['\n', '\r'], " ");
             let spans = color_for_kind("string").map(|color| vec![(0..line.len(), color)]).unwrap_or_default();
             vec![(line, spans)]
@@ -326,11 +330,12 @@ fn column_sizes(mut lengths: Vec<usize>, title_width: f32) -> (f32, f32) {
     (width, (wanted - width).max(0.0))
 }
 
-/// The table `fields` make (same columns as [`build_table`]) as CSV: every
-/// row, not just [`MAX_TABLE_ROWS`] — or, with `only`, just those indices,
-/// in order. Rows are in `sort`'s order. Empty when there's nothing to tabulate.
-pub(super) fn table_csv(fields: &[Arc<Field>], only: Option<&[usize]>, sort: Option<TableSort>) -> String {
+/// The table `fields` make (as [`build_table`] does, values from `full`) as CSV: every row,
+/// not just [`MAX_TABLE_ROWS`], or with `only` just those indices, in order. Rows are in
+/// `sort`'s order. Empty when there's nothing to tabulate.
+pub(super) fn table_csv(fields: &[Arc<Field>], full: &[Arc<Field>], only: Option<&[usize]>, sort: Option<TableSort>) -> String {
     let TableLayout { rows, columns, .. } = table_layout(fields, sort);
+    let rows = with_full_rows(rows, fields, full);
     if columns.is_empty() {
         return String::new();
     }
@@ -346,6 +351,18 @@ pub(super) fn table_csv(fields: &[Arc<Field>], only: Option<&[usize]>, sort: Opt
     out
 }
 
+/// `rows` of the table over `shown`, with the values of the fields left out for their size
+/// taken from `full` (`shown`, in the same order, with those read in full): each still the
+/// one row the table shows, so the rows keep their places.
+fn with_full_rows<'a>(mut rows: Vec<TableSourceRow<'a>>, shown: &'a [Arc<Field>], full: &'a [Arc<Field>]) -> Vec<TableSourceRow<'a>> {
+    for row in rows.iter_mut().filter(|(field, _)| field.too_long.is_some()) {
+        if let Some(field) = shown.iter().position(|f| std::ptr::eq(&**f, row.0)).and_then(|i| full.get(i)) {
+            *row = (field, field.json.as_ref());
+        }
+    }
+    rows
+}
+
 /// A table row as JSON, for copying: the row's value, or a non-JSON field's text.
 fn table_row_json(row: &TableSourceRow) -> Value {
     match row {
@@ -354,12 +371,41 @@ fn table_row_json(row: &TableSourceRow) -> Value {
     }
 }
 
-/// The rows at `indices` of the table `fields` make (the same order the table
-/// shows them in, per `sort`), each as its JSON, in one array — the "copy selection" text.
-pub(super) fn selected_rows_json(fields: &[Arc<Field>], indices: &[usize], sort: Option<TableSort>) -> Value {
+/// The rows at `indices` of the table `fields` make (in the order the table shows them, per
+/// `sort`; values from `full`), each as its JSON, in one array — the "copy selection" text.
+pub(super) fn selected_rows_json(fields: &[Arc<Field>], full: &[Arc<Field>], indices: &[usize], sort: Option<TableSort>) -> Value {
     let TableLayout { mut rows, .. } = table_layout(fields, sort);
     rows.truncate(MAX_TABLE_ROWS);
+    let rows = with_full_rows(rows, fields, full);
     Value::Array(indices.iter().filter_map(|&i| rows.get(i)).map(table_row_json).collect())
+}
+
+/// The cell at `row` and `column` (0 is "Field") of the table `fields` make, in `sort`'s
+/// order, as text: the field's name, or the cell's value whole (see [`cell_text`]) from `full`.
+pub(super) fn table_cell_copy_text(
+    fields: &[Arc<Field>],
+    full: &[Arc<Field>],
+    row: usize,
+    column: usize,
+    sort: Option<TableSort>,
+) -> Option<String> {
+    let TableLayout { rows, columns, .. } = table_layout(fields, sort);
+    let rows = with_full_rows(rows, fields, full);
+    let (field, value) = *rows.get(row)?;
+    match column.checked_sub(1) {
+        None => Some(field.name.clone()),
+        Some(i) => Some(cell_text(columns.get(i)?.cell(value))),
+    }
+}
+
+/// The name of the field left out for its size whose value the cell at `row` and `column`
+/// of the table `fields` make (in `sort`'s order) shows, if it is one; never for "Field".
+pub(super) fn table_cell_left_out(fields: &[Arc<Field>], row: usize, column: usize, sort: Option<TableSort>) -> Option<String> {
+    if column == 0 {
+        return None;
+    }
+    let TableLayout { rows, .. } = table_layout(fields, sort);
+    rows.get(row).map(|(field, _)| *field).filter(|field| field.too_long.is_some()).map(|field| field.name.clone())
 }
 
 pub(super) fn apply_table(window: &MainWindow, table: TableData) {

@@ -123,6 +123,7 @@ fn an_update_found_at_startup_opens_the_info_window_with_its_button() {
         version: semver::Version::new(9, 9, 9),
         page: "https://example.invalid/r".into(),
         installer: Some("https://example.invalid/i.msi".into()),
+        installer_sha256: None,
     };
     crate::updates::show_found(&about, release.clone(), true);
     h.frame();
@@ -144,7 +145,7 @@ fn an_update_found_by_the_button_doesnt_open_a_closed_window() {
     let (h, _rt, _) = info_window(&test_state());
     let about = h.window.global::<About>();
     about.set_open(false);
-    let release = Release { version: semver::Version::new(9, 9, 9), page: String::new(), installer: None };
+    let release = Release { version: semver::Version::new(9, 9, 9), page: String::new(), installer: None, installer_sha256: None };
     crate::updates::show_found(&about, release, false);
     assert!(!about.get_open());
     assert!(about.get_update_available(), "it is offered the next time the window opens");

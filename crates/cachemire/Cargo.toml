@@ -40,6 +40,10 @@ russh.workspace = true
 [build-dependencies]
 slint-build = { git = "https://github.com/iRed4321/SlintFork.git", rev = "8212a4db5a7d6acb8252f93955319e782cc4f733" }
 
+# a message to the window that clears winit's drag latch (see drag_latch.rs)
+[target.'cfg(windows)'.dependencies]
+windows-sys = { version = "0.52", features = ["Win32_Foundation", "Win32_UI_WindowsAndMessaging"] }
+
 # embeds resources/icon.ico (+ version info) into the Windows executable
 [target.'cfg(windows)'.build-dependencies]
 winresource = "0.1"

@@ -1,0 +1,128 @@
+import { Theme } from "theme.slint";
+import { ModalButton } from "widgets.slint";
+import { ConnectionModalField } from "connection-picker.slint";
+
+// What the name dialog is for: a new key, or a new name for a key or a folder.
+export enum KeyNameAction {
+    add,
+    rename-key,
+    rename-folder,
+}
+
+// The name dialog of the keyspace's right-click menu. Rust fills it in and answers
+// `submit` (see src/keyspace/edit.rs), closing it once done or setting `error`.
+export global KeyNameDialog {
+    in-out property <bool> open: false;
+    in property <KeyNameAction> action: KeyNameAction.add;
+    // the name of the key or folder renamed, as it reads ("" for a new key)
+    in property <string> original;
+    in-out property <string> text;
+    in-out property <string> error: "";
+    in property <bool> busy: false;
+    callback submit(text: string);
+}
+
+// Over the whole window; a click outside the card closes it, nothing done.
+export component KeyNameModal inherits Rectangle {
+    callback clipboard-has-text() -> bool;
+
+    function submit() {
+        if !KeyNameDialog.busy {
+            KeyNameDialog.submit(KeyNameDialog.text);
+        }
+    }
+    // a failed attempt's reason goes with the next change to the name
+    property <string> edited: KeyNameDialog.text;
+    changed edited => { KeyNameDialog.error = ""; }
+
+    background: #000000aa;
+    TouchArea {
+        clicked => { KeyNameDialog.open = false; }
+    }
+
+    card := Rectangle {
+        width: min(parent.width - Theme.px(80px), Theme.px(460px));
+        height: layout.preferred-height;
+        x: (parent.width - self.width) / 2;
+        y: (parent.height - self.height) / 2;
+        background: Theme.bg-elevated;
+        border-radius: Theme.radius-lg;
+        border-width: 1px;
+        border-color: Theme.border-soft;
+        drop-shadow-color: Theme.shadow-color;
+        drop-shadow-blur: Theme.shadow-blur;
+        drop-shadow-offset-y: Theme.shadow-offset-y;
+
+        // swallow clicks so they don't reach the backdrop's close
+        TouchArea { }
+
+        FocusScope {
+            focus-on-click: false;
+            key-pressed(event) => {
+                if event.text == Key.Escape {
+                    KeyNameDialog.open = false;
+                    return accept;
+                }
+                return reject;
+            }
+            layout := VerticalLayout {
+                padding: Theme.px(18px);
+                spacing: Theme.px(12px);
+
+                Text {
+                    text: KeyNameDialog.action == KeyNameAction.add ? @tr("New key")
+                        : (KeyNameDialog.action == KeyNameAction.rename-key ? @tr("Rename key") : @tr("Rename folder"));
+                    font-size: Theme.pt(14px);
+                    font-weight: 700;
+                    color: Theme.text-primary;
+                }
+                if KeyNameDialog.original != "": Text {
+                    text: KeyNameDialog.original;
+                    font-size: Theme.pt(12px);
+                    font-family: Theme.font-mono;
+                    color: Theme.text-secondary;
+                    overflow: elide;
+                }
+                field := ConnectionModalField {
+                    label: KeyNameDialog.action == KeyNameAction.rename-folder ? @tr("New folder name") : @tr("Key name");
+                    text <=> KeyNameDialog.text;
+                    clipboard-has-text() => { return root.clipboard-has-text(); }
+                    accepted => { root.submit(); }
+                    init => { self.focus-all(); }
+                }
+                Text {
+                    text: KeyNameDialog.action == KeyNameAction.add
+                        ? @tr("A \":\" in the name puts the key in that folder. It is a hash, stored by Redis once its first field is added.")
+                        : (KeyNameDialog.action == KeyNameAction.rename-folder ? @tr("Every key in the folder is renamed, its subfolders' too.") : "");
+                    visible: self.text != "";
+                    font-size: Theme.pt(10.5px);
+                    color: Theme.text-tertiary;
+                    wrap: word-wrap;
+                }
+
+                HorizontalLayout {
+                    spacing: Theme.px(8px);
+                    Text {
+                        horizontal-stretch: 1;
+                        text: KeyNameDialog.error;
+                        font-size: Theme.pt(12px);
+                        color: Theme.accent-red;
+                        vertical-alignment: center;
+                        wrap: word-wrap;
+                    }
+                    ModalButton {
+                        text: @tr("Cancel");
+                        clicked => { KeyNameDialog.open = false; }
+                    }
+                    ModalButton {
+                        text: KeyNameDialog.busy ? @tr("Saving...")
+                            : (KeyNameDialog.action == KeyNameAction.add ? @tr("Create") : @tr("Rename"));
+                        primary: true;
+                        enabled: !KeyNameDialog.busy && KeyNameDialog.text != "";
+                        clicked => { root.submit(); }
+                    }
+                }
+            }
+        }
+    }
+}

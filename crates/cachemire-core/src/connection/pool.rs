@@ -12,13 +12,16 @@ use tokio::task::JoinSet;
 use crate::connection::ConnectionItem;
 use crate::connection::client::{create_connection, target_of};
 use crate::connection::ssh_tunnel::SshTunnel;
-use crate::error::Error;
+use crate::error::{Error, Timeout};
 use crate::session::{Session, cluster_enabled, ping};
 
-/// Physical connections kept per saved connection id. Redis serves one
-/// connection's commands strictly in order, so a single shared connection
-/// lets a big reply head-of-line-block everything queued behind it.
+/// Physical connections kept per saved connection id: the first for long reads, the
+/// others for what clicks ask. Redis serves one connection's commands strictly in
+/// order, so a big reply on a shared one would hold up everything queued behind it.
 const POOL_SIZE: usize = 3;
+
+/// Opening a pool (its SSH tunnel, then its connections) must finish within this.
+const OPEN_TIMEOUT: Duration = Duration::from_secs(30);
 
 /// A pooled connection: a cheap-to-clone handle that reopens its socket
 /// when it drops (see `create_connection`).
@@ -69,9 +72,27 @@ impl ConnectionPool {
         Ok(Self { connections, next: AtomicUsize::new(0), hscan_novalues: AtomicBool::new(true), _tunnel: tunnel })
     }
 
+    /// False once its SSH tunnel is down: its connections can't reach the server again.
+    fn is_alive(&self) -> bool {
+        self._tunnel.as_ref().is_none_or(SshTunnel::is_alive)
+    }
+
+    /// [`ConnectionPool::open`] within [`OPEN_TIMEOUT`].
+    async fn open_in_time(connection: &ConnectionItem, known_hosts: &Path) -> Result<Self, Error> {
+        tokio::time::timeout(OPEN_TIMEOUT, Self::open(connection, known_hosts))
+            .await
+            .map_err(|_| Timeout::Connect { seconds: OPEN_TIMEOUT.as_secs() })?
+    }
+
+    /// The next connection for a short read or write, in turn.
     pub(crate) fn pick(&self) -> RedisConnection {
-        let index = self.next.fetch_add(1, Ordering::Relaxed) % self.connections.len();
+        let index = 1 + self.next.fetch_add(1, Ordering::Relaxed) % (self.connections.len() - 1);
         self.connections[index].clone()
+    }
+
+    /// The connection for long reads (the walk, searches, exports, queries).
+    pub(crate) fn background(&self) -> RedisConnection {
+        self.connections[0].clone()
     }
 }
 
@@ -91,10 +112,20 @@ impl ConnectionCache {
         Self { entries: Mutex::new(FxHashMap::default()), known_hosts }
     }
 
-    /// The connection's pool, opened on first use (see `Session::open`).
+    /// The connection's pool, opened on first use (see `Session::open`), and opened
+    /// again once its SSH tunnel is down.
     pub(crate) async fn pool(&self, connection: &ConnectionItem) -> Result<Arc<ConnectionPool>, Error> {
-        let cell = self.entries.lock().entry(connection.id.clone()).or_default().clone();
-        let pool = cell.get_or_try_init(|| async { ConnectionPool::open(connection, &self.known_hosts).await.map(Arc::new) }).await?;
+        let cell = {
+            let mut entries = self.entries.lock();
+            let cell = entries.entry(connection.id.clone()).or_default();
+            if cell.get().is_some_and(|pool| !pool.is_alive()) {
+                tracing::info!(name = %connection.name, "the SSH tunnel is down; opening it again");
+                *cell = Arc::default();
+            }
+            cell.clone()
+        };
+        let pool =
+            cell.get_or_try_init(|| async { ConnectionPool::open_in_time(connection, &self.known_hosts).await.map(Arc::new) }).await?;
         Ok(pool.clone())
     }
 
@@ -125,7 +156,7 @@ impl ConnectionCache {
 
     /// Opens the connection (through its SSH tunnel, if any) and pings it, keeping nothing.
     pub async fn test(&self, connection: &ConnectionItem) -> Result<(), Error> {
-        let pool = ConnectionPool::open(connection, &self.known_hosts).await?;
+        let pool = ConnectionPool::open_in_time(connection, &self.known_hosts).await?;
         Session::on(Arc::new(pool)).ping().await
     }
 

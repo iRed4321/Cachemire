@@ -11,8 +11,8 @@ use crate::key_detail::{ScrollPos, current_expanded_fields, current_scroll, rest
 use crate::redisql;
 use crate::search;
 use crate::{
-    AllValuesRowData, BadgeData, ConnectionState, ExportPrefs, KeyPanel, KeyTree, KeyView, MainWindow, Preferences, SavedQueries,
-    SearchScope, SearchTab, TabData, TabStrip,
+    AllValuesRowData, BadgeData, ExportPrefs, KeyPanel, KeyTree, KeyView, MainWindow, Preferences, SavedQueries, SearchScope, SearchTab,
+    TabData, TabStrip,
 };
 use cachemire_core::key_name::KeyName;
 use rust_i18n::t;
@@ -123,6 +123,13 @@ impl Tabs {
     /// The next connection change drops the tabs of the one it leaves.
     pub fn discard_on_leave(&mut self) {
         self.discard_on_leave = true;
+    }
+
+    /// Keeps `open` as the tabs of `connection`, shown once it is switched to.
+    pub fn park(&mut self, connection: &str, open: Vec<String>, active: Option<String>) {
+        if !open.is_empty() {
+            self.parked.insert(connection.to_string(), ParkedTabs { open, active, view_state: FxHashMap::default() });
+        }
     }
 
     /// Hides the current connection's tabs and brings back those of
@@ -353,10 +360,54 @@ pub fn select_key(app: &App, key: String) {
     show_tab(app, &window, key, scroll, reuse);
 }
 
+/// The tabs of the connection shown, in order, and the active one; the box of a
+/// search or query tab shown is read into its tab first.
+pub fn open_tabs(app: &App, window: &MainWindow) -> (Vec<String>, Option<String>) {
+    let tabs = app.tabs.borrow();
+    if let Some(active) = tabs.active.as_deref() {
+        leave_special(app, window, active);
+    }
+    (tabs.open.clone(), tabs.active.clone())
+}
+
+/// Keys renamed on the server, as (old id, new id): their tabs follow them, and the
+/// one shown is read again under its new name.
+pub fn rename_keys(app: &App, window: &MainWindow, moves: &[(String, String)]) {
+    let reload = {
+        let mut tabs = app.tabs.borrow_mut();
+        let mut reload = None;
+        for (old, new) in moves {
+            let Some(pos) = tabs.open.iter().position(|k| k == old) else { continue };
+            tabs.open[pos].clone_from(new);
+            if let Some(state) = tabs.view_state.remove(old) {
+                tabs.view_state.insert(new.clone(), state);
+            }
+            if tabs.active.as_deref() == Some(old.as_str()) {
+                tabs.active = Some(new.clone());
+                reload = Some(new.clone());
+            }
+            app.key_detail.forget(window.connection_id().as_str(), Some(old));
+        }
+        render(window, &tabs);
+        reload
+    };
+    if let Some(key) = reload {
+        app.key_detail.load(key, crate::key_detail::current_scroll(window), false);
+    }
+}
+
+/// Keys deleted on the server, picked by `gone`: their tabs close.
+pub fn close_keys(app: &App, window: &MainWindow, gone: impl Fn(&str) -> bool) {
+    let closing: Vec<String> = app.tabs.borrow().open.iter().filter(|k| special_kind(k).is_none() && gone(k)).cloned().collect();
+    for key in closing {
+        on_tab_closed(app, window, key);
+    }
+}
+
 /// "New search": a search tab, opened and shown.
 pub fn open_search(app: &App) {
     let Some(window) = app.window.upgrade() else { return };
-    let id = app.searches.borrow_mut().create();
+    let id = app.searches.borrow_mut().create(String::new());
     open_new_tab(app, &window, &id);
     app.searches.borrow_mut().enter(&window, &id);
 }
@@ -373,7 +424,7 @@ pub fn open_query(app: &App, text: String) {
 /// Each connection has its own tabs: switching hides the ones on screen and
 /// shows the new connection's (a failed connect or a delete leaves no
 /// connection, so nothing shows). The key panel follows the active tab.
-fn on_connection_changed(app: &App, window: &MainWindow) {
+pub(crate) fn follow_connection(app: &App, window: &MainWindow) {
     let state = &app.state;
     let connection = window.connection_id().to_string();
     crate::redisql::saved::refresh(window, state);
@@ -496,8 +547,6 @@ pub fn init(app: &Rc<App>, window: &MainWindow) {
         }
     }
 
-    let changed = on(app, |app, window, ()| on_connection_changed(app, window));
-    window.global::<ConnectionState>().on_switched(move || changed(()));
     let new_search = on(app, |app, _, ()| open_search(app));
     window.global::<TabStrip>().on_new_search_clicked(move || new_search(()));
     let new_query = on(app, |app, _, ()| open_query(app, String::new()));

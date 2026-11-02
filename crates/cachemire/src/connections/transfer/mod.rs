@@ -297,7 +297,7 @@ fn run_import(app: &Rc<App>, window: &MainWindow) {
     }
     global.set_busy(true);
     let state = app.state.clone();
-    app.rt.spawn_blocking(move || {
+    let import = move || {
         // the names are chosen once, so the rehearsal and the real run save the same thing
         let mut taken: FxHashSet<String> =
             state.connections.lock().list_state().connections.iter().map(|c| c.name.to_lowercase()).collect();
@@ -310,23 +310,23 @@ fn run_import(app: &Rc<App>, window: &MainWindow) {
             .collect();
         let result =
             staged(&state.connections, |store| items.iter().try_for_each(|(id, payload)| store.import_with_id(id, payload.clone())));
-        let count = items.len();
-        tracing::info!(count, ok = result.is_ok(), "imported connections");
-        crate::app::later(move |app, window| {
-            window.global::<ConnectionTransfer>().set_busy(false);
-            match result {
-                Ok(()) => {
-                    app.transfer.borrow_mut().drafts.clear();
-                    let global = window.global::<ConnectionTransfer>();
-                    global.set_import_rows(ModelRc::new(VecModel::from(Vec::<TransferRow>::new())));
-                    global.set_import_file("".into());
-                    refresh_counts(window);
-                    crate::connections::refresh(app, window);
-                    set_message(window, t!("Imported %{count} connection(s).", count = count).into_owned(), true);
-                }
-                Err(e) => set_message(window, e.localized(), false),
+        tracing::info!(count = items.len(), ok = result.is_ok(), "imported connections");
+        result.map(|()| items.len())
+    };
+    crate::app::spawn_blocking(&app.rt, import, |app, window, imported| {
+        window.global::<ConnectionTransfer>().set_busy(false);
+        match imported.map_err(Error::from).and_then(|done| done.map_err(Error::from)) {
+            Ok(count) => {
+                app.transfer.borrow_mut().drafts.clear();
+                let global = window.global::<ConnectionTransfer>();
+                global.set_import_rows(ModelRc::new(VecModel::from(Vec::<TransferRow>::new())));
+                global.set_import_file("".into());
+                refresh_counts(window);
+                crate::connections::refresh(app, window);
+                set_message(window, t!("Imported %{count} connection(s).", count = count).into_owned(), true);
             }
-        });
+            Err(e) => set_message(window, e.localized(), false),
+        }
     });
 }
 
@@ -342,7 +342,7 @@ fn run_export(app: &Rc<App>, window: &MainWindow) {
     let passwords = global.get_export_passwords();
     global.set_busy(true);
     let state = app.state.clone();
-    app.rt.spawn(async move {
+    let export = async move {
         let now = now_ms();
         let (year, month, day, hour, minute, second, _) = utc_parts(now);
         let stamp = format!("{year:04}{month:02}{day:02}-{hour:02}{minute:02}{second:02}");
@@ -352,28 +352,29 @@ fn run_export(app: &Rc<App>, window: &MainWindow) {
             .add_filter("JSON", &["json"])
             .save_file()
             .await;
-        let Some(path) = chosen.map(|file| file.path().to_path_buf()) else {
-            crate::app::later(|_, window| window.global::<ConnectionTransfer>().set_busy(false));
-            return;
+        let path = chosen.map(|file| file.path().to_path_buf())?;
+        let written = tokio::task::spawn_blocking(move || write_export(&state, &ids, passwords, now, &path).map(|count| (path, count)));
+        Some(written.await.map_err(Error::from).flatten())
+    };
+    // `None`: no file was picked
+    crate::app::spawn(&app.rt, export, |_, window, outcome| {
+        window.global::<ConnectionTransfer>().set_busy(false);
+        let outcome = match outcome {
+            Ok(None) => return,
+            Ok(Some(written)) => written,
+            Err(e) => Err(e.into()),
         };
-        let outcome = tokio::task::spawn_blocking(move || write_export(&state, &ids, passwords, now, &path).map(|count| (path, count)))
-            .await
-            .map_err(Error::from)
-            .flatten();
-        crate::app::later(move |_, window| {
-            window.global::<ConnectionTransfer>().set_busy(false);
-            match outcome {
-                Ok((path, count)) => {
-                    tracing::info!(count, file = %path.display(), "exported connections");
-                    set_message(
-                        window,
-                        t!("Exported %{count} connection(s) to %{file}.", count = count, file = path.display()).into_owned(),
-                        true,
-                    );
-                }
-                Err(e) => set_message(window, e.localized(), false),
+        match outcome {
+            Ok((path, count)) => {
+                tracing::info!(count, file = %path.display(), "exported connections");
+                set_message(
+                    window,
+                    t!("Exported %{count} connection(s) to %{file}.", count = count, file = path.display()).into_owned(),
+                    true,
+                );
             }
-        });
+            Err(e) => set_message(window, e.localized(), false),
+        }
     });
 }
 

@@ -8,7 +8,7 @@ use uuid::Uuid;
 use crate::connection::{CloudKey, ConnectionItem, ConnectionPayloadInput, ConnectionsState, SshSettings};
 use crate::error::{Error, Invalid, NotFound};
 use crate::now_ms;
-use crate::persist::{self, Loaded};
+use crate::persist;
 use crate::secret_vault::KeyringError;
 use crate::secret_vault::{OsVault, Secrets, SecretsCleanup, Vault, VaultBacked};
 
@@ -54,6 +54,9 @@ struct StoredConnection {
     // the passwords and passphrase are in the credential store, not in this file
     #[serde(default)]
     in_vault: bool,
+    // what a newer version wrote that this one doesn't know: saved back as it was
+    #[serde(flatten)]
+    extra: serde_json::Map<String, serde_json::Value>,
 }
 
 impl StoredConnection {
@@ -89,6 +92,7 @@ impl Default for StoredConnection {
             ssh_passphrase: String::new(),
             profile_id: String::new(),
             in_vault: false,
+            extra: Default::default(),
         }
     }
 }
@@ -98,6 +102,9 @@ impl Default for StoredConnection {
 struct StoredState {
     active_connection_id: String,
     connections: Vec<StoredConnection>,
+    // what a newer version wrote that this one doesn't know: saved back as it was
+    #[serde(flatten)]
+    extra: serde_json::Map<String, serde_json::Value>,
 }
 
 /// The saved connections, kept in memory and written through to a JSON
@@ -280,6 +287,7 @@ fn initial_state() -> StoredState {
             password: std::env::var("REDIS_PASSWORD").unwrap_or_default(),
             ..Default::default()
         }],
+        extra: Default::default(),
     };
     give_urls(&mut state);
     state
@@ -323,19 +331,10 @@ impl ConnectionStore {
     }
 
     pub(crate) fn with_vault(file_path: PathBuf, vault: Arc<dyn Vault>) -> Self {
-        // A file that can't be read is kept, not replaced: starting from defaults
-        // and saving them must not destroy the connections that were in it.
-        let (mut state, first_write) = match persist::load::<StoredState>(&file_path) {
-            Loaded::Read(state) => (state, false),
-            Loaded::Missing => (initial_state(), true),
-            Loaded::Unusable(why) => {
-                match persist::set_aside(&file_path) {
-                    Some(kept) => tracing::error!("{} can't be read ({why}); kept as {}", file_path.display(), kept.display()),
-                    None => tracing::error!("{} can't be read ({why}) and couldn't be moved aside", file_path.display()),
-                }
-                (initial_state(), true)
-            }
-        };
+        // a file that can't be read is kept, never replaced by the defaults
+        let (stored, writable) = persist::load_store::<StoredState>(&file_path);
+        let first_write = stored.is_none() && writable;
+        let mut state = stored.unwrap_or_else(initial_state);
         give_urls(&mut state);
         let unloaded = state.connections.iter().filter(|c| c.in_vault).map(|c| c.id.clone()).collect();
 
@@ -345,7 +344,7 @@ impl ConnectionStore {
             vault,
             unloaded,
             vault_usable: true,
-            dry_run: false,
+            dry_run: !writable,
             cloud: Vec::new(),
             cloud_active: None,
             cloud_where: Default::default(),
@@ -412,7 +411,8 @@ impl ConnectionStore {
             conn.in_vault = self.vault_usable
                 && match self.vault.set(&conn.id, &secrets) {
                     Ok(()) => true,
-                    Err(_) => {
+                    Err(e) => {
+                        tracing::warn!("the system keyring can't store passwords ({e}); they stay in the data file this run");
                         self.vault_usable = false;
                         false
                     }

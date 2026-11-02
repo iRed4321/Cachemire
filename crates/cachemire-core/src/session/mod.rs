@@ -24,7 +24,22 @@ pub type ScriptKey = (Vec<u8>, Vec<u8>, i64, Vec<Vec<u8>>);
 /// A stream entry: its id and its field/value pairs.
 pub type StreamEntry = (String, Vec<(String, String)>);
 
+/// How many entries one command reads of a big key: a bigger read takes several
+/// commands, so none holds the server up for long or makes a huge reply.
+const READ_CHUNK: usize = 1000;
+
+/// How much of a string value a search reads: its first MB.
+const SEARCH_STRING_BYTES: usize = 1024 * 1024;
+
 static SEARCH_SCRIPT: std::sync::LazyLock<redis::Script> = std::sync::LazyLock::new(|| redis::Script::new(include_str!("search.lua")));
+
+/// Moves a hash field to a free name with its new value in one step: 0 when the name is taken.
+static RENAME_FIELD_SCRIPT: std::sync::LazyLock<redis::Script> = std::sync::LazyLock::new(|| {
+    redis::Script::new(
+        "if redis.call('HSETNX', KEYS[1], ARGV[2], ARGV[3]) == 0 then return 0 end \
+         redis.call('HDEL', KEYS[1], ARGV[1]) return 1",
+    )
+});
 
 /// Whether the server runs in cluster mode (`cluster_enabled:1` in `INFO cluster`); a
 /// server that won't say (INFO not allowed) is taken not to.
@@ -40,6 +55,15 @@ pub(super) async fn ping(con: &mut RedisConnection) -> Result<(), Error> {
 
 pub(super) fn lossy(bytes: Vec<u8>) -> String {
     String::from_utf8_lossy(&bytes).into_owned()
+}
+
+/// The smallest stream id after `id` (`ms-seq`), the start of the next page of a range.
+pub(super) fn next_stream_id(id: &str) -> Option<String> {
+    let (ms, seq) = id.split_once('-')?;
+    match seq.parse::<u64>().ok()?.checked_add(1) {
+        Some(seq) => Some(format!("{ms}-{seq}")),
+        None => Some(format!("{}-0", ms.parse::<u64>().ok()?.checked_add(1)?)),
+    }
 }
 
 /// Pairs up a flat reply (`HSCAN`'s fields, `ZRANGE ... WITHSCORES`).
@@ -85,7 +109,7 @@ fn push_head_read(pipe: &mut redis::Pipeline, key: &TypedKey, limit: usize) -> b
     let name = &key.name;
     let last = limit.saturating_sub(1);
     match key.key_type {
-        RedisValueType::String => pipe.cmd("GET").arg(name),
+        RedisValueType::String => pipe.cmd("GETRANGE").arg(name).arg(0).arg(SEARCH_STRING_BYTES - 1),
         RedisValueType::Hash => pipe.cmd("HSCAN").arg(name).arg(0).arg("COUNT").arg(limit),
         RedisValueType::List => pipe.cmd("LRANGE").arg(name).arg(0).arg(last),
         RedisValueType::Set => pipe.cmd("SSCAN").arg(name).arg(0).arg("COUNT").arg(limit),
@@ -96,10 +120,40 @@ fn push_head_read(pipe: &mut redis::Pipeline, key: &TypedKey, limit: usize) -> b
     true
 }
 
+/// A walk of the keyspace with `SCAN`, matching `pattern` when there is one, `count`
+/// names asked for per step. A page may repeat a name an earlier one gave.
+pub struct KeyScan {
+    pattern: Option<Vec<u8>>,
+    count: usize,
+    // where the next step starts; `None` once the walk is over
+    cursor: Option<u64>,
+}
+
+impl KeyScan {
+    pub fn new(pattern: Option<Vec<u8>>, count: usize) -> Self {
+        Self { pattern, count, cursor: Some(0) }
+    }
+
+    /// The next page of names, `None` once the walk is over.
+    pub async fn next(&mut self, session: &mut Session) -> Result<Option<Vec<KeyName>>, Error> {
+        let Some(cursor) = self.cursor else { return Ok(None) };
+        let (next, names) = session.scan(cursor, self.pattern.as_deref(), self.count).await?;
+        self.cursor = (next != 0).then_some(next);
+        Ok(Some(names))
+    }
+
+    /// Whether the last page was the walk's last.
+    pub fn finished(&self) -> bool {
+        self.cursor.is_none()
+    }
+}
+
 /// A connection to one saved connection's server, taken from its pool.
 pub struct Session {
     con: RedisConnection,
     pool: Arc<ConnectionPool>,
+    // on the pool's connection for long reads (see `open_background`)
+    background: bool,
 }
 
 impl Session {
@@ -111,13 +165,25 @@ impl Session {
         Ok(Self::on(pool))
     }
 
+    /// `open`, on the connection kept for long reads, so they don't hold up the
+    /// short ones a click makes; its siblings stay on it.
+    pub async fn open_background(state: &AppState, connection_id: Option<&str>) -> Result<Self, Error> {
+        let connection = resolve_connection(state, connection_id)?;
+        let pool = state.redis_connections.pool(&connection).await?;
+        Ok(Self { con: pool.background(), pool, background: true })
+    }
+
     pub(super) fn on(pool: Arc<ConnectionPool>) -> Self {
-        Self { con: pool.pick(), pool }
+        Self { con: pool.pick(), pool, background: false }
     }
 
     /// Another session on the same pool, for commands run beside this one's.
     pub fn sibling(&self) -> Self {
-        Self::on(self.pool.clone())
+        if self.background {
+            Self { con: self.pool.background(), pool: self.pool.clone(), background: true }
+        } else {
+            Self::on(self.pool.clone())
+        }
     }
 
     pub async fn ping(&mut self) -> Result<(), Error> {
@@ -134,7 +200,7 @@ impl Session {
     }
 
     /// One `SCAN` step from `cursor`: the next cursor (0 once done) and the names found.
-    pub async fn scan(&mut self, cursor: u64, pattern: Option<&[u8]>, count: usize) -> Result<(u64, Vec<KeyName>), Error> {
+    async fn scan(&mut self, cursor: u64, pattern: Option<&[u8]>, count: usize) -> Result<(u64, Vec<KeyName>), Error> {
         let mut cmd = redis::cmd("SCAN");
         cmd.arg(cursor);
         if let Some(pattern) = pattern {
@@ -148,17 +214,23 @@ impl Session {
         Ok(RedisValueType::from(kind))
     }
 
-    /// The types of `names`, in one pipelined round trip.
+    /// The types of `names`, in one pipelined round trip; a key whose `TYPE` the server
+    /// refuses (an ACL that doesn't cover it) is of an unknown type, `Other("")`.
     pub async fn types(&mut self, names: Vec<KeyName>) -> Result<Vec<TypedKey>, Error> {
         if names.is_empty() {
             return Ok(Vec::new());
         }
         let mut pipe = redis::pipe();
+        pipe.ignore_errors();
         for name in &names {
             pipe.cmd("TYPE").arg(name);
         }
-        let kinds: Vec<String> = pipe.query_async(&mut self.con).await?;
-        Ok(names.into_iter().zip(kinds).map(|(name, kind)| TypedKey { name, key_type: RedisValueType::from(kind) }).collect())
+        let kinds: Vec<redis::RedisResult<String>> = pipe.query_async(&mut self.con).await?;
+        Ok(names
+            .into_iter()
+            .zip(kinds)
+            .map(|(name, kind)| TypedKey { name, key_type: kind.map_or(RedisValueType::Other(String::new()), RedisValueType::from) })
+            .collect())
     }
 
     /// The key's type and TTL in seconds (-1 for none, -2 for a missing key).
@@ -167,10 +239,11 @@ impl Session {
         Ok((RedisValueType::from(kind), ttl))
     }
 
-    /// At most `limit` searchable entries of each of `keys`, in one pipelined
-    /// round trip; an error when the pipeline fails as a whole.
+    /// At most `limit` searchable entries of each of `keys`, in one pipelined round
+    /// trip; a key whose read fails (gone, changed type, refused) has none.
     pub async fn entry_heads(&mut self, keys: &[TypedKey], limit: usize) -> Result<Vec<Vec<(String, String)>>, Error> {
         let mut pipe = redis::pipe();
+        pipe.ignore_errors();
         let read: Vec<bool> = keys.iter().map(|key| push_head_read(&mut pipe, key, limit)).collect();
         let mut replies = if read.contains(&true) {
             pipe.query_async::<Vec<redis::Value>>(&mut self.con).await?.into_iter()
@@ -191,7 +264,7 @@ impl Session {
     /// Runs the search script on `names`: Redis answers only the entries that may
     /// hold `needle` (lowercased), at most `depth` per key.
     pub async fn search_script(&mut self, names: &[KeyName], needle: &str, depth: usize) -> Result<Vec<ScriptKey>, Error> {
-        Ok(SEARCH_SCRIPT.key(names).arg(needle).arg(depth).invoke_async(&mut self.con).await?)
+        Ok(SEARCH_SCRIPT.key(names).arg(needle).arg(depth).arg(SEARCH_STRING_BYTES).invoke_async(&mut self.con).await?)
     }
 
     pub async fn get(&mut self, key: &KeyName) -> Result<Option<String>, Error> {
@@ -228,26 +301,124 @@ impl Session {
         Ok((next, pairs.into_iter().map(|(name, _)| name).collect()))
     }
 
-    /// The values of `fields`, in that order (`None` for a field that is gone).
+    /// The values of `fields`, in that order (`None` for a field that is gone), an `HMGET`
+    /// per [`READ_CHUNK`] fields.
     pub async fn hash_values(&mut self, key: &KeyName, fields: &[String]) -> Result<Vec<Option<String>>, Error> {
-        if fields.is_empty() {
-            return Ok(Vec::new());
+        let mut values = Vec::with_capacity(fields.len());
+        for chunk in fields.chunks(READ_CHUNK) {
+            let read: Vec<Option<Vec<u8>>> = redis::cmd("HMGET").arg(key).arg(chunk).query_async(&mut self.con).await?;
+            values.extend(read.into_iter().map(|value| value.map(lossy)));
         }
-        let values: Vec<Option<Vec<u8>>> = redis::cmd("HMGET").arg(key).arg(fields).query_async(&mut self.con).await?;
-        Ok(values.into_iter().map(|value| value.map(lossy)).collect())
+        Ok(values)
     }
 
-    /// The size in bytes of each of `fields`' values, in that order (0 for a field that
-    /// is gone), from one pipelined `HSTRLEN` per field.
-    pub async fn hash_value_sizes(&mut self, key: &KeyName, fields: &[String]) -> Result<Vec<usize>, Error> {
-        if fields.is_empty() {
+    /// Writes `value` into `field` of the hash (`HSET`).
+    pub async fn hash_set(&mut self, key: &KeyName, field: &str, value: &str) -> Result<(), Error> {
+        redis::cmd("HSET").arg(key).arg(field).arg(value).query_async::<()>(&mut self.con).await?;
+        Ok(())
+    }
+
+    /// Writes `value` into `field` of the hash unless it has that field already
+    /// (`HSETNX`); whether it was written.
+    pub async fn hash_set_new(&mut self, key: &KeyName, field: &str, value: &str) -> Result<bool, Error> {
+        Ok(redis::cmd("HSETNX").arg(key).arg(field).arg(value).query_async(&mut self.con).await?)
+    }
+
+    /// Moves field `from` of the hash to `to`, with `value` as its value, unless the hash
+    /// has a field `to` already; whether it moved. One script, so it all happens or none
+    /// of it does; a server that refuses scripts gets `HSETNX` then `HDEL`.
+    pub async fn hash_rename(&mut self, key: &KeyName, from: &str, to: &str, value: &str) -> Result<bool, Error> {
+        let moved: Result<i64, _> = RENAME_FIELD_SCRIPT.key(key).arg(from).arg(to).arg(value).invoke_async(&mut self.con).await;
+        match moved.map_err(Error::from) {
+            Ok(moved) => Ok(moved == 1),
+            Err(e) if matches!(e.kind(), ErrorKind::Redis | ErrorKind::Denied) => {
+                tracing::info!("the field rename script was refused ({e}); renaming in two steps");
+                if !self.hash_set_new(key, to, value).await? {
+                    return Ok(false);
+                }
+                self.hash_delete(key, from).await?;
+                Ok(true)
+            }
+            Err(e) => Err(e),
+        }
+    }
+
+    /// Removes `field` from the hash (`HDEL`).
+    pub async fn hash_delete(&mut self, key: &KeyName, field: &str) -> Result<(), Error> {
+        redis::cmd("HDEL").arg(key).arg(field).query_async::<()>(&mut self.con).await?;
+        Ok(())
+    }
+
+    /// Which of `keys` exist, in their order (`EXISTS` each, in one round trip).
+    pub async fn existing(&mut self, keys: &[KeyName]) -> Result<Vec<bool>, Error> {
+        if keys.is_empty() {
             return Ok(Vec::new());
         }
         let mut pipe = redis::pipe();
-        for field in fields {
-            pipe.cmd("HSTRLEN").arg(key).arg(field);
+        for key in keys {
+            pipe.cmd("EXISTS").arg(key);
         }
         Ok(pipe.query_async(&mut self.con).await?)
+    }
+
+    /// Removes `keys`, their memory freed in the background (`UNLINK`).
+    pub async fn unlink(&mut self, keys: &[KeyName]) -> Result<(), Error> {
+        if !keys.is_empty() {
+            redis::cmd("UNLINK").arg(keys).query_async::<()>(&mut self.con).await?;
+        }
+        Ok(())
+    }
+
+    /// `RENAMENX` of each pair, in one round trip: whether each was renamed, or why not.
+    pub async fn rename_new_many(&mut self, moves: &[(KeyName, KeyName)]) -> Result<Vec<Result<bool, Error>>, Error> {
+        if moves.is_empty() {
+            return Ok(Vec::new());
+        }
+        let mut pipe = redis::pipe();
+        pipe.ignore_errors();
+        for (from, to) in moves {
+            pipe.cmd("RENAMENX").arg(from).arg(to);
+        }
+        let renamed: Vec<redis::RedisResult<bool>> = pipe.query_async(&mut self.con).await?;
+        Ok(renamed.into_iter().map(|r| r.map_err(Error::from)).collect())
+    }
+
+    /// Renames `from` to `to` unless a key `to` exists (`RENAMENX`); whether it was renamed.
+    pub async fn rename_new(&mut self, from: &KeyName, to: &KeyName) -> Result<bool, Error> {
+        Ok(redis::cmd("RENAMENX").arg(from).arg(to).query_async(&mut self.con).await?)
+    }
+
+    /// Replaces the string's value, its TTL kept: `SET … KEEPTTL`, or before Redis 6,
+    /// `SET … PX` with the TTL it had.
+    pub async fn string_set(&mut self, key: &KeyName, value: &str) -> Result<(), Error> {
+        let kept: Result<(), _> = redis::cmd("SET").arg(key).arg(value).arg("KEEPTTL").query_async(&mut self.con).await;
+        match kept.map_err(Error::from) {
+            Err(e) if e.kind() == ErrorKind::Redis => {
+                let ttl: i64 = redis::cmd("PTTL").arg(key).query_async(&mut self.con).await?;
+                let mut set = redis::cmd("SET");
+                set.arg(key).arg(value);
+                if ttl > 0 {
+                    set.arg("PX").arg(ttl);
+                }
+                set.query_async::<()>(&mut self.con).await?;
+                Ok(())
+            }
+            kept => kept,
+        }
+    }
+
+    /// The size in bytes of each of `fields`' values, in that order (0 for a field that
+    /// is gone), from one `HSTRLEN` per field, pipelined [`READ_CHUNK`] at a time.
+    pub async fn hash_value_sizes(&mut self, key: &KeyName, fields: &[String]) -> Result<Vec<usize>, Error> {
+        let mut sizes = Vec::with_capacity(fields.len());
+        for chunk in fields.chunks(READ_CHUNK) {
+            let mut pipe = redis::pipe();
+            for field in chunk {
+                pipe.cmd("HSTRLEN").arg(key).arg(field);
+            }
+            sizes.extend(pipe.query_async::<Vec<usize>>(&mut self.con).await?);
+        }
+        Ok(sizes)
     }
 
     /// One `HSCAN` step from `cursor`: the next cursor and the field/value pairs found.
@@ -268,39 +439,70 @@ impl Session {
         Ok((next, members.into_iter().map(lossy).collect()))
     }
 
-    /// The list's length and its first `count` items.
+    /// The list's length and its first `count` items, an `LRANGE` per [`READ_CHUNK`] items.
     pub async fn list_head(&mut self, key: &KeyName, count: usize) -> Result<(usize, Vec<String>), Error> {
-        let last = count.saturating_sub(1);
-        let (len, items): (usize, Vec<Vec<u8>>) =
-            redis::pipe().cmd("LLEN").arg(key).cmd("LRANGE").arg(key).arg(0).arg(last).query_async(&mut self.con).await?;
+        let first = count.min(READ_CHUNK).saturating_sub(1);
+        let (len, mut items): (usize, Vec<Vec<u8>>) =
+            redis::pipe().cmd("LLEN").arg(key).cmd("LRANGE").arg(key).arg(0).arg(first).query_async(&mut self.con).await?;
+        let wanted = count.min(len);
+        while items.len() < wanted {
+            let last = (items.len() + READ_CHUNK).min(wanted) - 1;
+            let more: Vec<Vec<u8>> = redis::cmd("LRANGE").arg(key).arg(items.len()).arg(last).query_async(&mut self.con).await?;
+            if more.is_empty() {
+                break;
+            }
+            items.extend(more);
+        }
         Ok((len, items.into_iter().map(lossy).collect()))
     }
 
-    /// The sorted set's size and its first `count` members with their scores.
+    /// The sorted set's size and its first `count` members with their scores, a `ZRANGE`
+    /// per [`READ_CHUNK`] members.
     pub async fn zset_head(&mut self, key: &KeyName, count: usize) -> Result<(usize, Vec<(String, f64)>), Error> {
-        let last = count.saturating_sub(1);
-        let (len, members): (usize, Vec<(Vec<u8>, f64)>) = redis::pipe()
-            .cmd("ZCARD")
-            .arg(key)
-            .cmd("ZRANGE")
-            .arg(key)
-            .arg(0)
-            .arg(last)
-            .arg("WITHSCORES")
-            .query_async(&mut self.con)
-            .await?;
+        let range = |start: usize, last: usize| {
+            let mut cmd = redis::cmd("ZRANGE");
+            cmd.arg(key).arg(start).arg(last).arg("WITHSCORES");
+            cmd
+        };
+        let first = count.min(READ_CHUNK).saturating_sub(1);
+        let (len, mut members): (usize, Vec<(Vec<u8>, f64)>) =
+            redis::pipe().cmd("ZCARD").arg(key).add_command(range(0, first)).query_async(&mut self.con).await?;
+        let wanted = count.min(len);
+        while members.len() < wanted {
+            let last = (members.len() + READ_CHUNK).min(wanted) - 1;
+            let more: Vec<(Vec<u8>, f64)> = range(members.len(), last).query_async(&mut self.con).await?;
+            if more.is_empty() {
+                break;
+            }
+            members.extend(more);
+        }
         Ok((len, members.into_iter().map(|(member, score)| (lossy(member), score)).collect()))
     }
 
-    /// The stream's first `count` entries (all of them for `None`), with an explicit
-    /// `COUNT`: `limit` as the range's end id would miss real timestamp ids.
+    /// The stream's length (`XLEN`).
+    pub async fn stream_len(&mut self, key: &KeyName) -> Result<usize, Error> {
+        Ok(redis::cmd("XLEN").arg(key).query_async(&mut self.con).await?)
+    }
+
+    /// The stream's first `count` entries (all of them for `None`), an `XRANGE … COUNT`
+    /// per [`READ_CHUNK`] entries, each starting right after the last id read.
     pub async fn stream_head(&mut self, key: &KeyName, count: Option<usize>) -> Result<Vec<StreamEntry>, Error> {
-        let mut cmd = redis::cmd("XRANGE");
-        cmd.arg(key).arg("-").arg("+");
-        if let Some(count) = count {
-            cmd.arg("COUNT").arg(count);
+        let wanted = count.unwrap_or(usize::MAX);
+        let mut entries: Vec<StreamEntry> = Vec::new();
+        let mut start = "-".to_string();
+        while entries.len() < wanted {
+            let chunk = (wanted - entries.len()).min(READ_CHUNK);
+            let page: Vec<StreamEntry> =
+                redis::cmd("XRANGE").arg(key).arg(&start).arg("+").arg("COUNT").arg(chunk).query_async(&mut self.con).await?;
+            let next = page.last().and_then(|(id, _)| next_stream_id(id));
+            let full = page.len() == chunk;
+            entries.extend(page);
+            match next {
+                Some(next) if full => start = next,
+                _ => break,
+            }
         }
-        Ok(cmd.query_async(&mut self.con).await?)
+        Ok(entries)
     }
 }
 

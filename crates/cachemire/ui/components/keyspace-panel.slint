@@ -448,7 +448,8 @@ export component KeyspacePanel inherits FloatingCard {
     row-clicked(name) => { KeyTree.row-clicked(name); }
     callback refresh-requested();
     refresh-requested => { KeyTree.refresh-requested(); }
-    // right-click on a tree row, at the pointer's window position
+    // right-click on a tree row, at the pointer's window position ("" for the
+    // tree's empty space)
     callback row-context-requested(name: string, x: length, y: length);
     // the search box's text, and Enter / clear in it ("" = back to browsing)
     in-out property <string> search-text <=> KeyTree.search-text;
@@ -706,6 +707,8 @@ export component KeyspacePanel inherits FloatingCard {
                                 let scroll-range = max(0px, tree-flick.content-height - tree-flick.height);
                                 tree-flick.content-y = max(-scroll-range, min(0px, tree-flick.content-y + delta));
                             }
+                            // the rows lie on top: this is the space past them
+                            context-requested(x, y) => { root.row-context-requested("", x, y); }
                         }
 
                         Rectangle {

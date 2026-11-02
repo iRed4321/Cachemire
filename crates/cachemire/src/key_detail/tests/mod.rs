@@ -11,7 +11,6 @@ use crate::ui_tests::*;
 use serde_json::json;
 use slint::LogicalPosition;
 use slint::platform::{PointerEventButton, WindowEvent};
-use slint::private_unstable_api::re_exports::StyledText;
 use std::cell::RefCell;
 use std::rc::Rc;
 
