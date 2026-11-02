@@ -7,6 +7,7 @@ Every stable release of Cachemire; `Unreleased` is what the next one brings. Bet
 ### Added
 
 - **Settings**: the window now lists its categories on the left (default behaviors, SSH profiles, connection profiles, experimental, about) and shows the one picked beside them. The title bar's **i** button opens its About page, which replaces the separate info window
+- **Links**: the link button next to a key's TTL copies a `cachemire://` link to it, with its filter but never a login or password. Opening one goes to that key on the right connection, saved or AWS, and offers to add a server you haven't saved; the Windows installer registers these links
 
 ## 3.2.0 - 2026-11-02
 

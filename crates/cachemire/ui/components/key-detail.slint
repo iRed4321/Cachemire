@@ -1,7 +1,7 @@
 import { Theme } from "theme.slint";
 import { ExportFormat, ExportTarget, KeyView, SearchScope } from "types.slint";
 import { IconButton } from "widgets.slint";
-import { IconCopy, IconRefresh, IconChevron, IconHash, IconPlus } from "icons.slint";
+import { IconCopy, IconRefresh, IconChevron, IconHash, IconPlus, IconLink } from "icons.slint";
 import { ExportGroup, ExportButton, SearchField, ViewSwitcher, ViewOption, ScopeSwitch, SearchBadge, SuggestionPopup } from "key-detail-widgets.slint";
 import { KeyScroll, ExportPrefs, AllValuesRowData, TableRowData, FindResult, LineSelection, ValueLine, SuggestionRow, CompletionEdit, BadgeData } from "key-detail-types.slint";
 import { AllValuesTable } from "key-detail-values.slint";
@@ -270,6 +270,12 @@ export component KeyDetail inherits Rectangle {
                             font-size: Theme.pt(10.5px);
                             color: Theme.text-tertiary;
                             vertical-alignment: center;
+                        }
+                        if loaded && !root.query-mode: IconButton {
+                            box-size: Theme.btn-sm;
+                            hint: @tr("Copy a link to this key");
+                            clicked => { KeyPanel.share-requested(); }
+                            IconLink { size: Theme.icon-sm; tint: Theme.text-tertiary; }
                         }
                         // the active search badges, right after the TTL
                         for badge in root.filter-badges: SearchBadge {

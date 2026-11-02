@@ -11,6 +11,7 @@ pub mod export_files;
 pub mod i18n;
 pub mod json_path;
 pub mod key_name;
+pub mod link;
 pub mod persist;
 pub mod redis_value_type;
 pub mod redisql;

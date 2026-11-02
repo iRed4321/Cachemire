@@ -40,6 +40,8 @@ export global ConnectionState {
 // The form that creates or edits a saved connection.
 export global ConnectionEditor {
     in-out property <bool> open: false;
+    // editing a saved connection, rather than adding one
+    in-out property <bool> is-edit: false;
     in-out property <string> error: "";
     // "Test connection": running, and what it found
     in-out property <bool> testing: false;
@@ -64,6 +66,28 @@ export global ConnectionEditor {
     callback saved(ConnectionForm);
     callback test-requested(ConnectionForm);
     callback deleted(id: string);
+
+    // opens the form empty, to add a connection
+    public function start-new() {
+        self.id = "";
+        self.name = "";
+        self.connection-url = "";
+        self.username = "";
+        self.password = "";
+        self.ssh-enabled = false;
+        self.ssh-host = "";
+        self.ssh-port = "22";
+        self.ssh-username = "";
+        self.ssh-password = "";
+        self.ssh-key = "";
+        self.ssh-passphrase = "";
+        self.profile-enabled = false;
+        self.profile-id = "";
+        self.error = "";
+        self.test-status = "";
+        self.is-edit = false;
+        self.open = true;
+    }
 
     // what the form holds, to save or to test
     public pure function form() -> ConnectionForm {
@@ -391,6 +415,8 @@ export global KeyPanel {
     callback edit-value(field: string);
     // the header's + on a hash: the editor, open on a new field
     callback add-field();
+    // the header's share button: copies a link to the key shown
+    callback share-requested();
     // reads a row's value left out for its size (see AllValuesRowData.too-long)
     callback load-value(field: string);
     callback export-all-fields(format: ExportFormat, target: ExportTarget);

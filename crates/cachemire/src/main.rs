@@ -20,6 +20,7 @@ mod i18n;
 mod key_detail;
 mod keyspace;
 mod last_session;
+mod links;
 mod logging;
 mod redisql;
 mod search;
@@ -115,9 +116,26 @@ fn select_backend() -> Result<(), slint::PlatformError> {
 
 fn main() -> Result<(), slint::PlatformError> {
     let _log = logging::init(&cachemire_core::state::resolve_data_file().with_file_name("logs"));
+    let link = links::from_args(std::env::args().skip(1));
     // held until the process ends
     let instance = cachemire_core::state::lock_instance();
     if matches!(instance, InstanceLock::Taken) {
+        // a link goes to the instance running, which may take the foreground to show it
+        if let Some(link) = &link {
+            match links::send(&links::inbox(), link) {
+                Ok(()) => {
+                    tracing::info!("a link was handed to the instance running");
+                    #[cfg(windows)]
+                    // SAFETY: a plain Win32 call, with no pointer
+                    unsafe {
+                        use windows_sys::Win32::UI::WindowsAndMessaging::{ASFW_ANY, AllowSetForegroundWindow};
+                        AllowSetForegroundWindow(ASFW_ANY);
+                    }
+                    return Ok(());
+                }
+                Err(e) => tracing::warn!("can't hand the link to the instance running: {e}"),
+            }
+        }
         tracing::warn!("another instance is running: this one stops");
         rust_i18n::set_locale(cachemire_core::i18n::Language::Automatic.resolve());
         rfd::MessageDialog::new()
@@ -194,6 +212,7 @@ fn main() -> Result<(), slint::PlatformError> {
     connections::transfer::init(&window);
     cloud::settings::init(&window);
     connections::profiles::init(&app, &window);
+    links::init(&app, &window);
 
     // what only needs the stores and the runtime
     server_stats::init(&window, state.clone(), rt.clone());
@@ -201,8 +220,13 @@ fn main() -> Result<(), slint::PlatformError> {
     settings::init(&window, state, rt);
     // nothing is connected yet: no connection stays active from the last run
     connections::keep_active_in_step(&app, &window);
-    last_session::restore(&app, &window);
+    // a link launched with goes where it leads instead of the last session
+    match link {
+        Some(link) => links::open(&app, &window, &link),
+        None => last_session::restore(&app, &window),
+    }
     last_session::keep_saved();
+    links::watch(links::inbox());
 
     let outcome = window.run();
     last_session::save(&app, &window);

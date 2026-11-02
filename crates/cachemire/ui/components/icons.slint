@@ -267,6 +267,27 @@ export component IconPencil inherits Rectangle {
     }
 }
 
+// two chain links: a link to share
+export component IconLink inherits Rectangle {
+    in property <color> tint: Theme.text-secondary;
+    in property <length> size: 14px;
+    width: size;
+    height: size;
+
+    Path {
+        width: 100%;
+        height: 100%;
+        viewbox-width: 24;
+        viewbox-height: 24;
+        commands: "M10 13 a5 5 0 0 0 7.54 0.54 l3 -3 a5 5 0 0 0 -7.07 -7.07 l-1.72 1.71 M14 11 a5 5 0 0 0 -7.54 -0.54 l-3 3 a5 5 0 0 0 7.07 7.07 l1.71 -1.71";
+        fill: transparent;
+        stroke: tint;
+        stroke-width: 1.8px;
+        stroke-line-cap: round;
+        stroke-line-join: round;
+    }
+}
+
 export component IconRefresh inherits Rectangle {
     in property <color> tint: Theme.text-secondary;
     in property <length> size: 13px;

@@ -261,6 +261,8 @@ fn save_form(app: &Rc<App>, window: &MainWindow, form: &ConnectionForm) {
                 refresh(app, window);
                 // (the connection in use may be the one that was edited)
                 crate::connections::profiles::apply_tint(window, &app.state);
+                // a link that waited for a connection to its server
+                crate::links::retry_pending(app, window);
             }
             Err(e) => window.global::<ConnectionEditor>().set_error(e.localized().into()),
         });

@@ -413,3 +413,20 @@ _version: 2
   fr: "Téléchargement de la version %{version}..."
 "Couldn't download the update: %{error}":
   fr: "Impossible de télécharger la mise à jour : %{error}"
+# shareable links (cachemire://)
+"Link copied":
+  fr: "Lien copié"
+"This connection's address can't be put in a link.":
+  fr: "L'adresse de cette connexion ne peut pas être mise dans un lien."
+"This link can't be opened. %{why}":
+  fr: "Ce lien ne peut pas être ouvert. %{why}"
+"It was made by a newer version of Cachemire.":
+  fr: "Il a été créé par une version plus récente de Cachemire."
+"It is incomplete or damaged.":
+  fr: "Il est incomplet ou abîmé."
+"No saved connection reaches %{server}: save it to open the link.":
+  fr: "Aucune connexion enregistrée n'atteint %{server} : enregistrez-la pour ouvrir le lien."
+"Sign in to AWS with a profile that lists %{server} to open this link.":
+  fr: "Connectez-vous à AWS avec un profil qui liste %{server} pour ouvrir ce lien."
+"%{server} is no longer among the account's endpoints.":
+  fr: "%{server} ne fait plus partie des endpoints du compte."

@@ -83,6 +83,9 @@ pub(super) struct StoredCloud {
     // by `account/region/name`
     #[serde(default)]
     pub(super) endpoints: BTreeMap<String, CloudEntry>,
+    // the `account/region` each local AWS profile last listed, by profile name
+    #[serde(default)]
+    pub(super) profiles: BTreeMap<String, String>,
 }
 
 /// Which cloud settings are meant: an account's, or one endpoint's.
@@ -306,6 +309,23 @@ impl SettingsStore {
             self.unloaded.retain(|key| !pruned.contains(key));
         }
         Ok(cleanups)
+    }
+
+    /// Notes that `profile` lists the endpoints of `account` and `region`, for the links to them.
+    pub fn remember_cloud_profile(&mut self, profile: &str, account: &str, region: &str) -> Result<(), Error> {
+        let place = format!("{account}/{region}");
+        if self.state.cloud.profiles.get(profile) == Some(&place) {
+            return Ok(());
+        }
+        let mut next = self.state.clone();
+        next.cloud.profiles.insert(profile.to_string(), place);
+        self.commit(next, false)
+    }
+
+    /// The profiles last seen listing the endpoints of `account` and `region`, by name.
+    pub fn cloud_profiles_of(&self, account: &str, region: &str) -> Vec<String> {
+        let place = format!("{account}/{region}");
+        self.state.cloud.profiles.iter().filter(|(_, p)| **p == place).map(|(name, _)| name.clone()).collect()
     }
 
     /// Vaults the cloud tunnels' secrets that changed (see `vault_secrets`).

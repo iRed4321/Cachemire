@@ -2,7 +2,7 @@
 msgid ""
 msgstr ""
 "Project-Id-Version: cachemire VERSION\n"
-"POT-Creation-Date: 2026-11-02 21:42+0000\n"
+"POT-Creation-Date: 2026-11-02 22:25+0000\n"
 "PO-Revision-Date: YEAR-MO-DA HO:MI+ZONE\n"
 "Last-Translator: FULL NAME <EMAIL@ADDRESS>\n"
 "Language-Team: LANGUAGE <LL@li.org>\n"
@@ -12,42 +12,42 @@ msgstr ""
 "Content-Transfer-Encoding: 8bit\n"
 "Plural-Forms: nplurals=1; plural=0;\n"
 
-#: crates/cachemire/ui/main.slint:295
-#: crates/cachemire/ui/main.slint:295
+#: crates/cachemire/ui/main.slint:294
+#: crates/cachemire/ui/main.slint:294
 msgid "Show sidebar"
 msgstr ""
 
-#: crates/cachemire/ui/main.slint:314
+#: crates/cachemire/ui/main.slint:313
 msgid "Couldn't use the AWS account"
 msgstr ""
 
-#: crates/cachemire/ui/main.slint:315
+#: crates/cachemire/ui/main.slint:314
 msgid "Select a key to open it"
 msgstr ""
 
-#: crates/cachemire/ui/main.slint:316
+#: crates/cachemire/ui/main.slint:315
 msgid "Couldn't connect"
 msgstr ""
 
-#: crates/cachemire/ui/main.slint:317
+#: crates/cachemire/ui/main.slint:316
 msgid "Pick a connection to get started"
 msgstr ""
 
-#: crates/cachemire/ui/main.slint:325
+#: crates/cachemire/ui/main.slint:324
 msgid "Browse the keyspace on the left and click a key."
 msgstr ""
 
-#: crates/cachemire/ui/main.slint:326
+#: crates/cachemire/ui/main.slint:325
 msgid ""
 "Hover the connection status in the top bar to see why, or pick another "
 "connection."
 msgstr ""
 
-#: crates/cachemire/ui/main.slint:327
+#: crates/cachemire/ui/main.slint:326
 msgid "Use the connection selector in the top bar."
 msgstr ""
 
-#: crates/cachemire/ui/main.slint:372
+#: crates/cachemire/ui/main.slint:371
 msgid "Write a Redisql query above (FROM/JOIN/WHERE/SELECT/LIMIT), then Run."
 msgstr ""
 
@@ -420,49 +420,53 @@ msgstr ""
 msgid "Refresh value"
 msgstr ""
 
-#: crates/cachemire/ui/components/key-detail.slint:283
+#: crates/cachemire/ui/components/key-detail.slint:276
+msgid "Copy a link to this key"
+msgstr ""
+
+#: crates/cachemire/ui/components/key-detail.slint:289
 msgid "Add a field"
 msgstr ""
 
-#: crates/cachemire/ui/components/key-detail.slint:298
-#: crates/cachemire/ui/components/key-detail.slint:298
+#: crates/cachemire/ui/components/key-detail.slint:304
+#: crates/cachemire/ui/components/key-detail.slint:304
 msgid "{} selected"
 msgstr ""
 
-#: crates/cachemire/ui/components/key-detail.slint:334
+#: crates/cachemire/ui/components/key-detail.slint:340
 msgid "More options"
 msgstr ""
 
-#: crates/cachemire/ui/components/key-detail.slint:366
+#: crates/cachemire/ui/components/key-detail.slint:372
 msgid "Match case"
 msgstr ""
 
-#: crates/cachemire/ui/components/key-detail.slint:388
+#: crates/cachemire/ui/components/key-detail.slint:394
 msgid "Search field names..."
 msgstr ""
 
-#: crates/cachemire/ui/components/key-detail.slint:389
+#: crates/cachemire/ui/components/key-detail.slint:395
 msgid "Search values..."
 msgstr ""
 
-#: crates/cachemire/ui/components/key-detail.slint:389
+#: crates/cachemire/ui/components/key-detail.slint:395
 msgid "Search fields and values..."
 msgstr ""
 
-#: crates/cachemire/ui/components/key-detail.slint:424
+#: crates/cachemire/ui/components/key-detail.slint:430
 msgid "Filter the JSON, e.g. records.*.label"
 msgstr ""
 
 #. the ticked rows only, when there are any
-#: crates/cachemire/ui/components/key-detail.slint:459
+#: crates/cachemire/ui/components/key-detail.slint:465
 msgid "Export CSV"
 msgstr ""
 
-#: crates/cachemire/ui/components/key-detail.slint:486
+#: crates/cachemire/ui/components/key-detail.slint:492
 msgid "No field matches this filter"
 msgstr ""
 
-#: crates/cachemire/ui/components/key-detail.slint:486
+#: crates/cachemire/ui/components/key-detail.slint:492
 msgid "Nothing to show as a table: no rows, or the rows share no top-level keys"
 msgstr ""
 

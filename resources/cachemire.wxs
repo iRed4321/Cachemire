@@ -60,6 +60,20 @@
       <Component Id="MainExe" Guid="c2a9e4d7-5b18-4f3e-8c6a-1d9e0f7b3a52">
         <File Id="CachemireExe" Source="$(var.ExePath)" Name="cachemire.exe" KeyPath="yes" />
       </Component>
+      <!-- cachemire:// links (see crates/cachemire-core/src/link) open in the app, the link as its
+           argument; an instance already running is handed the link (see crates/cachemire/src/links). -->
+      <Component Id="LinkScheme" Guid="d37c22c6-2724-4fe2-93ce-9734bf6277d6">
+        <RegistryKey Root="HKLM" Key="Software\Classes\cachemire">
+          <RegistryValue Type="string" Value="URL:Cachemire link" KeyPath="yes" />
+          <RegistryValue Type="string" Name="URL Protocol" Value="" />
+          <RegistryKey Key="DefaultIcon">
+            <RegistryValue Type="string" Value="&quot;[#CachemireExe]&quot;,0" />
+          </RegistryKey>
+          <RegistryKey Key="shell\open\command">
+            <RegistryValue Type="string" Value="&quot;[#CachemireExe]&quot; &quot;%1&quot;" />
+          </RegistryKey>
+        </RegistryKey>
+      </Component>
     </ComponentGroup>
 
     <UI Id="CachemireUI">

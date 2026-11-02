@@ -45,7 +45,21 @@ pub fn show_refreshed(window: &MainWindow) {
     show(window, &t!("Refreshed"));
 }
 
+#[cfg(test)]
+thread_local! {
+    // the last toast raised, for the tests to read
+    static LAST: std::cell::RefCell<String> = const { std::cell::RefCell::new(String::new()) };
+}
+
+/// The text of the last toast raised on this thread, taken.
+#[cfg(test)]
+pub fn take_last() -> String {
+    LAST.take()
+}
+
 pub fn show(window: &MainWindow, text: &str) {
+    #[cfg(test)]
+    LAST.set(text.to_string());
     let (x, y) = POINTER.get();
     window.invoke_show_toast(text.into(), x, y);
 }

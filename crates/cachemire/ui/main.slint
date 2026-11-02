@@ -87,7 +87,6 @@ export component MainWindow inherits Window {
     property <bool> connections-open: false;
     property <bool> aws-profiles-open: false;
     property <length> aws-profiles-x: 0px;
-    property <bool> connection-modal-is-edit: false;
     // the sidebar (the keyspace and the saved queries) is hidden; the tab bar has the button to bring it back
     in-out property <bool> sidebar-hidden: false;
     // which of its views the sidebar shows
@@ -418,25 +417,8 @@ export component MainWindow inherits Window {
 
             ConnectionDropdown {
                 new-connection-clicked => {
-                    ConnectionEditor.id = "";
-                    ConnectionEditor.name = "";
-                    ConnectionEditor.connection-url = "";
-                    ConnectionEditor.username = "";
-                    ConnectionEditor.password = "";
-                    ConnectionEditor.ssh-enabled = false;
-                    ConnectionEditor.ssh-host = "";
-                    ConnectionEditor.ssh-port = "22";
-                    ConnectionEditor.ssh-username = "";
-                    ConnectionEditor.ssh-password = "";
-                    ConnectionEditor.ssh-key = "";
-                    ConnectionEditor.ssh-passphrase = "";
-                    ConnectionEditor.profile-enabled = false;
-                    ConnectionEditor.profile-id = "";
-                    ConnectionEditor.error = "";
-                    ConnectionEditor.test-status = "";
-                    root.connection-modal-is-edit = false;
                     root.connections-open = false;
-                    ConnectionEditor.open = true;
+                    ConnectionEditor.start-new();
                 }
                 connection-clicked(id) => {
                     root.connections-open = false;
@@ -467,7 +449,7 @@ export component MainWindow inherits Window {
                     ConnectionEditor.profile-id = row.profile-id;
                     ConnectionEditor.error = "";
                     ConnectionEditor.test-status = "";
-                    root.connection-modal-is-edit = true;
+                    ConnectionEditor.is-edit = true;
                     root.connections-open = false;
                     ConnectionEditor.open = true;
                 }
@@ -663,7 +645,7 @@ export component MainWindow inherits Window {
             width: 100%;
             height: 100%;
             clipboard-has-text() => { return root.clipboard-has-text(); }
-            is-edit: root.connection-modal-is-edit;
+            is-edit: ConnectionEditor.is-edit;
         }
     }
 

@@ -45,20 +45,25 @@ struct Resume {
     attempt: u64,
 }
 
-/// Signs in (in the browser when the session has expired), lists `profile`'s
+/// Signs in (in the browser when the session has expired) unless signed in, lists `profile`'s
 /// connections and connects to `connection`, as if picked one after the other.
 pub fn resume(app: &App, window: &MainWindow, profile: String, connection: String) {
-    if !window.global::<AwsAccount>().get_available() || app.cloud.borrow().connected {
+    if !window.global::<AwsAccount>().get_available() {
         return;
     }
     let attempt = app.state.connect_attempt.load(Ordering::SeqCst);
-    app.cloud.borrow_mut().resume = Some(Resume { profile, connection, attempt });
-    window.global::<AwsAccount>().invoke_clicked();
+    let signed_in = app.cloud.borrow().connected;
+    app.cloud.borrow_mut().resume = Some(Resume { profile: profile.clone(), connection, attempt });
+    if signed_in {
+        window.global::<AwsAccount>().invoke_profile_selected(profile.into());
+    } else {
+        window.global::<AwsAccount>().invoke_clicked();
+    }
 }
 
 /// Raises the window and gives it the focus, for when the browser sign-in is done. A window
 /// manager may refuse to let a window take the focus: the taskbar entry then asks for attention.
-fn bring_to_front(window: &MainWindow) {
+pub(crate) fn bring_to_front(window: &MainWindow) {
     window.window().with_winit_window(|winit_window| {
         winit_window.set_minimized(false);
         winit_window.focus_window();
@@ -171,7 +176,8 @@ pub fn init(app: &Rc<App>, window: &MainWindow) {
             window.global::<AwsAccount>().set_busy(true);
 
             let page = sign_in_page();
-            let listed = async move { aws::redis_connections(&name, &page).await };
+            let profile = name.clone();
+            let listed = async move { aws::redis_connections(&profile, &page).await };
             crate::app::spawn(&app.rt, listed, move |app, window, result| {
                 if app.cloud.borrow().generation != generation {
                     return;
@@ -194,6 +200,9 @@ pub fn init(app: &Rc<App>, window: &MainWindow) {
                             cleanups
                         };
                         app.rt.spawn_blocking(move || cleanups.into_iter().for_each(|cleanup| cleanup.run()));
+                        if let Err(e) = state.settings.lock().remember_cloud_profile(&name, &account, &region) {
+                            tracing::warn!("can't save the profile's account: {e}");
+                        }
                         state.connections.lock().set_cloud_connections(&account, &region, items);
                         window.global::<AwsAccount>().set_account_known(true);
                         crate::connections::refresh(app, window);
@@ -205,6 +214,8 @@ pub fn init(app: &Rc<App>, window: &MainWindow) {
                         if let Some(resume) = resume {
                             crate::connections::connect_to(window, state.clone(), &app.rt, resume.connection, true);
                         }
+                        // a link that waited for this account
+                        crate::links::retry_pending(app, window);
                     }
                     Err(e) => {
                         app.cloud.borrow_mut().resume = None;

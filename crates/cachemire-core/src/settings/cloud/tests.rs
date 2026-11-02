@@ -202,3 +202,19 @@ fn an_endpoint_missing_from_three_listings_in_a_row_loses_its_settings() {
     assert!(!vault.entries.lock().contains_key(&cloud_vault_key(&endpoint("gone"))));
     assert!(store_in(&file, &vault).cloud_entry(&endpoint("gone")).is_none(), "the pruning is saved");
 }
+
+#[test]
+fn each_profile_is_remembered_with_the_account_and_region_it_lists() {
+    let (mut store, vault, file) = new_store();
+    store.remember_cloud_profile("dev", "111", "eu-west-1").unwrap();
+    store.remember_cloud_profile("prod", "222", "eu-west-1").unwrap();
+    store.remember_cloud_profile("ops", "111", "eu-west-1").unwrap();
+    assert_eq!(store.cloud_profiles_of("111", "eu-west-1"), ["dev", "ops"]);
+    assert!(store.cloud_profiles_of("111", "us-east-1").is_empty());
+
+    // a profile moved to another account forgets the first one; it all lasts across runs
+    store.remember_cloud_profile("ops", "333", "us-east-1").unwrap();
+    let store = store_in(&file, &vault);
+    assert_eq!(store.cloud_profiles_of("111", "eu-west-1"), ["dev"]);
+    assert_eq!(store.cloud_profiles_of("333", "us-east-1"), ["ops"]);
+}

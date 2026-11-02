@@ -240,6 +240,11 @@ pub async fn login(page: &SignInPage) -> Result<(), Error> {
     Err(last_error.into())
 }
 
+/// The id of endpoint `name` as listed under `profile`.
+pub fn connection_id(profile: &str, name: &str) -> String {
+    format!("{ID_PREFIX}{profile}:{name}")
+}
+
 /// The URL of an ElastiCache endpoint: `rediss://` when it takes TLS.
 fn cloud_url(host: &str, port: u16, tls: bool) -> String {
     let url = build_connection_string(host, port, 0, "", "");
@@ -276,7 +281,7 @@ pub async fn redis_connections(profile_name: &str, page: &SignInPage) -> Result<
     let item = |name: &str, endpoint: Option<&aws_sdk_elasticache::types::Endpoint>, tls: bool| {
         let endpoint = endpoint?;
         Some(ConnectionItem {
-            id: format!("{ID_PREFIX}{profile_name}:{name}"),
+            id: connection_id(profile_name, name),
             name: name.to_string(),
             connection_url: cloud_url(endpoint.address()?, endpoint.port().and_then(|p| u16::try_from(p).ok()).unwrap_or(6379), tls),
             username: String::new(),

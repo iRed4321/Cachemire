@@ -567,6 +567,25 @@ impl KeyDetail {
         ctx.load_key(LoadRequest { key: id, scroll, reuse: true, announce: false });
     }
 
+    /// Keeps `fields` as hash `key` of `connection`, as if read whole from the server.
+    #[cfg(test)]
+    pub fn seed_hash(&self, connection: &str, key: &str, fields: &[(&str, serde_json::Value)]) {
+        let names: Vec<String> = fields.iter().map(|(name, _)| name.to_string()).collect();
+        let fetch = FetchedKey {
+            key_type: Some(cachemire_core::redis_value_type::RedisValueType::Hash),
+            meta: String::new(),
+            fields: fields.iter().map(|(name, value)| Arc::new(field::Field::from_value(name.to_string(), value.clone()))).collect(),
+            field_count: names.len(),
+            all_names: Some(Arc::new(names)),
+            start: 0,
+            ttl: -1,
+            names_cursor: None,
+            descending: false,
+            editable: true,
+        };
+        self.0.shared.fetched.lock().insert((connection.to_string(), key.to_string()), fetch);
+    }
+
     /// Drops what was fetched for a connection's key (`Some`), or all its keys (`None`).
     pub fn forget(&self, connection: &str, key: Option<&str>) {
         self.0.shared.fetched.lock().retain(|(c, k), _| c != connection || key.is_some_and(|key| key != k));

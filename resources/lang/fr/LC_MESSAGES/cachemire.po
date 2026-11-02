@@ -12,31 +12,31 @@ msgstr ""
 "Content-Transfer-Encoding: 8bit\n"
 "Plural-Forms: nplurals=2; plural=(n > 1);\n"
 
-#: crates/cachemire/ui/main.slint:295 crates/cachemire/ui/main.slint:295
+#: crates/cachemire/ui/main.slint:294 crates/cachemire/ui/main.slint:294
 msgid "Show sidebar"
 msgstr "Afficher le panneau latéral"
 
-#: crates/cachemire/ui/main.slint:314
+#: crates/cachemire/ui/main.slint:313
 msgid "Couldn't use the AWS account"
 msgstr "Impossible d'utiliser le compte AWS"
 
-#: crates/cachemire/ui/main.slint:315
+#: crates/cachemire/ui/main.slint:314
 msgid "Select a key to open it"
 msgstr "Sélectionnez une clé pour l'ouvrir"
 
-#: crates/cachemire/ui/main.slint:316
+#: crates/cachemire/ui/main.slint:315
 msgid "Couldn't connect"
 msgstr "Connexion impossible"
 
-#: crates/cachemire/ui/main.slint:317
+#: crates/cachemire/ui/main.slint:316
 msgid "Pick a connection to get started"
 msgstr "Choisissez une connexion pour commencer"
 
-#: crates/cachemire/ui/main.slint:325
+#: crates/cachemire/ui/main.slint:324
 msgid "Browse the keyspace on the left and click a key."
 msgstr "Parcourez l'espace de clés à gauche et cliquez sur une clé."
 
-#: crates/cachemire/ui/main.slint:326
+#: crates/cachemire/ui/main.slint:325
 msgid ""
 "Hover the connection status in the top bar to see why, or pick another "
 "connection."
@@ -44,11 +44,11 @@ msgstr ""
 "Survolez l'indicateur d'état dans la barre du haut pour en connaître la "
 "raison, ou choisissez une autre connexion."
 
-#: crates/cachemire/ui/main.slint:327
+#: crates/cachemire/ui/main.slint:326
 msgid "Use the connection selector in the top bar."
 msgstr "Utilisez le sélecteur de connexion dans la barre du haut."
 
-#: crates/cachemire/ui/main.slint:372
+#: crates/cachemire/ui/main.slint:371
 msgid "Write a Redisql query above (FROM/JOIN/WHERE/SELECT/LIMIT), then Run."
 msgstr ""
 "Écrivez une requête Redisql ci-dessus (FROM/JOIN/WHERE/SELECT/LIMIT), puis "
@@ -427,49 +427,53 @@ msgstr "Copier le nom de la clé"
 msgid "Refresh value"
 msgstr "Actualiser la valeur"
 
-#: crates/cachemire/ui/components/key-detail.slint:283
+#: crates/cachemire/ui/components/key-detail.slint:276
+msgid "Copy a link to this key"
+msgstr "Copier un lien vers cette clé"
+
+#: crates/cachemire/ui/components/key-detail.slint:289
 msgid "Add a field"
 msgstr "Ajouter un champ"
 
-#: crates/cachemire/ui/components/key-detail.slint:298
-#: crates/cachemire/ui/components/key-detail.slint:298
+#: crates/cachemire/ui/components/key-detail.slint:304
+#: crates/cachemire/ui/components/key-detail.slint:304
 msgid "{} selected"
 msgstr "{} sélectionné(s)"
 
-#: crates/cachemire/ui/components/key-detail.slint:334
+#: crates/cachemire/ui/components/key-detail.slint:340
 msgid "More options"
 msgstr "Plus d'options"
 
-#: crates/cachemire/ui/components/key-detail.slint:366
+#: crates/cachemire/ui/components/key-detail.slint:372
 msgid "Match case"
 msgstr "Respecter la casse"
 
-#: crates/cachemire/ui/components/key-detail.slint:388
+#: crates/cachemire/ui/components/key-detail.slint:394
 msgid "Search field names..."
 msgstr "Rechercher dans les noms de champs..."
 
-#: crates/cachemire/ui/components/key-detail.slint:389
+#: crates/cachemire/ui/components/key-detail.slint:395
 msgid "Search values..."
 msgstr "Rechercher dans les valeurs..."
 
-#: crates/cachemire/ui/components/key-detail.slint:389
+#: crates/cachemire/ui/components/key-detail.slint:395
 msgid "Search fields and values..."
 msgstr "Rechercher dans les champs et les valeurs..."
 
-#: crates/cachemire/ui/components/key-detail.slint:424
+#: crates/cachemire/ui/components/key-detail.slint:430
 msgid "Filter the JSON, e.g. records.*.label"
 msgstr "Filtrer le JSON, p. ex. records.*.label"
 
 #. the ticked rows only, when there are any
-#: crates/cachemire/ui/components/key-detail.slint:459
+#: crates/cachemire/ui/components/key-detail.slint:465
 msgid "Export CSV"
 msgstr "Exporter en CSV"
 
-#: crates/cachemire/ui/components/key-detail.slint:486
+#: crates/cachemire/ui/components/key-detail.slint:492
 msgid "No field matches this filter"
 msgstr "Aucun champ ne correspond à ce filtre"
 
-#: crates/cachemire/ui/components/key-detail.slint:486
+#: crates/cachemire/ui/components/key-detail.slint:492
 msgid "Nothing to show as a table: no rows, or the rows share no top-level keys"
 msgstr ""
 "Rien à afficher en tableau : aucune ligne, ou les lignes n'ont aucune clé "
