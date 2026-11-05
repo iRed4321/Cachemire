@@ -23,7 +23,7 @@ fn back_to_settings(h: &Harness) {
     let preferences = h.window.global::<Preferences>();
     preferences.set_ssh_profile_editing(false);
     preferences.set_conn_profile_editing(false);
-    preferences.set_category(crate::SettingsCategory::Defaults);
+    preferences.set_category(crate::SettingsCategory::General);
     preferences.set_open(true);
 }
 
@@ -117,7 +117,7 @@ fn the_channel_toggle_saves_the_channel_picked() {
     let (mut h, _rt, _) = info_window(&state);
     assert_eq!(h.window.global::<About>().get_channel(), 0, "a dev build follows the stable releases");
     let beta = |h: &Harness| h.window.global::<About>().get_channel() == 1;
-    sweep(&mut h, 500..800, 200..600, 4, reopen_info, beta).expect("the Beta segment");
+    sweep(&mut h, 500..800, 30..600, 4, reopen_info, beta).expect("the Beta segment");
     assert_eq!(state.settings.lock().update_channel(), Some(Channel::Beta));
 }
 
@@ -126,7 +126,7 @@ fn an_update_found_at_startup_opens_the_about_page_with_its_button() {
     let (mut h, _rt, downloads) = info_window(&test_state());
     let preferences = h.window.global::<Preferences>();
     preferences.set_open(false);
-    preferences.set_category(SettingsCategory::Defaults);
+    preferences.set_category(SettingsCategory::General);
     let release = Release {
         version: semver::Version::new(9, 9, 9),
         page: "https://example.invalid/r".into(),

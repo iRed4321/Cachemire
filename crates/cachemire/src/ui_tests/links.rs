@@ -172,13 +172,13 @@ fn the_share_button_links_the_key_shown_with_its_filter_and_no_secret() {
     crate::tabs::select_key(&app, "weird key+1".into());
     h.window.global::<KeyPanel>().set_json_filter(" $.a b ".into());
 
-    let link = crate::links::active_key_link(&app, &h.window).unwrap();
+    let link = crate::links::active_link(&app, &h.window, None).unwrap();
     assert_eq!(link, "cachemire://open?v=1&redis=cache.test:6379&db=1&name=prod&key=weird%20key%2B1&path=$.a%20b");
     assert!(!link.contains("admin") && !link.contains("pw") && !link.contains("secret"));
 
     // it leads back to the same key and filter
     crate::tabs::open_query(&app, String::new());
-    assert_eq!(crate::links::active_key_link(&app, &h.window), None, "a query tab has no key to link to");
+    assert_eq!(crate::links::active_link(&app, &h.window, None), None, "a query tab has no key to link to");
     open(&link);
     assert_eq!(strip(&h).1.as_deref(), Some("weird key+1"));
     assert_eq!(h.window.global::<KeyPanel>().get_json_filter(), "$.a b");

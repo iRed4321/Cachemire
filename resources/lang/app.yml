@@ -430,3 +430,81 @@ _version: 2
   fr: "Connectez-vous à AWS avec un profil qui liste %{server} pour ouvrir ce lien."
 "%{server} is no longer among the account's endpoints.":
   fr: "%{server} ne fait plus partie des endpoints du compte."
+# the lines of the settings' Key bindings page
+"Window":
+  fr: "Fenêtre"
+"Query box":
+  fr: "Zone de requête"
+"Value editor":
+  fr: "Éditeur de valeur"
+"Zoom in":
+  fr: "Zoom avant"
+"Zoom out":
+  fr: "Zoom arrière"
+"Reset the zoom":
+  fr: "Rétablir le zoom"
+"Search the open key, or open a search tab":
+  fr: "Chercher dans la clé ouverte, ou ouvrir un onglet de recherche"
+"Close the tab":
+  fr: "Fermer l'onglet"
+"Run the statement at the caret":
+  fr: "Exécuter l'instruction au curseur"
+"Run the whole script":
+  fr: "Exécuter tout le script"
+"Show the suggestions":
+  fr: "Afficher les suggestions"
+"Previous query of the history":
+  fr: "Requête précédente de l'historique"
+"Next query of the history":
+  fr: "Requête suivante de l'historique"
+"Save the value":
+  fr: "Enregistrer la valeur"
+"Copy":
+  fr: "Copier"
+"Cut":
+  fr: "Couper"
+"Paste":
+  fr: "Coller"
+"Select all":
+  fr: "Tout sélectionner"
+"Undo":
+  fr: "Annuler"
+"Redo":
+  fr: "Rétablir"
+"Close a dialog or a menu, fold the value under the pointer":
+  fr: "Fermer une fenêtre ou un menu, replier la valeur sous le pointeur"
+"Move between a table's cells":
+  fr: "Passer d'une cellule à l'autre d'un tableau"
+"Pick a suggestion":
+  fr: "Choisir une suggestion"
+"Zoom":
+  fr: "Zoom"
+"Mouse wheel":
+  fr: "Molette"
+# the settings' Key bindings page: the names of keys, and why keys can't be bound
+"Shift":
+  fr: "Maj"
+"Enter":
+  fr: "Entrée"
+"Space":
+  fr: "Espace"
+"Backspace":
+  fr: "Retour arrière"
+"Delete":
+  fr: "Suppr"
+"Insert":
+  fr: "Inser"
+"Home":
+  fr: "Début"
+"End":
+  fr: "Fin"
+"Page Up":
+  fr: "Page préc."
+"Page Down":
+  fr: "Page suiv."
+"A shortcut needs Ctrl, unless it is a function key (F1 to F24).":
+  fr: "Un raccourci demande Ctrl, sauf avec une touche de fonction (F1 à F24)."
+"These keys keep their usual use (copy, paste, undo, Esc, Tab...).":
+  fr: "Ces touches gardent leur rôle habituel (copier, coller, annuler, Échap, Tab...)."
+"Another shortcut already uses these keys.":
+  fr: "Un autre raccourci utilise déjà ces touches."

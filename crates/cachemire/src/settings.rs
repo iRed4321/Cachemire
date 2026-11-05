@@ -10,8 +10,9 @@ use std::sync::Arc;
 use slint::{ComponentHandle, ModelRc, VecModel};
 use tokio::runtime::Handle;
 
-use crate::{ExportPrefs, LanguageSetting, MainWindow, Preferences, SshProfileForm, SshProfileRowData};
+use crate::{ExportPrefs, KeyView, LanguageSetting, MainWindow, OpeningView, Preferences, SshProfileForm, SshProfileRowData};
 use cachemire_core::i18n::Language;
+use cachemire_core::settings::OpeningView as StoredView;
 use cachemire_core::state::AppState;
 
 /// The UI's enum for a language setting, and back: matches, so a language added
@@ -78,8 +79,32 @@ fn saved(window: &MainWindow, result: Result<(), Error>, apply: impl FnOnce(&Mai
     }
 }
 
+/// Whether the settings' search finds `text`: every word of `query` is in it, whatever
+/// their case and accents.
+pub fn found(query: &str, text: &str) -> bool {
+    let text = fold(text);
+    fold(query).split_whitespace().all(|word| text.contains(word))
+}
+
+fn fold(text: &str) -> String {
+    text.to_lowercase()
+        .chars()
+        .map(|c| match c {
+            'à' | 'á' | 'â' | 'ä' => 'a',
+            'ç' => 'c',
+            'è' | 'é' | 'ê' | 'ë' => 'e',
+            'ì' | 'í' | 'î' | 'ï' => 'i',
+            'ò' | 'ó' | 'ô' | 'ö' => 'o',
+            'ù' | 'ú' | 'û' | 'ü' => 'u',
+            'ÿ' => 'y',
+            c => c,
+        })
+        .collect()
+}
+
 pub fn init(window: &MainWindow, state: Arc<AppState>, rt: Handle) {
     refresh(window, &state);
+    window.global::<Preferences>().on_search_matches(|query, text| found(&query, &text));
     window.global::<Preferences>().set_language(to_setting(state.settings.lock().language()));
     window.global::<Preferences>().set_server_search(state.settings.lock().server_search());
     window.global::<Preferences>().set_check_updates_at_startup(state.settings.lock().check_updates_at_startup());
@@ -97,6 +122,45 @@ pub fn init(window: &MainWindow, state: Arc<AppState>, rt: Handle) {
             let Some(window) = weak.upgrade() else { return };
             let result = state.settings.lock().set_export_escaped(escaped);
             saved(&window, result, |window| window.global::<Preferences>().set_export_escaped(escaped));
+        }
+    });
+    let (opening, last_table) = {
+        let settings = state.settings.lock();
+        (settings.opening_view(), settings.last_view_table())
+    };
+    window.global::<Preferences>().set_opening_view(match opening {
+        StoredView::Fields => OpeningView::Fields,
+        StoredView::Table => OpeningView::Table,
+        StoredView::Last => OpeningView::Last,
+    });
+    window.global::<Preferences>().set_last_view(if last_table { KeyView::Table } else { KeyView::Fields });
+
+    // the view new key tabs start on: saved, and used by the next tab opened
+    window.global::<Preferences>().on_opening_view_selected({
+        let weak = window.as_weak();
+        let state = state.clone();
+        move |view| {
+            let Some(window) = weak.upgrade() else { return };
+            let stored = match view {
+                OpeningView::Fields => StoredView::Fields,
+                OpeningView::Table => StoredView::Table,
+                OpeningView::Last => StoredView::Last,
+            };
+            let result = state.settings.lock().set_opening_view(stored);
+            saved(&window, result, |window| window.global::<Preferences>().set_opening_view(view));
+        }
+    });
+
+    // a view picked in a key's tab: kept, for new tabs to start on when the setting says so
+    window.global::<Preferences>().on_view_picked({
+        let weak = window.as_weak();
+        let state = state.clone();
+        move |view| {
+            let Some(window) = weak.upgrade() else { return };
+            window.global::<Preferences>().set_last_view(view);
+            if let Err(e) = state.settings.lock().set_last_view_table(view == KeyView::Table) {
+                tracing::warn!("the last view picked can't be saved: {e}");
+            }
         }
     });
     window.global::<Preferences>().set_search_depth(state.settings.lock().search_depth() as i32);
@@ -159,6 +223,7 @@ pub fn init(window: &MainWindow, state: Arc<AppState>, rt: Handle) {
             saved(&window, result, |window| {
                 window.global::<Preferences>().set_language(setting);
                 crate::i18n::apply(language);
+                crate::shortcuts::refresh(window, &state);
             });
         }
     });

@@ -11,8 +11,8 @@ use crate::key_detail::{ScrollPos, current_expanded_fields, current_scroll, rest
 use crate::redisql;
 use crate::search;
 use crate::{
-    AllValuesRowData, BadgeData, ExportPrefs, KeyPanel, KeyTree, KeyView, MainWindow, Preferences, SavedQueries, SearchScope, SearchTab,
-    TabData, TabStrip,
+    AllValuesRowData, BadgeData, ExportPrefs, KeyPanel, KeyTree, KeyView, MainWindow, OpeningView, Preferences, SavedQueries, SearchScope,
+    SearchTab, TabData, TabStrip,
 };
 use cachemire_core::key_name::KeyName;
 use rust_i18n::t;
@@ -50,14 +50,17 @@ pub struct LinkTarget {
 }
 
 impl TabViewState {
-    /// What a new tab starts on: a key's fields as a list, a query's rows as a table, and
-    /// the export switch as the settings say.
+    /// What a new tab starts on: a key's view and the export switch as the settings say,
+    /// a query's rows as a table.
     fn new(window: &MainWindow, key: &str) -> Self {
-        Self {
-            view: if redisql::is_query_id(key) { KeyView::Table } else { KeyView::default() },
-            escaped: window.global::<Preferences>().get_export_escaped(),
-            ..Self::default()
-        }
+        let prefs = window.global::<Preferences>();
+        let view = match prefs.get_opening_view() {
+            _ if redisql::is_query_id(key) => KeyView::Table,
+            OpeningView::Fields => KeyView::Fields,
+            OpeningView::Table => KeyView::Table,
+            OpeningView::Last => prefs.get_last_view(),
+        };
+        Self { view, escaped: window.global::<Preferences>().get_export_escaped(), ..Self::default() }
     }
 
     /// Shows what `target` leads to: its filter alone, and its field open in the list view.

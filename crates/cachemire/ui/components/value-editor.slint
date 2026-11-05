@@ -1,6 +1,7 @@
 import { Theme } from "theme.slint";
 import { ModalButton, TextMenuPopup } from "widgets.slint";
 import { ConnectionModalField } from "connection-picker.slint";
+import { Shortcuts } from "../globals.slint";
 
 // The value editor: a field's value as pretty JSON to change, written back to its key once
 // it is valid JSON. Rust fills it in and answers its callbacks (see src/key_detail/edit.rs).
@@ -103,7 +104,7 @@ export component ValueEditorModal inherits Rectangle {
         // swallow clicks so they don't reach the backdrop's close
         TouchArea { }
 
-        // Esc closes, Ctrl+Enter or Ctrl+S saves, from either box
+        // Esc closes, the save shortcut (Ctrl+Enter or Ctrl+S by default) saves, from either box
         FocusScope {
             focus-on-click: false;
             key-pressed(event) => {
@@ -111,12 +112,10 @@ export component ValueEditorModal inherits Rectangle {
                     ValueEditor.open = false;
                     return accept;
                 }
-                if (event.text == Key.Return || event.text == "s") && event.modifiers.control {
-                    root.save();
-                    return accept;
-                }
                 return reject;
             }
+            KeyBinding { keys: Shortcuts.save-value; activated => { root.save(); } }
+            KeyBinding { keys: Shortcuts.save-value-2; activated => { root.save(); } }
             VerticalLayout {
                 padding: Theme.px(18px);
                 spacing: Theme.px(12px);

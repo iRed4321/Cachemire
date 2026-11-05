@@ -6,8 +6,14 @@ Every stable release of Cachemire; `Unreleased` is what the next one brings. Bet
 
 ### Added
 
-- **Settings**: the window now lists its categories on the left (default behaviors, SSH profiles, connection profiles, experimental, about) and shows the one picked beside them. The title bar's **i** button opens its About page, which replaces the separate info window
-- **Links**: the link button next to a key's TTL copies a `cachemire://` link to it, with its filter but never a login or password. Opening one goes to that key on the right connection, saved or AWS, and offers to add a server you haven't saved; the Windows installer registers these links
+- **Settings**: the window now lists its categories on the left (general, key bindings, SSH profiles, connection profiles, experimental, about) and shows the one picked beside them. The title bar's **i** button opens its About page, which replaces the separate info window. A search box above the categories narrows them, and their settings, as you type
+- **Key bindings** (Settings): lists every keyboard shortcut, and the app's own (zoom, search, close the tab, run a query, save a value...) can be given other keys. Copy, paste, undo and Esc stay as they are
+- **New tabs open in** (Settings, General): a key's new tab starts in the fields view (as before), the table view, or the view you last picked
+- **Links**: the link button next to a key's TTL copies a `cachemire://` link to it, with its filter but never a login or password. Opening one goes to that key on the right connection, saved or AWS, and offers to add a server you haven't saved; the Windows installer registers these links. An opened field has one too, next to its edit button: its link opens the key on that field
+
+### Fixes
+
+- **Query**: the completion list is drawn over the results' buttons below the box, no longer mixed with them
 
 ## 3.2.0 - 2026-11-02
 

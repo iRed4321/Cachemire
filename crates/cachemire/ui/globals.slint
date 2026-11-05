@@ -1,6 +1,6 @@
 // What Rust reads and writes, grouped by feature: each global is one feature's
 // state and the callbacks Rust answers. `main.slint` binds the components to them.
-import { ConnectionStatus, LanguageSetting, SettingsCategory, ProfileTint, KeyView, SearchScope, ExportFormat, ExportTarget } from "components/types.slint";
+import { ConnectionStatus, LanguageSetting, SettingsCategory, ShortcutAction, ShortcutRow, ProfileTint, KeyView, OpeningView, SearchScope, ExportFormat, ExportTarget } from "components/types.slint";
 import { ConnectionRowData, ConnProfileRowData, ConnectionForm, SshProfileRowData, SshProfileForm, ConnProfileForm, KeyspaceRowData, SavedQueryRowData, TabData, SearchRowData, HistoryRow } from "components/types.slint";
 import { AllValuesRowData, FindResult, LineSelection, ValueLine, TableRowData, SuggestionRow, CompletionEdit, BadgeData } from "components/key-detail-types.slint";
 
@@ -145,7 +145,7 @@ export global About {
 // connection profiles (a name and a tint), with the forms that edit them.
 export global Preferences {
     in-out property <bool> open: false;
-    in-out property <SettingsCategory> category: SettingsCategory.defaults;
+    in-out property <SettingsCategory> category: SettingsCategory.general;
     // opens the window on `page`, with its forms closed
     public function show(page: SettingsCategory) {
         self.error = "";
@@ -160,6 +160,11 @@ export global Preferences {
     // the export buttons' default format: escaped JSON, or plain JSON
     in-out property <bool> export-escaped: false;
     callback export-escaped-selected(escaped: bool);
+    // the view a key's new tab starts on, and the one last picked in a key's tab
+    in-out property <OpeningView> opening-view: OpeningView.fields;
+    callback opening-view-selected(view: OpeningView);
+    in-out property <KeyView> last-view: KeyView.fields;
+    callback view-picked(view: KeyView);
     // experimental: the global search lets Redis filter with a script
     in-out property <bool> server-search: false;
     callback server-search-toggled(enabled: bool);
@@ -172,6 +177,8 @@ export global Preferences {
     // how many entries of a key the global search reads
     in-out property <int> search-depth: 1000;
     callback search-depth-selected(depth: int);
+    // whether the settings' search finds `text`: each word of `query` is in it
+    pure callback search-matches(query: string, text: string) -> bool;
     in-out property <[SshProfileRowData]> ssh-profiles: [];
     in-out property <bool> ssh-profile-editing: false;
     in-out property <string> ssh-profile-id: "";
@@ -188,6 +195,39 @@ export global Preferences {
     in-out property <ProfileTint> conn-profile-tint: ProfileTint.red;
     callback conn-profile-saved(ConnProfileForm);
     callback conn-profile-deleted(id: string);
+}
+
+// The keys of the app's shortcuts, set by Rust (src/shortcuts.rs): the KeyBindings read them, and
+// the query box, which must see its keys before its text does, asks `pressed`. A `-2` is a
+// second default (none once the keys are changed); `recording` is the action waiting for keys.
+export global Shortcuts {
+    in property <keys> zoom-in;
+    in property <keys> zoom-in-2;
+    in property <keys> zoom-out;
+    in property <keys> zoom-reset;
+    in property <keys> search;
+    in property <keys> close-tab;
+    in property <keys> run-statement;
+    in property <keys> run-script;
+    in property <keys> suggest;
+    in property <keys> history-previous;
+    in property <keys> history-next;
+    in property <keys> save-value;
+    in property <keys> save-value-2;
+    // the lines of the Key bindings page the settings' search finds: the app's shortcuts, the standard keys
+    in property <[ShortcutRow]> rows;
+    in property <[ShortcutRow]> standard;
+    // what the search box holds, with the names of the page and of its standard keys, also searched
+    callback filter-changed(query: string, page: string, standard: string);
+    in-out property <bool> recording: false;
+    in-out property <ShortcutAction> recording-action;
+    // the keys pressed while `recording`: Rust binds them to the action, or says why it can't
+    callback recorded(action: ShortcutAction, text: string, control: bool, shift: bool, alt: bool, meta: bool);
+    callback reset(action: ShortcutAction);
+    pure callback matches(keys: keys, text: string, control: bool, shift: bool, alt: bool, meta: bool) -> bool;
+    public pure function pressed(keys: keys, event: KeyEvent) -> bool {
+        return self.matches(keys, event.text, event.modifiers.control, event.modifiers.shift, event.modifiers.alt, event.modifiers.meta);
+    }
 }
 
 // The keyspace tree: a flat, indent-annotated list Rust updates as folders open
@@ -417,6 +457,8 @@ export global KeyPanel {
     callback add-field();
     // the header's share button: copies a link to the key shown
     callback share-requested();
+    // an open row's share button: copies a link to that field of the key shown
+    callback share-field-requested(field: string);
     // reads a row's value left out for its size (see AllValuesRowData.too-long)
     callback load-value(field: string);
     callback export-all-fields(format: ExportFormat, target: ExportTarget);

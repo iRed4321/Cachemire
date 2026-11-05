@@ -3,6 +3,7 @@
 //! Passwords live in the OS credential store.
 
 use rustc_hash::FxHashSet;
+use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
@@ -33,6 +34,18 @@ pub const SEARCH_DEPTHS: [u32; 3] = [60, 200, 1000];
 
 pub const DEFAULT_SEARCH_DEPTH: u32 = 1000;
 
+/// The view a key's new tab starts on: the fields, the table, or the one last picked.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub enum OpeningView {
+    Table,
+    Last,
+    // also what a value this version doesn't know reads as
+    #[default]
+    #[serde(other)]
+    Fields,
+}
+
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 struct StoredSettings {
@@ -47,6 +60,12 @@ struct StoredSettings {
     // whether the export buttons start on escaped JSON rather than plain JSON
     #[serde(default)]
     export_escaped: bool,
+    // the view a key's new tab starts on
+    #[serde(default)]
+    opening_view: OpeningView,
+    // whether the view last picked in a key's tab is the table
+    #[serde(default)]
+    last_view_table: bool,
     // the release channel the update check follows ("" until one is picked: the running build's)
     #[serde(default)]
     update_channel: String,
@@ -62,6 +81,9 @@ struct StoredSettings {
     // how many entries of each key the global search reads (0: not chosen yet)
     #[serde(default)]
     search_depth: u32,
+    // the keyboard shortcuts changed from their defaults: an action's name, and its keys
+    #[serde(default)]
+    shortcuts: BTreeMap<String, Vec<String>>,
     #[serde(default)]
     connection_profiles: Vec<StoredConnectionProfile>,
     // Redisql queries saved from a query tab, oldest first
@@ -198,6 +220,22 @@ impl SettingsStore {
         self.commit(next, false)
     }
 
+    /// The keys picked for `action` in place of its default ones, if any: the
+    /// parts of a key combination (modifiers, then the key), as the UI wrote them.
+    pub fn shortcut(&self, action: &str) -> Option<&[String]> {
+        self.state.shortcuts.get(action).map(Vec::as_slice)
+    }
+
+    /// Binds `action` to `keys`, or back to its default keys with `None`.
+    pub fn set_shortcut(&mut self, action: &str, keys: Option<Vec<String>>) -> Result<(), Error> {
+        let mut next = self.state.clone();
+        match keys {
+            Some(keys) => next.shortcuts.insert(action.to_string(), keys),
+            None => next.shortcuts.remove(action),
+        };
+        self.commit(next, false)
+    }
+
     pub fn export_escaped(&self) -> bool {
         self.state.export_escaped
     }
@@ -205,6 +243,30 @@ impl SettingsStore {
     pub fn set_export_escaped(&mut self, escaped: bool) -> Result<(), Error> {
         let mut next = self.state.clone();
         next.export_escaped = escaped;
+        self.commit(next, false)
+    }
+
+    pub fn opening_view(&self) -> OpeningView {
+        self.state.opening_view
+    }
+
+    pub fn set_opening_view(&mut self, view: OpeningView) -> Result<(), Error> {
+        let mut next = self.state.clone();
+        next.opening_view = view;
+        self.commit(next, false)
+    }
+
+    pub fn last_view_table(&self) -> bool {
+        self.state.last_view_table
+    }
+
+    /// Keeps whether the view last picked is the table; nothing is saved when it is unchanged.
+    pub fn set_last_view_table(&mut self, table: bool) -> Result<(), Error> {
+        if self.state.last_view_table == table {
+            return Ok(());
+        }
+        let mut next = self.state.clone();
+        next.last_view_table = table;
         self.commit(next, false)
     }
 

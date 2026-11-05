@@ -6,7 +6,7 @@ import { ExportGroup, ExportButton, SearchField, ViewSwitcher, ViewOption, Scope
 import { KeyScroll, ExportPrefs, AllValuesRowData, TableRowData, FindResult, LineSelection, ValueLine, SuggestionRow, CompletionEdit, BadgeData } from "key-detail-types.slint";
 import { AllValuesTable } from "key-detail-values.slint";
 import { TableView } from "key-detail-table.slint";
-import { TabStrip, KeyPanel, KeyTree } from "../globals.slint";
+import { TabStrip, KeyPanel, KeyTree, Preferences } from "../globals.slint";
 
 // re-exported so main.slint (and anything else importing "key-detail.slint",
 // the historical entry point) keeps seeing these here, though they now live
@@ -42,7 +42,12 @@ export component KeyDetail inherits Rectangle {
     // picks one; Rust fills it (see `view-changed`) and keeps it per tab.
     in-out property <KeyView> view <=> KeyPanel.view;
     callback view-changed();
-    view-changed => { KeyPanel.view-changed(); }
+    view-changed => {
+        KeyPanel.view-changed();
+        if !root.query-mode {
+            Preferences.view-picked(root.view);
+        }
+    }
     property <[ViewOption]> views: [
         { view: KeyView.fields, label: @tr("Fields") },
         { view: KeyView.table, label: @tr("Table") },

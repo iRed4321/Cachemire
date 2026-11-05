@@ -15,14 +15,16 @@ import { TableRowData } from "components/key-detail-types.slint";
 import { FloatingCard, Hint, HResizeHandle, SquareIconButton } from "components/widgets.slint";
 import { IconSidebar } from "components/icons.slint";
 import { SettingsModal, SshProfileRowData, SshProfileForm, ConnProfileForm } from "components/settings.slint";
-import { ConnectionStatus, TreeRowKind, ExportFormat, ExportTarget, LanguageSetting, SettingsCategory, ProfileTint, KeyView, SidebarView, SearchScope } from "components/types.slint";
-import { ConnectionView, ConnectionState, ConnectionEditor, AwsAccount, About, Preferences, KeyTree, SavedQueries, TabStrip, SearchTab, QueryTab, KeyPanel } from "globals.slint";
+import { ConnectionStatus, TreeRowKind, ExportFormat, ExportTarget, LanguageSetting, SettingsCategory, ProfileTint, KeyView, OpeningView, SidebarView, SearchScope, ShortcutAction, ShortcutRow } from "components/types.slint";
+import { ConnectionView, ConnectionState, ConnectionEditor, AwsAccount, About, Preferences, Shortcuts, KeyTree, SavedQueries, TabStrip, SearchTab, QueryTab, KeyPanel } from "globals.slint";
 
 // read and written by Rust: where each tab left the key panel scrolled to
 // (Rust tints the background: see Theme.env-tint)
 export { KeyScroll, ExportPrefs, Theme, About, CloudSettings, ConnectionTransfer, LineSelection, ValueLine, ValueEditor, KeyNameDialog, KeyNameAction }
 // the enumerations Rust shares with the UI
-export { ConnectionStatus, TreeRowKind, ExportFormat, ExportTarget, LanguageSetting, SettingsCategory, ProfileTint, KeyView, SidebarView, SearchScope }
+export { ConnectionStatus, TreeRowKind, ExportFormat, ExportTarget, LanguageSetting, SettingsCategory, ProfileTint, KeyView, OpeningView, SidebarView, SearchScope, ShortcutAction }
+// a row of the settings' Key bindings page
+export { ShortcutRow }
 // a badge of the key panel's field/value search bar
 export { BadgeData, HistoryRow }
 // a saved query of the left panel's Search/Query view
@@ -30,7 +32,7 @@ export { SavedQueryRowData }
 // a hit of a search tab
 export { SearchRowData }
 // each feature's state and callbacks (see globals.slint)
-export { ConnectionView, ConnectionState, ConnectionEditor, AwsAccount, Preferences, KeyTree, SavedQueries, TabStrip, SearchTab, QueryTab, KeyPanel }
+export { ConnectionView, ConnectionState, ConnectionEditor, AwsAccount, Preferences, Shortcuts, KeyTree, SavedQueries, TabStrip, SearchTab, QueryTab, KeyPanel }
 
 export component MainWindow inherits Window {
     title: ConnectionState.view.name == "" ? "Cachemire" : ConnectionState.view.name + " — Cachemire";
@@ -161,33 +163,6 @@ export component MainWindow inherits Window {
                     KeyTree.export-mode-toggled();
                 }
             }
-            if (event.modifiers.control) {
-                if (event.text == "=" || event.text == "+") {
-                    zoom-in();
-                    return accept;
-                }
-                if (event.text == "-") {
-                    zoom-out();
-                    return accept;
-                }
-                if (event.text == "0") {
-                    zoom-reset();
-                    return accept;
-                }
-                // Ctrl+letter arrives as the letter or as its control character
-                if (event.text == "f" || event.text == "F" || event.text == "\u{6}") {
-                    if (KeyPanel.loaded && !TabStrip.active-is-search) {
-                        key-search-focus-tick += 1;
-                    } else if (root.connection-chosen) {
-                        TabStrip.new-search-clicked();
-                    }
-                    return accept;
-                }
-                if (event.text == "w" || event.text == "W" || event.text == "\u{17}") {
-                    TabStrip.close-active();
-                    return accept;
-                }
-            }
             reject
         }
         key-released(event) => {
@@ -196,6 +171,22 @@ export component MainWindow inherits Window {
             }
             reject
         }
+        // the app's shortcuts, with the keys picked in Settings (see Shortcuts)
+        KeyBinding { keys: Shortcuts.zoom-in; activated => { zoom-in(); } }
+        KeyBinding { keys: Shortcuts.zoom-in-2; activated => { zoom-in(); } }
+        KeyBinding { keys: Shortcuts.zoom-out; activated => { zoom-out(); } }
+        KeyBinding { keys: Shortcuts.zoom-reset; activated => { zoom-reset(); } }
+        KeyBinding {
+            keys: Shortcuts.search;
+            activated => {
+                if (KeyPanel.loaded && !TabStrip.active-is-search) {
+                    key-search-focus-tick += 1;
+                } else if (root.connection-chosen) {
+                    TabStrip.new-search-clicked();
+                }
+            }
+        }
+        KeyBinding { keys: Shortcuts.close-tab; activated => { TabStrip.close-active(); } }
 
         scroll-zoom := TouchArea {
             width: 100%;
@@ -357,7 +348,9 @@ export component MainWindow inherits Window {
                                         root.tab-menu-open = true;
                                     }
                                 }
+                                // painted last, so its completion list is over the results below it
                                 if TabStrip.active-is-query: QueryEditor {
+                                    z: 10;
                                     clipboard-has-text() => { return root.clipboard-has-text(); }
                                 }
                                 if TabStrip.active-is-query && QueryTab.results.length > 1: ResultTabs {

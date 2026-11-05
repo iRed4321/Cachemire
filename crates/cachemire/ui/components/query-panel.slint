@@ -4,7 +4,7 @@ import { CheckBox, IconButton, TextMenuPopup } from "widgets.slint";
 import { SuggestionRow, CompletionEdit } from "key-detail-types.slint";
 import { SuggestionPopup } from "key-detail-widgets.slint";
 import { HistoryRow } from "types.slint";
-import { QueryTab } from "../globals.slint";
+import { QueryTab, Shortcuts } from "../globals.slint";
 export { HistoryRow }
 
 // A small popup asking for a name to save the query under, opened by the header's
@@ -235,9 +235,9 @@ component HistoryPopup inherits PopupWindow {
 
 // The box of a query tab: a multi-line Redisql editor with line numbers and completion, and the
 // grip that resizes it. Its buttons are in the results' header (QueryToolbar), which send it
-// `command`s; it paints over what is below it, which its completion list overflows into.
+// `command`s. Its completion list overflows onto what is below it, which it paints over
+// through the `z` it is given where it is placed.
 export component QueryEditor inherits Rectangle {
-    z: 10;
     background: transparent;
     in-out property <string> query <=> QueryTab.text;
     // runs the statement at the caret (or the selection), or with `script` the whole box; `cursor`
@@ -460,20 +460,22 @@ export component QueryEditor inherits Rectangle {
                                     if suggest-popup.handle-key(event) {
                                         return accept;
                                     }
-                                    if event.text == " " && event.modifiers.control {
+                                    if Shortcuts.pressed(Shortcuts.suggest, event) {
                                         root.suggest(root.query, self.cursor-position-byte-offset, true);
                                         return accept;
                                     }
-                                    if (event.text == Key.UpArrow || event.text == Key.DownArrow) && event.modifiers.control {
-                                    let edit = root.history-step(event.text == Key.UpArrow ? -1 : 1, root.query);
-                                    if edit.cursor >= 0 {
-                                        root.pending-caret = edit.cursor;
-                                        root.query = edit.text;
+                                    let back = Shortcuts.pressed(Shortcuts.history-previous, event);
+                                    if back || Shortcuts.pressed(Shortcuts.history-next, event) {
+                                        let edit = root.history-step(back ? -1 : 1, root.query);
+                                        if edit.cursor >= 0 {
+                                            root.pending-caret = edit.cursor;
+                                            root.query = edit.text;
+                                        }
+                                        return accept;
                                     }
-                                    return accept;
-                                }
-                                if event.text == Key.Return && event.modifiers.control {
-                                        root.run-requested(root.query, self.cursor-position-byte-offset, self.anchor-position-byte-offset, event.modifiers.shift);
+                                    let script = Shortcuts.pressed(Shortcuts.run-script, event);
+                                    if script || Shortcuts.pressed(Shortcuts.run-statement, event) {
+                                        root.run-requested(root.query, self.cursor-position-byte-offset, self.anchor-position-byte-offset, script);
                                         return accept;
                                     }
                                     return reject;

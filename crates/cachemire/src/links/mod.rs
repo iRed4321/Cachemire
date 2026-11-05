@@ -154,19 +154,22 @@ fn fill_new_connection(window: &MainWindow, link: &Link) {
     }
 }
 
-/// The link to the key of the active tab, on the connection shown, with the panel's filter.
-pub fn active_key_link(app: &App, window: &MainWindow) -> Option<String> {
+/// The link to the key of the active tab, on the connection shown, with the panel's filter,
+/// opened on `field` if there is one.
+pub fn active_link(app: &App, window: &MainWindow, field: Option<String>) -> Option<String> {
     let key = app.tabs.borrow().active_key().map(KeyName::from_id)?;
     let id = window.connection_id();
     let store = app.state.connections.lock();
     let mut link = Link::to_key(&store.get(&id)?, store.cloud_key(&id).as_ref(), key)?;
     link.path = Some(window.global::<KeyPanel>().get_json_filter().trim().to_string()).filter(|path| !path.is_empty());
+    link.field = field;
     Some(link.to_uri())
 }
 
-/// The key panel's share button: copies the link to the key shown.
-fn share(app: &App, window: &MainWindow) {
-    let Some(link) = active_key_link(app, window) else {
+/// The share buttons, the key panel's and an open row's: copies the link to the key shown,
+/// or to one of its fields.
+fn share(app: &App, window: &MainWindow, field: Option<String>) {
+    let Some(link) = active_link(app, window, field) else {
         crate::toast::show(window, &t!("This connection's address can't be put in a link."));
         return;
     };
@@ -177,10 +180,18 @@ fn share(app: &App, window: &MainWindow) {
 }
 
 pub fn init(app: &std::rc::Rc<App>, window: &MainWindow) {
+    window.global::<KeyPanel>().on_share_requested({
+        let app = app.clone();
+        move || {
+            if let Some(window) = app.window.upgrade() {
+                share(&app, &window, None);
+            }
+        }
+    });
     let app = app.clone();
-    window.global::<KeyPanel>().on_share_requested(move || {
+    window.global::<KeyPanel>().on_share_field_requested(move |field| {
         if let Some(window) = app.window.upgrade() {
-            share(&app, &window);
+            share(&app, &window, Some(field.to_string()));
         }
     });
 }

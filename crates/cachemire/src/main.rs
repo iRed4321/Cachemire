@@ -26,6 +26,7 @@ mod redisql;
 mod search;
 mod server_stats;
 mod settings;
+mod shortcuts;
 mod table_text;
 mod tabs;
 mod theme_colors;
@@ -217,6 +218,7 @@ fn main() -> Result<(), slint::PlatformError> {
     // what only needs the stores and the runtime
     server_stats::init(&window, state.clone(), rt.clone());
     redisql::saved::init(&window, state.clone());
+    shortcuts::init(&window, state.clone());
     settings::init(&window, state, rt);
     // nothing is connected yet: no connection stays active from the last run
     connections::keep_active_in_step(&app, &window);

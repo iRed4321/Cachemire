@@ -1,9 +1,9 @@
 import { Theme } from "theme.slint";
 import { Hint, IconButton } from "widgets.slint";
-import { IconChevron, IconCopy, IconDownload, IconExternalLink, IconPencil, IconSpinner } from "icons.slint";
+import { IconChevron, IconCopy, IconDownload, IconExternalLink, IconLink, IconPencil, IconSpinner } from "icons.slint";
 import { ExportGroup, SearchField } from "key-detail-widgets.slint";
 import { KeyScroll, ExportPrefs, ValueLine } from "key-detail-types.slint";
-import { KeyPanel } from "../globals.slint";
+import { KeyPanel, TabStrip } from "../globals.slint";
 
 // The header of an open row: fold chevron and name, the find box with its match
 // count and up/down buttons, and the export pills. The table draws one more, fixed
@@ -95,6 +95,20 @@ export component RowHeader inherits Rectangle {
             IconChevron { size: Theme.icon-sm; down: true; tint: Theme.text-tertiary; }
         }
         Rectangle { horizontal-stretch: 1; }
+        // copies a link that opens the key on this field (a query's rows have no key)
+        if !TabStrip.active-is-query: Rectangle {
+            width: Theme.px(32px);
+            height: Theme.px(32px);
+            border-radius: Theme.radius-sm;
+            border-width: 1px;
+            border-color: Theme.border-soft;
+            IconButton {
+                box-size: Theme.px(26px);
+                hint: @tr("Copy a link to this field");
+                clicked => { KeyPanel.share-field-requested(root.field); }
+                IconLink { size: Theme.icon-lg; tint: Theme.text-secondary; }
+            }
+        }
         // opens the editor on this field, in a pill like the export one's
         if KeyPanel.editable: Rectangle {
             width: Theme.px(32px);

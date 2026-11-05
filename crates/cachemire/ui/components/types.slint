@@ -45,6 +45,13 @@ export enum KeyView {
     table,
 }
 
+// the view a key's new tab starts on: one of the two, or the one last picked
+export enum OpeningView {
+    fields,
+    table,
+    last,
+}
+
 // the two views of the left panel, chosen by the tabs at its top
 export enum SidebarView {
     // the tree of the connection's keys
@@ -85,12 +92,38 @@ export enum LanguageSetting {
 
 // the page of the settings window shown next to its list of categories
 export enum SettingsCategory {
-    defaults,
+    general,
+    key-bindings,
     ssh-profiles,
     conn-profiles,
     experimental,
     // the version, the repository and the updates
     about,
+}
+
+// an action of the app a keyboard shortcut starts, whose keys can be changed in Settings
+export enum ShortcutAction {
+    zoom-in,
+    zoom-out,
+    zoom-reset,
+    search,
+    close-tab,
+    run-statement,
+    run-script,
+    suggest,
+    history-previous,
+    history-next,
+    save-value,
+}
+
+// one line of the Key bindings page, named by Rust in the interface language: its keys as shown,
+// `custom` when they aren't the default ones, `group-title` on the first line of a group
+export struct ShortcutRow {
+    action: ShortcutAction,
+    title: string,
+    keys: [string],
+    custom: bool,
+    group-title: string,
 }
 
 // The rows and forms Rust and the UI exchange, shared by the components and
