@@ -15,6 +15,12 @@ Every stable release of Cachemire; `Unreleased` is what the next one brings. Bet
 
 - **Query**: the completion list is drawn over the results' buttons below the box, no longer mixed with them
 
+## 3.2.1 - 2026-11-09
+
+### Fixes
+
+- **Dependencies**: the libraries it's built on are updated (aws-smithy-runtime-api, aws-smithy-types, russh and 28 more)
+
 ## 3.2.0 - 2026-11-02
 
 ### Added
