@@ -42,7 +42,7 @@ slint-build = { git = "https://github.com/iRed4321/SlintFork.git", rev = "8212a4
 
 # a message to the window that clears winit's drag latch (see drag_latch.rs)
 [target.'cfg(windows)'.dependencies]
-windows-sys = { version = "0.52", features = ["Win32_Foundation", "Win32_UI_WindowsAndMessaging"] }
+windows-sys = { version = "0.61", features = ["Win32_Foundation", "Win32_UI_WindowsAndMessaging"] }
 
 # embeds resources/icon.ico (+ version info) into the Windows executable
 [target.'cfg(windows)'.build-dependencies]
