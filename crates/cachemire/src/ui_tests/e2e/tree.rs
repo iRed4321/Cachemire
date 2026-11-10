@@ -73,7 +73,10 @@ fn a_key_added_from_a_folder_opens_empty_and_is_stored_with_its_first_field() {
     assert_eq!(dialog_error(&r), "A key with this name already exists", "Redis is asked too, not only the tree");
     submit(&mut r, "user:3");
     assert!(!r.h.window.global::<KeyNameDialog>().get_open());
-    r.until("the new key's tab", |h| h.window.global::<KeyPanel>().get_key_id() == "user:3");
+    r.until("the new key to load", |h| {
+        let panel = h.window.global::<KeyPanel>();
+        panel.get_key_id() == "user:3" && panel.get_editable() && h.window.global::<KeyTree>().get_loading_key().is_empty()
+    });
     assert!(r.rows().contains(&"user:3".to_string()), "shown in its folder, opened");
     assert_eq!(r.redis.query::<i64>(&["EXISTS", "user:3"]), 0, "an empty hash isn't in Redis yet");
 
