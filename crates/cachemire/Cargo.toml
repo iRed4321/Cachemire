@@ -15,7 +15,7 @@ serde_json = { workspace = true, features = ["preserve_order"] }
 uuid.workspace = true
 arboard = { version = "3", default-features = false, features = ["wayland-data-control"] }
 # only the portal: dialogs are never attached to a parent window, so no Wayland support is needed
-rfd = { version = "0.17", default-features = false, features = ["xdg-portal"] }
+rfd = { version = "0.18", default-features = false, features = ["xdg-portal"] }
 dirs.workspace = true
 rustc-hash.workspace = true
 parking_lot.workspace = true
