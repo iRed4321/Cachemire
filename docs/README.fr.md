@@ -120,6 +120,8 @@ Ajoutez une connexion depuis la barre de titre (**Nouvelle connexion…**), sél
 | `cargo run --profile fast` | optimisé, sans LTO : recompile en quelques secondes, idéal pour essayer l'application réelle |
 | `cargo run --release` | avec LTO, sans symboles : la version à distribuer |
 
+`cargo test` lance les tests unitaires et ceux de l'interface sans fenêtre. `cargo xtask e2e` lance les tests de bout en bout : l'application et son cœur face à un serveur Redis jetable, un `redis-server` (ou `valkey-server`) local s'il y en a un, sinon le `redis:7.4` de Docker, sinon sous Windows le `redis-server` de WSL. Chaque test prend une base vidée rien que pour lui.
+
 Les installeurs se construisent avec `cargo xtask build-windows` (MSI et zip portable), `cargo xtask build-deb` et `cargo xtask build-appimage` (ou les deux à partir d'une seule compilation avec `cargo xtask build-linux`).
 
 Pour essayer le MSI seul, `cargo xtask build-installer-test --version 1.2.0` y met une application factice, rapide à compiler, à la version voulue ; sur GitHub, lancez le workflow *Installer test* et téléchargez son artefact.

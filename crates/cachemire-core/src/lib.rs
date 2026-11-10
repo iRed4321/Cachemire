@@ -25,6 +25,10 @@ pub mod state;
 pub mod test_support;
 pub mod updates;
 
+// against a real Redis server: ignored unless run by `cargo xtask e2e`
+#[cfg(test)]
+mod e2e;
+
 pub fn now_ms() -> i64 {
     SystemTime::now().duration_since(UNIX_EPOCH).map(|d| d.as_millis() as i64).unwrap_or(0)
 }

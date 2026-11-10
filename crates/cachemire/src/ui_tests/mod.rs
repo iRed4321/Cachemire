@@ -1,6 +1,6 @@
 //! Headless input/render tests against the real window, on Slint's software renderer, by
-//! area: [`table`], [`values`], [`header`], [`app`], [`dialogs`], [`connections`], [`cloud`], [`links`] and [`tabs`].
-//! Each test builds its own [`Harness`] (thread-local Slint context).
+//! area: [`table`], [`values`], [`header`], [`app`], [`dialogs`], [`connections`], [`cloud`], [`links`], [`tabs`],
+//! and [`e2e`] against a real Redis server. Each test builds its own [`Harness`] (thread-local Slint context).
 
 use crate::{KeyPanel, MainWindow, QueryTab, SavedQueries, SearchTab, TabStrip};
 use slint::platform::software_renderer::{MinimalSoftwareWindow, RepaintBufferType, Rgb565Pixel};
@@ -14,6 +14,7 @@ mod app;
 mod cloud;
 mod connections;
 mod dialogs;
+mod e2e;
 mod links;
 mod tabs;
 

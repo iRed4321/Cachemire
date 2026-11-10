@@ -1,11 +1,12 @@
 //! Development tasks, run as `cargo xtask <task>` (see `cargo xtask --help`): the
-//! translation files, releases and the Windows and Linux packages. Pure Rust, so
+//! translation files, the end-to-end tests, releases and the Windows and Linux packages. Pure Rust, so
 //! they run the same on every platform; the external tools they need are installed on demand.
 
 mod appimage;
 mod changelog;
 mod deb;
 mod deps;
+mod e2e;
 mod i18n;
 mod install;
 mod linux;
@@ -28,6 +29,13 @@ struct Cli {
 enum Task {
     /// Extract the UI texts and merge them into each language's .po
     I18n,
+    /// Run the end-to-end tests against a throwaway Redis server: a local redis-server, else
+    /// Docker, else WSL's (or the one `CACHEMIRE_E2E_REDIS` names, whose databases they empty)
+    E2e {
+        /// More arguments for `cargo nextest run` (`-- --profile ci`, `-- --no-fail-fast`)
+        #[arg(last = true)]
+        nextest_args: Vec<String>,
+    },
     /// Releases and their branches (`cargo ship`): betas from next, fixes and stable releases through pull requests into main
     Release {
         /// What to do; a beta of next when left out
@@ -158,6 +166,7 @@ enum Task {
 fn main() {
     let result = match Cli::parse().task {
         Task::I18n => i18n::run_task(),
+        Task::E2e { nextest_args } => e2e::run_task(nextest_args),
         Task::Release { command } => ship::run_task(command),
         Task::NextVersion { request, try_run } => version::print_next_version(&request, try_run),
         Task::ReleaseNotes { version } => changelog::print_notes(&version),

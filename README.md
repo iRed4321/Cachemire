@@ -118,6 +118,8 @@ Add a connection from the title bar (**New connection…**), pick it, and browse
 | `cargo run --profile fast` | optimized, no LTO: rebuilds in seconds, good for trying the real thing |
 | `cargo run --release` | LTO, stripped: the one to ship |
 
+`cargo test` runs the unit tests and the headless UI ones. `cargo xtask e2e` runs the end-to-end tests: the app and its core against a throwaway Redis server, a local `redis-server` (or `valkey-server`) if there is one, else Docker's `redis:7.4`, else on Windows the `redis-server` of WSL. Each test takes an emptied database of its own.
+
 Installers are built with `cargo xtask build-windows` (MSI and portable zip), `cargo xtask build-deb` and `cargo xtask build-appimage` (or both from one build with `cargo xtask build-linux`).
 
 To try the MSI alone, `cargo xtask build-installer-test --version 1.2.0` packs a stand-in app, quick to build, as any version; on GitHub, run the *Installer test* workflow and download its artifact.

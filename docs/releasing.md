@@ -292,7 +292,7 @@ To see what a request would release without pushing anything: `cargo xtask next-
 
 ### CI
 
-[`.github/workflows/ci.yml`](../.github/workflows/ci.yml): on every pull request, and every push to `main` and `next`. Formatting, Clippy, the tests on Ubuntu and Windows with their coverage, and a summary. Its `Test (ubuntu-latest)` and `Test (windows-latest)` jobs are the checks `main`'s rules require.
+[`.github/workflows/ci.yml`](../.github/workflows/ci.yml): on every pull request, and every push to `main` and `next`. Formatting, Clippy, the tests on Ubuntu and Windows (the end-to-end ones against a Redis server in Docker, or in WSL on Windows) with their coverage, and a summary. Its `Test (ubuntu-latest)` and `Test (windows-latest)` jobs are the checks `main`'s rules require.
 
 ### Dependencies
 

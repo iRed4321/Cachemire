@@ -119,16 +119,35 @@ jobs:
           cargo nextest run --profile ci || failed=1
           if [[ -f target/nextest/ci/junit.xml ]]; then cp target/nextest/ci/junit.xml target/test-output/tests.xml; fi
           exit ${failed:-0}
-      # the tests' coverage, the test-only files left out
+      # the end-to-end tests' Redis server on Windows, whose Docker runs no Linux containers:
+      # Debian's, in WSL (`cargo xtask e2e` starts it there; on Linux, it uses Docker)
+      - name: Install Redis in WSL
+        if: env.CODE && runner.os == 'Windows'
+        uses: Vampire/setup-wsl@v7
+        with:
+          distribution: Debian-13
+          additional-packages: redis-server
+      # the tests the step above skips, against a Redis server started for them; xtask is built
+      # before cargo-llvm-cov's environment is loaded, so only the tests it runs are instrumented
+      - name: End-to-end tests
+        if: ${{ !cancelled() && steps.build.outcome == 'success' }}
+        run: |
+          cargo build --quiet --package xtask --target-dir target/xtask
+          eval "$(cargo llvm-cov show-env --sh)"
+          rm -f target/nextest/ci/junit.xml
+          target/xtask/debug/xtask e2e -- --profile ci || failed=1
+          if [[ -f target/nextest/ci/junit.xml ]]; then cp target/nextest/ci/junit.xml target/test-output/e2e.xml; fi
+          exit ${failed:-0}
+      # the tests' coverage (the end-to-end ones' included), the test-only files left out
       - name: Coverage
         if: ${{ !cancelled() && steps.build.outcome == 'success' }}
         run: |
           eval "$(cargo llvm-cov show-env --sh)"
-          cargo llvm-cov report --json --summary-only --ignore-filename-regex 'test_support|ui_tests|[/\\]tests([/\\]|\.rs$)' --output-path target/test-output/coverage.json
+          cargo llvm-cov report --json --summary-only --ignore-filename-regex 'test_support|ui_tests|[/\\]e2e[/\\]|[/\\]tests([/\\]|\.rs$)' --output-path target/test-output/coverage.json
       - name: Save the report (tests)
         if: ${{ !cancelled() && steps.build.outcome == 'success' }}
         run: |
-          cargo xtask report-build Tests --coverage target/test-output/coverage.json --tests "Tests=target/test-output/tests.xml"
+          cargo xtask report-build Tests --coverage target/test-output/coverage.json --tests "Tests=target/test-output/tests.xml" --tests "End-to-end=target/test-output/e2e.xml"
       - uses: actions/upload-artifact@v7
         if: ${{ !cancelled() && env.CODE }}
         with:
