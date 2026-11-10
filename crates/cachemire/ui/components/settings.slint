@@ -219,13 +219,30 @@ component TintSwatches inherits HorizontalLayout {
 }
 
 
-// one category in the left column of the settings window, its icon picked by `category`
+// the icon of a settings category, or the search's magnifier for its results (`results`)
+component CategoryIcon inherits Rectangle {
+    in property <SettingsCategory> category;
+    in property <bool> results: false;
+    in property <color> tint;
+
+    width: Theme.icon-md;
+    height: Theme.icon-md;
+    if root.results: IconSearch { size: Theme.icon-md; tint: root.tint; }
+    if !root.results && root.category == SettingsCategory.general: IconSettings { size: Theme.icon-md; tint: root.tint; }
+    if !root.results && root.category == SettingsCategory.key-bindings: IconKeyboard { size: Theme.icon-md; tint: root.tint; }
+    if !root.results && root.category == SettingsCategory.ssh-profiles: IconKey { size: Theme.icon-md; tint: root.tint; }
+    if !root.results && root.category == SettingsCategory.conn-profiles: IconPalette { size: Theme.icon-md; tint: root.tint; }
+    if !root.results && root.category == SettingsCategory.experimental: IconFlask { size: Theme.icon-md; tint: root.tint; }
+    if !root.results && root.category == SettingsCategory.about: IconInfo { size: Theme.icon-md; tint: root.tint; }
+}
+
+// one entry of the left column of the settings window: a category, or the search's results
 component CategoryItem inherits Rectangle {
     in property <SettingsCategory> category;
+    in property <bool> results: false;
     in property <string> text;
     in property <bool> selected: false;
     callback clicked <=> area.clicked;
-    property <color> icon-tint: selected ? Theme.accent-blue : Theme.text-tertiary;
 
     height: Theme.px(32px);
     border-radius: Theme.radius-md;
@@ -237,15 +254,10 @@ component CategoryItem inherits Rectangle {
         padding-right: Theme.px(10px);
         spacing: Theme.px(10px);
         cross-axis-alignment: center;
-        Rectangle {
-            width: Theme.icon-md;
-            height: Theme.icon-md;
-            if root.category == SettingsCategory.general: IconSettings { size: Theme.icon-md; tint: root.icon-tint; }
-            if root.category == SettingsCategory.key-bindings: IconKeyboard { size: Theme.icon-md; tint: root.icon-tint; }
-            if root.category == SettingsCategory.ssh-profiles: IconKey { size: Theme.icon-md; tint: root.icon-tint; }
-            if root.category == SettingsCategory.conn-profiles: IconPalette { size: Theme.icon-md; tint: root.icon-tint; }
-            if root.category == SettingsCategory.experimental: IconFlask { size: Theme.icon-md; tint: root.icon-tint; }
-            if root.category == SettingsCategory.about: IconInfo { size: Theme.icon-md; tint: root.icon-tint; }
+        CategoryIcon {
+            category: root.category;
+            results: root.results;
+            tint: root.selected ? Theme.accent-blue : Theme.text-tertiary;
         }
         Text {
             text: root.text;
@@ -487,52 +499,437 @@ component SettingsPage inherits HorizontalLayout {
     }
 }
 
+// the explanations under the settings, which the search reads too
+global SettingTexts {
+    out property <string> depth-hint: @tr("How many entries of each key (hash fields, list items, set members...) the global search reads. Fewer is faster, but a match deeper inside a big key is missed.");
+    out property <string> opening-view-hint: @tr("The view a key shows when its tab opens. A query's result always opens as a table, and a search hit or a link to a field in the fields view.");
+    out property <string> restore-hint: @tr("Cachemire reconnects to the connection it was closed on, with its tabs and open folders. An AWS connection signs in again first, in the browser if its session has expired.");
+    out property <string> updates-hint: @tr("Each time Cachemire starts, it looks for a newer version on the channel picked in About (the i button of the title bar), and opens it when there is one.");
+    out property <string> server-search-hint: @tr("The global search lets Redis filter the data itself, so far less of it travels. It uses the server's CPU while it runs, needs permission to run scripts, and goes back to the normal search if the server refuses.");
+    out property <string> ssh-hint: @tr("The active profile logs in to the SSH tunnels that have no username of their own. A connection that fills in its own username and password uses those instead.");
+    out property <string> conn-hint: @tr("A connection that has one of these profiles tints the app's background while you are connected to it, to tell environments apart.");
+}
+
+// one category's part of the search's results: its name over what was found in it,
+// with "+ Add ..." at the right of the name when `add-text` isn't empty
+component ResultSection inherits VerticalLayout {
+    in property <SettingsCategory> category;
+    in property <string> text;
+    in property <string> add-text;
+    callback add();
+
+    spacing: Theme.px(12px);
+    padding-bottom: Theme.px(8px);
+    VerticalLayout {
+        spacing: Theme.px(6px);
+        HorizontalLayout {
+            height: Theme.px(24px);
+            spacing: Theme.px(8px);
+            VerticalLayout {
+                alignment: center;
+                CategoryIcon { category: root.category; tint: Theme.text-secondary; }
+            }
+            Text {
+                text: root.text;
+                font-size: Theme.pt(13px);
+                font-weight: 700;
+                color: Theme.text-primary;
+                vertical-alignment: center;
+                horizontal-stretch: 1;
+                overflow: elide;
+            }
+            if root.add-text != "": AddLink {
+                text: root.add-text;
+                clicked => { root.add(); }
+            }
+        }
+        Rectangle { height: 1px; background: Theme.border-soft; }
+    }
+    @children
+}
+
+// the General page's settings, each hidden when its `show-` is false (not found by the search)
+component GeneralSettings inherits VerticalLayout {
+    in property <bool> show-language: true;
+    in property <bool> show-export: true;
+    in property <bool> show-opening-view: true;
+    in property <bool> show-depth: true;
+    in property <bool> show-restore: true;
+    in property <bool> show-check-updates: true;
+
+    spacing: Theme.px(20px);
+    if root.show-language: VerticalLayout {
+        spacing: Theme.px(6px);
+        SettingTitle { text: @tr("Language"); }
+        // each language is named in itself, so it can be found from
+        // any other one
+        HorizontalLayout {
+            alignment: start;
+            spacing: Theme.px(6px);
+            SegmentButton { text: @tr("Automatic"); selected: Preferences.language == LanguageSetting.automatic; clicked => { Preferences.language-selected(LanguageSetting.automatic); } }
+            SegmentButton { text: "English"; selected: Preferences.language == LanguageSetting.english; clicked => { Preferences.language-selected(LanguageSetting.english); } }
+            SegmentButton { text: "Français"; selected: Preferences.language == LanguageSetting.french; clicked => { Preferences.language-selected(LanguageSetting.french); } }
+        }
+    }
+
+    if root.show-export: VerticalLayout {
+        spacing: Theme.px(6px);
+        SettingTitle { text: @tr("Export format"); }
+        // what the export buttons start on (they can be switched there)
+        HorizontalLayout {
+            alignment: start;
+            spacing: Theme.px(6px);
+            SegmentButton { text: @tr("JSON"); selected: !Preferences.export-escaped; clicked => { Preferences.export-escaped-selected(false); } }
+            SegmentButton { text: @tr("Escaped JSON"); selected: Preferences.export-escaped; clicked => { Preferences.export-escaped-selected(true); } }
+        }
+    }
+
+    if root.show-opening-view: VerticalLayout {
+        spacing: Theme.px(6px);
+        SettingTitle { text: @tr("New tabs open in"); }
+        HorizontalLayout {
+            alignment: start;
+            spacing: Theme.px(6px);
+            SegmentButton { text: @tr("Fields view"); selected: Preferences.opening-view == OpeningView.fields; clicked => { Preferences.opening-view-selected(OpeningView.fields); } }
+            SegmentButton { text: @tr("Table view"); selected: Preferences.opening-view == OpeningView.table; clicked => { Preferences.opening-view-selected(OpeningView.table); } }
+            SegmentButton { text: @tr("Last view picked"); selected: Preferences.opening-view == OpeningView.last; clicked => { Preferences.opening-view-selected(OpeningView.last); } }
+        }
+        SettingHint { text: SettingTexts.opening-view-hint; }
+    }
+
+    if root.show-depth: VerticalLayout {
+        spacing: Theme.px(6px);
+        SettingTitle { text: @tr("Search depth"); }
+        HorizontalLayout {
+            alignment: start;
+            spacing: Theme.px(6px);
+            SegmentButton { text: "60"; selected: Preferences.search-depth == 60; clicked => { Preferences.search-depth-selected(60); } }
+            SegmentButton { text: "200"; selected: Preferences.search-depth == 200; clicked => { Preferences.search-depth-selected(200); } }
+            SegmentButton { text: "1000"; selected: Preferences.search-depth == 1000; clicked => { Preferences.search-depth-selected(1000); } }
+        }
+        SettingHint { text: SettingTexts.depth-hint; }
+    }
+
+    if root.show-restore || root.show-check-updates: VerticalLayout {
+        spacing: Theme.px(4px);
+        SettingTitle { text: @tr("Startup"); }
+        if root.show-restore: VerticalLayout {
+            spacing: Theme.px(4px);
+            CheckRow {
+                text: @tr("Restore the last connection");
+                checked: Preferences.restore-session;
+                toggled => { Preferences.restore-session-toggled(!Preferences.restore-session); }
+            }
+            SettingHint { text: SettingTexts.restore-hint; }
+        }
+        if root.show-check-updates: VerticalLayout {
+            spacing: Theme.px(4px);
+            CheckRow {
+                text: @tr("Check for Updates at startup");
+                checked: Preferences.check-updates-at-startup;
+                toggled => { Preferences.check-updates-at-startup-toggled(!Preferences.check-updates-at-startup); }
+            }
+            SettingHint { text: SettingTexts.updates-hint; }
+        }
+    }
+}
+
+// the Key bindings page's shortcuts, as Rust filtered them (see Shortcuts.filter-changed):
+// the app's own, which can be changed, then the standard ones
+component KeyBindingSettings inherits VerticalLayout {
+    spacing: Theme.px(20px);
+    SettingHint {
+        text: @tr("Click a shortcut, then press the keys to use instead: Ctrl with a key, or a function key alone. Esc cancels.");
+    }
+    if Shortcuts.rows.length > 0: VerticalLayout {
+        spacing: Theme.px(2px);
+        for row[index] in Shortcuts.rows: VerticalLayout {
+            padding-top: row.group-title != "" && index > 0 ? Theme.px(14px) : 0;
+            spacing: Theme.px(4px);
+            if row.group-title != "": SettingTitle { text: row.group-title; }
+            ShortcutLine {
+                title: row.title;
+                keys: row.keys;
+                custom: row.custom;
+                recording: Shortcuts.recording && Shortcuts.recording-action == row.action;
+                start => {
+                    Preferences.error = "";
+                    Shortcuts.recording-action = row.action;
+                    Shortcuts.recording = true;
+                }
+                cancel => {
+                    if Shortcuts.recording-action == row.action {
+                        Shortcuts.recording = false;
+                    }
+                }
+                pressed(event) => {
+                    if event.text == Key.Escape {
+                        Shortcuts.recording = false;
+                    } else {
+                        Shortcuts.recorded(row.action, event.text, event.modifiers.control, event.modifiers.shift, event.modifiers.alt, event.modifiers.meta);
+                    }
+                }
+                reset => {
+                    Preferences.error = "";
+                    Shortcuts.recording = false;
+                    Shortcuts.reset(row.action);
+                }
+            }
+        }
+    }
+
+    if Shortcuts.standard.length > 0: VerticalLayout {
+        spacing: Theme.px(2px);
+        SettingTitle { text: @tr("Standard keys"); }
+        SettingHint {
+            height: Theme.pt(18px);
+            text: @tr("They work as in other apps, and can't be changed.");
+        }
+        for line in Shortcuts.standard: ShortcutLine {
+            fixed: true;
+            title: line.title;
+            keys: line.keys;
+        }
+    }
+}
+
+// the Experimental page's one setting
+component ExperimentalSettings inherits VerticalLayout {
+    spacing: Theme.px(4px);
+    CheckRow {
+        text: @tr("Search on the server (Lua script)");
+        checked: Preferences.server-search;
+        toggled => { Preferences.server-search-toggled(!Preferences.server-search); }
+    }
+    SettingHint {
+        text: SettingTexts.server-search-hint;
+        height: Theme.pt(42px);
+    }
+}
+
+// the About page: the version and the repository, then the updates, each hidden when its
+// `show-` is false (not found by the search)
+component AboutSettings inherits VerticalLayout {
+    in property <bool> show-version: true;
+    in property <bool> show-updates: true;
+
+    spacing: Theme.px(20px);
+    if root.show-version: HorizontalLayout {
+        spacing: Theme.px(14px);
+        alignment: start;
+        Image {
+            source: @image-url("../../../../resources/icon.png");
+            width: Theme.px(48px);
+            height: Theme.px(48px);
+        }
+        VerticalLayout {
+            alignment: center;
+            spacing: Theme.px(2px);
+            Text {
+                text: "Cachemire by Léo Parent";
+                font-size: Theme.pt(14px);
+                font-weight: 700;
+                color: Theme.text-primary;
+            }
+            Text {
+                text: About.version;
+                font-size: Theme.pt(12.5px);
+                color: Theme.text-secondary;
+            }
+            HorizontalLayout {
+                alignment: start;
+                Text {
+                    text: @tr("GitHub repository");
+                    font-size: Theme.pt(12px);
+                    color: Theme.accent-blue;
+                    TouchArea {
+                        mouse-cursor: pointer;
+                        clicked => { About.open-repo(); }
+                    }
+                }
+            }
+        }
+    }
+
+    if root.show-updates: VerticalLayout {
+        spacing: Theme.px(8px);
+        SettingTitle { text: @tr("Updates"); }
+        HorizontalLayout {
+            alignment: start;
+            SegmentedToggle {
+                options: [@tr("Stable"), @tr("Beta")];
+                segment-width: Theme.px(64px);
+                current: About.channel;
+                picked(index) => { if (!About.busy && index != About.channel) { About.channel-picked(index); } }
+            }
+        }
+        HorizontalLayout {
+            alignment: start;
+            spacing: Theme.px(8px);
+            ModalButton {
+                text: About.busy ? @tr("Checking...") : @tr("Check for updates");
+                clicked => { if (!About.busy) { About.check(); } }
+            }
+            if About.update-available: ModalButton {
+                text: About.download-label;
+                primary: true;
+                clicked => { if (!About.busy) { About.download(); } }
+            }
+        }
+        if About.status != "": Text {
+            // a layout can't tell how far wrapped text grows: about 60 characters a line
+            height: Theme.pt(16px) * max(1, ceil(self.text.character-count / 60));
+            text: About.status;
+            font-size: Theme.pt(12px);
+            color: Theme.text-secondary;
+            wrap: word-wrap;
+        }
+    }
+}
+
+// the SSH profiles under their hint: on their own page (`scrolls`) the list grows with its
+// rows and scrolls once the page is full; in the search's results it shows every row
+component SshProfileList inherits VerticalLayout {
+    in property <bool> scrolls: true;
+    callback edit(id: string, name: string, username: string);
+    property <[SshProfileRowData]> profiles: Preferences.ssh-profiles;
+    property <length> row-height: Theme.px(46px);
+
+    spacing: Theme.px(12px);
+    SettingHint { text: SettingTexts.ssh-hint; }
+    list-box := Rectangle {
+        property <length> full-height: (root.profiles.length == 0 ? Theme.px(64px) : root.profiles.length * root.row-height) + Theme.px(2px);
+        min-height: root.scrolls ? min(self.full-height, root.row-height + Theme.px(2px)) : self.full-height;
+        preferred-height: self.full-height;
+        max-height: self.full-height;
+        vertical-stretch: 1;
+        background: Theme.bg-sunken;
+        border-radius: Theme.radius-md;
+        border-width: 1px;
+        border-color: Theme.border-soft;
+
+        if root.profiles.length == 0: Text {
+            text: @tr("No SSH profiles yet");
+            font-size: Theme.pt(12px);
+            color: Theme.text-tertiary;
+            horizontal-alignment: center;
+            vertical-alignment: center;
+        }
+        if root.profiles.length > 0 && root.scrolls: HorizontalLayout {
+            padding: Theme.px(1px);
+            list-flick := Flickable {
+                horizontal-stretch: 1;
+                interactive: true;
+                list-content := VerticalLayout {
+                    // pinned to the box's width (less its border):
+                    // a Flickable's content isn't sized by its frame
+                    width: list-box.width - Theme.px(2px);
+                    alignment: start;
+                    for p in root.profiles: ProfileRow {
+                        row-width: list-content.width;
+                        name: p.name;
+                        username: p.username;
+                        active: p.active;
+                        activate => { Preferences.ssh-profile-activated(p.id); }
+                        edit => { root.edit(p.id, p.name, p.username); }
+                    }
+                }
+            }
+            VScrollBar {
+                content-height: list-flick.content-height;
+                content-y <=> list-flick.content-y;
+            }
+        }
+        if root.profiles.length > 0 && !root.scrolls: VerticalLayout {
+            padding: Theme.px(1px);
+            for p in root.profiles: ProfileRow {
+                row-width: list-box.width - Theme.px(2px);
+                name: p.name;
+                username: p.username;
+                active: p.active;
+                activate => { Preferences.ssh-profile-activated(p.id); }
+                edit => { root.edit(p.id, p.name, p.username); }
+            }
+        }
+    }
+    if root.scrolls: Rectangle { vertical-stretch: 1; }
+}
+
+// the connection profiles under their hint, laid out like SshProfileList
+component ConnProfileList inherits VerticalLayout {
+    in property <bool> scrolls: true;
+    callback edit(id: string, name: string, tint: ProfileTint);
+    property <[ConnProfileRowData]> profiles: Preferences.conn-profiles;
+    property <length> row-height: Theme.px(34px);
+
+    spacing: Theme.px(12px);
+    SettingHint { text: SettingTexts.conn-hint; }
+    conn-list-box := Rectangle {
+        property <length> full-height: (root.profiles.length == 0 ? Theme.px(52px) : root.profiles.length * root.row-height) + Theme.px(2px);
+        min-height: root.scrolls ? min(self.full-height, root.row-height + Theme.px(2px)) : self.full-height;
+        preferred-height: self.full-height;
+        max-height: self.full-height;
+        vertical-stretch: 1;
+        background: Theme.bg-sunken;
+        border-radius: Theme.radius-md;
+        border-width: 1px;
+        border-color: Theme.border-soft;
+
+        if root.profiles.length == 0: Text {
+            text: @tr("No connection profiles yet");
+            font-size: Theme.pt(12px);
+            color: Theme.text-tertiary;
+            horizontal-alignment: center;
+            vertical-alignment: center;
+        }
+        if root.profiles.length > 0 && root.scrolls: HorizontalLayout {
+            padding: Theme.px(1px);
+            conn-flick := Flickable {
+                horizontal-stretch: 1;
+                interactive: true;
+                conn-content := VerticalLayout {
+                    width: conn-list-box.width - Theme.px(2px);
+                    alignment: start;
+                    for p in root.profiles: ConnProfileRow {
+                        row-width: conn-content.width;
+                        name: p.name;
+                        tint: p.tint;
+                        edit => { root.edit(p.id, p.name, p.tint); }
+                    }
+                }
+            }
+            VScrollBar {
+                content-height: conn-flick.content-height;
+                content-y <=> conn-flick.content-y;
+            }
+        }
+        if root.profiles.length > 0 && !root.scrolls: VerticalLayout {
+            padding: Theme.px(1px);
+            for p in root.profiles: ConnProfileRow {
+                row-width: conn-list-box.width - Theme.px(2px);
+                name: p.name;
+                tint: p.tint;
+                edit => { root.edit(p.id, p.name, p.tint); }
+            }
+        }
+    }
+    if root.scrolls: Rectangle { vertical-stretch: 1; }
+}
+
 // The settings window: its categories on the left, the settings of the one picked on the
 // right, where the add/edit form of an SSH or connection profile replaces the list.
 // Passwords are never shown; blank keeps the stored one.
 export component SettingsModal inherits Rectangle {
-    in property <[SshProfileRowData]> profiles: Preferences.ssh-profiles;
     // whether the clipboard holds text, for each field's right-click "Paste"
     callback clipboard-has-text() -> bool;
-    in property <[ConnProfileRowData]> conn-profiles: Preferences.conn-profiles;
     in property <string> error: Preferences.error;
     in-out property <SettingsCategory> category <=> Preferences.category;
-    // the interface language
-    in property <LanguageSetting> language: Preferences.language;
-    callback language-selected(setting: LanguageSetting);
-    language-selected(setting) => { Preferences.language-selected(setting); }
-    // whether the export buttons start on escaped JSON rather than plain JSON
-    in property <bool> export-escaped: Preferences.export-escaped;
-    callback export-escaped-selected(escaped: bool);
-    export-escaped-selected(escaped) => { Preferences.export-escaped-selected(escaped); }
-    // the view a key's new tab starts on
-    in property <OpeningView> opening-view: Preferences.opening-view;
-    callback opening-view-selected(view: OpeningView);
-    opening-view-selected(view) => { Preferences.opening-view-selected(view); }
-    // how many entries of a key the global search reads
-    in property <int> search-depth: Preferences.search-depth;
-    callback search-depth-selected(depth: int);
-    search-depth-selected(depth) => { Preferences.search-depth-selected(depth); }
-    // experimental: the global search lets Redis filter with a script
-    in property <bool> server-search: Preferences.server-search;
-    callback server-search-toggled(enabled: bool);
-    server-search-toggled(enabled) => { Preferences.server-search-toggled(enabled); }
-    // looks for an update each time the app starts
-    in property <bool> check-updates-at-startup: Preferences.check-updates-at-startup;
-    callback check-updates-at-startup-toggled(enabled: bool);
-    check-updates-at-startup-toggled(enabled) => { Preferences.check-updates-at-startup-toggled(enabled); }
-    // reopens the last connection with its tabs and open folders at startup
-    in property <bool> restore-session: Preferences.restore-session;
-    callback restore-session-toggled(enabled: bool);
-    restore-session-toggled(enabled) => { Preferences.restore-session-toggled(enabled); }
     // the SSH profile form is showing instead of the list
     in-out property <bool> editing <=> Preferences.ssh-profile-editing;
     in-out property <string> field-id <=> Preferences.ssh-profile-id;
     in-out property <string> field-name <=> Preferences.ssh-profile-name;
     in-out property <string> field-username <=> Preferences.ssh-profile-username;
     in-out property <string> field-password <=> Preferences.ssh-profile-password;
-    callback activate(id: string);
-    activate(id) => { Preferences.ssh-profile-activated(id); }
     callback save();
     save => { Preferences.ssh-profile-saved({ id: field-id, name: field-name, username: field-username, password: field-password }); }
     callback delete();
@@ -552,31 +949,25 @@ export component SettingsModal inherits Rectangle {
     callback conn-delete();
     conn-delete => { Preferences.conn-profile-deleted(conn-field-id); }
 
-    // the search box's text: while there is some, only the settings it finds show, and only
-    // the categories that have one; the Key bindings page asks Rust (see Shortcuts.filter-changed)
+    // the search box's text: while there is some, the Settings found page replaces the
+    // categories, with what it finds in each of them under their names
     property <string> query;
+    property <bool> searching: root.query != "";
     pure function hit(text: string) -> bool {
         return root.query == "" || Preferences.search-matches(root.query, text);
     }
     // each setting is found by its page's name and its own texts
-    property <string> depth-hint: @tr("How many entries of each key (hash fields, list items, set members...) the global search reads. Fewer is faster, but a match deeper inside a big key is missed.");
-    property <string> opening-view-hint: @tr("The view a key shows when its tab opens. A query's result always opens as a table, and a search hit or a link to a field in the fields view.");
-    property <string> restore-hint: @tr("Cachemire reconnects to the connection it was closed on, with its tabs and open folders. An AWS connection signs in again first, in the browser if its session has expired.");
-    property <string> updates-hint: @tr("Each time Cachemire starts, it looks for a newer version on the channel picked in About (the i button of the title bar), and opens it when there is one.");
-    property <string> server-search-hint: @tr("The global search lets Redis filter the data itself, so far less of it travels. It uses the server's CPU while it runs, needs permission to run scripts, and goes back to the normal search if the server refuses.");
-    property <string> ssh-hint: @tr("The active profile logs in to the SSH tunnels that have no username of their own. A connection that fills in its own username and password uses those instead.");
-    property <string> conn-hint: @tr("A connection that has one of these profiles tints the app's background while you are connected to it, to tell environments apart.");
     property <bool> found-language: root.hit(@tr("General") + " " + @tr("Language") + " " + @tr("Automatic") + " English Français");
     property <bool> found-export: root.hit(@tr("General") + " " + @tr("Export format") + " " + @tr("JSON") + " " + @tr("Escaped JSON"));
-    property <bool> found-opening-view: root.hit(@tr("General") + " " + @tr("New tabs open in") + " " + @tr("Fields view") + " " + @tr("Table view") + " " + @tr("Last view picked") + " " + root.opening-view-hint);
-    property <bool> found-depth: root.hit(@tr("General") + " " + @tr("Search depth") + " 60 200 1000 " + root.depth-hint);
-    property <bool> found-restore: root.hit(@tr("General") + " " + @tr("Startup") + " " + @tr("Restore the last connection") + " " + root.restore-hint);
-    property <bool> found-check-updates: root.hit(@tr("General") + " " + @tr("Startup") + " " + @tr("Check for Updates at startup") + " " + root.updates-hint);
-    property <bool> found-server-search: root.hit(@tr("Experimental") + " " + @tr("Search on the server (Lua script)") + " " + root.server-search-hint);
+    property <bool> found-opening-view: root.hit(@tr("General") + " " + @tr("New tabs open in") + " " + @tr("Fields view") + " " + @tr("Table view") + " " + @tr("Last view picked") + " " + SettingTexts.opening-view-hint);
+    property <bool> found-depth: root.hit(@tr("General") + " " + @tr("Search depth") + " 60 200 1000 " + SettingTexts.depth-hint);
+    property <bool> found-restore: root.hit(@tr("General") + " " + @tr("Startup") + " " + @tr("Restore the last connection") + " " + SettingTexts.restore-hint);
+    property <bool> found-check-updates: root.hit(@tr("General") + " " + @tr("Startup") + " " + @tr("Check for Updates at startup") + " " + SettingTexts.updates-hint);
+    property <bool> found-server-search: root.hit(@tr("Experimental") + " " + @tr("Search on the server (Lua script)") + " " + SettingTexts.server-search-hint);
     property <bool> found-version: root.hit(@tr("About") + " Cachemire Léo Parent " + About.version + " " + @tr("GitHub repository"));
     property <bool> found-updates: root.hit(@tr("About") + " " + @tr("Updates") + " " + @tr("Stable") + " " + @tr("Beta") + " " + @tr("Check for updates"));
-    property <bool> found-ssh: root.hit(@tr("SSH profiles") + " " + @tr("Add profile") + " " + root.ssh-hint);
-    property <bool> found-conn: root.hit(@tr("Connection profiles") + " " + @tr("Add profile") + " " + root.conn-hint);
+    property <bool> found-ssh: root.hit(@tr("SSH profiles") + " " + @tr("Add profile") + " " + SettingTexts.ssh-hint);
+    property <bool> found-conn: root.hit(@tr("Connection profiles") + " " + @tr("Add profile") + " " + SettingTexts.conn-hint);
     property <bool> found-any: root.found(SettingsCategory.general) || root.found(SettingsCategory.key-bindings) || root.found(SettingsCategory.ssh-profiles)
         || root.found(SettingsCategory.conn-profiles) || root.found(SettingsCategory.experimental) || root.found(SettingsCategory.about);
 
@@ -590,31 +981,13 @@ export component SettingsModal inherits Rectangle {
     }
 
     init => { Shortcuts.filter-changed("", "", ""); }
-    // a search that finds nothing on the page shown moves to the first page it finds something on
-    changed query => {
-        Shortcuts.filter-changed(root.query, @tr("Key bindings"), @tr("Standard keys"));
-        if !root.found(root.category) {
-            if root.found(SettingsCategory.general) {
-                root.select(SettingsCategory.general);
-            } else if root.found(SettingsCategory.key-bindings) {
-                root.select(SettingsCategory.key-bindings);
-            } else if root.found(SettingsCategory.ssh-profiles) {
-                root.select(SettingsCategory.ssh-profiles);
-            } else if root.found(SettingsCategory.conn-profiles) {
-                root.select(SettingsCategory.conn-profiles);
-            } else if root.found(SettingsCategory.experimental) {
-                root.select(SettingsCategory.experimental);
-            } else if root.found(SettingsCategory.about) {
-                root.select(SettingsCategory.about);
-            }
-        }
-    }
+    changed query => { Shortcuts.filter-changed(root.query, @tr("Key bindings"), @tr("Standard keys")); }
+    // starting or ending a search closes an open form, as picking a category does
+    changed searching => { root.select(root.category); }
 
     property <bool> confirming-delete: false;
-    property <bool> on-ssh-form: root.category == SettingsCategory.ssh-profiles && root.editing;
-    property <bool> on-conn-form: root.category == SettingsCategory.conn-profiles && root.editing-conn-profile;
-    property <length> row-height: Theme.px(46px);
-    property <length> conn-row-height: Theme.px(34px);
+    property <bool> on-ssh-form: root.editing && (root.searching || root.category == SettingsCategory.ssh-profiles);
+    property <bool> on-conn-form: root.editing-conn-profile && (root.searching || root.category == SettingsCategory.conn-profiles);
 
     function select(category: SettingsCategory) {
         Shortcuts.recording = false;
@@ -671,7 +1044,7 @@ export component SettingsModal inherits Rectangle {
             HorizontalLayout {
                 padding: 1px;
 
-                // ---- the categories
+                // ---- the categories, or the search's results alone while there is a search
                 Rectangle {
                     width: Theme.px(200px);
                     background: Theme.bg-panel;
@@ -702,31 +1075,38 @@ export component SettingsModal inherits Rectangle {
                                 clipboard-has-text() => { return root.clipboard-has-text(); }
                             }
                         }
-                        if root.found(SettingsCategory.general): CategoryItem {
+                        // back from a profile's form to the results
+                        if root.searching: CategoryItem {
+                            results: true;
+                            text: @tr("Settings found");
+                            selected: true;
+                            clicked => { root.select(root.category); }
+                        }
+                        if !root.searching: CategoryItem {
                             category: SettingsCategory.general;
                             text: @tr("General");
                             selected: root.category == self.category;
                             clicked => { root.select(self.category); }
                         }
-                        if root.found(SettingsCategory.key-bindings): CategoryItem {
+                        if !root.searching: CategoryItem {
                             category: SettingsCategory.key-bindings;
                             text: @tr("Key bindings");
                             selected: root.category == self.category;
                             clicked => { root.select(self.category); }
                         }
-                        if root.found(SettingsCategory.ssh-profiles): CategoryItem {
+                        if !root.searching: CategoryItem {
                             category: SettingsCategory.ssh-profiles;
                             text: @tr("SSH profiles");
                             selected: root.category == self.category;
                             clicked => { root.select(self.category); }
                         }
-                        if root.found(SettingsCategory.conn-profiles): CategoryItem {
+                        if !root.searching: CategoryItem {
                             category: SettingsCategory.conn-profiles;
                             text: @tr("Connection profiles");
                             selected: root.category == self.category;
                             clicked => { root.select(self.category); }
                         }
-                        if root.found(SettingsCategory.experimental): CategoryItem {
+                        if !root.searching: CategoryItem {
                             category: SettingsCategory.experimental;
                             text: @tr("Experimental");
                             selected: root.category == self.category;
@@ -734,7 +1114,7 @@ export component SettingsModal inherits Rectangle {
                         }
                         // About sits apart, at the bottom of the column
                         Rectangle { vertical-stretch: 1; }
-                        if root.found(SettingsCategory.about): CategoryItem {
+                        if !root.searching: CategoryItem {
                             category: SettingsCategory.about;
                             text: @tr("About");
                             selected: root.category == self.category;
@@ -744,7 +1124,7 @@ export component SettingsModal inherits Rectangle {
                 }
                 Rectangle { width: 1px; background: Theme.border-soft; }
 
-                // ---- the page of the category picked
+                // ---- the page of the category picked, or of the search's results
                 VerticalLayout {
                     horizontal-stretch: 1;
                     padding: Theme.px(20px);
@@ -758,6 +1138,7 @@ export component SettingsModal inherits Rectangle {
                             text: !root.found-any ? ""
                                 : root.on-conn-form ? (root.conn-field-id == "" ? @tr("New connection profile") : @tr("Edit connection profile"))
                                 : root.on-ssh-form ? (root.field-id == "" ? @tr("New SSH profile") : @tr("Edit SSH profile"))
+                                : root.searching ? @tr("Settings found")
                                 : root.category == SettingsCategory.key-bindings ? @tr("Key bindings")
                                 : root.category == SettingsCategory.ssh-profiles ? @tr("SSH profiles")
                                 : root.category == SettingsCategory.conn-profiles ? @tr("Connection profiles")
@@ -771,344 +1152,89 @@ export component SettingsModal inherits Rectangle {
                             horizontal-stretch: 1;
                             overflow: elide;
                         }
-                        if root.found-any && root.category == SettingsCategory.ssh-profiles && !root.on-ssh-form: AddLink {
+                        if !root.searching && root.category == SettingsCategory.ssh-profiles && !root.on-ssh-form: AddLink {
                             text: @tr("Add profile");
                             clicked => { root.show-form("", "", ""); }
                         }
-                        if root.found-any && root.category == SettingsCategory.conn-profiles && !root.on-conn-form: AddLink {
+                        if !root.searching && root.category == SettingsCategory.conn-profiles && !root.on-conn-form: AddLink {
                             text: @tr("Add profile");
                             clicked => { root.show-conn-form("", "", ProfileTint.red); }
                         }
                     }
 
-                    // ---- general
-                    if root.found-any && root.category == SettingsCategory.general: SettingsPage {
-                        if root.found-language: VerticalLayout {
-                            spacing: Theme.px(6px);
-                            SettingTitle { text: @tr("Language"); }
-                            // each language is named in itself, so it can be found from
-                            // any other one
-                            HorizontalLayout {
-                                alignment: start;
-                                spacing: Theme.px(6px);
-                                SegmentButton { text: @tr("Automatic"); selected: root.language == LanguageSetting.automatic; clicked => { root.language-selected(LanguageSetting.automatic); } }
-                                SegmentButton { text: "English"; selected: root.language == LanguageSetting.english; clicked => { root.language-selected(LanguageSetting.english); } }
-                                SegmentButton { text: "Français"; selected: root.language == LanguageSetting.french; clicked => { root.language-selected(LanguageSetting.french); } }
-                            }
-                        }
-
-                        if root.found-export: VerticalLayout {
-                            spacing: Theme.px(6px);
-                            SettingTitle { text: @tr("Export format"); }
-                            // what the export buttons start on (they can be switched there)
-                            HorizontalLayout {
-                                alignment: start;
-                                spacing: Theme.px(6px);
-                                SegmentButton { text: @tr("JSON"); selected: !root.export-escaped; clicked => { root.export-escaped-selected(false); } }
-                                SegmentButton { text: @tr("Escaped JSON"); selected: root.export-escaped; clicked => { root.export-escaped-selected(true); } }
-                            }
-                        }
-
-                        if root.found-opening-view: VerticalLayout {
-                            spacing: Theme.px(6px);
-                            SettingTitle { text: @tr("New tabs open in"); }
-                            HorizontalLayout {
-                                alignment: start;
-                                spacing: Theme.px(6px);
-                                SegmentButton { text: @tr("Fields view"); selected: root.opening-view == OpeningView.fields; clicked => { root.opening-view-selected(OpeningView.fields); } }
-                                SegmentButton { text: @tr("Table view"); selected: root.opening-view == OpeningView.table; clicked => { root.opening-view-selected(OpeningView.table); } }
-                                SegmentButton { text: @tr("Last view picked"); selected: root.opening-view == OpeningView.last; clicked => { root.opening-view-selected(OpeningView.last); } }
-                            }
-                            SettingHint { text: root.opening-view-hint; }
-                        }
-
-                        if root.found-depth: VerticalLayout {
-                            spacing: Theme.px(6px);
-                            SettingTitle { text: @tr("Search depth"); }
-                            HorizontalLayout {
-                                alignment: start;
-                                spacing: Theme.px(6px);
-                                SegmentButton { text: "60"; selected: root.search-depth == 60; clicked => { root.search-depth-selected(60); } }
-                                SegmentButton { text: "200"; selected: root.search-depth == 200; clicked => { root.search-depth-selected(200); } }
-                                SegmentButton { text: "1000"; selected: root.search-depth == 1000; clicked => { root.search-depth-selected(1000); } }
-                            }
-                            SettingHint { text: root.depth-hint; }
-                        }
-
-                        if root.found-restore || root.found-check-updates: VerticalLayout {
-                            spacing: Theme.px(4px);
-                            SettingTitle { text: @tr("Startup"); }
-                            if root.found-restore: VerticalLayout {
-                                spacing: Theme.px(4px);
-                                CheckRow {
-                                    text: @tr("Restore the last connection");
-                                    checked: root.restore-session;
-                                    toggled => { root.restore-session-toggled(!root.restore-session); }
-                                }
-                                SettingHint { text: root.restore-hint; }
-                            }
-                            if root.found-check-updates: VerticalLayout {
-                                spacing: Theme.px(4px);
-                                CheckRow {
-                                    text: @tr("Check for Updates at startup");
-                                    checked: root.check-updates-at-startup;
-                                    toggled => { root.check-updates-at-startup-toggled(!root.check-updates-at-startup); }
-                                }
-                                SettingHint { text: root.updates-hint; }
-                            }
-                        }
+                    if !root.searching && root.category == SettingsCategory.general: SettingsPage {
+                        GeneralSettings { }
                     }
-
-                    // ---- key bindings: the app's own, which can be changed, then the standard ones
-                    if root.found-any && root.category == SettingsCategory.key-bindings: SettingsPage {
-                        SettingHint {
-                            text: @tr("Click a shortcut, then press the keys to use instead: Ctrl with a key, or a function key alone. Esc cancels.");
-                        }
-                        if Shortcuts.rows.length > 0: VerticalLayout {
-                            spacing: Theme.px(2px);
-                            for row[index] in Shortcuts.rows: VerticalLayout {
-                                padding-top: row.group-title != "" && index > 0 ? Theme.px(14px) : 0;
-                                spacing: Theme.px(4px);
-                                if row.group-title != "": SettingTitle { text: row.group-title; }
-                                ShortcutLine {
-                                    title: row.title;
-                                    keys: row.keys;
-                                    custom: row.custom;
-                                    recording: Shortcuts.recording && Shortcuts.recording-action == row.action;
-                                    start => {
-                                        Preferences.error = "";
-                                        Shortcuts.recording-action = row.action;
-                                        Shortcuts.recording = true;
-                                    }
-                                    cancel => {
-                                        if Shortcuts.recording-action == row.action {
-                                            Shortcuts.recording = false;
-                                        }
-                                    }
-                                    pressed(event) => {
-                                        if event.text == Key.Escape {
-                                            Shortcuts.recording = false;
-                                        } else {
-                                            Shortcuts.recorded(row.action, event.text, event.modifiers.control, event.modifiers.shift, event.modifiers.alt, event.modifiers.meta);
-                                        }
-                                    }
-                                    reset => {
-                                        Preferences.error = "";
-                                        Shortcuts.recording = false;
-                                        Shortcuts.reset(row.action);
-                                    }
-                                }
-                            }
-                        }
-
-                        if Shortcuts.standard.length > 0: VerticalLayout {
-                            spacing: Theme.px(2px);
-                            SettingTitle { text: @tr("Standard keys"); }
-                            SettingHint {
-                                height: Theme.pt(18px);
-                                text: @tr("They work as in other apps, and can't be changed.");
-                            }
-                            for line in Shortcuts.standard: ShortcutLine {
-                                fixed: true;
-                                title: line.title;
-                                keys: line.keys;
-                            }
-                        }
+                    if !root.searching && root.category == SettingsCategory.key-bindings: SettingsPage {
+                        KeyBindingSettings { }
                     }
-
-                    // ---- experimental
-                    if root.found-any && root.category == SettingsCategory.experimental: SettingsPage {
-                        if root.found-server-search: VerticalLayout {
-                            spacing: Theme.px(4px);
-                            CheckRow {
-                                text: @tr("Search on the server (Lua script)");
-                                checked: root.server-search;
-                                toggled => { root.server-search-toggled(!root.server-search); }
-                            }
-                            SettingHint {
-                                text: root.server-search-hint;
-                                height: Theme.pt(42px);
-                            }
-                        }
+                    if !root.searching && root.category == SettingsCategory.experimental: SettingsPage {
+                        ExperimentalSettings { }
                     }
-
-                    // ---- about: the version, the repository and the updates
-                    if root.found-any && root.category == SettingsCategory.about: SettingsPage {
-                        if root.found-version: HorizontalLayout {
-                            spacing: Theme.px(14px);
-                            alignment: start;
-                            Image {
-                                source: @image-url("../../../../resources/icon.png");
-                                width: Theme.px(48px);
-                                height: Theme.px(48px);
-                            }
-                            VerticalLayout {
-                                alignment: center;
-                                spacing: Theme.px(2px);
-                                Text {
-                                    text: "Cachemire by Léo Parent";
-                                    font-size: Theme.pt(14px);
-                                    font-weight: 700;
-                                    color: Theme.text-primary;
-                                }
-                                Text {
-                                    text: About.version;
-                                    font-size: Theme.pt(12.5px);
-                                    color: Theme.text-secondary;
-                                }
-                                HorizontalLayout {
-                                    alignment: start;
-                                    Text {
-                                        text: @tr("GitHub repository");
-                                        font-size: Theme.pt(12px);
-                                        color: Theme.accent-blue;
-                                        TouchArea {
-                                            mouse-cursor: pointer;
-                                            clicked => { About.open-repo(); }
-                                        }
-                                    }
-                                }
-                            }
-                        }
-
-                        if root.found-updates: VerticalLayout {
-                            spacing: Theme.px(8px);
-                            SettingTitle { text: @tr("Updates"); }
-                            HorizontalLayout {
-                                alignment: start;
-                                SegmentedToggle {
-                                    options: [@tr("Stable"), @tr("Beta")];
-                                    segment-width: Theme.px(64px);
-                                    current: About.channel;
-                                    picked(index) => { if (!About.busy && index != About.channel) { About.channel-picked(index); } }
-                                }
-                            }
-                            HorizontalLayout {
-                                alignment: start;
-                                spacing: Theme.px(8px);
-                                ModalButton {
-                                    text: About.busy ? @tr("Checking...") : @tr("Check for updates");
-                                    clicked => { if (!About.busy) { About.check(); } }
-                                }
-                                if About.update-available: ModalButton {
-                                    text: About.download-label;
-                                    primary: true;
-                                    clicked => { if (!About.busy) { About.download(); } }
-                                }
-                            }
-                            if About.status != "": Text {
-                                // a layout can't tell how far wrapped text grows: about 60 characters a line
-                                height: Theme.pt(16px) * max(1, ceil(self.text.character-count / 60));
-                                text: About.status;
-                                font-size: Theme.pt(12px);
-                                color: Theme.text-secondary;
-                                wrap: word-wrap;
-                            }
-                        }
+                    if !root.searching && root.category == SettingsCategory.about: SettingsPage {
+                        AboutSettings { }
                     }
-
-                    // ---- the SSH profiles: grows with its rows, and scrolls once the page is full
-                    if root.found-any && root.category == SettingsCategory.ssh-profiles && !root.editing: VerticalLayout {
+                    if !root.searching && root.category == SettingsCategory.ssh-profiles && !root.editing: SshProfileList {
                         vertical-stretch: 1;
-                        spacing: Theme.px(12px);
-                        SettingHint {
-                            text: root.ssh-hint;
-                        }
-                        list-box := Rectangle {
-                            property <length> full-height: (root.profiles.length == 0 ? Theme.px(64px) : root.profiles.length * root.row-height) + Theme.px(2px);
-                            min-height: min(self.full-height, root.row-height + Theme.px(2px));
-                            preferred-height: self.full-height;
-                            max-height: self.full-height;
-                            vertical-stretch: 1;
-                            background: Theme.bg-sunken;
-                            border-radius: Theme.radius-md;
-                            border-width: 1px;
-                            border-color: Theme.border-soft;
-
-                            if root.profiles.length == 0: Text {
-                                text: @tr("No SSH profiles yet");
-                                font-size: Theme.pt(12px);
-                                color: Theme.text-tertiary;
-                                horizontal-alignment: center;
-                                vertical-alignment: center;
-                            }
-                            if root.profiles.length > 0: HorizontalLayout {
-                                padding: Theme.px(1px);
-                                list-flick := Flickable {
-                                    horizontal-stretch: 1;
-                                    interactive: true;
-                                    list-content := VerticalLayout {
-                                        // pinned to the box's width (less its border):
-                                        // a Flickable's content isn't sized by its frame
-                                        width: list-box.width - Theme.px(2px);
-                                        alignment: start;
-                                        for p in root.profiles: ProfileRow {
-                                            row-width: list-content.width;
-                                            name: p.name;
-                                            username: p.username;
-                                            active: p.active;
-                                            activate => { root.activate(p.id); }
-                                            edit => { root.show-form(p.id, p.name, p.username); }
-                                        }
-                                    }
-                                }
-                                VScrollBar {
-                                    content-height: list-flick.content-height;
-                                    content-y <=> list-flick.content-y;
-                                }
-                            }
-                        }
-                        Rectangle { vertical-stretch: 1; }
+                        edit(id, name, username) => { root.show-form(id, name, username); }
+                    }
+                    if !root.searching && root.category == SettingsCategory.conn-profiles && !root.editing-conn-profile: ConnProfileList {
+                        vertical-stretch: 1;
+                        edit(id, name, tint) => { root.show-conn-form(id, name, tint); }
                     }
 
-                    // ---- the connection profiles, laid out like the SSH ones
-                    if root.found-any && root.category == SettingsCategory.conn-profiles && !root.editing-conn-profile: VerticalLayout {
-                        vertical-stretch: 1;
-                        spacing: Theme.px(12px);
-                        SettingHint {
-                            text: root.conn-hint;
-                        }
-                        conn-list-box := Rectangle {
-                            property <length> full-height: (root.conn-profiles.length == 0 ? Theme.px(52px) : root.conn-profiles.length * root.conn-row-height) + Theme.px(2px);
-                            min-height: min(self.full-height, root.conn-row-height + Theme.px(2px));
-                            preferred-height: self.full-height;
-                            max-height: self.full-height;
-                            vertical-stretch: 1;
-                            background: Theme.bg-sunken;
-                            border-radius: Theme.radius-md;
-                            border-width: 1px;
-                            border-color: Theme.border-soft;
-
-                            if root.conn-profiles.length == 0: Text {
-                                text: @tr("No connection profiles yet");
-                                font-size: Theme.pt(12px);
-                                color: Theme.text-tertiary;
-                                horizontal-alignment: center;
-                                vertical-alignment: center;
-                            }
-                            if root.conn-profiles.length > 0: HorizontalLayout {
-                                padding: Theme.px(1px);
-                                conn-flick := Flickable {
-                                    horizontal-stretch: 1;
-                                    interactive: true;
-                                    conn-content := VerticalLayout {
-                                        width: conn-list-box.width - Theme.px(2px);
-                                        alignment: start;
-                                        for p in root.conn-profiles: ConnProfileRow {
-                                            row-width: conn-content.width;
-                                            name: p.name;
-                                            tint: p.tint;
-                                            edit => { root.show-conn-form(p.id, p.name, p.tint); }
-                                        }
-                                    }
-                                }
-                                VScrollBar {
-                                    content-height: conn-flick.content-height;
-                                    content-y <=> conn-flick.content-y;
-                                }
+                    // ---- the search's results, by category, on one page
+                    if root.searching && root.found-any && !root.on-ssh-form && !root.on-conn-form: SettingsPage {
+                        if root.found(SettingsCategory.general): ResultSection {
+                            category: SettingsCategory.general;
+                            text: @tr("General");
+                            GeneralSettings {
+                                show-language: root.found-language;
+                                show-export: root.found-export;
+                                show-opening-view: root.found-opening-view;
+                                show-depth: root.found-depth;
+                                show-restore: root.found-restore;
+                                show-check-updates: root.found-check-updates;
                             }
                         }
-                        Rectangle { vertical-stretch: 1; }
+                        if root.found(SettingsCategory.key-bindings): ResultSection {
+                            category: SettingsCategory.key-bindings;
+                            text: @tr("Key bindings");
+                            KeyBindingSettings { }
+                        }
+                        if root.found(SettingsCategory.ssh-profiles): ResultSection {
+                            category: SettingsCategory.ssh-profiles;
+                            text: @tr("SSH profiles");
+                            add-text: @tr("Add profile");
+                            add => { root.show-form("", "", ""); }
+                            SshProfileList {
+                                scrolls: false;
+                                edit(id, name, username) => { root.show-form(id, name, username); }
+                            }
+                        }
+                        if root.found(SettingsCategory.conn-profiles): ResultSection {
+                            category: SettingsCategory.conn-profiles;
+                            text: @tr("Connection profiles");
+                            add-text: @tr("Add profile");
+                            add => { root.show-conn-form("", "", ProfileTint.red); }
+                            ConnProfileList {
+                                scrolls: false;
+                                edit(id, name, tint) => { root.show-conn-form(id, name, tint); }
+                            }
+                        }
+                        if root.found(SettingsCategory.experimental): ResultSection {
+                            category: SettingsCategory.experimental;
+                            text: @tr("Experimental");
+                            ExperimentalSettings { }
+                        }
+                        if root.found(SettingsCategory.about): ResultSection {
+                            category: SettingsCategory.about;
+                            text: @tr("About");
+                            AboutSettings {
+                                show-version: root.found-version;
+                                show-updates: root.found-updates;
+                            }
+                        }
                     }
 
                     // ---- the form of one SSH profile
