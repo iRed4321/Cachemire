@@ -2,7 +2,6 @@
 //! its items streamed in), and one per lone key (`redis-key-*.json`), or per parent folder when grouping.
 
 use std::collections::BTreeMap;
-use std::fs::File;
 use std::io::{BufWriter, Write};
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -152,7 +151,7 @@ impl Sink {
         let (sender, mut receiver) = tokio::sync::mpsc::channel::<Vec<u8>>(SINK_QUEUE);
         let path = path.to_path_buf();
         let thread = tokio::task::spawn_blocking(move || {
-            let mut file = BufWriter::new(File::create(path)?);
+            let mut file = BufWriter::new(crate::persist::create_private(&path)?);
             while let Some(chunk) = receiver.blocking_recv() {
                 file.write_all(&chunk)?;
             }

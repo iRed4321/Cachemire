@@ -26,6 +26,7 @@ Every stable release of Cachemire; `Unreleased` is what the next one brings. Bet
 - **Query**: the completion list is drawn over the results' buttons below the box, no longer mixed with them
 - **Query**: a string over 16 MB is refused with a message naming the key and its size, instead of being read whole
 - **Security**: the AWS SSO sign-in ignores a refusal that doesn't come from your own sign-in attempt
+- **Security**: exported key files are readable by your user only
 
 ## 3.2.1 - 2026-11-09
 
