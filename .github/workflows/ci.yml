@@ -33,6 +33,7 @@ jobs:
   test:
     name: Test (${{ matrix.os }})
     runs-on: ${{ matrix.os }}
+    timeout-minutes: 60
     strategy:
       fail-fast: false
       matrix:
@@ -97,6 +98,15 @@ jobs:
       - name: Install the LLVM tools
         if: env.CODE
         run: rustup component add llvm-tools-preview
+      # advisories, licenses and sources of the dependencies (deny.toml)
+      - name: Install cargo-deny
+        if: env.CODE && runner.os == 'Linux'
+        uses: taiki-e/install-action@v2
+        with:
+          tool: cargo-deny
+      - name: Dependencies
+        if: env.CODE && runner.os == 'Linux'
+        run: cargo deny check
       # --timings + `report-build`: what was built, for the summary job
       - name: Clippy
         if: env.CODE
@@ -166,6 +176,7 @@ jobs:
     needs: [test]
     if: ${{ always() && needs.test.outputs.code != 'false' }}
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@v7
         with:

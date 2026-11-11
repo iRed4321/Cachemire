@@ -62,3 +62,6 @@ assets = [
     ["../../resources/icon.svg", "usr/share/icons/hicolor/scalable/apps/cachemire.svg", "644"],
     ["../../resources/icon.png", "usr/share/icons/hicolor/256x256/apps/cachemire.png", "644"],
 ]
+
+[lints]
+workspace = true

@@ -42,7 +42,12 @@ mod window_state;
 
 use cachemire_core::state::{AppState, InstanceLock};
 
-slint::include_modules!();
+// the Slint-generated code unwraps its globals and has a todo!()
+#[allow(clippy::unwrap_used, clippy::todo)]
+mod ui {
+    slint::include_modules!();
+}
+pub(crate) use ui::*;
 
 impl MainWindow {
     /// The saved-connection id of the connection in use ("" when none is).

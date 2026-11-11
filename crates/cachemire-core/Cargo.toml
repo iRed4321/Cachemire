@@ -65,3 +65,6 @@ zbus-secret-service-keyring-store = { version = "1", features = ["crypto-rust"] 
 
 [target.'cfg(windows)'.dependencies]
 windows-native-keyring-store = "1"
+
+[lints]
+workspace = true

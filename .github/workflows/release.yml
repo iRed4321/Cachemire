@@ -51,6 +51,7 @@ jobs:
       || github.event.pull_request.merged && contains(github.event.pull_request.labels.*.name, 'release')
       && github.event.pull_request.head.repo.full_name == github.repository
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     outputs:
       sha: ${{ steps.next.outputs.sha }}
       version: ${{ steps.next.outputs.version }}
@@ -115,6 +116,7 @@ jobs:
     needs: plan
     if: needs.plan.outputs.try != 'true'
     runs-on: ${{ matrix.os }}
+    timeout-minutes: 90
     strategy:
       matrix:
         os: [ubuntu-latest, windows-latest]
@@ -139,11 +141,26 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y pkg-config libfontconfig1-dev libfreetype6-dev \
             libxkbcommon-dev libxkbcommon-x11-dev libwayland-dev libx11-dev libxcb1-dev
-      # --timings + `report-build`: what was built, for the summary job
+      # the checks of the CI's test job, but for coverage; --timings + `report-build`: what was
+      # built, for the summary job
+      - name: Clippy
+        run: cargo clippy --all-targets --timings -- -D warnings
+      - name: Save the report (clippy)
+        run: cargo xtask report-build Clippy
       - name: Test
         run: cargo test --timings
       - name: Save the report
         run: cargo xtask report-build Tests
+      # the end-to-end tests' Redis server on Windows, whose Docker runs no Linux containers:
+      # Debian's, in WSL (`cargo xtask e2e` starts it there; on Linux, it uses Docker)
+      - name: Install Redis in WSL
+        if: runner.os == 'Windows'
+        uses: Vampire/setup-wsl@v7
+        with:
+          distribution: Debian-13
+          additional-packages: redis-server
+      - name: End-to-end tests
+        run: cargo xtask e2e
       - uses: actions/upload-artifact@v7
         with:
           name: report-tests-${{ matrix.os }}
@@ -154,6 +171,7 @@ jobs:
     name: Windows (MSI and portable zip)
     needs: plan
     runs-on: windows-latest
+    timeout-minutes: 90
     steps:
       - uses: actions/checkout@v7
         with:
@@ -195,6 +213,7 @@ jobs:
     name: Linux (deb and AppImage)
     needs: plan
     runs-on: ubuntu-latest
+    timeout-minutes: 60
     steps:
       - uses: actions/checkout@v7
         with:
@@ -254,6 +273,7 @@ jobs:
     needs: [plan, test, windows, linux]
     if: needs.plan.outputs.try != 'true'
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     permissions:
       contents: write
       # the build provenance attestations of the packages
@@ -310,6 +330,7 @@ jobs:
     needs: [plan, test, windows, linux, publish]
     if: always() && github.event_name == 'push'
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     permissions:
       contents: write
     steps:
@@ -328,6 +349,7 @@ jobs:
     needs: [plan, test, windows, linux]
     if: always() && needs.plan.result != 'skipped'
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@v7
         with:

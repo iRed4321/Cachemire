@@ -292,7 +292,7 @@ To see what a request would release without pushing anything: `cargo xtask next-
 
 ### CI
 
-[`.github/workflows/ci.yml`](../.github/workflows/ci.yml): on every pull request, and every push to `main` and `next`. Formatting, Clippy, the tests on Ubuntu and Windows (the end-to-end ones against a Redis server in Docker, or in WSL on Windows) with their coverage, and a summary. Its `Test (ubuntu-latest)` and `Test (windows-latest)` jobs are the checks `main`'s rules require.
+[`.github/workflows/ci.yml`](../.github/workflows/ci.yml): on every pull request, and every push to `main` and `next`. Formatting, `cargo deny check` on Ubuntu (the advisories, licenses and sources of the dependencies, per `deny.toml`; an advisory accepted for good is recorded there as an `ignore` entry with its reason), Clippy, the tests on Ubuntu and Windows (the end-to-end ones against a Redis server in Docker, or in WSL on Windows) with their coverage, and a summary. Its `Test (ubuntu-latest)` and `Test (windows-latest)` jobs are the checks `main`'s rules require.
 
 ### Dependencies
 
@@ -320,7 +320,7 @@ A pull request closed without being merged, or without the label, releases nothi
 | Job | Runs on | Does |
 |---|---|---|
 | Version | Ubuntu | works out what's released and its version from the tags, once for all the jobs; checks a beta is on `next` |
-| Tests | Ubuntu, Windows | `cargo test` (skipped by a try build: its pull request's checks run them) |
+| Tests | Ubuntu, Windows | Clippy, `cargo test` and the end-to-end tests (skipped by a try build: its pull request's checks run them) |
 | Windows | Windows | builds the MSI and the portable zip as that version |
 | Linux | Ubuntu | takes a stable release's notes from `CHANGELOG.md` (failing early if they're missing), builds the .deb and the AppImage |
 | GitHub release | Ubuntu | tags the commit, creates the release with the 4 files: a pre-release for a beta, the changelog notes for a stable release or a fix (not for a try build) |

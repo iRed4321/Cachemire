@@ -6,7 +6,7 @@ fn main() {
         .embed_resources(slint_build::EmbedResourcesKind::EmbedFiles)
         .with_bundled_translations("../../resources/lang")
         .with_default_translation_context(slint_build::DefaultTranslationContext::None);
-    slint_build::compile_with_config("ui/main.slint", config).unwrap();
+    slint_build::compile_with_config("ui/main.slint", config).expect("compile the Slint UI");
     theme_colors();
 
     // Windows executable resources: the app icon (Explorer, the installer's shortcut, and the
@@ -39,5 +39,6 @@ fn theme_colors() {
         let name = name.replace('-', "_").to_uppercase();
         out += &format!("pub const {name}: slint::Color = slint::Color::from_rgb_u8({}, {}, {});\n", channel(0), channel(2), channel(4));
     }
-    std::fs::write(std::path::Path::new(&std::env::var("OUT_DIR").unwrap()).join("theme_colors.rs"), out).expect("write theme_colors.rs");
+    std::fs::write(std::path::Path::new(&std::env::var("OUT_DIR").expect("OUT_DIR is set by cargo")).join("theme_colors.rs"), out)
+        .expect("write theme_colors.rs");
 }

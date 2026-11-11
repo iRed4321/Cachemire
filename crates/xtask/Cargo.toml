@@ -3,6 +3,7 @@ name = "xtask"
 version = "0.0.0"
 edition = "2024"
 authors.workspace = true
+license = "GPL-3.0-only"
 publish = false
 description = "Development tasks: translations, release requests and the Windows/Linux release build (`cargo xtask`)"
 
@@ -13,3 +14,6 @@ rspolib = "0.1"
 serde_json.workspace = true
 sha2 = "0.11"
 zip = { version = "9", default-features = false, features = ["deflate"] }
+
+[lints]
+workspace = true

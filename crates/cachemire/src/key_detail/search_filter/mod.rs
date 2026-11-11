@@ -61,7 +61,7 @@ impl SearchFilter {
 
     fn term_matches(&self, term: &SearchTerm, lower_text: Option<&str>, field: &Field) -> bool {
         let hay = |s: &str, lower: fn(&Field) -> &str| {
-            if self.case_sensitive { s.contains(&term.text) } else { lower(field).contains(lower_text.unwrap()) }
+            if self.case_sensitive { s.contains(&term.text) } else { lower_text.is_some_and(|t| lower(field).contains(t)) }
         };
         match term.scope {
             SearchScope::Fields => hay(&field.name, Field::lower_name),
