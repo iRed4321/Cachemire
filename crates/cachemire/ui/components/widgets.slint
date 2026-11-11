@@ -1,21 +1,30 @@
 import { Theme } from "theme.slint";
 
 // The window's hover hint, drawn by main.slint: any component raises it here with its text and
-// where it goes (left edge at `x`; `anchor-y` is its bottom edge when `above`, its top otherwise).
+// where it goes (left edge at `x`; `anchor-y` is its bottom edge when `above`, its top otherwise),
+// and maybe a `footer` line under a separator ("" for none).
 export global Hint {
     out property <string> text;
+    out property <string> footer;
     out property <length> x;
     out property <length> anchor-y;
     out property <bool> above;
     out property <bool> visible;
     public function show-below(label: string, left: length, top: length) {
+        footer = "";
         text = label;
         x = left;
         anchor-y = top;
         above = false;
         visible = true;
     }
+    // `show-below`, with `note` on a line of its own under a separator
+    public function show-below-with(label: string, note: string, left: length, top: length) {
+        show-below(label, left, top);
+        footer = note;
+    }
     public function show-above(label: string, left: length, bottom: length) {
+        footer = "";
         text = label;
         x = left;
         anchor-y = bottom;

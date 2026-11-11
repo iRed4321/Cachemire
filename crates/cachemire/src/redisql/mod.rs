@@ -453,6 +453,7 @@ fn suggest(app: &App, caches: &Arc<Caches>, text: String, cursor: usize, force: 
                             before: item[..hit.start].into(),
                             matched: item[hit.clone()].into(),
                             after: item[hit.end..].into(),
+                            ..Default::default()
                         })
                         .collect()
                 })

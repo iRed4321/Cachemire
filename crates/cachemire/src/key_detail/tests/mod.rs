@@ -18,32 +18,18 @@ mod header;
 mod table;
 mod values;
 
-impl Harness {
-    /// Opens the key panel's "More" section (the search bar and the JSON path
-    /// filter) with a click on the chevron at the extreme right of the key's header.
-    pub(crate) fn open_more(&mut self) {
-        self.click(HEADER_MORE.0, HEADER_MORE.1);
-        self.frame();
-    }
-}
-
 // Where things sit in the 1300x800 window (the tab bar and the key's header above
 // them; measured from a render, so a layout change moves these).
-/// The "More" chevron, at the right end of the key's header.
-const HEADER_MORE: (f32, f32) = (1263.0, 107.0);
 /// The view switcher's segments span these x, on the header's row.
-const HEADER_SWITCHER_X: std::ops::Range<i32> = 1120..1240;
-const HEADER_ROW_Y: std::ops::Range<i32> = 98..118;
-/// The row of the search bar and the JSON filter, once "More" is open.
-pub(crate) const MORE_ROW_Y: std::ops::Range<i32> = 138..164;
-/// The search box, and the JSON filter box, on that row.
-pub(crate) const SEARCH_BOX_X: f32 = 700.0;
-const JSON_FILTER_X: f32 = 1000.0;
+const HEADER_SWITCHER_X: std::ops::Range<i32> = 1090..1205;
+const HEADER_ROW_Y: std::ops::Range<i32> = 100..120;
+/// A point inside the smart box, in the middle of the header's row.
+pub(crate) const SMART_BOX: (f32, f32) = (700.0, 110.0);
 /// The first row under the key's header (and its separator line) where a list starts.
-const LIST_TOP_Y: usize = 128;
+const LIST_TOP_Y: usize = 134;
 /// The table's column titles, and its first row (the rows are 27px apart).
-const TABLE_HEADER_Y: f32 = 153.0;
-const TABLE_FIRST_ROW_Y: f32 = 182.0;
+const TABLE_HEADER_Y: f32 = 159.0;
+const TABLE_FIRST_ROW_Y: f32 = 188.0;
 
 /// `n` fields named `{tag}:0`..`{tag}:{n-1}`, each a small JSON object —
 /// enough real content to lay out, color and scroll through.

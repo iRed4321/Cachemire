@@ -1,13 +1,13 @@
 import { Theme } from "theme.slint";
 import { Hint, IconButton } from "widgets.slint";
-import { IconChevron, IconCopy, IconDownload, IconExternalLink, IconLink, IconPencil, IconSpinner } from "icons.slint";
-import { ExportGroup, SearchField } from "key-detail-widgets.slint";
+import { IconChevron, IconCopy, IconDownload, IconExternalLink, IconLink, IconMore, IconPencil, IconSpinner } from "icons.slint";
+import { RowMenu, SearchField } from "key-detail-widgets.slint";
 import { KeyScroll, ExportPrefs, ValueLine } from "key-detail-types.slint";
 import { KeyPanel, TabStrip } from "../globals.slint";
 
-// The header of an open row: fold chevron and name, the find box with its match
-// count and up/down buttons, and the export pills. The table draws one more, fixed
-// at the top, for the row scrolled under it.
+// The header of an open row: fold chevron and name, the find box with its match count and
+// up/down buttons, then edit, the field's link and a ⋯ menu (open, download, copy, format).
+// The table draws one more, fixed at the top, for the row scrolled under it.
 export component RowHeader inherits Rectangle {
     in property <string> field;
     in-out property <string> find-query;
@@ -22,10 +22,10 @@ export component RowHeader inherits Rectangle {
     callback find-step(step: int);
     callback find-focus-changed(focused: bool);
 
-    // whether the pills act on escaped JSON (and, for a row, its text shows so)
+    // whether the row's text shows as escaped JSON, which copying and its menu use too
     in-out property <bool> escaped: false;
 
-    height: Theme.px(38px);
+    height: Theme.px(32px);
     background: header-area.has-hover ? Theme.bg-hover : Theme.bg-sunken;
     border-radius: Theme.radius-sm;
 
@@ -36,35 +36,28 @@ export component RowHeader inherits Rectangle {
 
     HorizontalLayout {
         padding-left: Theme.px(10px);
-        padding-right: Theme.px(8px);
-        spacing: Theme.px(8px);
+        // the buttons kept out of the reach that shows the view's scrollbar (about 14px
+        // from its edge to this header's)
+        padding-right: Theme.view-scrollbar-reach - Theme.px(12px);
+        spacing: Theme.px(6px);
         cross-axis-alignment: center;
 
         IconChevron { size: Theme.icon-xs; down: true; tint: Theme.text-tertiary; }
-        Rectangle {
-            height: Theme.px(28px);
-            background: Theme.bg-elevated;
-            border-width: 1px;
-            border-color: Theme.border-soft;
-            border-radius: Theme.radius-sm;
-            HorizontalLayout {
-                padding-left: Theme.px(10px);
-                padding-right: Theme.px(10px);
-                Text {
-                    text: root.field;
-                    min-width: Theme.px(24px);
-                    font-size: Theme.pt(12px);
-                    font-family: Theme.font-mono;
-                    font-weight: 600;
-                    color: Theme.text-primary;
-                    vertical-alignment: center;
-                    overflow: elide;
-                }
-            }
+        Text {
+            text: root.field;
+            min-width: Theme.px(24px);
+            max-width: Theme.px(320px);
+            font-size: Theme.pt(12px);
+            font-family: Theme.font-mono;
+            font-weight: 600;
+            color: Theme.text-primary;
+            vertical-alignment: center;
+            overflow: elide;
         }
+        Rectangle { width: Theme.px(4px); }
         SearchField {
-            width: Theme.px(240px);
-            height: Theme.px(28px);
+            width: Theme.px(220px);
+            height: Theme.px(24px);
             font-size: Theme.pt(12px);
             icon-size: Theme.icon-sm;
             underline: true;
@@ -83,53 +76,48 @@ export component RowHeader inherits Rectangle {
         }
         // only once the search has found something to step through
         if root.find-count > 0: IconButton {
-            box-size: Theme.px(26px);
+            box-size: Theme.px(24px);
             hint: @tr("Previous match");
             clicked => { root.find-step(-1); }
             IconChevron { size: Theme.icon-sm; up: true; tint: Theme.text-tertiary; }
         }
         if root.find-count > 0: IconButton {
-            box-size: Theme.px(26px);
+            box-size: Theme.px(24px);
             hint: @tr("Next match");
             clicked => { root.find-step(1); }
             IconChevron { size: Theme.icon-sm; down: true; tint: Theme.text-tertiary; }
         }
         Rectangle { horizontal-stretch: 1; }
-        // copies a link that opens the key on this field (a query's rows have no key)
-        if !TabStrip.active-is-query: Rectangle {
-            width: Theme.px(32px);
-            height: Theme.px(32px);
-            border-radius: Theme.radius-sm;
-            border-width: 1px;
-            border-color: Theme.border-soft;
+        if KeyPanel.editable: IconButton {
+            box-size: Theme.px(26px);
+            hint: @tr("Edit");
+            clicked => { KeyPanel.edit-value(root.field); }
+            IconPencil { size: Theme.icon-md; tint: Theme.text-secondary; }
+        }
+        // a query's rows have no key to link to
+        if !TabStrip.active-is-query: IconButton {
+            box-size: Theme.px(26px);
+            hint: @tr("Copy a link to this field");
+            clicked => { KeyPanel.share-field-requested(root.field); }
+            IconLink { size: Theme.icon-md; tint: Theme.text-secondary; }
+        }
+        Rectangle {
+            width: Theme.px(26px);
+            height: Theme.px(26px);
             IconButton {
                 box-size: Theme.px(26px);
-                hint: @tr("Copy a link to this field");
-                clicked => { KeyPanel.share-field-requested(root.field); }
-                IconLink { size: Theme.icon-lg; tint: Theme.text-secondary; }
+                hint: @tr("More actions");
+                clicked => { row-menu.show(); }
+                IconMore { size: Theme.icon-md; tint: Theme.text-secondary; }
             }
-        }
-        // opens the editor on this field, in a pill like the export one's
-        if KeyPanel.editable: Rectangle {
-            width: Theme.px(32px);
-            height: Theme.px(32px);
-            border-radius: Theme.radius-sm;
-            border-width: 1px;
-            border-color: Theme.border-soft;
-            IconButton {
-                box-size: Theme.px(26px);
-                hint: @tr("Edit");
-                clicked => { KeyPanel.edit-value(root.field); }
-                IconPencil { size: Theme.icon-lg; tint: Theme.text-secondary; }
+            row-menu := RowMenu {
+                x: parent.width - self.width;
+                y: parent.height + Theme.px(4px);
+                escaped <=> root.escaped;
+                open-value => { KeyPanel.open-value(root.field, root.escaped); }
+                download-value => { KeyPanel.download-value(root.field, root.escaped); }
+                copy-value => { KeyPanel.copy-value(root.field, root.escaped); }
             }
-        }
-        // acts on plain or escaped JSON as this row's choice says
-        ExportGroup {
-            format-toggle: true;
-            escaped <=> root.escaped;
-            open => { KeyPanel.open-value(root.field, root.escaped); }
-            download => { KeyPanel.download-value(root.field, root.escaped); }
-            copy => { KeyPanel.copy-value(root.field, root.escaped); }
         }
     }
 
@@ -210,7 +198,7 @@ export component AllValuesRow inherits Rectangle {
     // is *born* open: a plain assignment inside `init` isn't part of that
     // construction's first paint, and would flash collapsed-then-expanded.
     property <bool> expanded: initial-expanded;
-    // this row's own JSON/Escaped choice: it starts as the header's and follows it when that changes
+    // this row's own format: it starts as the Value header's and follows it when that changes
     property <bool> escaped: ExportPrefs.escaped;
     property <int> prefs-tick: ExportPrefs.rows-tick;
     changed prefs-tick => { root.escaped = ExportPrefs.escaped; }
@@ -283,10 +271,10 @@ export component AllValuesRow inherits Rectangle {
     // there, as the renderer can't draw a rectangle past 32767 physical pixels
     property <length> slice-top: max(0px, view-top - row-y - view-height);
     property <length> slice-bottom: min(root.height, view-top - row-y + 2 * view-height);
-    // An open row is one column: a header (name, find, export, fold) above
+    // An open row is one column: a header (name, find, actions, fold) above
     // the text, which is only for reading and selecting. The header floats, so
     // the row's top padding leaves room for it.
-    property <length> header-h: Theme.px(38px);
+    property <length> header-h: Theme.px(32px);
     property <length> body-gap: Theme.px(4px);
 
     // The row is open, its header's natural place is above the view and the row still
@@ -624,7 +612,7 @@ export component AllValuesRow inherits Rectangle {
                         vertical-alignment: center;
                     }
                     Rectangle { width: Theme.px(4px); }
-                    // read from the server on click, as the row's JSON/Escaped choice says
+                    // read from the server on click, in the row's format
                     IconButton {
                         box-size: collapsed-height;
                         hint: @tr("Open in a text editor");

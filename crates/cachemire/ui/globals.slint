@@ -385,8 +385,10 @@ export global KeyPanel {
     in-out property <int> all-values-field-chars: 8;
     in-out property <[AllValuesRowData]> all-values-rows: [];
     in-out property <KeyView> view: KeyView.fields;
-    // completion of the filter bar (see KeyDetail.suggestions)
+    // the smart box's list (see KeyDetail.suggestions): a path's keys, or where to search,
+    // and the line under it that says how it works
     in-out property <[SuggestionRow]> suggestions: [];
+    in-out property <string> suggestion-footer: "";
     in-out property <[string]> table-columns: [];
     in-out property <[length]> table-col-widths: [];
     in-out property <length> table-total-w: 0px;
@@ -402,13 +404,13 @@ export global KeyPanel {
     in-out property <string> table-note: "";
     in-out property <[bool]> table-selected: [];
     in-out property <int> table-selected-count: 0;
+    // the JSON path filter applied, shown as the smart box's last chip
     in-out property <string> json-filter: "";
     in-out property <string> json-filter-status: "";
     in-out property <bool> json-filter-no-match: false;
     in-out property <string> json-filter-error: "";
-    // the field/value search bar (see KeyDetail.filter-badges)
+    // the smart box: its search badges, and `filter-query` its text (see KeyDetail.filter-badges)
     in-out property <[BadgeData]> filter-badges: [];
-    in-out property <SearchScope> filter-scope: SearchScope.everywhere;
     in-out property <bool> filter-case-sensitive: false;
     in-out property <string> filter-query: "";
     in-out property <string> filter-limit-message: "";
@@ -419,6 +421,8 @@ export global KeyPanel {
     callback sort-toggled();
     // a table header's triangle was clicked: Rust orders the rows by that column
     callback table-sort-requested(column: int, descending: bool);
+    // the smart box's list for its text; taking item `index`: a path's key comes back to the
+    // box (a negative cursor: the box was acted on instead, its text already updated)
     callback suggest(text: string, cursor: int) -> bool;
     callback complete-suggestion(text: string, cursor: int, index: int) -> CompletionEdit;
     callback json-filter-submitted();
@@ -429,8 +433,15 @@ export global KeyPanel {
     callback export-selection(ExportFormat, ExportTarget);
     // the table cell at `row`, `column` (0 is "Field") onto the clipboard, whole
     callback copy-table-cell(row: int, column: int);
+    // Enter in the smart box: its words become badges, or its `$`/`.` path the JSON filter
     callback filter-query-submitted();
+    // the smart box's text edited, the caret at `cursor`: a space ending its words makes them
+    // badges at once; whether it did (the box is then empty)
+    callback filter-query-edited(text: string, cursor: int) -> bool;
     callback filter-badge-removed(text: string, scope: SearchScope);
+    // a badge's text clicked: Rust drops it and puts its text at the end of the smart box,
+    // answering where the box's text then ends (a byte offset), for the caret
+    callback filter-badge-edited(text: string, scope: SearchScope) -> int;
     callback filter-case-sensitivity-changed();
     // An open row's pretty text (valid once `request-pretty-value-async` answered), drawn a
     // line at a time wrapped to `columns`: its line count, and lines `first`.. with matches

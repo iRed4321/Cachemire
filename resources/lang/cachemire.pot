@@ -2,7 +2,7 @@
 msgid ""
 msgstr ""
 "Project-Id-Version: cachemire VERSION\n"
-"POT-Creation-Date: 2026-11-10 18:51+0000\n"
+"POT-Creation-Date: 2026-11-11 06:39+0000\n"
 "PO-Revision-Date: YEAR-MO-DA HO:MI+ZONE\n"
 "Last-Translator: FULL NAME <EMAIL@ADDRESS>\n"
 "Language-Team: LANGUAGE <LL@li.org>\n"
@@ -300,6 +300,7 @@ msgid "Close all tabs"
 msgstr ""
 
 #: crates/cachemire/ui/components/content-header.slint:467
+#: crates/cachemire/ui/components/content-header.slint:467
 msgid "Export…"
 msgstr ""
 
@@ -319,51 +320,58 @@ msgstr ""
 msgid "Rename…"
 msgstr ""
 
-#: crates/cachemire/ui/components/key-detail-row.slint:71
+#: crates/cachemire/ui/components/key-detail-row.slint:64
 msgid "Find in value..."
 msgstr ""
 
-#: crates/cachemire/ui/components/key-detail-row.slint:87
+#: crates/cachemire/ui/components/key-detail-row.slint:80
 msgid "Previous match"
 msgstr ""
 
-#: crates/cachemire/ui/components/key-detail-row.slint:93
+#: crates/cachemire/ui/components/key-detail-row.slint:86
 msgid "Next match"
 msgstr ""
 
-#: crates/cachemire/ui/components/key-detail-row.slint:107
-msgid "Copy a link to this field"
-msgstr ""
-
-#: crates/cachemire/ui/components/key-detail-row.slint:121
+#: crates/cachemire/ui/components/key-detail-row.slint:93
 msgid "Edit"
 msgstr ""
 
-#: crates/cachemire/ui/components/key-detail-row.slint:620
+#: crates/cachemire/ui/components/key-detail-row.slint:100
+msgid "Copy a link to this field"
+msgstr ""
+
+#: crates/cachemire/ui/components/key-detail-row.slint:109
+msgid "More actions"
+msgstr ""
+
+#: crates/cachemire/ui/components/key-detail-row.slint:608
 msgid "Value too long ({})"
 msgstr ""
 
-#: crates/cachemire/ui/components/key-detail-row.slint:630
-#: crates/cachemire/ui/components/key-detail-row.slint:630
+#: crates/cachemire/ui/components/key-detail-row.slint:618
+#: crates/cachemire/ui/components/key-detail-row.slint:618
+#: crates/cachemire/ui/components/key-detail-row.slint:618
 msgid "Open in a text editor"
 msgstr ""
 
-#: crates/cachemire/ui/components/key-detail-row.slint:636
-#: crates/cachemire/ui/components/key-detail-row.slint:636
+#: crates/cachemire/ui/components/key-detail-row.slint:624
+#: crates/cachemire/ui/components/key-detail-row.slint:624
+#: crates/cachemire/ui/components/key-detail-row.slint:624
 msgid "Download"
 msgstr ""
 
-#: crates/cachemire/ui/components/key-detail-row.slint:642
-#: crates/cachemire/ui/components/key-detail-row.slint:642
-#: crates/cachemire/ui/components/key-detail-row.slint:642
+#: crates/cachemire/ui/components/key-detail-row.slint:630
+#: crates/cachemire/ui/components/key-detail-row.slint:630
+#: crates/cachemire/ui/components/key-detail-row.slint:630
+#: crates/cachemire/ui/components/key-detail-row.slint:630
 msgid "Copy"
 msgstr ""
 
-#: crates/cachemire/ui/components/key-detail-row.slint:657
+#: crates/cachemire/ui/components/key-detail-row.slint:645
 msgid "Try to load"
 msgstr ""
 
-#: crates/cachemire/ui/components/key-detail-row.slint:706
+#: crates/cachemire/ui/components/key-detail-row.slint:694
 msgid "Formatting..."
 msgstr ""
 
@@ -375,10 +383,10 @@ msgstr ""
 msgid "Field"
 msgstr ""
 
-#: crates/cachemire/ui/components/key-detail-values.slint:310
-#: crates/cachemire/ui/components/key-detail-values.slint:310
-#: crates/cachemire/ui/components/key-detail-values.slint:310
-#: crates/cachemire/ui/components/key-detail-values.slint:310
+#: crates/cachemire/ui/components/key-detail-values.slint:309
+#: crates/cachemire/ui/components/key-detail-values.slint:309
+#: crates/cachemire/ui/components/key-detail-values.slint:309
+#: crates/cachemire/ui/components/key-detail-values.slint:309
 msgid "Value"
 msgstr ""
 
@@ -386,92 +394,93 @@ msgstr ""
 msgid "Back to the top"
 msgstr ""
 
-#: crates/cachemire/ui/components/key-detail-widgets.slint:101
-#: crates/cachemire/ui/components/key-detail-widgets.slint:101
-#: crates/cachemire/ui/components/key-detail-widgets.slint:101
-msgid "JSON"
-msgstr ""
-
-#: crates/cachemire/ui/components/key-detail-widgets.slint:101
-msgid "Escaped"
-msgstr ""
-
-#: crates/cachemire/ui/components/key-detail-widgets.slint:307
-msgid "Everywhere"
-msgstr ""
-
-#: crates/cachemire/ui/components/key-detail-widgets.slint:308
-#: crates/cachemire/ui/components/key-detail-widgets.slint:308
+#: crates/cachemire/ui/components/key-detail-widgets.slint:69
+#: crates/cachemire/ui/components/key-detail-widgets.slint:69
 msgid "Fields"
 msgstr ""
 
-#: crates/cachemire/ui/components/key-detail.slint:53
-msgid "Table"
+#: crates/cachemire/ui/components/key-detail-widgets.slint:74
+msgid "All"
 msgstr ""
 
-#: crates/cachemire/ui/components/key-detail.slint:216
-msgid "Show active tab's key"
-msgstr ""
-
-#: crates/cachemire/ui/components/key-detail.slint:237
-msgid "Select a key"
-msgstr ""
-
-#: crates/cachemire/ui/components/key-detail.slint:261
-msgid "Copy key name"
-msgstr ""
-
-#: crates/cachemire/ui/components/key-detail.slint:267
-msgid "Refresh value"
-msgstr ""
-
-#: crates/cachemire/ui/components/key-detail.slint:281
-msgid "Copy a link to this key"
-msgstr ""
-
-#: crates/cachemire/ui/components/key-detail.slint:294
-msgid "Add a field"
-msgstr ""
-
-#: crates/cachemire/ui/components/key-detail.slint:309
-#: crates/cachemire/ui/components/key-detail.slint:309
-msgid "{} selected"
-msgstr ""
-
-#: crates/cachemire/ui/components/key-detail.slint:345
-msgid "More options"
-msgstr ""
-
-#: crates/cachemire/ui/components/key-detail.slint:377
+#: crates/cachemire/ui/components/key-detail-widgets.slint:604
 msgid "Match case"
 msgstr ""
 
-#: crates/cachemire/ui/components/key-detail.slint:399
-msgid "Search field names..."
+#: crates/cachemire/ui/components/key-detail-widgets.slint:652
+#: crates/cachemire/ui/components/key-detail-widgets.slint:652
+#: crates/cachemire/ui/components/key-detail-widgets.slint:652
+msgid "JSON"
 msgstr ""
 
-#: crates/cachemire/ui/components/key-detail.slint:400
-msgid "Search values..."
+#: crates/cachemire/ui/components/key-detail-widgets.slint:652
+msgid "JSON (escaped)"
 msgstr ""
 
-#: crates/cachemire/ui/components/key-detail.slint:400
-msgid "Search fields and values..."
+#: crates/cachemire/ui/components/key-detail-widgets.slint:665
+#: crates/cachemire/ui/components/key-detail-widgets.slint:665
+msgid "Show as"
 msgstr ""
 
-#: crates/cachemire/ui/components/key-detail.slint:435
-msgid "Filter the JSON, e.g. records.*.label"
+#: crates/cachemire/ui/components/key-detail-widgets.slint:825
+msgid "Export the {} selected rows as"
 msgstr ""
 
-#. the ticked rows only, when there are any
-#: crates/cachemire/ui/components/key-detail.slint:470
-msgid "Export CSV"
+#: crates/cachemire/ui/components/key-detail-widgets.slint:825
+msgid "Export every field as"
 msgstr ""
 
-#: crates/cachemire/ui/components/key-detail.slint:497
+#: crates/cachemire/ui/components/key-detail-widgets.slint:866
+msgid "Export the table as CSV"
+msgstr ""
+
+#: crates/cachemire/ui/components/key-detail-widgets.slint:929
+msgid "Filter"
+msgstr ""
+
+#: crates/cachemire/ui/components/key-detail.slint:47
+msgid "Table"
+msgstr ""
+
+#: crates/cachemire/ui/components/key-detail.slint:198
+msgid "Show active tab's key"
+msgstr ""
+
+#: crates/cachemire/ui/components/key-detail.slint:224
+#: crates/cachemire/ui/components/key-detail.slint:224
+msgid "Click to copy"
+msgstr ""
+
+#: crates/cachemire/ui/components/key-detail.slint:241
+msgid "Select a key"
+msgstr ""
+
+#: crates/cachemire/ui/components/key-detail.slint:271
+msgid "Refresh value"
+msgstr ""
+
+#: crates/cachemire/ui/components/key-detail.slint:277
+msgid "Copy a link to this key"
+msgstr ""
+
+#: crates/cachemire/ui/components/key-detail.slint:291
+msgid "Search fields and values, or filter with $.path"
+msgstr ""
+
+#: crates/cachemire/ui/components/key-detail.slint:355
+msgid "Add a field"
+msgstr ""
+
+#: crates/cachemire/ui/components/key-detail.slint:361
+#: crates/cachemire/ui/components/key-detail.slint:361
+msgid "{} selected"
+msgstr ""
+
+#: crates/cachemire/ui/components/key-detail.slint:420
 msgid "No field matches this filter"
 msgstr ""
 
-#: crates/cachemire/ui/components/key-detail.slint:497
+#: crates/cachemire/ui/components/key-detail.slint:420
 msgid "Nothing to show as a table: no rows, or the rows share no top-level keys"
 msgstr ""
 
@@ -964,11 +973,11 @@ msgstr ""
 msgid "Format JSON"
 msgstr ""
 
-#: crates/cachemire/ui/components/widgets.slint:169
-#: crates/cachemire/ui/components/widgets.slint:169
+#: crates/cachemire/ui/components/widgets.slint:178
+#: crates/cachemire/ui/components/widgets.slint:178
 msgid "Paste"
 msgstr ""
 
-#: crates/cachemire/ui/components/widgets.slint:224
+#: crates/cachemire/ui/components/widgets.slint:233
 msgid "Cut"
 msgstr ""

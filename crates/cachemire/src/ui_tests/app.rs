@@ -2,7 +2,7 @@
 //! query tabs, saved queries, profile tints and text boxes' context menu.
 
 use super::*;
-use crate::key_detail::tests::{MORE_ROW_Y, SEARCH_BOX_X, hash_table_ready, show_hash_table};
+use crate::key_detail::tests::{SMART_BOX, hash_table_ready, show_hash_table};
 use crate::key_detail::{search_plain_text, search_value_text};
 
 /// The translations are bundled inside the executable: French can be
@@ -315,8 +315,7 @@ fn a_running_search_has_a_pause_button_and_a_finished_one_has_none() {
 fn right_click_offers_paste_only_when_the_clipboard_holds_text() {
     let mut h = Harness::new();
     h.frame();
-    h.open_more();
-    let pos = LogicalPosition::new(SEARCH_BOX_X, (MORE_ROW_Y.start + MORE_ROW_Y.end) as f32 / 2.0);
+    let pos = LogicalPosition::new(SMART_BOX.0, SMART_BOX.1);
     let right_click = |h: &mut Harness| {
         h.window.window().dispatch_event(WindowEvent::PointerMoved { position: pos });
         h.window.window().dispatch_event(WindowEvent::PointerPressed { position: pos, button: PointerEventButton::Right });

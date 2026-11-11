@@ -161,20 +161,23 @@ export component IconQuery inherits Rectangle {
     }
 }
 
+// a plus: adding something
 export component IconPlus inherits Rectangle {
     in property <color> tint: Theme.text-secondary;
     in property <length> size: 14px;
     width: size;
     height: size;
-    Rectangle {
-        width: parent.size * 0.78;
-        height: 1.4px;
-        background: tint;
-    }
-    Rectangle {
-        width: 1.4px;
-        height: parent.size * 0.78;
-        background: tint;
+
+    Path {
+        width: 100%;
+        height: 100%;
+        viewbox-width: 24;
+        viewbox-height: 24;
+        commands: "M12 4 V20 M4 12 H20";
+        fill: transparent;
+        stroke: tint;
+        stroke-width: 1.8px;
+        stroke-line-cap: round;
     }
 }
 
@@ -708,6 +711,44 @@ export component IconKeyboard inherits Rectangle {
         fill: transparent;
         stroke: tint;
         stroke-width: 1.6px;
+        stroke-line-cap: round;
+        stroke-line-join: round;
+    }
+}
+
+// three dots in a row: a menu of more actions
+export component IconMore inherits Rectangle {
+    in property <color> tint: Theme.text-secondary;
+    in property <length> size: 14px;
+    width: size;
+    height: size;
+
+    Path {
+        width: 100%;
+        height: 100%;
+        viewbox-width: 24;
+        viewbox-height: 24;
+        commands: "M5 10.4 a1.6 1.6 0 1 0 0 3.2 a1.6 1.6 0 1 0 0 -3.2 Z M12 10.4 a1.6 1.6 0 1 0 0 3.2 a1.6 1.6 0 1 0 0 -3.2 Z M19 10.4 a1.6 1.6 0 1 0 0 3.2 a1.6 1.6 0 1 0 0 -3.2 Z";
+        fill: tint;
+    }
+}
+
+// a tick: the choice made in a list
+export component IconCheck inherits Rectangle {
+    in property <color> tint: Theme.text-secondary;
+    in property <length> size: 14px;
+    width: size;
+    height: size;
+
+    Path {
+        width: 100%;
+        height: 100%;
+        viewbox-width: 24;
+        viewbox-height: 24;
+        commands: "M5 12.5 L10 17.5 L19 7";
+        fill: transparent;
+        stroke: tint;
+        stroke-width: 2px;
         stroke-line-cap: round;
         stroke-line-join: round;
     }

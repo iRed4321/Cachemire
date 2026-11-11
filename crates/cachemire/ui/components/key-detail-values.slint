@@ -1,9 +1,9 @@
 import { Theme } from "theme.slint";
 import { HDivider, HResizeHandle, VScrollBar, WheelScroller } from "widgets.slint";
-import { KeyScroll, AllValuesRowData } from "key-detail-types.slint";
+import { KeyScroll, AllValuesRowData, ExportPrefs } from "key-detail-types.slint";
 import { AllValuesRow, RowHeader } from "key-detail-row.slint";
 import { IconSortTriangle } from "icons.slint";
-import { ScrollTopButton } from "key-detail-widgets.slint";
+import { ScrollTopButton, FormatPicker } from "key-detail-widgets.slint";
 
 export component AllValuesTable inherits Rectangle {
     in property <int> field-chars: 8;
@@ -263,8 +263,7 @@ export component AllValuesTable inherits Rectangle {
                         Rectangle {
                             background: Theme.bg-elevated;
                             border-radius: Theme.radius-sm;
-                            // column titles (the search bar above the filter bar does the
-                            // filtering now — see KeyDetail.filter-badges)
+                            // column titles, the Value one with the format every row shows
                             HorizontalLayout {
                                 padding-top: Theme.px(4px);
                                 padding-bottom: Theme.px(4px);
@@ -278,7 +277,7 @@ export component AllValuesTable inherits Rectangle {
                                         spacing: Theme.px(2px);
                                         Text {
                                             text: @tr("Field");
-                                            font-size: Theme.pt(10.5px);
+                                            font-size: Theme.pt(12px);
                                             font-weight: 700;
                                             color: Theme.text-secondary;
                                             vertical-alignment: center;
@@ -309,11 +308,19 @@ export component AllValuesTable inherits Rectangle {
                                 Text {
                                     text: @tr("Value");
                                     horizontal-stretch: 1;
-                                    font-size: Theme.pt(10.5px);
+                                    font-size: Theme.pt(12px);
                                     font-weight: 700;
                                     color: Theme.text-secondary;
                                     vertical-alignment: center;
                                     overflow: elide;
+                                }
+                                // picking one sets every row's, open or not (see AllValuesRow.escaped)
+                                FormatPicker {
+                                    escaped: ExportPrefs.escaped;
+                                    picked(escaped) => {
+                                        ExportPrefs.escaped = escaped;
+                                        ExportPrefs.rows-tick += 1;
+                                    }
                                 }
                             }
                         }

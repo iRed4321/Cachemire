@@ -47,13 +47,13 @@ Pensé pour les hashs Redis remplis de JSON : lisez chaque valeur en JSON color�
 
 ### Filtrer et afficher en tableau
 
-Saisissez un chemin JSON dans la barre de filtre, puis appuyez sur <kbd>Entrée</kbd> :
+Saisissez un chemin JSON commençant par `$` dans la boîte de recherche de la clé, puis appuyez sur <kbd>Entrée</kbd> :
 
 ```
-records                 une clé
-records.*.name          le nom de chaque enregistrement
-records[0].address.city un indice de tableau
-..label                 une clé à n'importe quelle profondeur
+$.records               une clé
+$.records.*.name        le nom de chaque enregistrement
+$.records[0].address.city un indice de tableau
+$..label                une clé à n'importe quelle profondeur
 ```
 
 Le chemin est complété à partir des valeurs chargées. Affichez le résultat sous forme de **liste champ/valeur** ou de **tableau** aux colonnes redimensionnables, copiez les lignes cochées dans un tableau JSON, ou exportez-les en CSV.

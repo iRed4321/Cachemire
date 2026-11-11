@@ -1,4 +1,4 @@
-//! The search bar (badges, case-sensitivity) and the filter bar's JSON path:
+//! The smart box's search (badges, case-sensitivity) and its JSON path filter:
 //! each re-renders what's loaded under them, off the UI thread.
 
 use crate::error::Localize;
@@ -57,48 +57,54 @@ impl Ctx {
         self.kick_off_scan_if_active();
     }
 
-    /// Enter in the search bar: turns the typed text into badges (a quoted run is one,
-    /// otherwise each word) tagged with the picked scope, and clears the box. Duplicates
-    /// are dropped; if the rest exceeds [`MAX_BADGES`], none are added and the box says so.
-    pub(super) fn on_filter_query_submitted(&self) {
+    /// Turns `words` into badges searching `scope` (a quoted run is one, otherwise each word)
+    /// and clears the smart box: waiting, not searched yet, unless `apply`, which applies every
+    /// waiting badge too. Duplicates are dropped; past [`MAX_BADGES`], none are added (said so).
+    pub(super) fn add_badges(&self, scope: SearchScope, words: &str, apply: bool) {
         let Some(window) = self.weak.upgrade() else { return };
-        let scope = window.global::<KeyPanel>().get_filter_scope();
-        let tokens = tokenize(&window.global::<KeyPanel>().get_filter_query());
-        if tokens.is_empty() {
-            return;
-        }
+        let tokens = tokenize(words);
         let mut badges: Vec<BadgeData> = window.global::<KeyPanel>().get_filter_badges().iter().collect();
-        let already_active = |text: &str| badges.iter().any(|b| b.scope == scope && b.text.as_str() == text);
+        let already_there = |text: &str| badges.iter().any(|b| b.scope == scope && b.text.as_str() == text);
         let mut seen = FxHashSet::default();
-        let new_tokens: Vec<String> = tokens.into_iter().filter(|t| !already_active(t) && seen.insert(t.clone())).collect();
-        if new_tokens.is_empty() {
-            window.global::<KeyPanel>().set_filter_query("".into());
-            return;
-        }
+        let new_tokens: Vec<String> = tokens.iter().filter(|t| !already_there(t) && seen.insert((*t).clone())).cloned().collect();
         if badges.len() + new_tokens.len() > MAX_BADGES {
             window.global::<KeyPanel>().set_filter_limit_message(t!("Remove a badge first (5 max)").as_ref().into());
             return;
         }
-        badges.extend(new_tokens.into_iter().map(|text| BadgeData { text: text.into(), scope }));
+        let waiting = badges.iter().any(|b| b.pending);
+        if !tokens.is_empty() {
+            window.global::<KeyPanel>().set_filter_query("".into());
+        }
+        if new_tokens.is_empty() && !(apply && waiting) {
+            return;
+        }
+        badges.extend(new_tokens.into_iter().map(|text| BadgeData { text: text.into(), scope, pending: true }));
+        if apply {
+            badges.iter_mut().for_each(|badge| badge.pending = false);
+        }
         window.global::<KeyPanel>().set_filter_badges(ModelRc::new(VecModel::from(badges)));
-        window.global::<KeyPanel>().set_filter_query("".into());
         window.global::<KeyPanel>().set_filter_limit_message("".into());
-        self.on_search_changed();
+        if apply {
+            self.on_search_changed();
+        }
     }
 
-    /// A badge's × was clicked: drops it and re-renders.
+    /// A badge's × was clicked (or its text, to edit it): drops it, and re-renders unless
+    /// it was still waiting to be applied.
     pub(super) fn on_filter_badge_removed(&self, text: &str, scope: SearchScope) {
         let Some(window) = self.weak.upgrade() else { return };
-        let badges: Vec<BadgeData> =
-            window.global::<KeyPanel>().get_filter_badges().iter().filter(|b| !(b.scope == scope && b.text.as_str() == text)).collect();
+        let (gone, badges): (Vec<BadgeData>, Vec<BadgeData>) =
+            window.global::<KeyPanel>().get_filter_badges().iter().partition(|b| b.scope == scope && b.text.as_str() == text);
         window.global::<KeyPanel>().set_filter_badges(ModelRc::new(VecModel::from(badges)));
         window.global::<KeyPanel>().set_filter_limit_message("".into());
-        self.on_search_changed();
+        if gone.iter().any(|b| !b.pending) {
+            self.on_search_changed();
+        }
     }
 
-    /// Enter in the filter bar: applies its path to the loaded fields (off the UI
-    /// thread) and swaps what both views show. A path that doesn't parse is
-    /// reported next to the box and leaves the display as it was.
+    /// Applies `json-filter`'s path to the loaded fields (off the UI thread) and swaps
+    /// what both views show. A path that doesn't parse is reported under the header
+    /// and leaves the display as it was.
     pub(super) fn on_json_filter_submitted(&self) {
         let Some(window) = self.weak.upgrade() else { return };
         let path = match parse_filter(&window.global::<KeyPanel>().get_json_filter()) {

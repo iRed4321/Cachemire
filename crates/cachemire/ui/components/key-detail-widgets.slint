@@ -1,8 +1,8 @@
 import { Theme } from "theme.slint";
-import { Hint, IconButton, PastePopup, SegmentedToggle } from "widgets.slint";
-import { KeyView, SearchScope } from "types.slint";
-import { IconCopy, IconDownload, IconExternalLink, IconSearch, IconFunnel, IconClose, IconChevron } from "icons.slint";
-import { BadgeData, ExportPrefs, SuggestionRow } from "key-detail-types.slint";
+import { Hint, IconButton, PastePopup } from "widgets.slint";
+import { KeyView, SearchScope, ExportTarget } from "types.slint";
+import { IconCopy, IconDownload, IconExternalLink, IconSearch, IconFunnel, IconClose, IconChevron, IconCheck, IconLink } from "icons.slint";
+import { BadgeData, SuggestionRow } from "key-detail-types.slint";
 
 // The round button floating over a scrolled view's bottom right corner: it takes the view back to its start.
 // Its hover hint shows above it; a press hides it, as the button goes away with the scroll.
@@ -52,8 +52,7 @@ export component ScrollTopButton inherits Rectangle {
     }
 }
 
-// the color of each scope the field/value search bar can look in: the 3-way
-// switch's selected segment and the badge a search produces both use this
+// the color of each scope the smart box's search can look in, which its badges take
 export global ScopeColor {
     pure public function of(scope: SearchScope) -> color {
         if scope == SearchScope.fields {
@@ -64,64 +63,15 @@ export global ScopeColor {
         }
         return Theme.accent-blue;
     }
-}
-
-// open/download/copy icon trio in a bordered pill. With `format-toggle` set, a
-// JSON / Escaped choice comes first, kept in `escaped` (bound to one of the ExportPrefs) for the
-// caller to honor.
-export component ExportGroup inherits Rectangle {
-    in property <bool> format-toggle: false;
-    in-out property <bool> escaped: false;
-    in property <color> outline: Theme.border-soft;
-    callback open();
-    callback download();
-    callback copy();
-
-    // the 26px buttons sit 3px from every edge (the 1px border included), so the
-    // hover square has the same room right, top and bottom
-    width: format-toggle ? Theme.px(212px) : Theme.px(88px);
-    height: Theme.px(32px);
-    border-radius: Theme.radius-sm;
-    border-width: 1px;
-    border-color: root.outline;
-
-    // Absorbs hover over the padding, the one part of the pill with no TouchArea
-    // of its own, so the row underneath doesn't light up as hovered. Declared
-    // before the icon row (lower z) so it only catches what the icons don't.
-    TouchArea { }
-
-    HorizontalLayout {
-        padding-left: Theme.px(3px);
-        padding-right: Theme.px(3px);
-        padding-top: Theme.px(3px);
-        padding-bottom: Theme.px(3px);
-        spacing: Theme.px(2px);
-        cross-axis-alignment: center;
-        if format-toggle: SegmentedToggle {
-            options: [@tr("JSON"), @tr("Escaped")];
-            segment-width: Theme.px(57px);
-            current: root.escaped ? 1 : 0;
-            picked(index) => { root.escaped = index == 1; }
+    // the name of each scope, as its pills write it
+    pure public function label(scope: SearchScope) -> string {
+        if scope == SearchScope.fields {
+            return @tr("Fields");
         }
-        if format-toggle: Rectangle { horizontal-stretch: 1; }
-        IconButton {
-            box-size: Theme.px(26px);
-            hint: @tr("Open in a text editor");
-            clicked => { open(); }
-            IconExternalLink { size: Theme.icon-lg; tint: Theme.text-secondary; }
+        if scope == SearchScope.value {
+            return @tr("Value");
         }
-        IconButton {
-            box-size: Theme.px(26px);
-            hint: @tr("Download");
-            clicked => { download(); }
-            IconDownload { size: Theme.icon-lg; tint: Theme.text-secondary; }
-        }
-        IconButton {
-            box-size: Theme.px(26px);
-            hint: @tr("Copy");
-            clicked => { copy(); }
-            IconCopy { size: Theme.icon-lg; tint: Theme.text-secondary; }
-        }
+        return @tr("All");
     }
 }
 
@@ -291,121 +241,98 @@ export struct ViewOption {
     label: string,
 }
 
-// A segmented control choosing among the key panel's views: one segment per
-// entry of `options`, the `current` one lit.
-struct ScopeOption {
-    scope: SearchScope,
-    label: string,
-}
-
-// The field/value search bar's 3-way switch: Everywhere, Fields, Value, each
-// with its own color (see ScopeColor) instead of a single "active" one.
-export component ScopeSwitch inherits Rectangle {
-    in property <SearchScope> current;
-    callback selected(scope: SearchScope);
-    property <[ScopeOption]> options: [
-        { scope: SearchScope.everywhere, label: @tr("Everywhere") },
-        { scope: SearchScope.fields, label: @tr("Fields") },
-        { scope: SearchScope.value, label: @tr("Value") },
-    ];
-
-    horizontal-stretch: 0;
-    height: Theme.px(32px);
-    border-radius: Theme.radius-sm;
-    border-width: 1px;
-    border-color: Theme.border-soft;
-    background: Theme.bg-sunken;
-
-    HorizontalLayout {
-        padding: Theme.px(2px);
-        spacing: Theme.px(2px);
-        for option in options: Rectangle {
-            property <bool> active: option.scope == root.current;
-            property <color> tint: ScopeColor.of(option.scope);
-            border-radius: Theme.radius-sm;
-            background: active ? tint.with-alpha(0.2) : (area.has-hover ? Theme.bg-hover : transparent);
-            border-width: active ? 1px : 0px;
-            border-color: tint.with-alpha(0.55);
-            HorizontalLayout {
-                padding-left: Theme.px(10px);
-                padding-right: Theme.px(10px);
-                Rectangle {
-                    // as wide as the label's bold rendering, so a segment doesn't
-                    // resize when it becomes/stops being active (see ViewSwitcher)
-                    width: bold-measure.preferred-width;
-                    bold-measure := Text {
-                        text: option.label;
-                        font-size: Theme.pt(12px);
-                        font-weight: 600;
-                        visible: false;
-                    }
-                    Text {
-                        text: option.label;
-                        font-size: Theme.pt(12px);
-                        font-weight: active ? 600 : 400;
-                        color: active ? tint : Theme.text-secondary;
-                        horizontal-alignment: center;
-                        vertical-alignment: center;
-                        width: 100%;
-                        height: 100%;
-                    }
-                }
-            }
-            area := TouchArea {
-                mouse-cursor: pointer;
-                clicked => {
-                    if !active {
-                        root.selected(option.scope);
-                    }
-                }
-            }
-        }
-    }
-}
-
-// One active badge of the field/value search bar: its text, tinted by its
-// scope (see ScopeColor), with a small × to remove it.
-export component SearchBadge inherits Rectangle {
+// One search badge of the smart box: its text in its scope's color (ScopeColor) and a × to
+// drop it; a click puts its text back in the box. Hovered, it grows upward (over the box's
+// edge) to name its scope above the text, which stays put. Waiting for Enter: only outlined.
+component BadgeChip inherits Rectangle {
     in property <BadgeData> data;
+    callback clicked();
     callback removed();
     property <color> tint: ScopeColor.of(data.scope);
+    property <bool> open: area.has-hover;
+    // the text as big as what is typed in the box, the scope's name not much smaller
+    property <length> text-w: min(Theme.px(180px), term-measure.preferred-width);
+    // as wide as the scope's name too, so opening it moves nothing sideways
+    property <length> body-w: max(text-w, label-measure.preferred-width);
+    property <length> text-h: term-measure.preferred-height;
 
-    height: Theme.px(22px);
-    border-radius: self.height / 2;
-    background: tint.with-alpha(0.16);
-    border-width: 1px;
-    border-color: tint.with-alpha(0.45);
+    width: Theme.px(8px) + body-w + Theme.px(3px) + Theme.px(12px) + Theme.px(4px);
+    height: Theme.px(24px);
 
-    HorizontalLayout {
-        padding-left: Theme.px(9px);
-        padding-right: Theme.px(5px);
-        spacing: Theme.px(4px);
-        cross-axis-alignment: center;
-        Text {
-            text: root.data.text;
-            font-size: Theme.pt(10.5px);
-            font-weight: 600;
-            font-family: Theme.font-mono;
-            color: root.tint;
-            vertical-alignment: center;
-            max-width: Theme.px(140px);
-            overflow: elide;
-        }
-        close-area := TouchArea {
-            width: Theme.px(14px);
-            height: Theme.px(14px);
+    term-measure := Text {
+        visible: false;
+        text: root.data.text;
+        font-size: Theme.pt(12.5px);
+        font-weight: 600;
+        font-family: Theme.font-mono;
+    }
+    label-measure := Text {
+        visible: false;
+        text: ScopeColor.label(root.data.scope);
+        font-size: Theme.pt(10.5px);
+        font-weight: 700;
+    }
+    // its bottom stays on the badge's: only its top moves, up past the badge
+    pill := Rectangle {
+        y: root.height - self.height;
+        height: root.open ? root.height + label-measure.preferred-height : root.height;
+        animate height { duration: 70ms; easing: ease-out; }
+        border-radius: Theme.px(12px);
+        // opaque, mixed into the box's own color: over its edge, nothing shows through
+        background: root.data.pending ? Theme.bg-sunken : root.tint.mix(Theme.bg-sunken, 0.16);
+        border-width: 1px;
+        border-color: root.tint.mix(Theme.bg-sunken, root.data.pending ? 0.7 : 0.3);
+
+        // the whole pill, the × inside it, so pointing at the × or the scope keeps it open
+        area := TouchArea {
             mouse-cursor: pointer;
-            clicked => { root.removed(); }
-            IconClose {
-                size: Theme.px(10px);
-                tint: root.tint;
-                x: (parent.width - self.width) / 2;
-                y: (parent.height - self.height) / 2;
+            clicked => { root.clicked(); }
+            Text {
+                x: Theme.px(8px);
+                y: Theme.px(2px);
+                width: root.body-w;
+                height: label-measure.preferred-height;
+                text: ScopeColor.label(root.data.scope);
+                font-size: Theme.pt(10.5px);
+                font-weight: 700;
+                color: root.tint.with-alpha(0.8);
+                vertical-alignment: center;
+                opacity: root.open ? 1 : 0;
+                animate opacity { duration: 70ms; }
+            }
+            Text {
+                x: Theme.px(8px);
+                y: pill.height - (root.height + root.text-h) / 2;
+                width: root.text-w;
+                height: root.text-h;
+                text: root.data.text;
+                font-size: Theme.pt(12.5px);
+                font-weight: 600;
+                font-family: Theme.font-mono;
+                color: root.tint;
+                vertical-alignment: center;
+                overflow: elide;
+            }
+            TouchArea {
+                x: pill.width - Theme.px(4px) - self.width;
+                y: pill.height - (root.height + self.height) / 2;
+                width: Theme.px(12px);
+                height: Theme.px(12px);
+                mouse-cursor: pointer;
+                clicked => { root.removed(); }
+                IconClose {
+                    size: Theme.px(10px);
+                    tint: root.tint;
+                    x: (parent.width - self.width) / 2;
+                    y: (parent.height - self.height) / 2;
+                }
             }
         }
     }
 }
 
+// A segmented control choosing among the key panel's views: one segment per
+// entry of `options`, the `current` one lit.
 export component ViewSwitcher inherits Rectangle {
     in property <[ViewOption]> options;
     in property <KeyView> current;
@@ -463,34 +390,506 @@ export component ViewSwitcher inherits Rectangle {
     }
 }
 
-// A small bordered button with a download icon and a label, for the filter bar.
-export component ExportButton inherits Rectangle {
-    in property <string> label;
-    callback clicked <=> area.clicked;
+// The JSON path filter applied, as the smart box's last chip: a click on it drops the filter
+// and puts its path back in the box to be edited, its × just drops it; red while it fails.
+component FilterChip inherits Rectangle {
+    in property <string> path;
+    in property <bool> failed: false;
+    callback clicked();
+    callback removed();
+    property <color> tint: failed ? Theme.accent-red : Theme.accent-yellow;
 
-    horizontal-stretch: 0;
+    height: Theme.px(24px);
+    border-radius: self.height / 2;
+    // opaque, mixed into the box's own color, as the search badges
+    background: tint.mix(Theme.bg-sunken, 0.16);
+    border-width: 1px;
+    border-color: tint.mix(Theme.bg-sunken, 0.45);
+
+    HorizontalLayout {
+        padding-left: Theme.px(7px);
+        padding-right: Theme.px(4px);
+        spacing: Theme.px(4px);
+        cross-axis-alignment: center;
+        TouchArea {
+            mouse-cursor: pointer;
+            clicked => { root.clicked(); }
+            HorizontalLayout {
+                spacing: Theme.px(4px);
+                cross-axis-alignment: center;
+                IconFunnel { size: Theme.px(12px); tint: root.tint; }
+                Text {
+                    text: root.path;
+                    font-size: Theme.pt(12.5px);
+                    font-weight: 600;
+                    font-family: Theme.font-mono;
+                    color: root.tint;
+                    vertical-alignment: center;
+                    max-width: Theme.px(220px);
+                    overflow: elide;
+                }
+            }
+        }
+        TouchArea {
+            width: Theme.px(12px);
+            height: Theme.px(12px);
+            mouse-cursor: pointer;
+            clicked => { root.removed(); }
+            IconClose {
+                size: Theme.px(10px);
+                tint: root.tint;
+                x: (parent.width - self.width) / 2;
+                y: (parent.height - self.height) / 2;
+            }
+        }
+    }
+}
+
+// The key panel's one box for searching and filtering: the search badges and the JSON
+// filter as chips, then what is typed (the host decides what Enter does with it).
+// Backspace in an empty box drops the last chip, Esc empties it; Aa makes the search match case.
+export component SmartBox inherits Rectangle {
+    in property <[BadgeData]> badges;
+    // the JSON path applied ("" for none), and whether it failed to parse
+    in property <string> filter: "";
+    in property <bool> filter-failed: false;
+    in-out property <string> text: "";
+    in property <bool> case-sensitive: false;
+    in property <string> placeholder: "";
+    callback accepted();
+    callback badge-removed(text: string, scope: SearchScope);
+    // a badge's text clicked: the host puts it back in the box
+    callback badge-clicked(text: string, scope: SearchScope);
+    callback filter-removed();
+    callback filter-clicked();
+    callback case-toggled();
+    callback clipboard-has-text() -> bool;
+
+    // for the host's list under the caret, as SearchField has them
+    callback edited();
+    callback caret-moved();
+    callback focus-changed(focused: bool);
+    callback key-intercept(event: KeyEvent) -> bool;
+    out property <length> caret-x;
+    out property <length> caret-bottom: root.absolute-position.y + root.height;
+    out property <int> cursor-byte: input.cursor-position-byte-offset;
+    in property <int> place-at: 0;
+    in property <int> place-tick: 0;
+    in property <int> focus-tick: 0;
+    changed focus-tick => { input.focus(); }
+    changed place-tick => {
+        input.focus();
+        input.set-selection-offsets(place-at, place-at);
+    }
+
     height: Theme.px(32px);
+    // the header's own color at rest, darker while in use: focused, or holding chips
+    background: input.has-focus || root.badges.length > 0 || root.filter != "" ? Theme.bg-sunken : transparent;
+    animate background { duration: 100ms; }
     border-radius: Theme.radius-sm;
     border-width: 1px;
-    border-color: Theme.border-soft;
-    background: area.has-hover ? Theme.bg-hover : transparent;
+    border-color: input.has-focus ? Theme.accent-blue-dim : Theme.border-soft;
 
     HorizontalLayout {
         padding-left: Theme.px(8px);
-        padding-right: Theme.px(9px);
-        spacing: Theme.px(6px);
-        cross-axis-alignment: center;
-        IconDownload { size: Theme.icon-sm; tint: Theme.text-secondary; }
-        Text {
-            text: label;
-            font-size: Theme.pt(11px);
-            font-weight: 600;
-            color: Theme.text-secondary;
-            vertical-alignment: center;
+        padding-right: Theme.px(3px);
+        spacing: Theme.px(5px);
+
+        IconSearch { size: Theme.icon-md; tint: Theme.text-tertiary; y: (parent.height - self.height) / 2; }
+        for badge in root.badges: VerticalLayout {
+            horizontal-stretch: 0;
+            alignment: center;
+            BadgeChip {
+                data: badge;
+                clicked => { root.badge-clicked(badge.text, badge.scope); }
+                removed => { root.badge-removed(badge.text, badge.scope); }
+            }
+        }
+        if root.filter != "": VerticalLayout {
+            horizontal-stretch: 0;
+            alignment: center;
+            FilterChip {
+                path: root.filter;
+                failed: root.filter-failed;
+                clicked => { root.filter-clicked(); }
+                removed => { root.filter-removed(); }
+            }
+        }
+
+        input-clip := Rectangle {
+            horizontal-stretch: 1;
+            min-width: Theme.px(80px);
+            clip: true;
+
+            if root.text == "" && !input.has-focus && root.badges.length == 0 && root.filter == "": Text {
+                text: root.placeholder;
+                font-size: Theme.pt(12.5px);
+                color: Theme.text-tertiary;
+                vertical-alignment: center;
+                width: 100%;
+                overflow: elide;
+            }
+            // right-click "Paste", as in SearchField
+            input-area := TouchArea {
+                width: 100%;
+                height: 100%;
+                mouse-cursor: MouseCursor.text;
+                property <length> click-x;
+                property <length> click-y;
+                pointer-event(event) => {
+                    if event.button == PointerEventButton.right && event.kind == PointerEventKind.down && root.clipboard-has-text() {
+                        self.click-x = self.mouse-x;
+                        self.click-y = self.mouse-y;
+                        paste-popup.show();
+                    }
+                }
+
+                input := TextInput {
+                    property <length> computed-x;
+                    x: min(0px, max(parent.width - self.width, self.computed-x));
+                    width: max(parent.width, self.preferred-width);
+                    height: 100%;
+                    text <=> root.text;
+                    font-size: Theme.pt(12.5px);
+                    font-family: Theme.font-mono;
+                    color: Theme.text-primary;
+                    selection-background-color: Theme.accent-blue.with-alpha(0.35);
+                    vertical-alignment: center;
+                    accepted => { root.accepted(); }
+                    edited => { root.edited(); }
+                    changed has-focus => { root.focus-changed(self.has-focus); }
+                    key-pressed(event) => {
+                        if root.key-intercept(event) {
+                            return accept;
+                        }
+                        if event.text == Key.Backspace && root.text == "" {
+                            if root.filter != "" {
+                                root.filter-removed();
+                            } else if root.badges.length > 0 {
+                                root.badge-removed(root.badges[root.badges.length - 1].text, root.badges[root.badges.length - 1].scope);
+                            }
+                            return accept;
+                        }
+                        if event.text == Key.Escape && root.text != "" {
+                            root.text = "";
+                            root.edited();
+                            return accept;
+                        }
+                        return reject;
+                    }
+                    cursor-position-changed(cursor-position) => {
+                        if cursor-position.x + self.computed-x < 0px {
+                            self.computed-x = -cursor-position.x;
+                        } else if cursor-position.x + self.computed-x > parent.width - self.text-cursor-width {
+                            self.computed-x = parent.width - cursor-position.x - self.text-cursor-width;
+                        }
+                        root.caret-x = input-clip.absolute-position.x + self.x + cursor-position.x;
+                        root.caret-moved();
+                    }
+                }
+                paste-popup := PastePopup {
+                    x: input-area.click-x;
+                    y: input-area.click-y;
+                    paste => { input.paste(); }
+                }
+            }
+        }
+        IconButton {
+            box-size: Theme.px(24px);
+            y: (parent.height - self.height) / 2;
+            active: root.case-sensitive;
+            hint: @tr("Match case");
+            clicked => { root.case-toggled(); }
+            Text {
+                text: "Aa";
+                font-size: Theme.pt(11px);
+                font-weight: 700;
+                color: root.case-sensitive ? Theme.accent-blue : Theme.text-tertiary;
+            }
         }
     }
+}
 
+// one entry of the key header's ⋯ menu: an icon (its children) and a label; `checked` marks
+// the format picked
+component MenuItem inherits Rectangle {
+    in property <string> text;
+    in property <bool> checked: false;
+    callback clicked <=> area.clicked;
+
+    height: Theme.px(28px);
+    border-radius: Theme.radius-sm;
+    // opaque at rest: a hover change only redraws the row, which then covers its own area
+    background: area.has-hover ? Theme.bg-hover-elevated : Theme.bg-elevated;
     area := TouchArea { mouse-cursor: pointer; }
+    HorizontalLayout {
+        padding-left: Theme.px(10px);
+        padding-right: Theme.px(10px);
+        spacing: Theme.px(10px);
+        cross-axis-alignment: center;
+        Rectangle {
+            width: Theme.icon-md;
+            height: Theme.icon-md;
+            @children
+        }
+        Text {
+            text: root.text;
+            font-size: Theme.pt(12px);
+            color: Theme.text-primary;
+            vertical-alignment: center;
+            horizontal-stretch: 1;
+        }
+        if root.checked: IconCheck { size: Theme.icon-sm; tint: Theme.accent-blue; }
+    }
+}
+
+// The formats a value can be shown or exported in, in the order the menus list them: the
+// second is escaped JSON (a choice is kept as `escaped`). A new one goes at the end.
+export global Formats {
+    out property <[string]> names: [@tr("JSON"), @tr("JSON (escaped)")];
+}
+
+// "Show as [JSON ▾]" in the field view's Value header: the format every row's value is
+// shown in. A click lists the formats, the one in use ticked; picking one says it.
+export component FormatPicker inherits HorizontalLayout {
+    in property <bool> escaped: false;
+    callback picked(escaped: bool);
+
+    horizontal-stretch: 0;
+    spacing: Theme.px(6px);
+    cross-axis-alignment: center;
+    Text {
+        text: @tr("Show as");
+        font-size: Theme.pt(12px);
+        color: Theme.text-tertiary;
+        vertical-alignment: center;
+    }
+    button := Rectangle {
+        width: button-content.preferred-width;
+        height: Theme.px(22px);
+        border-radius: Theme.radius-sm;
+        border-width: 1px;
+        border-color: picker-area.has-hover ? Theme.text-tertiary : Theme.border-soft;
+        background: Theme.bg-panel;
+        picker-area := TouchArea {
+            mouse-cursor: pointer;
+            clicked => { picker-menu.show(); }
+        }
+        button-content := HorizontalLayout {
+            padding-left: Theme.px(7px);
+            padding-right: Theme.px(5px);
+            spacing: Theme.px(4px);
+            cross-axis-alignment: center;
+            Text {
+                text: Formats.names[root.escaped ? 1 : 0];
+                font-size: Theme.pt(12px);
+                font-weight: 600;
+                color: Theme.text-primary;
+                vertical-alignment: center;
+            }
+            IconChevron { size: Theme.px(10px); down: true; tint: Theme.text-tertiary; }
+        }
+        picker-menu := PopupWindow {
+            x: parent.width - self.width;
+            y: parent.height + Theme.px(4px);
+            width: Theme.px(170px);
+            height: Formats.names.length * Theme.px(28px) + Theme.px(10px);
+            Rectangle {
+                background: Theme.bg-elevated;
+                border-radius: Theme.radius-md;
+                border-width: 1px;
+                border-color: Theme.border-soft;
+                drop-shadow-color: Theme.shadow-color;
+                drop-shadow-blur: Theme.shadow-blur;
+                drop-shadow-offset-y: Theme.shadow-offset-y;
+                VerticalLayout {
+                    padding: Theme.px(5px);
+                    for name[index] in Formats.names: MenuItem {
+                        text: name;
+                        checked: (root.escaped ? 1 : 0) == index;
+                        clicked => { root.picked(index == 1); }
+                    }
+                }
+            }
+        }
+    }
+}
+
+// An open row's ⋯ menu: its value opened, downloaded or copied, and the format this row
+// shows it in (the Value header's until picked here).
+export component RowMenu inherits PopupWindow {
+    in-out property <bool> escaped: false;
+    callback open-value();
+    callback download-value();
+    callback copy-value();
+
+    property <length> row-h: Theme.px(28px);
+    property <length> pad: Theme.px(5px);
+    close-policy: close-on-click-outside;
+    width: Theme.px(230px);
+    height: 2 * pad + (3 + Formats.names.length) * row-h + Theme.px(9px) + Theme.px(26px);
+
+    Rectangle {
+        background: Theme.bg-elevated;
+        border-radius: Theme.radius-md;
+        border-width: 1px;
+        border-color: Theme.border-soft;
+        drop-shadow-color: Theme.shadow-color;
+        drop-shadow-blur: Theme.shadow-blur;
+        drop-shadow-offset-y: Theme.shadow-offset-y;
+
+        VerticalLayout {
+            padding: root.pad;
+            MenuItem {
+                text: @tr("Open in a text editor");
+                clicked => {
+                    root.close();
+                    root.open-value();
+                }
+                IconExternalLink { size: Theme.icon-md; tint: Theme.text-tertiary; }
+            }
+            MenuItem {
+                text: @tr("Download");
+                clicked => {
+                    root.close();
+                    root.download-value();
+                }
+                IconDownload { size: Theme.icon-md; tint: Theme.text-tertiary; }
+            }
+            MenuItem {
+                text: @tr("Copy");
+                clicked => {
+                    root.close();
+                    root.copy-value();
+                }
+                IconCopy { size: Theme.icon-md; tint: Theme.text-tertiary; }
+            }
+            Rectangle {
+                height: Theme.px(9px);
+                Rectangle { height: 1px; background: Theme.border-soft; }
+            }
+            HorizontalLayout {
+                padding-left: Theme.px(10px);
+                Text {
+                    height: Theme.px(26px);
+                    text: @tr("Show as");
+                    font-size: Theme.pt(12px);
+                    font-weight: 600;
+                    color: Theme.text-tertiary;
+                    vertical-alignment: center;
+                }
+            }
+            for name[index] in Formats.names: MenuItem {
+                text: name;
+                checked: (root.escaped ? 1 : 0) == index;
+                clicked => { root.escaped = index == 1; }
+            }
+        }
+    }
+}
+
+// The key header's Export… menu: the format exports use (kept open while picking it), then
+// exporting every field or the table's ticked rows, and the table as CSV.
+export component KeyMenu inherits PopupWindow {
+    // the table's ticked rows, which the export takes instead of every field when there are any
+    in property <int> selected-count: 0;
+    in-out property <bool> escaped: false;
+    callback export(target: ExportTarget);
+    callback export-csv();
+
+    property <length> row-h: Theme.px(28px);
+    property <length> pad: Theme.px(5px);
+    property <length> divider-h: Theme.px(9px);
+    close-policy: close-on-click-outside;
+    width: Theme.px(250px);
+    height: 2 * pad + Theme.px(26px) + (Formats.names.length + 4) * row-h + divider-h;
+
+    Rectangle {
+        background: Theme.bg-elevated;
+        border-radius: Theme.radius-md;
+        border-width: 1px;
+        border-color: Theme.border-soft;
+        drop-shadow-color: Theme.shadow-color;
+        drop-shadow-blur: Theme.shadow-blur;
+        drop-shadow-offset-y: Theme.shadow-offset-y;
+
+        VerticalLayout {
+            padding: root.pad;
+            HorizontalLayout {
+                padding-left: Theme.px(10px);
+                Text {
+                    height: Theme.px(26px);
+                    text: root.selected-count > 0 ? @tr("Export the {} selected rows as", root.selected-count) : @tr("Export every field as");
+                    font-size: Theme.pt(12px);
+                    font-weight: 600;
+                    color: Theme.text-tertiary;
+                    vertical-alignment: center;
+                }
+            }
+            for format[index] in Formats.names: MenuItem {
+                text: format;
+                checked: (root.escaped ? 1 : 0) == index;
+                clicked => { root.escaped = index == 1; }
+            }
+            Rectangle {
+                height: root.divider-h;
+                Rectangle { height: 1px; background: Theme.border-soft; }
+            }
+            MenuItem {
+                text: @tr("Open in a text editor");
+                clicked => {
+                    root.close();
+                    root.export(ExportTarget.open);
+                }
+                IconExternalLink { size: Theme.icon-md; tint: Theme.text-tertiary; }
+            }
+            MenuItem {
+                text: @tr("Download");
+                clicked => {
+                    root.close();
+                    root.export(ExportTarget.download);
+                }
+                IconDownload { size: Theme.icon-md; tint: Theme.text-tertiary; }
+            }
+            MenuItem {
+                text: @tr("Copy");
+                clicked => {
+                    root.close();
+                    root.export(ExportTarget.copy);
+                }
+                IconCopy { size: Theme.icon-md; tint: Theme.text-tertiary; }
+            }
+            MenuItem {
+                text: @tr("Export the table as CSV");
+                clicked => {
+                    root.close();
+                    root.export-csv();
+                }
+                IconDownload { size: Theme.icon-md; tint: Theme.text-tertiary; }
+            }
+        }
+    }
+}
+
+// A key or a typed prefix shown at the end of a list's row: the way to pick it from the box.
+component KeyHint inherits Rectangle {
+    in property <string> text;
+    height: Theme.px(18px);
+    width: hint-label.preferred-width + Theme.px(12px);
+    border-radius: Theme.radius-sm;
+    border-width: 1px;
+    border-color: Theme.border-soft;
+    background: Theme.bg-panel;
+    hint-label := Text {
+        text: root.text;
+        font-size: Theme.pt(10.5px);
+        font-family: Theme.font-mono;
+        color: Theme.text-secondary;
+        horizontal-alignment: center;
+        vertical-alignment: center;
+        width: 100%;
+        height: 100%;
+    }
 }
 
 // The completion list under a text box's caret: `rows` to choose from, the chosen one marked.
@@ -506,19 +905,29 @@ export component SuggestionPopup inherits Rectangle {
     in property <length> origin-x;
     in property <length> origin-y;
     in property <length> host-width;
+    // how it works, under the rows ("" for nothing); the list's width and its rows' height
+    in property <string> footer: "";
+    in property <length> list-width: Theme.px(280px);
+    in property <length> row-h: Theme.px(24px);
     // a row was chosen (clicked, or Enter / Tab on it); the list was dismissed (Esc, or Enter on no row)
     callback accepted(index: int);
     callback dismissed();
     // whether the pointer is on the list, for a box that loses its focus to a click on it
     out property <bool> hovered: area.has-hover;
 
-    property <length> row-h: Theme.px(24px);
     property <length> pad: Theme.px(4px);
     property <int> max-rows: 8;
+    property <length> footer-h: root.footer == "" ? 0px : Theme.px(9px) + Theme.pt(30px);
+    // a row's pill: the widest of the scope names and Filter, measured off these (never shown)
+    property <length> tag-width: max(tag-all.preferred-width, tag-fields.preferred-width, tag-value.preferred-width, tag-filter.preferred-width) + Theme.px(16px);
+    tag-all := Text { visible: false; text: ScopeColor.label(SearchScope.everywhere); font-size: Theme.pt(10.5px); font-weight: 700; }
+    tag-fields := Text { visible: false; text: ScopeColor.label(SearchScope.fields); font-size: Theme.pt(10.5px); font-weight: 700; }
+    tag-value := Text { visible: false; text: ScopeColor.label(SearchScope.value); font-size: Theme.pt(10.5px); font-weight: 700; }
+    tag-filter := Text { visible: false; text: @tr("Filter"); font-size: Theme.pt(10.5px); font-weight: 700; }
 
     visible: root.open && root.rows.length > 0;
-    width: Theme.px(280px);
-    height: min(root.rows.length, root.max-rows) * root.row-h + 2 * root.pad;
+    width: root.list-width;
+    height: min(root.rows.length, root.max-rows) * root.row-h + 2 * root.pad + root.footer-h;
     x: max(Theme.px(4px), min(root.anchor-x - root.origin-x, root.host-width - self.width - Theme.px(4px)));
     y: root.anchor-y - root.origin-y + Theme.px(4px);
     background: Theme.bg-elevated;
@@ -576,7 +985,7 @@ export component SuggestionPopup inherits Rectangle {
         x: root.pad;
         y: root.pad;
         width: parent.width - 2 * root.pad;
-        height: parent.height - 2 * root.pad;
+        height: parent.height - 2 * root.pad - root.footer-h;
         interactive: false;
         content-height: root.rows.length * root.row-h;
         VerticalLayout {
@@ -587,29 +996,71 @@ export component SuggestionPopup inherits Rectangle {
                 background: i == root.selected ? Theme.bg-selected : (row-area.has-hover ? Theme.bg-hover-elevated : Theme.bg-elevated);
                 HorizontalLayout {
                     padding-left: Theme.px(8px);
-                    padding-right: Theme.px(8px);
-                    alignment: start;
-                    Text {
-                        text: row.before;
-                        font-size: Theme.pt(11px);
-                        font-family: Theme.font-mono;
-                        color: Theme.text-primary;
-                        vertical-alignment: center;
+                    padding-right: Theme.px(6px);
+                    spacing: Theme.px(8px);
+                    // what it does: "search" (in the scope's color) or "filter"
+                    if row.icon != "": VerticalLayout {
+                        alignment: center;
+                        if row.icon == "search": IconSearch { size: Theme.icon-md; tint: ScopeColor.of(row.scope); }
+                        if row.icon == "filter": IconFunnel { size: Theme.icon-md; tint: Theme.accent-yellow; }
                     }
-                    Text {
-                        text: row.matched;
-                        font-size: Theme.pt(11px);
-                        font-family: Theme.font-mono;
-                        font-weight: 700;
-                        color: Theme.accent-blue;
-                        vertical-alignment: center;
+                    HorizontalLayout {
+                        horizontal-stretch: 1;
+                        alignment: start;
+                        Text {
+                            text: row.before;
+                            font-size: Theme.pt(11px);
+                            // a row that says what it does reads as a sentence, a key as code
+                            font-family: row.icon != "" ? Theme.font-ui : Theme.font-mono;
+                            color: Theme.text-primary;
+                            vertical-alignment: center;
+                        }
+                        // centered on the row, and as wide as the widest scope's, so the words line up
+                        if row.tag != "": HorizontalLayout {
+                            padding-left: Theme.px(2px);
+                            padding-right: Theme.px(6px);
+                            VerticalLayout {
+                                alignment: center;
+                                Rectangle {
+                                    width: root.tag-width;
+                                    height: Theme.px(18px);
+                                    border-radius: self.height / 2;
+                                    // a filter's pill is yellow, as its chip in the box
+                                    property <color> tint: row.icon == "filter" ? Theme.accent-yellow : ScopeColor.of(row.scope);
+                                    background: self.tint.with-alpha(0.16);
+                                    Text {
+                                        text: row.tag;
+                                        font-size: Theme.pt(10.5px);
+                                        font-weight: 700;
+                                        color: parent.tint;
+                                        horizontal-alignment: center;
+                                        vertical-alignment: center;
+                                        width: 100%;
+                                        height: 100%;
+                                    }
+                                }
+                            }
+                        }
+                        Text {
+                            text: row.matched;
+                            font-size: Theme.pt(11px);
+                            font-family: Theme.font-mono;
+                            font-weight: 700;
+                            color: Theme.accent-blue;
+                            vertical-alignment: center;
+                            overflow: elide;
+                        }
+                        Text {
+                            text: row.after;
+                            font-size: Theme.pt(11px);
+                            font-family: Theme.font-mono;
+                            color: Theme.text-primary;
+                            vertical-alignment: center;
+                        }
                     }
-                    Text {
-                        text: row.after;
-                        font-size: Theme.pt(11px);
-                        font-family: Theme.font-mono;
-                        color: Theme.text-primary;
-                        vertical-alignment: center;
+                    if row.hint != "": VerticalLayout {
+                        alignment: center;
+                        KeyHint { text: row.hint; }
                     }
                 }
                 row-area := TouchArea {
@@ -621,6 +1072,27 @@ export component SuggestionPopup inherits Rectangle {
                         }
                     }
                 }
+            }
+        }
+    }
+    if root.footer != "": VerticalLayout {
+        x: root.pad;
+        y: parent.height - root.pad - root.footer-h;
+        width: parent.width - 2 * root.pad;
+        height: root.footer-h;
+        Rectangle {
+            height: Theme.px(9px);
+            Rectangle { height: 1px; background: Theme.border-soft; }
+        }
+        HorizontalLayout {
+            padding-left: Theme.px(8px);
+            padding-right: Theme.px(8px);
+            Text {
+                text: root.footer;
+                font-size: Theme.pt(10.5px);
+                color: Theme.text-tertiary;
+                wrap: word-wrap;
+                vertical-alignment: center;
             }
         }
     }

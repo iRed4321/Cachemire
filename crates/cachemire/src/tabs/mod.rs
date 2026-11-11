@@ -11,8 +11,8 @@ use crate::key_detail::{ScrollPos, current_expanded_fields, current_scroll, rest
 use crate::redisql;
 use crate::search;
 use crate::{
-    AllValuesRowData, BadgeData, ExportPrefs, KeyPanel, KeyTree, KeyView, MainWindow, OpeningView, Preferences, SavedQueries, SearchScope,
-    SearchTab, TabData, TabStrip,
+    AllValuesRowData, BadgeData, ExportPrefs, KeyPanel, KeyTree, KeyView, MainWindow, OpeningView, Preferences, SavedQueries, SearchTab,
+    TabData, TabStrip,
 };
 use cachemire_core::key_name::KeyName;
 use rust_i18n::t;
@@ -22,10 +22,8 @@ use rust_i18n::t;
 /// always starts from `default()`, never the previous tab's state.
 #[derive(Clone, Default)]
 struct TabViewState {
-    // the search bar's active badges, currently-picked scope and
-    // case-sensitivity toggle (see KeyDetail.filter-badges)
+    // the smart box's search badges and case-sensitivity toggle (see KeyDetail.filter-badges)
     badges: Vec<BadgeData>,
-    scope: SearchScope,
     case_sensitive: bool,
     json_filter: String,
     // which of the key panel's views the tab was left on
@@ -36,7 +34,8 @@ struct TabViewState {
     expanded_fields: FxHashSet<String>,
     // whether a hash's fields are listed in descending order (see KeyPanel.sort-descending)
     descending: bool,
-    // the header's JSON / Escaped switch (see ExportPrefs.header-escaped)
+    // the formats: the rows' (the Value header's) and the key header's exports' (see ExportPrefs)
+    shown_escaped: bool,
     escaped: bool,
     // a field to scroll to the next time the tab is shown (a link's)
     reveal: Option<String>,
@@ -60,7 +59,8 @@ impl TabViewState {
             OpeningView::Table => KeyView::Table,
             OpeningView::Last => prefs.get_last_view(),
         };
-        Self { view, escaped: window.global::<Preferences>().get_export_escaped(), ..Self::default() }
+        let escaped = window.global::<Preferences>().get_export_escaped();
+        Self { view, shown_escaped: escaped, escaped, ..Self::default() }
     }
 
     /// Shows what `target` leads to: its filter alone, and its field open in the list view.
@@ -288,7 +288,6 @@ fn clear_detail_view(window: &MainWindow) {
     window.global::<KeyPanel>().set_all_values_field_chars(8);
     window.global::<KeyPanel>().set_all_values_rows(ModelRc::new(VecModel::from(Vec::<AllValuesRowData>::new())));
     window.global::<KeyPanel>().set_filter_badges(ModelRc::new(VecModel::from(Vec::<BadgeData>::new())));
-    window.global::<KeyPanel>().set_filter_scope(SearchScope::default());
     window.global::<KeyPanel>().set_filter_case_sensitive(false);
     window.global::<KeyPanel>().set_filter_query("".into());
     window.global::<KeyPanel>().set_filter_limit_message("".into());
@@ -312,13 +311,13 @@ fn save_view_state(app: &App, window: &MainWindow, tabs: &mut Tabs, key: &str) {
         key.to_string(),
         TabViewState {
             badges: window.global::<KeyPanel>().get_filter_badges().iter().collect(),
-            scope: window.global::<KeyPanel>().get_filter_scope(),
             case_sensitive: window.global::<KeyPanel>().get_filter_case_sensitive(),
             json_filter: window.global::<KeyPanel>().get_json_filter().to_string(),
             view: window.global::<KeyPanel>().get_view(),
             scroll: current_scroll(window),
             expanded_fields: current_expanded_fields(window),
             descending: window.global::<KeyPanel>().get_sort_descending(),
+            shown_escaped: window.global::<ExportPrefs>().get_escaped(),
             escaped: window.global::<ExportPrefs>().get_header_escaped(),
             reveal: None,
         },
@@ -334,7 +333,6 @@ fn restore_view_state(window: &MainWindow, tabs: &Tabs, key: &str) -> ScrollPos 
     }
     let state = tabs.view_state.get(key).cloned().unwrap_or_else(|| TabViewState::new(window, key));
     window.global::<KeyPanel>().set_filter_badges(ModelRc::new(VecModel::from(state.badges)));
-    window.global::<KeyPanel>().set_filter_scope(state.scope);
     window.global::<KeyPanel>().set_filter_case_sensitive(state.case_sensitive);
     window.global::<KeyPanel>().set_filter_query("".into());
     window.global::<KeyPanel>().set_filter_limit_message("".into());
@@ -343,7 +341,7 @@ fn restore_view_state(window: &MainWindow, tabs: &Tabs, key: &str) -> ScrollPos 
     restore_expanded_fields(window, &state.expanded_fields);
     window.global::<KeyPanel>().set_sort_descending(state.descending);
     window.global::<ExportPrefs>().set_header_escaped(state.escaped);
-    window.global::<ExportPrefs>().set_escaped(state.escaped);
+    window.global::<ExportPrefs>().set_escaped(state.shown_escaped);
     state.scroll
 }
 

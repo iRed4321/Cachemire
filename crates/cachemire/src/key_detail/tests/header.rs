@@ -75,53 +75,34 @@ fn the_view_switcher_selects_the_view() {
     assert_eq!(changes.get(), 2);
 }
 
-/// The search bar above the filter bar: the scope switch and case toggle are plain
-/// properties, Enter turns the typed text into badges via Rust, and a badge's ×
-/// asks Rust to drop it.
+/// The smart box in the key's header: its case toggle is a plain property, Enter tells Rust
+/// (which reads the text itself), and a badge Rust put in it shows there, its × asking Rust
+/// to drop exactly it.
 #[test]
-fn the_search_bar_wires_its_scope_case_toggle_and_badges() {
+fn the_smart_box_wires_its_case_toggle_enter_and_badges() {
     let mut h = Harness::new();
     h.frame();
-    // the search bar is in the "More" section
-    h.open_more();
-    assert_eq!(h.window.global::<KeyPanel>().get_filter_scope(), SearchScope::Everywhere, "everywhere is the default scope");
-
-    // sweep the search bar's row for the segment that picks each scope —
-    // its exact place isn't pinned down here, just that clicking it works
-    let sweep_scope = |h: &mut Harness, want: SearchScope| {
-        for y in MORE_ROW_Y.step_by(4) {
-            for x in (291..560).step_by(4) {
-                h.click(x as f32, y as f32);
-                if h.window.global::<KeyPanel>().get_filter_scope() == want {
-                    return true;
-                }
-            }
-        }
-        false
-    };
-    assert!(sweep_scope(&mut h, SearchScope::Fields), "a segment picks Fields");
-    assert!(sweep_scope(&mut h, SearchScope::Value), "a segment picks Value");
-    assert!(sweep_scope(&mut h, SearchScope::Everywhere), "and one picks Everywhere again");
 
     // the case-sensitivity toggle: a plain property, plus a callback so Rust
-    // can re-filter under it
+    // can re-filter under it; its exact place in the box isn't pinned down here
     let case_changes = Rc::new(std::cell::Cell::new(0));
     h.window.global::<KeyPanel>().on_filter_case_sensitivity_changed({
         let case_changes = case_changes.clone();
         move || case_changes.set(case_changes.get() + 1)
     });
     assert!(!h.window.global::<KeyPanel>().get_filter_case_sensitive());
-    let mut toggle_row_y = None;
-    'toggle: for y in MORE_ROW_Y.step_by(4) {
-        for x in (291..900).step_by(4) {
-            h.click(x as f32, y as f32);
-            if h.window.global::<KeyPanel>().get_filter_case_sensitive() {
-                toggle_row_y = Some(y as f32);
-                break 'toggle;
+    let flipped = 'toggle: {
+        for y in HEADER_ROW_Y.step_by(4) {
+            for x in (291..1120).step_by(4) {
+                h.click(x as f32, y as f32);
+                if h.window.global::<KeyPanel>().get_filter_case_sensitive() {
+                    break 'toggle true;
+                }
             }
         }
-    }
-    let row_y = toggle_row_y.expect("a click flips case-sensitivity");
+        false
+    };
+    assert!(flipped, "a click flips case-sensitivity");
     assert_eq!(case_changes.get(), 1, "and tells Rust once");
 
     // Enter in the box: Rust reads it from here (the callback carries nothing)
@@ -130,30 +111,26 @@ fn the_search_bar_wires_its_scope_case_toggle_and_badges() {
         let submits = submits.clone();
         move || submits.set(submits.get() + 1)
     });
-    // click into the box first (same row as the toggle, to its right so it
-    // lands past the switch and the toggle), so the Enter below reaches it
-    h.click(SEARCH_BOX_X, row_y);
+    h.click(SMART_BOX.0, SMART_BOX.1);
     h.window.global::<KeyPanel>().set_filter_query("needle".into());
     h.window.window().dispatch_event(WindowEvent::KeyPressed { text: slint::platform::Key::Return.into() });
     h.window.window().dispatch_event(WindowEvent::KeyReleased { text: slint::platform::Key::Return.into() });
     assert_eq!(submits.get(), 1, "the box tells Rust rather than adding the badge itself");
 
     // a badge Rust put in filter-badges (as if that submit had gone through)
-    // renders in the header, tinted by its scope, and its × asks Rust to
-    // drop exactly that one
+    // renders in the box, tinted by its scope, and its × asks Rust to drop exactly that one
     let removed = Rc::new(RefCell::new(Vec::<(String, SearchScope)>::new()));
     h.window.global::<KeyPanel>().on_filter_badge_removed({
         let removed = removed.clone();
         move |text, scope| removed.borrow_mut().push((text.to_string(), scope))
     });
+    h.window.global::<KeyPanel>().set_filter_query("".into());
     h.window.global::<KeyPanel>().set_filter_badges(ModelRc::new(VecModel::from(vec![
-        crate::BadgeData { text: "needle".into(), scope: SearchScope::Value },
-        crate::BadgeData { text: "prefix".into(), scope: SearchScope::Fields },
+        crate::BadgeData { text: "needle".into(), scope: SearchScope::Value, pending: false },
+        crate::BadgeData { text: "prefix".into(), scope: SearchScope::Fields, pending: false },
     ])));
     h.settle();
-    // the Value badge's text and × are drawn solid accent-purple; only the key's
-    // header is checked, since the scope switch's chosen "Value" segment below is
-    // purple too
+    // the Value badge's text and × are drawn solid accent-purple, in the header
     let purple = {
         let (r, g, b) = (0xb3_u16, 0x89_u16, 0xf9_u16);
         ((r >> 3) << 11) | ((g >> 2) << 5) | (b >> 3)
@@ -162,7 +139,7 @@ fn the_search_bar_wires_its_scope_case_toggle_and_badges() {
     let mut max_y = 0;
     let mut max_x = 0;
     for (i, p) in h.buffer.iter().enumerate() {
-        if p.0 == purple && i / WIDTH < MORE_ROW_Y.start as usize {
+        if p.0 == purple && i / WIDTH < LIST_TOP_Y {
             let (x, y) = (i % WIDTH, i / WIDTH);
             min_y = min_y.min(y);
             max_y = max_y.max(y);
@@ -176,10 +153,10 @@ fn the_search_bar_wires_its_scope_case_toggle_and_badges() {
     assert_eq!(removed.borrow().as_slice(), [("needle".to_string(), SearchScope::Value)], "the badge's own × asked to drop exactly it");
 }
 
-/// Typing in the filter bar: a dot lists the keys under the path, typing
+/// Typing a path in the smart box: a dot lists the keys under the path, typing
 /// narrows the list, the arrows choose and Enter writes the choice.
 #[test]
-fn the_filter_completes_paths_from_the_loaded_values() {
+fn the_smart_box_completes_paths_from_the_loaded_values() {
     let mut h = Harness::new();
     h.frame();
     let fields = hash_fields(3, "user");
@@ -195,6 +172,7 @@ fn the_filter_completes_paths_from_the_loaded_values() {
                     before: i.key[..i.matched.0].into(),
                     matched: i.key[i.matched.0..i.matched.1].into(),
                     after: i.key[i.matched.1..].into(),
+                    ..Default::default()
                 })
                 .collect();
             let any = !rows.is_empty();
@@ -210,9 +188,7 @@ fn the_filter_completes_paths_from_the_loaded_values() {
         }
     });
 
-    // the JSON filter is in the "More" section: open it, and click into its box
-    h.open_more();
-    h.click(JSON_FILTER_X, (MORE_ROW_Y.start + MORE_ROW_Y.end) as f32 / 2.0);
+    h.click(SMART_BOX.0, SMART_BOX.1);
     let press = |h: &Harness, key: slint::platform::Key| {
         let text: slint::SharedString = key.into();
         h.window.window().dispatch_event(WindowEvent::KeyPressed { text: text.clone() });
@@ -229,9 +205,9 @@ fn the_filter_completes_paths_from_the_loaded_values() {
         h.window.global::<KeyPanel>().get_suggestions().iter().map(|r| format!("{}{}{}", r.before, r.matched, r.after)).collect()
     };
 
-    type_text(&h, "address.");
+    type_text(&h, "$.address.");
     h.frame();
-    assert_eq!(h.window.global::<KeyPanel>().get_json_filter(), "address.");
+    assert_eq!(h.window.global::<KeyPanel>().get_filter_query(), "$.address.");
     assert_eq!(shown(&h), ["*", "city", "zip", "geo"], "a dot lists what is under the path");
 
     type_text(&h, "z");
@@ -239,14 +215,14 @@ fn the_filter_completes_paths_from_the_loaded_values() {
     assert_eq!(shown(&h), ["zip"], "typing narrows it");
     assert_eq!(h.window.global::<KeyPanel>().get_suggestions().row_data(0).unwrap().matched, "z");
 
-    // Enter with nothing chosen leaves the list alone and applies the filter as typed
-    let applied = Rc::new(std::cell::Cell::new(0));
-    h.window.global::<KeyPanel>().on_json_filter_submitted({
-        let applied = applied.clone();
-        move || applied.set(applied.get() + 1)
+    // Enter with nothing chosen leaves the list alone and hands the box to Rust as typed
+    let submitted = Rc::new(std::cell::Cell::new(0));
+    h.window.global::<KeyPanel>().on_filter_query_submitted({
+        let submitted = submitted.clone();
+        move || submitted.set(submitted.get() + 1)
     });
     press(&h, slint::platform::Key::Return);
-    assert_eq!((applied.get(), h.window.global::<KeyPanel>().get_json_filter().as_str()), (1, "address.z"));
+    assert_eq!((submitted.get(), h.window.global::<KeyPanel>().get_filter_query().as_str()), (1, "$.address.z"));
 
     // the arrows choose, Enter writes the choice
     type_text(&h, "i");
@@ -255,13 +231,13 @@ fn the_filter_completes_paths_from_the_loaded_values() {
     press(&h, slint::platform::Key::Return);
     h.frame();
     assert_eq!(
-        (applied.get(), h.window.global::<KeyPanel>().get_json_filter().as_str()),
-        (1, "address.zip"),
+        (submitted.get(), h.window.global::<KeyPanel>().get_filter_query().as_str()),
+        (1, "$.address.zip"),
         "the choice is written, not applied"
     );
 
     // and the caret is after it: typing goes on from there
     type_text(&h, ".");
     h.frame();
-    assert_eq!(h.window.global::<KeyPanel>().get_json_filter(), "address.zip.");
+    assert_eq!(h.window.global::<KeyPanel>().get_filter_query(), "$.address.zip.");
 }

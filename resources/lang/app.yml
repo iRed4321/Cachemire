@@ -95,6 +95,26 @@ _version: 2
   fr: "analyse..."
 "searching...":
   fr: "recherche..."
+# the smart box's list: "Search" then where (a pill: All, Fields or Value), or "Apply a" Filter;
+# a key of its own, the verb, apart from the search tab's "Search"
+"Search (smart box)":
+  en: "Search"
+  fr: "Chercher"
+"All":
+  fr: "Tout"
+"Fields":
+  fr: "Champs"
+"Value":
+  fr: "Valeur"
+"Apply a":
+  fr: "Appliquer un"
+"Filter":
+  fr: "Filtre"
+# under the smart box's list: how it works, for words, then for a path
+"Space adds a search, Enter applies them; all must match. Click one to edit it, Backspace removes the last one.":
+  fr: "Espace ajoute une recherche, Entrée les applique ; toutes doivent correspondre. Cliquez-en une pour la modifier, Retour arrière ôte la dernière."
+"Tab writes the first key, or the one picked with the arrows; Enter applies the filter as typed.":
+  fr: "Tab écrit la première clé, ou celle choisie avec les flèches ; Entrée applique le filtre tel qu'il est saisi."
 "Remove a badge first (5 max)":
   fr: "Retirez un badge d'abord (5 max)"
 "search failed: %{error}":

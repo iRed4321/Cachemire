@@ -45,13 +45,13 @@ Made for Redis hashes full of JSON: read each value as colored JSON, filter them
 
 ### Filter and tabulate
 
-Type a JSON path in the filter bar and press <kbd>Enter</kbd>:
+Type a JSON path starting with `$` in the key's search box and press <kbd>Enter</kbd>:
 
 ```
-records                 one key
-records.*.name          the name of every record
-records[0].address.city an array index
-..label                 a key at any depth
+$.records               one key
+$.records.*.name        the name of every record
+$.records[0].address.city an array index
+$..label                a key at any depth
 ```
 
 The path is completed from the loaded values. Show the result as a **field/value list** or a **table** with resizable columns, copy selected rows as a JSON array, or export to CSV.

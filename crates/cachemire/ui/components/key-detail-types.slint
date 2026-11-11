@@ -1,8 +1,8 @@
 import { SearchScope } from "types.slint";
 
-// Whether the export buttons act on escaped JSON rather than plain JSON. `header-escaped` is the
-// shown tab's choice (tabs/mod.rs keeps one per tab); it sets `escaped`, what a row starts with, and,
-// by bumping `rows-tick`, every open row's.
+// The shown tab's formats (tabs/mod.rs keeps them per tab): `escaped` is the Value header's,
+// what every row shows (bumping `rows-tick` sets it on the open ones too), `header-escaped`
+// what the key header's ⋯ menu exports in.
 export global ExportPrefs {
     in-out property <bool> escaped: false;
     in-out property <bool> header-escaped: false;
@@ -58,12 +58,17 @@ export struct AllValuesRowData {
     initial-expanded: bool,
 }
 
-// one suggestion of the filter bar's completion list, split around the part
-// that matches what was typed (the middle one is shown highlighted)
+// one suggestion of a completion list, split around the part that matches what was typed
+// (shown highlighted). Unless "": `tag` is a pill before it in `scope`'s color (ScopeColor),
+// `icon` ("search" or "filter") leads the row and `hint` ends it (the key that picks it)
 export struct SuggestionRow {
+    icon: string,
     before: string,
+    tag: string,
+    scope: SearchScope,
     matched: string,
     after: string,
+    hint: string,
 }
 
 // the filter text after accepting a suggestion, and where the caret goes in it
@@ -100,4 +105,6 @@ export struct FindResult {
 export struct BadgeData {
     text: string,
     scope: SearchScope,
+    // added with a space: waiting for Enter, not searched yet
+    pending: bool,
 }

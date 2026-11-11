@@ -555,8 +555,8 @@ export component MainWindow inherits Window {
             y: Hint.above
                 ? max(Theme.px(4px), Hint.anchor-y - self.height)
                 : min(Hint.anchor-y, root.height - self.height - Theme.px(4px));
-            width: tooltip-label.width + Theme.px(16px);
-            height: Theme.px(24px);
+            width: max(tooltip-label.width, Hint.footer == "" ? 0px : tooltip-footer.width) + Theme.px(16px);
+            height: Hint.footer == "" ? Theme.px(24px) : Theme.px(47px);
             background: Theme.bg-elevated;
             border-radius: Theme.radius-sm;
             border-width: 1px;
@@ -567,12 +567,31 @@ export component MainWindow inherits Window {
 
             tooltip-label := Text {
                 x: Theme.px(8px);
-                y: (parent.height - self.height) / 2;
+                y: (Theme.px(24px) - self.height) / 2;
                 width: min(self.preferred-width, root.width - Theme.px(24px));
                 text: Hint.text;
                 font-size: Theme.pt(12px);
                 font-family: Theme.font-mono;
                 color: Theme.text-primary;
+                vertical-alignment: center;
+                overflow: elide;
+            }
+            // the footer line, under a separator
+            if Hint.footer != "": Rectangle {
+                x: Theme.px(6px);
+                y: Theme.px(24px);
+                width: parent.width - Theme.px(12px);
+                height: 1px;
+                background: Theme.border-soft;
+            }
+            tooltip-footer := Text {
+                visible: Hint.footer != "";
+                x: Theme.px(8px);
+                y: Theme.px(25px) + (Theme.px(22px) - self.height) / 2;
+                width: min(self.preferred-width, root.width - Theme.px(24px));
+                text: Hint.footer;
+                font-size: Theme.pt(11px);
+                color: Theme.text-tertiary;
                 vertical-alignment: center;
                 overflow: elide;
             }
