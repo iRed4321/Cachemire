@@ -2,9 +2,15 @@ use std::path::PathBuf;
 use std::sync::Arc;
 
 use super::*;
+use cachemire_core::connection::ssh_tunnel::UnknownHostKey;
 
 fn io() -> std::io::Error {
     std::io::Error::other("disk full")
+}
+
+fn host_key() -> russh::keys::PublicKey {
+    use russh::keys::ssh_key::public::{Ed25519PublicKey, KeyData};
+    russh::keys::PublicKey::new(KeyData::Ed25519(Ed25519PublicKey([1; 32])), "")
 }
 
 fn json() -> serde_json::Error {
@@ -57,6 +63,7 @@ fn core_errors() -> Vec<CoreError> {
     ];
     let tunnel = [
         TunnelError::HostKeyNotSaved { file: file(), source: russh::keys::Error::CouldNotReadKey },
+        TunnelError::UnknownHostKey(Box::new(UnknownHostKey::new("bastion", 22, &host_key()))),
         TunnelError::HostKeyChanged { line: 3, file: file() },
         TunnelError::HostKeyUnchecked(russh::keys::Error::CouldNotReadKey),
         TunnelError::KeyPassphrase { file: file() },

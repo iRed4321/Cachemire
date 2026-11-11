@@ -85,7 +85,7 @@ Les clés, les recherches et les requêtes s'ouvrent dans des onglets que vous p
 ### Se connecter
 
 - **URL de connexion** : `redis://user:pass@host:6379/0`, ou `rediss://` pour le TLS. Testez-la avant de l'enregistrer.
-- 🔐 **Tunnels SSH** par mot de passe, par clé privée, ou les deux. La clé d'hôte est mémorisée à la première connexion, puis refusée si elle change. Les profils SSH permettent de partager un même identifiant entre plusieurs tunnels.
+- 🔐 **Tunnels SSH** par mot de passe, par clé privée, ou les deux. La clé d'hôte est présentée pour approbation la première fois (ou reprise de `~/.ssh/known_hosts`), puis refusée si elle change. Les profils SSH permettent de partager un même identifiant entre plusieurs tunnels.
 - 🎛️ **Profils de connexion** : un nom et une couleur qui teinte l'application pendant la connexion, pour toujours savoir si vous êtes sur `Production`.
 - ☁️ **AWS** : connectez-vous avec vos profils locaux `~/.aws` (SSO compris) et listez les points de terminaison ElastiCache de chacun.
 - 📥 **Import / export** de vos connexions au format JSON, avec ou sans les mots de passe.
@@ -95,7 +95,8 @@ Les clés, les recherches et les requêtes s'ouvrent dans des onglets que vous p
 
 ### Sûr par défaut
 
-- 🛡️ Les mots de passe sont stockés dans le trousseau du système (Gestionnaire d'identification ou Secret Service).
+- 🛡️ Les mots de passe sont stockés dans le trousseau du système (Gestionnaire d'identification ou Secret Service). S'il est indisponible, Cachemire demande avant de garder un mot de passe dans son fichier de données, et peut à la place enregistrer sans lui et le demander à la connexion.
+- 🔑 La clé d'hôte d'un serveur SSH n'est jamais approuvée en silence : son empreinte vous est présentée d'abord, les clés de `~/.ssh/known_hosts` sont respectées, et une clé qui change est refusée.
 - 🔒 **Profils et connexions en lecture seule** : cochez *Lecture seule* sur un profil de connexion, ou sur une seule connexion, et rien ne peut être écrit dans Redis par ce biais. Le profil `Production` par défaut est en lecture seule.
 - La suppression d'un dossier demande d'abord confirmation, en indiquant le nombre de clés qui seront supprimées.
 - Une valeur qui a changé dans Redis pendant que vous la modifiiez n'est jamais écrasée silencieusement : vous choisissez d'annuler, de la recharger ou de l'écraser.

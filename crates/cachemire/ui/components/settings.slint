@@ -514,6 +514,7 @@ global SettingTexts {
     out property <string> updates-hint: @tr("Each time Cachemire starts, it looks for a newer version on the channel picked in About (the i button of the title bar), and opens it when there is one.");
     out property <string> server-search-hint: @tr("The global search lets Redis filter the data itself, so far less of it travels. It uses the server's CPU while it runs, needs permission to run scripts, and goes back to the normal search if the server refuses.");
     out property <string> ssh-hint: @tr("The active profile logs in to the SSH tunnels that have no username of their own. A connection that fills in its own username and password uses those instead.");
+    out property <string> host-keys-hint: @tr("An SSH server whose host key isn't in the app's list or in ~/.ssh/known_hosts is normally shown with its fingerprint for you to trust. Turn this on to trust and remember it without asking; a key that changes is always refused.");
     out property <string> conn-hint: @tr("A connection that has one of these profiles tints the app's background while you are connected to it, to tell environments apart.");
 }
 
@@ -804,6 +805,15 @@ component SshProfileList inherits VerticalLayout {
 
     spacing: Theme.px(12px);
     SettingHint { text: SettingTexts.ssh-hint; }
+    VerticalLayout {
+        spacing: Theme.px(4px);
+        CheckRow {
+            text: @tr("Accept new SSH host keys automatically");
+            checked: Preferences.accept-new-ssh-host-keys;
+            toggled => { Preferences.accept-new-ssh-host-keys-toggled(!Preferences.accept-new-ssh-host-keys); }
+        }
+        SettingHint { text: SettingTexts.host-keys-hint; }
+    }
     list-box := Rectangle {
         property <length> full-height: (root.profiles.length == 0 ? Theme.px(64px) : root.profiles.length * root.row-height) + Theme.px(2px);
         min-height: root.scrolls ? min(self.full-height, root.row-height + Theme.px(2px)) : self.full-height;
@@ -978,7 +988,7 @@ export component SettingsModal inherits Rectangle {
     property <bool> found-server-search: root.hit(@tr("Experimental") + " " + @tr("Search on the server (Lua script)") + " " + SettingTexts.server-search-hint);
     property <bool> found-version: root.hit(@tr("About") + " Cachemire Léo Parent " + About.version + " " + @tr("GitHub repository"));
     property <bool> found-updates: root.hit(@tr("About") + " " + @tr("Updates") + " " + @tr("Stable") + " " + @tr("Beta") + " " + @tr("Check for updates"));
-    property <bool> found-ssh: root.hit(@tr("SSH profiles") + " " + @tr("Add profile") + " " + SettingTexts.ssh-hint);
+    property <bool> found-ssh: root.hit(@tr("SSH profiles") + " " + @tr("Add profile") + " " + SettingTexts.ssh-hint + " " + @tr("Accept new SSH host keys automatically") + " " + SettingTexts.host-keys-hint);
     property <bool> found-conn: root.hit(@tr("Connection profiles") + " " + @tr("Add profile") + " " + SettingTexts.conn-hint);
     property <bool> found-any: root.found(SettingsCategory.general) || root.found(SettingsCategory.key-bindings) || root.found(SettingsCategory.ssh-profiles)
         || root.found(SettingsCategory.conn-profiles) || root.found(SettingsCategory.experimental) || root.found(SettingsCategory.about);

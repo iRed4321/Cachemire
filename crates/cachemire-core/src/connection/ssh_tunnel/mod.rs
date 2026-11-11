@@ -3,8 +3,9 @@
 //! `ssh -L port:redis-host:6379` does, without an `ssh` binary.
 
 use parking_lot::Mutex;
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 use std::sync::Arc;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::Duration;
 
 use russh::client::{self, Handle};
@@ -22,6 +23,8 @@ use rustls::pki_types::ServerName;
 pub enum TunnelError {
     #[error("couldn't remember the SSH server's host key in {}: {source}", file.display())]
     HostKeyNotSaved { file: PathBuf, source: russh::keys::Error },
+    #[error("the SSH server's host key isn't trusted yet: {0}")]
+    UnknownHostKey(Box<UnknownHostKey>),
     #[error("the SSH server's host key has changed since it was first seen (recorded on line {line} of {}). If the server was reinstalled, delete that line; otherwise someone may be impersonating it.", file.display())]
     HostKeyChanged { line: usize, file: PathBuf },
     #[error("couldn't check the SSH server's host key: {0}")]
@@ -48,16 +51,85 @@ pub enum TunnelError {
     Ssh(#[from] russh::Error),
 }
 
+/// An SSH server whose host key is in no known-hosts file: what the user is shown to
+/// decide on, and what [`HostKeys::trust`] records.
+#[derive(Debug, Clone)]
+pub struct UnknownHostKey {
+    pub host: String,
+    pub port: u16,
+    /// the key's algorithm, as OpenSSH names it (`ssh-ed25519`)
+    pub key_type: String,
+    /// the key's SHA-256 fingerprint, OpenSSH style (`SHA256:...`)
+    pub fingerprint: String,
+    key: russh::keys::PublicKey,
+}
+
+impl UnknownHostKey {
+    /// The key `host:port` presented, with its type and fingerprint.
+    pub fn new(host: &str, port: u16, key: &russh::keys::PublicKey) -> Self {
+        Self {
+            host: host.to_string(),
+            port,
+            key_type: key.algorithm().to_string(),
+            fingerprint: key.fingerprint(HashAlg::Sha256).to_string(),
+            key: key.clone(),
+        }
+    }
+}
+
+impl std::fmt::Display for UnknownHostKey {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}:{} ({} {})", self.host, self.port, self.key_type, self.fingerprint)
+    }
+}
+
+/// Where SSH servers' host keys are looked up and remembered: the app's own file, which
+/// new keys are written to, and the user's `~/.ssh/known_hosts`, which is only read.
+#[derive(Clone)]
+pub struct HostKeys {
+    app_file: PathBuf,
+    user_file: Option<PathBuf>,
+    accept_new: Arc<AtomicBool>,
+}
+
+impl HostKeys {
+    /// Host keys kept in `app_file` alone, a new one needing the user's approval.
+    pub fn new(app_file: PathBuf) -> Self {
+        Self { app_file, user_file: None, accept_new: Arc::default() }
+    }
+
+    /// Also trusts the keys of `~/.ssh/known_hosts`, when the home directory is known.
+    pub fn with_user_known_hosts(mut self) -> Self {
+        self.user_file = dirs::home_dir().map(|home| home.join(".ssh").join("known_hosts"));
+        self
+    }
+
+    /// Whether a key seen for the first time is trusted and remembered without asking.
+    pub fn accepts_new(&self) -> bool {
+        self.accept_new.load(Ordering::Relaxed)
+    }
+
+    pub fn set_accepts_new(&self, accept: bool) {
+        self.accept_new.store(accept, Ordering::Relaxed);
+    }
+
+    /// Remembers `server`'s key in the app's file, so that it is trusted from now on.
+    pub fn trust(&self, server: &UnknownHostKey) -> Result<(), TunnelError> {
+        learn_known_hosts_path(&server.host, server.port, &server.key, &self.app_file)
+            .map_err(|source| TunnelError::HostKeyNotSaved { file: self.app_file.clone(), source })
+    }
+}
+
 /// Connecting to the SSH server and logging in must finish within this.
 const SETUP_TIMEOUT: Duration = Duration::from_secs(20);
 
-/// Checks the SSH server's host key against an OpenSSH-format `known_hosts`
-/// file: a server seen for the first time is trusted and remembered; a
-/// changed key is refused (it can mean someone is impersonating the server).
+/// Checks the SSH server's host key against the known-hosts files: a listed key is trusted,
+/// a changed one refused (someone may be impersonating the server), and a new one refused
+/// until trusted, or remembered at once when new keys are accepted.
 struct HostKeyCheck {
     host: String,
     port: u16,
-    known_hosts: PathBuf,
+    keys: HostKeys,
     // why the key was refused, for the error the caller reports
     refusal: Arc<Mutex<Option<TunnelError>>>,
 }
@@ -71,16 +143,32 @@ impl client::Handler for HostKeyCheck {
             *self.refusal.lock() = Some(why);
             Ok(false)
         };
-        match check_known_hosts_path(&self.host, self.port, &key, &self.known_hosts) {
+        let mut listed = false;
+        // (the user's file may hold lines this can't read: they count as not listing the server)
+        if let Some(user_file) = &self.keys.user_file {
+            match check_known_hosts_path(&self.host, self.port, &key, user_file) {
+                Ok(found) => listed = found,
+                Err(russh::keys::Error::KeyChanged { line }) => {
+                    return refuse(TunnelError::HostKeyChanged { line, file: user_file.clone() });
+                }
+                Err(e) => tracing::debug!(file = %user_file.display(), "couldn't check the host key against it: {e}"),
+            }
+        }
+        match check_known_hosts_path(&self.host, self.port, &key, &self.keys.app_file) {
             Ok(true) => Ok(true),
+            Ok(false) if listed => Ok(true),
             Ok(false) => {
-                // first time this server is seen
-                match learn_known_hosts_path(&self.host, self.port, &key, &self.known_hosts) {
+                let server = UnknownHostKey::new(&self.host, self.port, &key);
+                if !self.keys.accepts_new() {
+                    return refuse(TunnelError::UnknownHostKey(Box::new(server)));
+                }
+                tracing::info!(server = %format_args!("{}:{}", server.host, server.port), fingerprint = %server.fingerprint, "trusting a new SSH host key");
+                match self.keys.trust(&server) {
                     Ok(()) => Ok(true),
-                    Err(source) => refuse(TunnelError::HostKeyNotSaved { file: self.known_hosts.clone(), source }),
+                    Err(why) => refuse(why),
                 }
             }
-            Err(russh::keys::Error::KeyChanged { line }) => refuse(TunnelError::HostKeyChanged { line, file: self.known_hosts.clone() }),
+            Err(russh::keys::Error::KeyChanged { line }) => refuse(TunnelError::HostKeyChanged { line, file: self.keys.app_file.clone() }),
             Err(e) => refuse(TunnelError::HostKeyUnchecked(e)),
         }
     }
@@ -95,6 +183,22 @@ fn expand_home(path: &str) -> PathBuf {
     }
 }
 
+/// Whether the private key in `text` is protected by a passphrase, whatever its format
+/// (OpenSSH, PKCS#8, PEM with encryption headers, PuTTY), judged without decrypting it.
+fn key_is_encrypted(text: &str) -> bool {
+    let text = text.trim_start();
+    if text.starts_with("PuTTY-User-Key-File-") {
+        return text.lines().any(|line| line.strip_prefix("Encryption:").is_some_and(|how| how.trim() != "none"));
+    }
+    if text.contains("-----BEGIN ENCRYPTED PRIVATE KEY-----") {
+        return true;
+    }
+    if text.contains("-----BEGIN OPENSSH PRIVATE KEY-----") {
+        return russh::keys::ssh_key::PrivateKey::from_openssh(text).is_ok_and(|key| key.is_encrypted());
+    }
+    text.lines().any(|line| line.starts_with("DEK-Info:") || (line.starts_with("Proc-Type:") && line.contains("ENCRYPTED")))
+}
+
 /// Logs in with the private key when there is one, then with the password.
 async fn authenticate(session: &mut Handle<HostKeyCheck>, ssh: &SshSettings) -> Result<(), TunnelError> {
     let (mut tried_key, mut tried_password) = (false, false);
@@ -102,13 +206,14 @@ async fn authenticate(session: &mut Handle<HostKeyCheck>, ssh: &SshSettings) -> 
     if !ssh.private_key.trim().is_empty() {
         let path = expand_home(ssh.private_key.trim());
         let passphrase = if ssh.passphrase.is_empty() { None } else { Some(ssh.passphrase.as_str()) };
-        let key = russh::keys::load_secret_key(&path, passphrase).map_err(|source| {
-            // an encrypted key with the wrong (or no) passphrase fails in the crypto layer
-            let why = source.to_string().to_lowercase();
-            if (passphrase.is_none() && why.contains("encrypted")) || why.contains("cryptographic") {
+        let unreadable = |source| TunnelError::KeyUnreadable { file: path.clone(), source };
+        let text = std::fs::read_to_string(&path).map_err(|e| unreadable(e.into()))?;
+        let key = russh::keys::decode_secret_key(&text, passphrase).map_err(|source| {
+            // a key that is encrypted and won't open needs its (right) passphrase
+            if matches!(source, russh::keys::Error::KeyIsEncrypted) || key_is_encrypted(&text) {
                 TunnelError::KeyPassphrase { file: path.clone() }
             } else {
-                TunnelError::KeyUnreadable { file: path.clone(), source }
+                unreadable(source)
             }
         })?;
         // RSA keys sign with whichever hash the server supports
@@ -135,9 +240,9 @@ async fn authenticate(session: &mut Handle<HostKeyCheck>, ssh: &SshSettings) -> 
 }
 
 /// Opens the SSH session and logs in.
-async fn connect(ssh: &SshSettings, known_hosts: &Path) -> Result<Handle<HostKeyCheck>, TunnelError> {
+async fn connect(ssh: &SshSettings, keys: &HostKeys) -> Result<Handle<HostKeyCheck>, TunnelError> {
     let refusal = Arc::new(Mutex::new(None));
-    let handler = HostKeyCheck { host: ssh.host.clone(), port: ssh.port, known_hosts: known_hosts.to_path_buf(), refusal: refusal.clone() };
+    let handler = HostKeyCheck { host: ssh.host.clone(), port: ssh.port, keys: keys.clone(), refusal: refusal.clone() };
     let config = Arc::new(client::Config {
         // the tunnel is long-lived and mostly idle: keep it from being dropped
         keepalive_interval: Some(Duration::from_secs(30)),
@@ -204,9 +309,9 @@ impl SshTunnel {
         target_host: &str,
         target_port: u16,
         tls: Option<ServerName<'static>>,
-        known_hosts: &Path,
+        keys: &HostKeys,
     ) -> Result<SshTunnel, TunnelError> {
-        let session = tokio::time::timeout(SETUP_TIMEOUT, connect(ssh, known_hosts))
+        let session = tokio::time::timeout(SETUP_TIMEOUT, connect(ssh, keys))
             .await
             .map_err(|_| TunnelError::Timeout { host: ssh.host.clone(), port: ssh.port })??;
 

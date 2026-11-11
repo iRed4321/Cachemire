@@ -83,7 +83,7 @@ Open keys, searches and queries in tabs. Drag them around; each remembers its fi
 ### Connect
 
 - **Connection URL**: `redis://user:pass@host:6379/0`, or `rediss://` for TLS. Test it before saving.
-- 🔐 **SSH tunnels** with a password, a private key, or both. Host keys are remembered on first use and refused if they change. SSH profiles let you share one login across tunnels.
+- 🔐 **SSH tunnels** with a password, a private key, or both. A server's host key is shown for you to trust the first time (or trusted from `~/.ssh/known_hosts`), then refused if it changes. SSH profiles let you share one login across tunnels.
 - 🎛️ **Connection profiles**: a name and a color that tints the app while connected, so you always know you're on `Production`.
 - ☁️ **AWS**: sign in with your local `~/.aws` profiles (SSO included) and list their ElastiCache endpoints.
 - 📥 **Import / Export** your connections as JSON, with or without passwords.
@@ -93,7 +93,8 @@ Open keys, searches and queries in tabs. Drag them around; each remembers its fi
 
 ### Safe by default
 
-- 🛡️ Passwords go to the OS credential store (Credential Manager or Secret Service).
+- 🛡️ Passwords go to the OS credential store (Credential Manager or Secret Service). If it is unavailable, Cachemire asks before keeping a password in its data file, and can instead save without it and ask for it when you connect.
+- 🔑 An SSH server's host key is never trusted silently: you see its fingerprint first, keys in `~/.ssh/known_hosts` are honoured, and a key that changes is refused.
 - 🔒 **Read-only profiles and connections**: tick *Read-only* on a connection profile, or on a single connection, and nothing can be written to Redis through it. The default `Production` profile is read-only.
 - Deleting a folder asks first, with the number of keys it will remove.
 - A value that changed in Redis while you were editing it is never overwritten silently: you choose to cancel, reload it or overwrite it.

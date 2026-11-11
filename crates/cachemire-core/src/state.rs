@@ -4,6 +4,7 @@ use std::sync::LazyLock;
 use std::sync::atomic::AtomicU64;
 
 use crate::connection::pool::ConnectionCache;
+use crate::connection::ssh_tunnel::HostKeys;
 use crate::connection::store::ConnectionStore;
 use crate::connection::{CloudKey, ConnectionItem};
 use crate::error::{Error, NotFound};
@@ -118,9 +119,24 @@ impl AppState {
             settings: Mutex::new(SettingsStore::new(data_file.with_file_name(SETTINGS_FILE))),
             history: Mutex::new(HistoryStore::new(data_file.with_file_name(HISTORY_FILE))),
             connections: Mutex::new(ConnectionStore::new(data_file)),
-            redis_connections: ConnectionCache::new(known_hosts),
+            redis_connections: ConnectionCache::new(HostKeys::new(known_hosts).with_user_known_hosts()),
             connect_attempt: AtomicU64::new(0),
         }
+        .following_host_key_setting()
+    }
+
+    /// Makes the SSH tunnels follow the saved setting for accepting new host keys.
+    fn following_host_key_setting(self) -> Self {
+        let accept = self.settings.lock().accept_new_ssh_host_keys();
+        self.redis_connections.host_keys().set_accepts_new(accept);
+        self
+    }
+
+    /// Saves whether new SSH host keys are trusted without asking, and applies it at once.
+    pub fn set_accept_new_ssh_host_keys(&self, accept: bool) -> Result<(), Error> {
+        self.settings.lock().set_accept_new_ssh_host_keys(accept)?;
+        self.redis_connections.host_keys().set_accepts_new(accept);
+        Ok(())
     }
 }
 
@@ -128,11 +144,14 @@ impl AppState {
 impl AppState {
     /// A state whose files all live in `dir` and whose secrets stay in memory.
     pub fn for_tests(dir: &Path) -> Self {
+        let host_keys = HostKeys::new(dir.join(KNOWN_HOSTS_FILE));
+        // the tests' SSH servers are new ones, with nobody to ask
+        host_keys.set_accepts_new(true);
         Self {
             settings: Mutex::new(SettingsStore::in_memory(dir.join(SETTINGS_FILE))),
             history: Mutex::new(HistoryStore::new(dir.join(HISTORY_FILE))),
             connections: Mutex::new(ConnectionStore::in_memory(dir.join(DATA_FILE))),
-            redis_connections: ConnectionCache::new(dir.join(KNOWN_HOSTS_FILE)),
+            redis_connections: ConnectionCache::new(host_keys),
             connect_attempt: AtomicU64::new(0),
         }
     }

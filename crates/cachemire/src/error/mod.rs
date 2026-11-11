@@ -174,6 +174,7 @@ impl Localize for TunnelError {
     fn localized(&self) -> String {
         match self {
             TunnelError::HostKeyNotSaved { file, source } => t!("couldn't remember the SSH server's host key in %{file}: %{error}", file = file.display(), error = source),
+            TunnelError::UnknownHostKey(server) => t!("the SSH server's host key isn't trusted yet: %{server}", server = server),
             TunnelError::HostKeyChanged { line, file } => t!(
                 "the SSH server's host key has changed since it was first seen (recorded on line %{line} of %{file}). If the server was reinstalled, delete that line; otherwise someone may be impersonating it.",
                 line = line,

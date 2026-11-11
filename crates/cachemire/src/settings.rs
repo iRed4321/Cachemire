@@ -224,6 +224,17 @@ pub fn init(window: &MainWindow, state: Arc<AppState>, rt: Handle) {
         }
     });
 
+    window.global::<Preferences>().set_accept_new_ssh_host_keys(state.settings.lock().accept_new_ssh_host_keys());
+    window.global::<Preferences>().on_accept_new_ssh_host_keys_toggled({
+        let weak = window.as_weak();
+        let state = state.clone();
+        move |enabled| {
+            let Some(window) = weak.upgrade() else { return };
+            let result = state.set_accept_new_ssh_host_keys(enabled);
+            saved(&window, result, |window| window.global::<Preferences>().set_accept_new_ssh_host_keys(enabled));
+        }
+    });
+
     // reopening the last connection at startup: saved; turned off, what was kept of it goes
     window.global::<Preferences>().on_restore_session_toggled({
         let weak = window.as_weak();

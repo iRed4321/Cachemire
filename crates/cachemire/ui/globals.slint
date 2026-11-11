@@ -179,6 +179,9 @@ export global Preferences {
     // looks for an update on the About page's channel each time the app starts
     in-out property <bool> check-updates-at-startup: false;
     callback check-updates-at-startup-toggled(enabled: bool);
+    // trusts and remembers an SSH server's host key seen for the first time, without asking
+    in-out property <bool> accept-new-ssh-host-keys: false;
+    callback accept-new-ssh-host-keys-toggled(enabled: bool);
     // reopens the connection the app was closed on, with its tabs and open folders
     in-out property <bool> restore-session: false;
     callback restore-session-toggled(enabled: bool);

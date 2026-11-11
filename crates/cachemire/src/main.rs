@@ -16,6 +16,7 @@ mod connections;
 #[cfg(windows)]
 mod drag_latch;
 mod error;
+mod host_key_dialog;
 mod i18n;
 mod key_detail;
 mod keyring_dialogs;
@@ -217,6 +218,7 @@ fn main() -> Result<(), slint::PlatformError> {
     connections::profiles::init(&app, &window);
     links::init(&app, &window);
     keyring_dialogs::init(&window);
+    host_key_dialog::init(&window);
 
     // what only needs the stores and the runtime
     server_stats::init(&window, state.clone(), rt.clone());

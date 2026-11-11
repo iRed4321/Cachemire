@@ -3,6 +3,7 @@
 //! module is UI glue: keep the list in sync, connect on click, save the form.
 
 use crate::app::App;
+use crate::host_key_dialog::Answered;
 use rust_i18n::t;
 use rustc_hash::FxHashMap;
 use std::rc::Rc;
@@ -242,9 +243,27 @@ fn test_form(app: &Rc<App>, window: &MainWindow, form: &ConnectionForm) {
             Err(e) => Err(e),
         }
     };
-    crate::app::spawn(&app.rt, test, |_, window, outcome| {
+    let form = form.clone();
+    crate::app::spawn(&app.rt, test, move |app, window, outcome| {
         let outcome = outcome.flatten();
         let editor = window.global::<ConnectionEditor>();
+        // a server not seen before: the user decides, and a trusted key runs the test again
+        if let Err(e) = &outcome
+            && let Some(server) = crate::host_key_dialog::unknown(e)
+        {
+            let answer = Box::new(move |app: &Rc<App>, window: &MainWindow, answered: Answered| match answered {
+                Answered::Trusted => test_form(app, window, &form),
+                Answered::Cancelled => window.global::<ConnectionEditor>().set_testing(false),
+                Answered::NotSaved(e) => {
+                    let editor = window.global::<ConnectionEditor>();
+                    editor.set_testing(false);
+                    editor.set_test_ok(false);
+                    editor.set_test_status(e.localized().into());
+                }
+            });
+            crate::host_key_dialog::ask(app, window, server.clone(), answer);
+            return;
+        }
         editor.set_testing(false);
         editor.set_test_ok(outcome.is_ok());
         editor.set_test_status(outcome.map_or_else(|e| e.localized(), |()| t!("Connection successful.").into_owned()).into());

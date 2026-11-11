@@ -7,6 +7,7 @@ use slint::ComponentHandle;
 
 use crate::app::App;
 use crate::{KeyringDialog, MainWindow, SecretsPrompt};
+use cachemire_core::connection::ssh_tunnel::UnknownHostKey;
 use cachemire_core::error::Error as CoreError;
 use cachemire_core::secret_vault::{KeyringError, LeftOut, Secrets, SecretsPolicy};
 
@@ -20,6 +21,8 @@ pub type Resume = Box<dyn FnOnce(&Rc<App>, &MainWindow)>;
 #[derive(Default)]
 pub struct Asked {
     retry: Option<Retry>,
+    /// the SSH server asked about, and what follows the answer
+    pub(crate) host_key: Option<(UnknownHostKey, crate::host_key_dialog::Answer)>,
     /// the connection the passwords are for, and what follows
     passwords: Option<(String, Resume)>,
 }

@@ -1,6 +1,5 @@
 use parking_lot::Mutex;
 use rustc_hash::FxHashMap;
-use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use std::time::Duration;
@@ -11,7 +10,7 @@ use tokio::task::JoinSet;
 
 use crate::connection::ConnectionItem;
 use crate::connection::client::{create_connection, target_of, tls_name_of};
-use crate::connection::ssh_tunnel::SshTunnel;
+use crate::connection::ssh_tunnel::{HostKeys, SshTunnel};
 use crate::error::{Error, Timeout};
 use crate::session::{Session, cluster_enabled, ping};
 
@@ -40,11 +39,11 @@ pub struct ConnectionPool {
 impl ConnectionPool {
     /// The first connection is opened alone so bad credentials or an
     /// unreachable host fail once, quickly; the rest then open in parallel.
-    async fn open(connection: &ConnectionItem, known_hosts: &Path) -> Result<Self, Error> {
+    async fn open(connection: &ConnectionItem, host_keys: &HostKeys) -> Result<Self, Error> {
         let tunnel = match &connection.ssh {
             Some(ssh) => {
                 let (host, port) = target_of(connection)?;
-                let tunnel = SshTunnel::open(ssh, &host, port, tls_name_of(connection)?, known_hosts).await?;
+                let tunnel = SshTunnel::open(ssh, &host, port, tls_name_of(connection)?, host_keys).await?;
                 tracing::info!(ssh_server = %format_args!("{}:{}", ssh.host, ssh.port), local_port = tunnel.local_port(), "SSH tunnel opened");
                 Some(tunnel)
             }
@@ -78,8 +77,8 @@ impl ConnectionPool {
     }
 
     /// [`ConnectionPool::open`] within [`OPEN_TIMEOUT`].
-    async fn open_in_time(connection: &ConnectionItem, known_hosts: &Path) -> Result<Self, Error> {
-        tokio::time::timeout(OPEN_TIMEOUT, Self::open(connection, known_hosts))
+    async fn open_in_time(connection: &ConnectionItem, host_keys: &HostKeys) -> Result<Self, Error> {
+        tokio::time::timeout(OPEN_TIMEOUT, Self::open(connection, host_keys))
             .await
             .map_err(|_| Timeout::Connect { seconds: OPEN_TIMEOUT.as_secs() })?
     }
@@ -103,13 +102,17 @@ pub struct ConnectionCache {
     // one cell per id: callers racing to open the same pool share a single
     // open instead of each building their own
     entries: Mutex<FxHashMap<String, Arc<OnceCell<Arc<ConnectionPool>>>>>,
-    // where SSH tunnels remember the host keys they've seen
-    known_hosts: PathBuf,
+    // where SSH tunnels look up and remember the host keys they see
+    host_keys: HostKeys,
 }
 
 impl ConnectionCache {
-    pub fn new(known_hosts: PathBuf) -> Self {
-        Self { entries: Mutex::new(FxHashMap::default()), known_hosts }
+    pub fn new(host_keys: HostKeys) -> Self {
+        Self { entries: Mutex::new(FxHashMap::default()), host_keys }
+    }
+
+    pub fn host_keys(&self) -> &HostKeys {
+        &self.host_keys
     }
 
     /// The connection's pool, opened on first use (see `Session::open`), and opened
@@ -124,8 +127,7 @@ impl ConnectionCache {
             }
             cell.clone()
         };
-        let pool =
-            cell.get_or_try_init(|| async { ConnectionPool::open_in_time(connection, &self.known_hosts).await.map(Arc::new) }).await?;
+        let pool = cell.get_or_try_init(|| async { ConnectionPool::open_in_time(connection, &self.host_keys).await.map(Arc::new) }).await?;
         Ok(pool.clone())
     }
 
@@ -156,7 +158,7 @@ impl ConnectionCache {
 
     /// Opens the connection (through its SSH tunnel, if any) and pings it, keeping nothing.
     pub async fn test(&self, connection: &ConnectionItem) -> Result<(), Error> {
-        let pool = ConnectionPool::open_in_time(connection, &self.known_hosts).await?;
+        let pool = ConnectionPool::open_in_time(connection, &self.host_keys).await?;
         Session::on(Arc::new(pool)).ping().await
     }
 

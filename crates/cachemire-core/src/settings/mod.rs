@@ -75,6 +75,9 @@ struct StoredSettings {
     // whether the app reopens the last connection with its tabs and open folders
     #[serde(default)]
     restore_session: bool,
+    // whether an SSH server's host key seen for the first time is trusted without asking
+    #[serde(default)]
+    accept_new_ssh_host_keys: bool,
     // experimental: the global search filters inside Redis, with a script
     #[serde(default)]
     server_search: bool,
@@ -228,6 +231,17 @@ impl SettingsStore {
     pub fn set_restore_session(&mut self, enabled: bool) -> Result<(), Error> {
         let mut next = self.state.clone();
         next.restore_session = enabled;
+        self.commit(next, false)
+    }
+
+    /// Whether a new SSH host key is trusted and remembered without asking the user.
+    pub fn accept_new_ssh_host_keys(&self) -> bool {
+        self.state.accept_new_ssh_host_keys
+    }
+
+    pub fn set_accept_new_ssh_host_keys(&mut self, accept: bool) -> Result<(), Error> {
+        let mut next = self.state.clone();
+        next.accept_new_ssh_host_keys = accept;
         self.commit(next, false)
     }
 

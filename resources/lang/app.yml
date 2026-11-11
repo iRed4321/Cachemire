@@ -247,6 +247,8 @@ _version: 2
   fr: "impossible de mémoriser la clé d'hôte du serveur SSH dans %{file} : %{error}"
 "the SSH server's host key has changed since it was first seen (recorded on line %{line} of %{file}). If the server was reinstalled, delete that line; otherwise someone may be impersonating it.":
   fr: "la clé d'hôte du serveur SSH a changé depuis sa première utilisation (enregistrée à la ligne %{line} de %{file}). Si le serveur a été réinstallé, supprimez cette ligne ; sinon, quelqu'un se fait peut-être passer pour lui."
+"the SSH server's host key isn't trusted yet: %{server}":
+  fr: "la clé d'hôte du serveur SSH n'est pas encore approuvée : %{server}"
 "couldn't check the SSH server's host key: %{error}":
   fr: "impossible de vérifier la clé d'hôte du serveur SSH : %{error}"
 "couldn't decrypt the SSH private key %{file}: wrong or missing passphrase?":

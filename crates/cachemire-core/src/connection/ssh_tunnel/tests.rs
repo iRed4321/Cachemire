@@ -1,4 +1,5 @@
 use super::*;
+use std::path::Path;
 
 #[test]
 fn a_leading_tilde_is_the_home_directory() {
@@ -20,9 +21,16 @@ fn key(byte: u8) -> PublicKeyOrCertificate {
 
 /// Whether `known_hosts` accepts `key` for `host:port`, and why not when it doesn't.
 fn check(known_hosts: &Path, host: &str, port: u16, key: &PublicKeyOrCertificate) -> (bool, Option<String>) {
+    let keys = HostKeys::new(known_hosts.to_path_buf());
+    keys.set_accepts_new(true);
+    check_with(&keys, host, port, key)
+}
+
+/// [`check`] with the host keys set up by the caller.
+fn check_with(keys: &HostKeys, host: &str, port: u16, key: &PublicKeyOrCertificate) -> (bool, Option<String>) {
     use russh::client::Handler;
     let refusal = Arc::new(Mutex::new(None));
-    let mut checker = HostKeyCheck { host: host.into(), port, known_hosts: known_hosts.to_path_buf(), refusal: refusal.clone() };
+    let mut checker = HostKeyCheck { host: host.into(), port, keys: keys.clone(), refusal: refusal.clone() };
     let accepted = crate::test_support::block_on(checker.check_server_key(key)).unwrap();
     (accepted, refusal.lock().take().map(|why| why.to_string()))
 }
