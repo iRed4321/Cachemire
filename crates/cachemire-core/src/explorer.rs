@@ -268,7 +268,8 @@ async fn read_chunk(
     {
         match read_entries_lua(&mut session, &names, &filter.needle, depth).await {
             Ok(keys) => return Ok(keys),
-            Err(_) => filter.working.store(false, std::sync::atomic::Ordering::Relaxed),
+            Err(e) if e.is_script_refused() => filter.working.store(false, std::sync::atomic::Ordering::Relaxed),
+            Err(e) => return Err(e),
         }
     }
     let typed = session.types(names).await?;

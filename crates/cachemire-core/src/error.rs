@@ -182,6 +182,29 @@ impl Error {
     }
 }
 
+impl Error {
+    /// The server answered that it doesn't know an option (an old server's `syntax error`).
+    pub(crate) fn is_unknown_option(&self) -> bool {
+        self.server_detail_has(&["syntax error", "unknown argument", "unknown option"])
+    }
+
+    /// The server doesn't know scripts, or its ACL or settings refuse them.
+    pub(crate) fn is_script_refused(&self) -> bool {
+        self.kind() == ErrorKind::Denied
+            || self.server_detail_has(&["unknown command", "scripting", "not allowed", "disabled", "not supported"])
+    }
+
+    /// Whether this is a Redis reply (not a network or timeout failure) saying one of `words`.
+    fn server_detail_has(&self, words: &[&str]) -> bool {
+        let Error::Redis(error) = self else { return false };
+        if self.kind() != ErrorKind::Redis {
+            return false;
+        }
+        let said = format!("{} {}", error.code().unwrap_or_default(), error.detail().unwrap_or_default()).to_lowercase();
+        words.iter().any(|word| said.contains(word))
+    }
+}
+
 fn redis_kind(error: &redis::RedisError) -> ErrorKind {
     use redis::{ErrorKind as RedisKind, ServerErrorKind};
     if error.is_timeout() {

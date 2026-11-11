@@ -293,7 +293,7 @@ impl Session {
                 redis::cmd("HSCAN").arg(key).arg(cursor).arg("COUNT").arg(count).arg("NOVALUES").query_async(&mut self.con).await;
             match reply.map_err(Error::from) {
                 Ok((next, names)) => return Ok((next, names.into_iter().map(lossy).collect())),
-                Err(e) if e.kind() == ErrorKind::Redis => self.pool.hscan_novalues.store(false, Ordering::Relaxed),
+                Err(e) if e.is_unknown_option() => self.pool.hscan_novalues.store(false, Ordering::Relaxed),
                 Err(e) => return Err(e),
             }
         }
@@ -331,7 +331,7 @@ impl Session {
         let moved: Result<i64, _> = RENAME_FIELD_SCRIPT.key(key).arg(from).arg(to).arg(value).invoke_async(&mut self.con).await;
         match moved.map_err(Error::from) {
             Ok(moved) => Ok(moved == 1),
-            Err(e) if matches!(e.kind(), ErrorKind::Redis | ErrorKind::Denied) => {
+            Err(e) if e.is_script_refused() => {
                 tracing::info!("the field rename script was refused ({e}); renaming in two steps");
                 if !self.hash_set_new(key, to, value).await? {
                     return Ok(false);
