@@ -271,6 +271,11 @@ impl Session {
         Ok(redis::cmd("GET").arg(key).query_async(&mut self.con).await?)
     }
 
+    /// The string's length in bytes (`STRLEN`), 0 for a missing key.
+    pub async fn string_len(&mut self, key: &KeyName) -> Result<usize, Error> {
+        Ok(redis::cmd("STRLEN").arg(key).query_async(&mut self.con).await?)
+    }
+
     /// The string's length in bytes, and at most its first `max` bytes.
     pub async fn string_head(&mut self, key: &KeyName, max: usize) -> Result<(usize, Vec<u8>), Error> {
         let last = max.saturating_sub(1);

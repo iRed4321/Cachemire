@@ -78,6 +78,8 @@ pub enum QueryError {
     NonObjectValue { key: String, kind: &'static str },
     #[error("Invalid JSON in {key}: {source}")]
     ValueJson { key: String, source: serde_json::Error },
+    #[error("{key} holds {} of text: Redisql reads strings up to 16 MB.", crate::server_info::format_bytes(*.size as i64))]
+    StringTooBig { key: String, size: usize },
 }
 
 impl QueryError {
@@ -88,7 +90,8 @@ impl QueryError {
             | QueryError::NonObjectField { .. }
             | QueryError::FieldJson { .. }
             | QueryError::NonObjectValue { .. }
-            | QueryError::ValueJson { .. } => ErrorKind::Invalid,
+            | QueryError::ValueJson { .. }
+            | QueryError::StringTooBig { .. } => ErrorKind::Invalid,
             _ => ErrorKind::Parse,
         }
     }

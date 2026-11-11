@@ -265,6 +265,13 @@ impl Localize for QueryError {
                 t!("%{key} holds JSON, but not an object or an array of objects: %{kind}", key = key, kind = kind)
             }
             QueryError::ValueJson { key, source } => t!("Invalid JSON in %{key}: %{error}", key = key, error = source),
+            QueryError::StringTooBig { key, size } => {
+                t!(
+                    "%{key} holds %{size} of text: Redisql reads strings up to 16 MB.",
+                    key = key,
+                    size = cachemire_core::server_info::format_bytes(*size as i64)
+                )
+            }
         }
         .into_owned()
     }

@@ -349,6 +349,8 @@ _version: 2
   fr: "%{key} contient du JSON, mais pas un objet ni un tableau d'objets : %{kind}"
 "Invalid JSON in %{key}: %{error}":
   fr: "JSON invalide dans %{key} : %{error}"
+"%{key} holds %{size} of text: Redisql reads strings up to 16 MB.":
+  fr: "%{key} contient %{size} de texte : Redisql lit les chaînes jusqu'à 16 Mo."
 "%{key} is a %{kind}: only a hash of JSON objects, or a string holding one, can be queried.":
   fr: "%{key} est un(e) %{kind} : seul un hash de valeurs JSON, ou une chaîne en contenant une, peut être interrogé."
 

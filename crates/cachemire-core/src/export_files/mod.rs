@@ -137,13 +137,69 @@ fn item(key: &str, read: &ExportedKey) -> Value {
     item
 }
 
-/// Creates `path` and writes the start of `output`'s file into it.
-fn start_file(path: &Path, output: &Output) -> Result<BufWriter<File>, Error> {
-    let mut writer = BufWriter::new(File::create(path).map_err(io_error)?);
-    if let Output::Items { prefix, .. } = output {
-        write!(writer, "{{\n  \"prefix\": {},\n  \"items\": [", Value::from(prefix.as_str())).map_err(io_error)?;
+/// How many chunks wait for the file's thread before the export waits for it.
+const SINK_QUEUE: usize = 32;
+
+/// A file written on a blocking thread, fed chunks through a bounded channel; the
+/// thread creates the file, appends what it is sent, and stops at the first error.
+struct Sink {
+    sender: Option<tokio::sync::mpsc::Sender<Vec<u8>>>,
+    thread: Option<tokio::task::JoinHandle<std::io::Result<()>>>,
+}
+
+impl Sink {
+    fn start(path: &Path) -> Self {
+        let (sender, mut receiver) = tokio::sync::mpsc::channel::<Vec<u8>>(SINK_QUEUE);
+        let path = path.to_path_buf();
+        let thread = tokio::task::spawn_blocking(move || {
+            let mut file = BufWriter::new(File::create(path)?);
+            while let Some(chunk) = receiver.blocking_recv() {
+                file.write_all(&chunk)?;
+            }
+            file.flush()
+        });
+        Self { sender: Some(sender), thread: Some(thread) }
     }
-    Ok(writer)
+
+    /// Hands `chunk` to the thread; the error that stopped it if it has stopped.
+    async fn write(&mut self, chunk: Vec<u8>) -> Result<(), Error> {
+        if let Some(sender) = &self.sender
+            && sender.send(chunk).await.is_ok()
+        {
+            return Ok(());
+        }
+        self.join().await?;
+        Err(io_error(std::io::ErrorKind::BrokenPipe.into()))
+    }
+
+    /// Waits for the thread to end: after the last chunk is flushed, or with the error it met.
+    async fn join(&mut self) -> Result<(), Error> {
+        match self.thread.take() {
+            Some(thread) => Ok(thread.await?.map_err(io_error)?),
+            None => Ok(()),
+        }
+    }
+
+    /// Writes what is queued, flushes and closes the file.
+    async fn finish(mut self) -> Result<(), Error> {
+        self.sender = None;
+        self.join().await
+    }
+
+    /// Stops the thread and removes the file.
+    async fn discard(mut self, path: &Path) {
+        self.sender = None;
+        let _ = self.join().await;
+        let _ = tokio::fs::remove_file(path).await;
+    }
+}
+
+/// The start of `output`'s file: its prefix and the opening of its items, none for a lone key.
+fn file_head(output: &Output) -> Option<Vec<u8>> {
+    match output {
+        Output::Items { prefix, .. } => Some(format!("{{\n  \"prefix\": {},\n  \"items\": [", Value::from(prefix.as_str())).into_bytes()),
+        Output::Single { .. } => None,
+    }
 }
 
 /// Writes `plan`'s files into `dir`, reading each key off `connection_id`'s server; `progress` gets
@@ -160,7 +216,7 @@ pub async fn run(
 ) -> Result<Outcome, Error> {
     let total = plan.total();
     let mut session = Session::open_background(state, Some(connection_id)).await?;
-    std::fs::create_dir_all(dir).map_err(io_error)?;
+    tokio::fs::create_dir_all(dir).await.map_err(io_error)?;
     let (mut done, mut skipped) = (0, 0);
     let sole = plan.sole_file().and(file_name);
     for output in outputs(plan) {
@@ -173,12 +229,12 @@ pub async fn run(
             Some(name) => dir.join(name),
             None => free_path(dir, file),
         };
-        let mut writer: Option<BufWriter<File>> = None;
+        let mut writer: Option<Sink> = None;
         let mut written = 0;
         for key in keys {
             if cancel.load(Ordering::Relaxed) {
-                if writer.take().is_some() {
-                    let _ = std::fs::remove_file(&path);
+                if let Some(writer) = writer.take() {
+                    writer.discard(&path).await;
                 }
                 return Ok(Outcome { keys: done, cancelled: true, skipped });
             }
@@ -193,8 +249,8 @@ pub async fn run(
                 }
                 Err(e) => {
                     // no half-written file is left behind
-                    if writer.take().is_some() {
-                        let _ = std::fs::remove_file(&path);
+                    if let Some(writer) = writer.take() {
+                        writer.discard(&path).await;
                     }
                     return Err(e);
                 }
@@ -203,15 +259,21 @@ pub async fn run(
                 Some(read) => {
                     let writer = match &mut writer {
                         Some(writer) => writer,
-                        None => writer.insert(start_file(&path, &output)?),
+                        None => {
+                            let sink = writer.insert(Sink::start(&path));
+                            if let Some(head) = file_head(&output) {
+                                sink.write(head).await?;
+                            }
+                            sink
+                        }
                     };
                     let json = item(key, &read);
                     if matches!(output, Output::Single { .. }) {
-                        serde_json::to_writer_pretty(&mut *writer, &json).map_err(FileError::from)?;
+                        writer.write(serde_json::to_vec_pretty(&json).map_err(FileError::from)?).await?;
                     } else {
                         let text = serde_json::to_string_pretty(&json).map_err(FileError::from)?;
-                        writer.write_all(if written == 0 { b"\n    " } else { b",\n    " }).map_err(io_error)?;
-                        writer.write_all(text.replace('\n', "\n    ").as_bytes()).map_err(io_error)?;
+                        writer.write(if written == 0 { b"\n    ".to_vec() } else { b",\n    ".to_vec() }).await?;
+                        writer.write(text.replace('\n', "\n    ").into_bytes()).await?;
                     }
                     written += 1;
                 }
@@ -223,9 +285,9 @@ pub async fn run(
         // no file at all when every key of it was gone
         if let Some(mut writer) = writer {
             if matches!(output, Output::Items { .. }) {
-                write!(writer, "\n  ],\n  \"totalKeys\": {written}\n}}").map_err(io_error)?;
+                writer.write(format!("\n  ],\n  \"totalKeys\": {written}\n}}").into_bytes()).await?;
             }
-            writer.flush().map_err(io_error)?;
+            writer.finish().await?;
         }
     }
     Ok(Outcome { keys: done, cancelled: false, skipped })

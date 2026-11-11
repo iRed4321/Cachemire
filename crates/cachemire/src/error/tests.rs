@@ -115,6 +115,7 @@ fn core_errors() -> Vec<CoreError> {
         QueryError::FieldJson { key: "users".into(), field: "u1".into(), source: json() },
         QueryError::NonObjectValue { key: "users".into(), kind: "number" },
         QueryError::ValueJson { key: "users".into(), source: json() },
+        QueryError::StringTooBig { key: "users".into(), size: 20_000_000 },
     ];
     let json_path = [
         ParseError::ExpectedKey(Found::Char { c: '.', position: 4 }),

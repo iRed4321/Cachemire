@@ -43,6 +43,9 @@ fn normalize(value: &Value) -> Option<String> {
 /// and memory; the query runs on what was read and `load_records` says so.
 const MAX_SOURCE_FIELDS: usize = 20_000;
 
+/// A string key longer than this (in bytes) isn't read: the query fails instead.
+const MAX_STRING_BYTES: usize = 16 * 1024 * 1024;
+
 /// `key`'s rows, and whether it held more than [`MAX_SOURCE_FIELDS`] (a join
 /// against it may then be missing matches that were never read).
 async fn load_records(session: &mut Session, key: &str) -> Result<(Vec<Map<String, Value>>, bool), Error> {
@@ -57,8 +60,8 @@ async fn load_records(session: &mut Session, key: &str) -> Result<(Vec<Map<Strin
             let mut cursor: u64 = 0;
             loop {
                 let (next_cursor, fields) = session.hash_scan(&name, cursor, 500).await?;
-                for (field, raw) in fields {
-                    let record = hash_record(key, &field, &raw)?;
+                let owner = key.to_string();
+                for (field, record) in tokio::task::spawn_blocking(move || hash_records(&owner, fields)).await?? {
                     if seen.insert(field) {
                         records.push(record);
                     }
@@ -71,9 +74,25 @@ async fn load_records(session: &mut Session, key: &str) -> Result<(Vec<Map<Strin
             // the cursor not having come back to 0 is what "more was left" means
             Ok((records, cursor != 0))
         }
-        RedisValueType::String => Ok((string_records(key, &session.get(&name).await?.unwrap_or_default())?, false)),
+        RedisValueType::String => {
+            let size = session.string_len(&name).await?;
+            if size > MAX_STRING_BYTES {
+                return Err(QueryError::StringTooBig { key: key.to_string(), size }.into());
+            }
+            let raw = session.get(&name).await?.unwrap_or_default();
+            let owner = key.to_string();
+            Ok((tokio::task::spawn_blocking(move || string_records(&owner, &raw)).await??, false))
+        }
         other => Err(QueryError::NotQueryable { key: key.to_string(), kind: other.to_string() }.into()),
     }
+}
+
+type Record = Map<String, Value>;
+
+/// The rows of a page of a hash's fields, each with its field's name; the first field
+/// that isn't a JSON object is the error.
+fn hash_records(key: &str, fields: Vec<(String, String)>) -> Result<Vec<(String, Record)>, Error> {
+    fields.into_iter().map(|(field, raw)| hash_record(key, &field, &raw).map(|record| (field, record))).collect()
 }
 
 /// The row a hash field's value gives: its JSON, which must be an object.
@@ -182,7 +201,8 @@ pub async fn execute(session: &mut Session, query: &Query) -> Result<QueryOutput
         sources_truncated |= cut;
         datasets.insert(join.alias.to_lowercase(), records);
     }
-    let (rows, truncated) = run(query, &datasets);
+    let query = query.clone();
+    let (rows, truncated) = tokio::task::spawn_blocking(move || run(&query, &datasets)).await.map_err(Error::from)?;
     Ok(QueryOutput { rows, truncated, sources_truncated })
 }
 
@@ -293,15 +313,17 @@ pub async fn field_names(state: &AppState, connection_id: Option<&str>, key: &st
                 .filter_map(|value| if let Value::Object(map) = value { Some(map) } else { None })
                 .collect()
         }
+        RedisValueType::String if session.string_len(&name).await? > MAX_STRING_BYTES => Vec::new(),
         RedisValueType::String => {
             let raw = session.get(&name).await?.unwrap_or_default();
-            match serde_json::from_str::<Value>(&raw) {
+            tokio::task::spawn_blocking(move || match serde_json::from_str::<Value>(&raw) {
                 Ok(Value::Object(map)) => vec![map],
                 Ok(Value::Array(items)) => {
                     items.into_iter().filter_map(|item| if let Value::Object(map) = item { Some(map) } else { None }).take(100).collect()
                 }
                 _ => Vec::new(),
-            }
+            })
+            .await?
         }
         _ => Vec::new(),
     };
