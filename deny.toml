@@ -8,6 +8,7 @@ ignore = [
     { id = "RUSTSEC-2026-0371", reason = "zbus_names is unmaintained; pulled in by the Secret Service store" },
     { id = "RUSTSEC-2026-0370", reason = "zvariant is unmaintained; pulled in by the Secret Service store" },
     { id = "RUSTSEC-2026-0372", reason = "zvariant_derive is unmaintained; pulled in by the Secret Service store" },
+    { id = "RUSTSEC-2026-0441", reason = "pin-utils is a tiny finished crate with no known flaw and no replacement to move to; pulled in by Slint (through spin_on)" },
 ]
 
 [licenses]
