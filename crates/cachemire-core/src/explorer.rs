@@ -167,8 +167,8 @@ async fn read_entries(session: &mut Session, keys: Vec<TypedKey>, limit: usize) 
 /// this many, so a huge key only holds up its own few neighbours.
 const SEARCH_READ_KEYS: usize = 50;
 
-/// How many of those reads run at once. Each goes through the next connection
-/// of the pool, so a big reply on one doesn't hold the others up.
+/// How many of those reads run at once. They share the pool's background
+/// connection, so the search never competes with what clicks ask.
 const SEARCH_READS_IN_FLIGHT: usize = 8;
 
 /// How many SCAN pages the walk may be ahead of the reads: enough that the
