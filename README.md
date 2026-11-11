@@ -87,6 +87,7 @@ Open keys, searches and queries in tabs. Drag them around; each remembers its fi
 - 🎛️ **Connection profiles**: a name and a color that tints the app while connected, so you always know you're on `Production`.
 - ☁️ **AWS**: sign in with your local `~/.aws` profiles (SSO included) and list their ElastiCache endpoints.
 - 📥 **Import / Export** your connections as JSON, with or without passwords.
+- 🔗 **Shareable links**: the link button beside a key's name copies a `cachemire://` link to the key, with its filter or one of its fields, and never a login or password. Opening it goes to that key on the matching saved connection or AWS endpoint. The Windows installer and the .deb register these links; an AppImage only does once it is integrated into the desktop.
 
 > Cluster mode isn't supported yet: such a server is refused with a clear message.
 
@@ -107,7 +108,20 @@ Zoom with <kbd>Ctrl</kbd>+<kbd>+</kbd>/<kbd>-</kbd>/<kbd>0</kbd> or <kbd>Ctrl</k
 - 🎨 **Themes**
 - 🖍️ **Syntax highlighting** for values in other languages than JSON
 
-## Getting started
+## Install
+
+Download the file for your system from the [releases page](https://github.com/iRed4321/Cachemire/releases/latest):
+
+| System | File | What it is |
+|---|---|---|
+| Windows | `Cachemire-<version>-x64.msi` | the installer: Start menu entry, `cachemire://` links, updates |
+| Windows | `Cachemire-Portable-<version>-x64.zip` | the portable exe: unzip it and run it |
+| Linux (Debian, Ubuntu) | `cachemire_<version>-1_amd64.deb` | install it with `sudo apt install ./cachemire_<version>-1_amd64.deb` |
+| Linux (any distribution) | `Cachemire-<version>-x86_64.AppImage` | make it executable (`chmod +x`) and run it |
+
+**Updates**: on Windows, **Settings › About** checks for a new version, then downloads and runs its installer. On Linux, it opens the release page, from where you download the new file.
+
+## Build from source
 
 You need a recent stable **Rust**. On Linux, you also need a running Secret Service and Wayland or X11.
 

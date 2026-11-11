@@ -34,7 +34,8 @@ fn linux_desktop_files(root: &Path, exe: &Path, skip_binary: bool) -> Result<()>
     write(&data.join("applications/cachemire.desktop"), desktop.as_bytes())?;
     copy(&root.join("resources/icon.svg"), &data.join("icons/hicolor/scalable/apps/cachemire.svg"))?;
     copy(&root.join("resources/icon.png"), &data.join("icons/hicolor/256x256/apps/cachemire.png"))?;
-    // best effort: only some desktops need the icon cache refreshed
+    // best effort: only some desktops need the icon cache and the link handlers refreshed
+    let _ = std::process::Command::new("update-desktop-database").arg(data.join("applications")).output();
     let _ = std::process::Command::new("gtk-update-icon-cache").arg("-f").arg("-t").arg(data.join("icons/hicolor")).output();
     println!("\nDesktop entry and icons installed under {}", data.display());
     Ok(())
