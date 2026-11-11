@@ -14,6 +14,7 @@ Every stable release of Cachemire; `Unreleased` is what the next one brings. Bet
 
 ### Changed
 
+- **AWS**: ElastiCache endpoints with cluster mode enabled are no longer listed, since Cachemire can't connect to them
 - **TLS**: `rediss://` connections now also trust the certificate authorities installed on your computer, such as a company's own
 
 ### Fixes

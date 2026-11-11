@@ -259,7 +259,7 @@ pub struct Listing {
 }
 
 /// The ElastiCache Redis groups and standalone nodes that `profile` sees, as
-/// connections. Memcached (and Valkey) clusters are left out.
+/// connections. Memcached (and Valkey) clusters and cluster-mode groups are left out.
 pub async fn redis_connections(profile_name: &str, page: &SignInPage) -> Result<Listing, Error> {
     let profile =
         profiles().await.into_iter().find(|p| p.name == profile_name).ok_or_else(|| AwsError::ProfileNotFound(profile_name.to_string()))?;
@@ -325,10 +325,11 @@ pub async fn redis_connections(profile_name: &str, page: &SignInPage) -> Result<
         let page = client.describe_replication_groups().set_marker(marker.take()).send().await.map_err(describe)?;
         for group in page.replication_groups() {
             let id = group.replication_group_id().unwrap_or_default();
-            if !groups.contains(id) {
+            // a group in cluster mode can't be connected to, so it isn't listed
+            if !groups.contains(id) || group.cluster_enabled() == Some(true) || group.configuration_endpoint().is_some() {
                 continue;
             }
-            let endpoint = group.configuration_endpoint().or_else(|| group.node_groups().first().and_then(|n| n.primary_endpoint()));
+            let endpoint = group.node_groups().first().and_then(|n| n.primary_endpoint());
             items.extend(item(id, endpoint, group.transit_encryption_enabled().unwrap_or(false)));
         }
         marker = page.marker().map(str::to_string);
