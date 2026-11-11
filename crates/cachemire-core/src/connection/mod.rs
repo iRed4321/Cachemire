@@ -76,7 +76,10 @@ impl ConnectionItem {
     /// connection's fields, which fill in what it leaves out.
     pub fn endpoint(&self) -> Result<Endpoint, Error> {
         let non_empty = |value: String| if value.is_empty() { None } else { Some(value) };
-        let parts = url::parse(&self.connection_url).filter(|parts| !parts.host.is_empty()).ok_or(Invalid::UnreadableUrl)?;
+        let parts = url::parse(&self.connection_url)?;
+        if parts.host.is_empty() {
+            return Err(Invalid::UnreadableUrl.into());
+        }
         Ok(Endpoint {
             host: parts.host,
             port: parts.port.filter(|p| *p > 0).unwrap_or(6379),

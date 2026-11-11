@@ -234,7 +234,7 @@ fn finish(conn: &mut StoredConnection, secrets_loaded: bool) -> Result<(), Error
     if conn.connection_url.is_empty() {
         return Err(Invalid::ConnectionUrl.into());
     }
-    let parts = super::url::parse(&conn.connection_url).ok_or(Invalid::UnreadableUrl)?;
+    let parts = super::url::parse(&conn.connection_url)?;
     if parts.host.is_empty() {
         return Err(Invalid::UrlWithoutHost.into());
     }

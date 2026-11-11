@@ -189,6 +189,10 @@ _version: 2
   fr: "L'URL de connexion n'est pas valide."
 "The connection URL has no host.":
   fr: "L'URL de connexion n'a pas d'hôte."
+"The connection URL starts with %{scheme}://, which isn't supported: use redis://, rediss://, valkey:// or valkeys://.":
+  fr: "L'URL de connexion commence par %{scheme}://, ce qui n'est pas pris en charge : utilisez redis://, rediss://, valkey:// ou valkeys://."
+"The database in the connection URL must be a number, 0 or more.":
+  fr: "La base de données de l'URL de connexion doit être un nombre supérieur ou égal à 0."
 "SSH host is required.":
   fr: "L'hôte SSH est obligatoire."
 "Provide an SSH password or a private key.":

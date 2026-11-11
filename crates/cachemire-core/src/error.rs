@@ -57,6 +57,10 @@ pub enum Invalid {
     UnreadableUrl,
     #[error("The connection URL has no host.")]
     UrlWithoutHost,
+    #[error("The connection URL starts with {0}://, which isn't supported: use redis://, rediss://, valkey:// or valkeys://.")]
+    UnknownScheme(String),
+    #[error("The database in the connection URL must be a number, 0 or more.")]
+    InvalidDatabase,
     #[error("SSH host is required.")]
     SshHost,
     #[error("SSH port must be a number between 1 and 65535.")]

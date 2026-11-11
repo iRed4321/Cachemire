@@ -33,6 +33,8 @@ fn core_errors() -> Vec<CoreError> {
         Invalid::ConnectionUrl,
         Invalid::UnreadableUrl,
         Invalid::UrlWithoutHost,
+        Invalid::UnknownScheme("http".into()),
+        Invalid::InvalidDatabase,
         Invalid::SshHost,
         Invalid::SshPort,
         Invalid::SshLogin,

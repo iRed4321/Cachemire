@@ -76,6 +76,13 @@ impl Localize for Invalid {
             Invalid::ConnectionUrl => t!("Connection URL is required."),
             Invalid::UnreadableUrl => t!("Couldn't understand the connection URL."),
             Invalid::UrlWithoutHost => t!("The connection URL has no host."),
+            Invalid::UnknownScheme(scheme) => {
+                t!(
+                    "The connection URL starts with %{scheme}://, which isn't supported: use redis://, rediss://, valkey:// or valkeys://.",
+                    scheme = scheme
+                )
+            }
+            Invalid::InvalidDatabase => t!("The database in the connection URL must be a number, 0 or more."),
             Invalid::SshHost => t!("SSH host is required."),
             Invalid::SshPort => t!("SSH port must be a number between 1 and 65535."),
             Invalid::SshLogin => t!("Provide an SSH password or a private key."),

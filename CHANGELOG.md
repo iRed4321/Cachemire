@@ -19,6 +19,7 @@ Every stable release of Cachemire; `Unreleased` is what the next one brings. Bet
 ### Fixes
 
 - **Connection**: a `rediss://` server reached through an SSH tunnel is now verified against its real host name
+- **Connection**: URLs accept `valkey://` and `valkeys://`; other schemes and negative database numbers are refused with a clear message
 - **Query**: the completion list is drawn over the results' buttons below the box, no longer mixed with them
 
 ## 3.2.1 - 2026-11-09
