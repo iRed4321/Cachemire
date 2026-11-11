@@ -32,13 +32,18 @@ pub fn open_in_external_editor(text: &str, extension: &str) -> Result<(), Error>
     persist::create_private(&path)?.write_all(text.as_bytes())?;
 
     #[cfg(target_os = "windows")]
-    const EDITORS: &[&str] = &["code", "notepad++", "notepad"];
+    const EDITORS: &[&str] = &["code", "code.cmd", "codium.cmd", "notepad++", "notepad"];
     #[cfg(unix)]
     const EDITORS: &[&str] =
         &["code", "codium", "zed", "subl", "gedit", "kate", "gnome-text-editor", "xed", "featherpad", "mousepad", "leafpad", "notepadqq"];
 
     for editor in EDITORS {
-        if std::process::Command::new(editor).arg(&path).spawn().is_ok() {
+        let mut command = std::process::Command::new(editor);
+        command.arg(&path);
+        // a `.cmd` launcher (VS Code's) runs through cmd.exe: no console window flashes
+        #[cfg(target_os = "windows")]
+        std::os::windows::process::CommandExt::creation_flags(&mut command, 0x0800_0000);
+        if command.spawn().is_ok() {
             return Ok(());
         }
     }
