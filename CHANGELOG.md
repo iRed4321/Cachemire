@@ -22,6 +22,7 @@ Every stable release of Cachemire; `Unreleased` is what the next one brings. Bet
 
 - **Connection**: a `rediss://` server reached through an SSH tunnel is now verified against its real host name
 - **Connection**: URLs accept `valkey://` and `valkeys://`; other schemes and negative database numbers are refused with a clear message
+- **Export**: a failed export no longer leaves a half-written file, and keys that aren't valid UTF-8 are written with their exact name
 - **Performance**: big queries and key exports no longer slow the rest of the app down while they work
 - **Query**: the completion list is drawn over the results' buttons below the box, no longer mixed with them
 - **Query**: a string over 16 MB is refused with a message naming the key and its size, instead of being read whole

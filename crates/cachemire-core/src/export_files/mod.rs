@@ -128,8 +128,7 @@ fn io_error(e: std::io::Error) -> Error {
 
 /// The key as the `{key, type, ttl, value}` object a file holds.
 fn item(key: &str, read: &ExportedKey) -> Value {
-    let mut item =
-        json!({ "key": KeyName::from_id(key).to_string_lossy(), "type": read.key_type.as_str(), "ttl": read.ttl, "value": read.value });
+    let mut item = json!({ "key": KeyName::display_id(key), "type": read.key_type.as_str(), "ttl": read.ttl, "value": read.value });
     if read.truncated {
         item["truncated"] = Value::Bool(true);
     }
@@ -144,20 +143,25 @@ const SINK_QUEUE: usize = 32;
 struct Sink {
     sender: Option<tokio::sync::mpsc::Sender<Vec<u8>>>,
     thread: Option<tokio::task::JoinHandle<std::io::Result<()>>>,
+    // set once the thread has the file open, so `discard` never removes one it didn't make
+    created: std::sync::Arc<AtomicBool>,
 }
 
 impl Sink {
     fn start(path: &Path) -> Self {
         let (sender, mut receiver) = tokio::sync::mpsc::channel::<Vec<u8>>(SINK_QUEUE);
         let path = path.to_path_buf();
+        let created = std::sync::Arc::new(AtomicBool::new(false));
+        let opened = created.clone();
         let thread = tokio::task::spawn_blocking(move || {
             let mut file = BufWriter::new(crate::persist::create_private(&path)?);
+            opened.store(true, Ordering::Relaxed);
             while let Some(chunk) = receiver.blocking_recv() {
                 file.write_all(&chunk)?;
             }
             file.flush()
         });
-        Self { sender: Some(sender), thread: Some(thread) }
+        Self { sender: Some(sender), thread: Some(thread), created }
     }
 
     /// Hands `chunk` to the thread; the error that stopped it if it has stopped.
@@ -180,16 +184,18 @@ impl Sink {
     }
 
     /// Writes what is queued, flushes and closes the file.
-    async fn finish(mut self) -> Result<(), Error> {
+    async fn finish(&mut self) -> Result<(), Error> {
         self.sender = None;
         self.join().await
     }
 
-    /// Stops the thread and removes the file.
+    /// Stops the thread and removes the file it made.
     async fn discard(mut self, path: &Path) {
         self.sender = None;
         let _ = self.join().await;
-        let _ = tokio::fs::remove_file(path).await;
+        if self.created.load(Ordering::Relaxed) {
+            let _ = tokio::fs::remove_file(path).await;
+        }
     }
 }
 
@@ -230,63 +236,68 @@ pub async fn run(
         };
         let mut writer: Option<Sink> = None;
         let mut written = 0;
-        for key in keys {
-            if cancel.load(Ordering::Relaxed) {
+        // whether the export was cancelled, or why it failed; the file is removed in both cases
+        let result: Result<bool, Error> = async {
+            for key in keys {
+                if cancel.load(Ordering::Relaxed) {
+                    return Ok(true);
+                }
+                let read = match explorer::read_for_export(&mut session, &KeyName::from_id(key)).await {
+                    Ok(read) => read,
+                    Err(e) if matches!(e.kind(), ErrorKind::Redis | ErrorKind::Denied) => {
+                        tracing::warn!(key = %KeyName::display_id(key), "key couldn't be read ({e}); left out");
+                        skipped += 1;
+                        done += 1;
+                        progress(done, total);
+                        continue;
+                    }
+                    Err(e) => return Err(e),
+                };
+                match read {
+                    Some(read) => {
+                        let writer = match &mut writer {
+                            Some(writer) => writer,
+                            None => {
+                                let sink = writer.insert(Sink::start(&path));
+                                if let Some(head) = file_head(&output) {
+                                    sink.write(head).await?;
+                                }
+                                sink
+                            }
+                        };
+                        let json = item(key, &read);
+                        if matches!(output, Output::Single { .. }) {
+                            writer.write(serde_json::to_vec_pretty(&json).map_err(FileError::from)?).await?;
+                        } else {
+                            let text = serde_json::to_string_pretty(&json).map_err(FileError::from)?;
+                            writer.write(if written == 0 { b"\n    ".to_vec() } else { b",\n    ".to_vec() }).await?;
+                            writer.write(text.replace('\n', "\n    ").into_bytes()).await?;
+                        }
+                        written += 1;
+                    }
+                    None => tracing::warn!(key = %KeyName::display_id(key), "key gone before it could be exported; left out"),
+                }
+                done += 1;
+                progress(done, total);
+            }
+            // no file at all when every key of it was gone
+            if let Some(writer) = &mut writer {
+                if matches!(output, Output::Items { .. }) {
+                    writer.write(format!("\n  ],\n  \"totalKeys\": {written}\n}}").into_bytes()).await?;
+                }
+                writer.finish().await?;
+            }
+            Ok(false)
+        }
+        .await;
+        match result {
+            Ok(false) => {}
+            Ok(true) | Err(_) => {
                 if let Some(writer) = writer.take() {
                     writer.discard(&path).await;
                 }
-                return Ok(Outcome { keys: done, cancelled: true, skipped });
+                return result.map(|_| Outcome { keys: done, cancelled: true, skipped });
             }
-            let read = match explorer::read_for_export(&mut session, &KeyName::from_id(key)).await {
-                Ok(read) => read,
-                Err(e) if matches!(e.kind(), ErrorKind::Redis | ErrorKind::Denied) => {
-                    tracing::warn!(key = %KeyName::display_id(key), "key couldn't be read ({e}); left out");
-                    skipped += 1;
-                    done += 1;
-                    progress(done, total);
-                    continue;
-                }
-                Err(e) => {
-                    // no half-written file is left behind
-                    if let Some(writer) = writer.take() {
-                        writer.discard(&path).await;
-                    }
-                    return Err(e);
-                }
-            };
-            match read {
-                Some(read) => {
-                    let writer = match &mut writer {
-                        Some(writer) => writer,
-                        None => {
-                            let sink = writer.insert(Sink::start(&path));
-                            if let Some(head) = file_head(&output) {
-                                sink.write(head).await?;
-                            }
-                            sink
-                        }
-                    };
-                    let json = item(key, &read);
-                    if matches!(output, Output::Single { .. }) {
-                        writer.write(serde_json::to_vec_pretty(&json).map_err(FileError::from)?).await?;
-                    } else {
-                        let text = serde_json::to_string_pretty(&json).map_err(FileError::from)?;
-                        writer.write(if written == 0 { b"\n    ".to_vec() } else { b",\n    ".to_vec() }).await?;
-                        writer.write(text.replace('\n', "\n    ").into_bytes()).await?;
-                    }
-                    written += 1;
-                }
-                None => tracing::warn!(key = %KeyName::display_id(key), "key gone before it could be exported; left out"),
-            }
-            done += 1;
-            progress(done, total);
-        }
-        // no file at all when every key of it was gone
-        if let Some(mut writer) = writer {
-            if matches!(output, Output::Items { .. }) {
-                writer.write(format!("\n  ],\n  \"totalKeys\": {written}\n}}").into_bytes()).await?;
-            }
-            writer.finish().await?;
         }
     }
     Ok(Outcome { keys: done, cancelled: false, skipped })
