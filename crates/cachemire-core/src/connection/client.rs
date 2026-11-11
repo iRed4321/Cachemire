@@ -5,7 +5,7 @@ use redis::io::tcp::TcpSettings;
 use redis::io::tcp::socket2::TcpKeepalive;
 use rustls::pki_types::ServerName;
 
-use crate::connection::ConnectionItem;
+use crate::connection::{ConnectionItem, tls};
 use crate::error::{Error, Invalid};
 
 /// Where the Redis server is, as the connection says (through an SSH tunnel,
@@ -49,7 +49,8 @@ pub(crate) fn build_client(connection: &ConnectionItem, via_local_port: Option<u
         redis_settings = redis_settings.set_password(password);
     }
 
-    let addr = if endpoint.tls {
+    let tls = endpoint.tls;
+    let addr = if tls {
         redis::ConnectionAddr::TcpTls { host: endpoint.host, port: endpoint.port, insecure: false, tls_params: None }
     } else {
         redis::ConnectionAddr::Tcp(endpoint.host, endpoint.port)
@@ -59,6 +60,12 @@ pub(crate) fn build_client(connection: &ConnectionItem, via_local_port: Option<u
     let tcp = TcpSettings::default().set_nodelay(true).set_keepalive(keepalive);
     let info = addr.into_connection_info()?.set_redis_settings(redis_settings).set_tcp_settings(tcp);
 
+    if tls {
+        // trusts the bundled roots and the system's (the redis feature for the former
+        // stays on so redis-rs doesn't load the system store itself, and fail with it)
+        let certificates = redis::TlsCertificates { client_tls: None, root_cert: Some(tls::roots_pem()) };
+        return Ok(redis::Client::build_with_tls(info, certificates)?);
+    }
     Ok(redis::Client::open(info)?)
 }
 

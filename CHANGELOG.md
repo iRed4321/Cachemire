@@ -12,6 +12,10 @@ Every stable release of Cachemire; `Unreleased` is what the next one brings. Bet
 - **Key header**: one row instead of two. A single box searches fields and values, its list picking where (All, Fields or Value, or type `field:` / `value:`), and filters the JSON once what you type starts with `$` or `.`. Each word becomes a search pill in its scope's color: a space adds it (a quoted run stays one), outlined until Enter applies them all. Hovering a pill names its scope, its × removes it and a click edits it again; the filter shows as a yellow chip. Exports (JSON or escaped JSON) and the table as CSV are in its **Export…** menu. Pointing at the key's name shows its size and TTL, and a click on it copies it; Refresh and its link sit beside it. In the field view, **Show as** in the Value column picks how every value reads (JSON or escaped JSON); an open value's header keeps Edit and its link, with Open, Download, Copy and its own format in a ⋯ menu
 - **Links**: the link button beside the key's name copies a `cachemire://` link to it, with its filter but never a login or password. Opening one goes to that key on the right connection, saved or AWS, and offers to add a server you haven't saved; the Windows installer registers these links. An opened field has one too, next to its edit button: its link opens the key on that field
 
+### Changed
+
+- **TLS**: `rediss://` connections now also trust the certificate authorities installed on your computer, such as a company's own
+
 ### Fixes
 
 - **Connection**: a `rediss://` server reached through an SSH tunnel is now verified against its real host name
