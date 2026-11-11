@@ -57,6 +57,8 @@ pub struct ConnectionItem {
     pub ssh: Option<SshSettings>,
     /// the connection profile (see Settings) it belongs to; "" for none
     pub profile_id: String,
+    /// the connection's own read-only setting; its profile may make it read-only too
+    pub read_only: bool,
 }
 
 /// Everything needed to reach a Redis server, as a connection's URL and its own
@@ -121,6 +123,7 @@ pub struct ConnectionPayloadInput {
     pub ssh_passphrase: Option<String>,
     /// the connection profile to use; `Some("")` for none
     pub profile_id: Option<String>,
+    pub read_only: Option<bool>,
 }
 
 /// Confirms `connection_id` is reachable, rebuilding its pool if stale, without

@@ -1,6 +1,6 @@
 //! The import / export window for connections: reads and writes a JSON file (`exportedAtUtc`,
 //! `includesPasswords`, `count`, `connections`), plus an `ssh` object on
-//! a connection with a tunnel. Importing never activates, overwrites or merges with a saved one.
+//! a connection with a tunnel and its own `readOnly` flag. Importing never activates, overwrites or merges with a saved one.
 
 use rustc_hash::FxHashSet;
 use std::path::Path;
@@ -36,6 +36,7 @@ struct Draft {
     username: String,
     password: Option<String>,
     ssh: Option<SshDraft>,
+    read_only: bool,
 }
 
 /// What the import list shows, and the saved connection behind each row of the export list.
@@ -76,6 +77,7 @@ fn draft_of(item: &Value) -> Option<Draft> {
         username: text("username"),
         password: item.get("password").and_then(Value::as_str).map(str::to_string),
         ssh: ssh_draft_of(item),
+        read_only: item.get("readOnly").and_then(Value::as_bool).unwrap_or(false),
     })
 }
 
@@ -281,6 +283,7 @@ impl Draft {
             ssh_private_key: ssh.map(|s| s.private_key.clone()),
             ssh_password: ssh.and_then(|s| s.password.clone()),
             ssh_passphrase: ssh.and_then(|s| s.passphrase.clone()),
+            read_only: Some(self.read_only),
             ..Default::default()
         }
     }
@@ -395,7 +398,7 @@ fn write_export(state: &AppState, ids: &[String], passwords: bool, now: i64, pat
                 let (host, port, db) = c.endpoint().map_or((String::new(), 6379, 0), |e| (e.host, e.port, e.db));
                 let mut item = json!({
                     "id": c.id, "name": c.name, "connectionUrl": c.connection_url, "host": host, "port": port,
-                    "db": db, "username": c.username, "password": secret(c.password),
+                    "db": db, "username": c.username, "password": secret(c.password), "readOnly": c.read_only,
                 });
                 if let Some(ssh) = c.ssh {
                     item["ssh"] = json!({

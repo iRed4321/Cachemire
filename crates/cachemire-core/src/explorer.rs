@@ -6,8 +6,9 @@ use crate::key_name::KeyName;
 use serde_json::Value;
 
 use crate::redis_value_type::RedisValueType;
+pub use crate::session::Checked;
 use crate::session::{KeyScan, ScriptKey, Session, TypedKey, lossy, pairs, stream_fields};
-use crate::state::AppState;
+use crate::state::{AppState, ensure_writable};
 
 /// One increment of a level listing from [`scan_namespaces`]. `folders`
 /// holds only prefixes first seen this batch; `keys` may repeat (per SCAN's
@@ -669,24 +670,41 @@ pub async fn hash_full_values(
     session.hash_values(key, names).await
 }
 
+/// A session for a write: refused when the connection is read-only.
+async fn write_session(state: &AppState, connection_id: Option<&str>) -> Result<Session, Error> {
+    ensure_writable(state, connection_id)?;
+    Session::open(state, connection_id).await
+}
+
+/// [`write_session`] on the connection kept for long reads.
+async fn write_background_session(state: &AppState, connection_id: Option<&str>) -> Result<Session, Error> {
+    ensure_writable(state, connection_id)?;
+    Session::open_background(state, connection_id).await
+}
+
 /// Writes `value` as what `key` holds: the value of its field `field` for a hash
-/// (`Some`), its whole value, TTL kept, for a string (`None`).
+/// (`Some`), its whole value, TTL kept, for a string (`None`). With `expected` (the
+/// value the writer saw), nothing is written when the stored value is another one.
 pub async fn write_value(
     state: &AppState,
     connection_id: Option<&str>,
     key: &KeyName,
     field: Option<&str>,
     value: &str,
-) -> Result<(), Error> {
-    let mut session = Session::open(state, connection_id).await?;
-    match field {
-        Some(field) => session.hash_set(key, field, value).await,
-        None => session.string_set(key, value).await,
+    expected: Option<&str>,
+) -> Result<Checked, Error> {
+    let mut session = write_session(state, connection_id).await?;
+    match (field, expected) {
+        (Some(field), Some(expected)) => session.hash_set_checked(key, field, expected, value).await,
+        (None, Some(expected)) => session.string_set_checked(key, expected, value).await,
+        (Some(field), None) => session.hash_set(key, field, value).await.map(|()| Checked::Done),
+        (None, None) => session.string_set(key, value).await.map(|()| Checked::Done),
     }
 }
 
 /// Moves hash `key`'s field `from` to the new name `to`, with `value` as its value:
-/// false, nothing changed, when the hash has a field `to` already.
+/// [`Checked::Taken`], nothing changed, when the hash has a field `to` already. With
+/// `expected`, nothing moves when `from` holds another value.
 pub async fn rename_hash_field(
     state: &AppState,
     connection_id: Option<&str>,
@@ -694,8 +712,13 @@ pub async fn rename_hash_field(
     from: &str,
     to: &str,
     value: &str,
-) -> Result<bool, Error> {
-    Session::open(state, connection_id).await?.hash_rename(key, from, to, value).await
+    expected: Option<&str>,
+) -> Result<Checked, Error> {
+    let mut session = write_session(state, connection_id).await?;
+    match expected {
+        Some(expected) => session.hash_rename_checked(key, from, to, expected, value).await,
+        None => Ok(if session.hash_rename(key, from, to, value).await? { Checked::Done } else { Checked::Taken }),
+    }
 }
 
 /// Writes `value` into a new field `field` of hash `key` (making the hash if there is
@@ -707,12 +730,12 @@ pub async fn write_new_hash_field(
     field: &str,
     value: &str,
 ) -> Result<bool, Error> {
-    Session::open(state, connection_id).await?.hash_set_new(key, field, value).await
+    write_session(state, connection_id).await?.hash_set_new(key, field, value).await
 }
 
 /// Removes field `field` from hash `key`.
 pub async fn delete_hash_field(state: &AppState, connection_id: Option<&str>, key: &KeyName, field: &str) -> Result<(), Error> {
-    Session::open(state, connection_id).await?.hash_delete(key, field).await
+    write_session(state, connection_id).await?.hash_delete(key, field).await
 }
 
 /// Whether `key` exists.
@@ -723,12 +746,12 @@ pub async fn key_exists(state: &AppState, connection_id: Option<&str>, key: &Key
 
 /// Removes `key`.
 pub async fn delete_key(state: &AppState, connection_id: Option<&str>, key: &KeyName) -> Result<(), Error> {
-    Session::open(state, connection_id).await?.unlink(std::slice::from_ref(key)).await
+    write_session(state, connection_id).await?.unlink(std::slice::from_ref(key)).await
 }
 
 /// Renames `from` to `to`: false, nothing changed, when a key `to` exists already.
 pub async fn rename_key(state: &AppState, connection_id: Option<&str>, from: &KeyName, to: &KeyName) -> Result<bool, Error> {
-    Session::open(state, connection_id).await?.rename_new(from, to).await
+    write_session(state, connection_id).await?.rename_new(from, to).await
 }
 
 /// Every key whose name starts with `prefix`.
@@ -742,12 +765,18 @@ async fn keys_under(session: &mut Session, prefix: &KeyName) -> Result<Vec<KeyNa
     Ok(keys.into_iter().collect())
 }
 
+/// How many keys have a name starting with `prefix` (a folder's keys).
+pub async fn count_keys_under(state: &AppState, connection_id: Option<&str>, prefix: &KeyName) -> Result<usize, Error> {
+    let mut session = Session::open_background(state, connection_id).await?;
+    Ok(keys_under(&mut session, prefix).await?.len())
+}
+
 /// How many keys one `UNLINK` or one round of renames takes.
 const KEYS_PER_WRITE: usize = 500;
 
 /// Removes every key whose name starts with `prefix` (a folder); how many there were.
 pub async fn delete_folder(state: &AppState, connection_id: Option<&str>, prefix: &KeyName) -> Result<usize, Error> {
-    let mut session = Session::open_background(state, connection_id).await?;
+    let mut session = write_background_session(state, connection_id).await?;
     let keys = keys_under(&mut session, prefix).await?;
     for chunk in keys.chunks(KEYS_PER_WRITE) {
         session.unlink(chunk).await?;
@@ -766,7 +795,7 @@ pub enum FolderMove {
 /// Moves every key whose name starts with `from` to the same name starting with `to`,
 /// once none of the new names is taken.
 pub async fn rename_folder(state: &AppState, connection_id: Option<&str>, from: &KeyName, to: &KeyName) -> Result<FolderMove, Error> {
-    let mut session = Session::open_background(state, connection_id).await?;
+    let mut session = write_background_session(state, connection_id).await?;
     let renamed = |key: &KeyName| {
         let mut name = to.as_bytes().to_vec();
         name.extend_from_slice(&key.as_bytes()[from.as_bytes().len()..]);

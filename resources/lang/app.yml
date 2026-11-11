@@ -26,6 +26,12 @@ _version: 2
   fr: "Un champ doit avoir un nom"
 "This hash already has a field with this name":
   fr: "Ce hash a déjà un champ de ce nom"
+"This value changed in Redis since you opened it.":
+  fr: "Cette valeur a changé dans Redis depuis l'ouverture de l'éditeur."
+"This field no longer exists in Redis.":
+  fr: "Ce champ n'existe plus dans Redis."
+"This key no longer exists in Redis.":
+  fr: "Cette clé n'existe plus dans Redis."
 "This value isn't UTF-8 text: it can't be edited here":
   fr: "Cette valeur n'est pas du texte UTF-8 : elle ne peut pas être modifiée ici"
 # the keyspace's right-click menu: a new key, renaming or deleting a key or a folder
@@ -45,6 +51,8 @@ _version: 2
   fr: "Échec du renommage : %{error}"
 "Deleting failed: %{error}":
   fr: "Échec de la suppression : %{error}"
+"Counting failed: %{error}":
+  fr: "Échec du comptage : %{error}"
 "Renamed":
   fr: "Renommé"
 "%{count} keys deleted":
@@ -385,6 +393,8 @@ _version: 2
   fr: "La connexion a expiré après %{seconds} secondes."
 "This server runs in cluster mode, which Cachemire doesn't support yet. Connect to a server or endpoint with cluster mode disabled.":
   fr: "Ce serveur fonctionne en mode cluster, que Cachemire ne prend pas encore en charge. Connectez-vous à un serveur ou un point de terminaison sans mode cluster."
+"This connection is read-only.":
+  fr: "Cette connexion est en lecture seule."
 "A background task failed: %{error}":
   fr: "Une tâche en arrière-plan a échoué : %{error}"
 "Pick a connection profile.":

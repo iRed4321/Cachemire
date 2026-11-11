@@ -2,7 +2,7 @@
 
 use super::*;
 use crate::explorer::{
-    FolderMove, delete_folder, delete_hash_field, delete_key, key_exists, rename_folder, rename_hash_field, rename_key,
+    Checked, FolderMove, delete_folder, delete_hash_field, delete_key, key_exists, rename_folder, rename_hash_field, rename_key,
     write_new_hash_field, write_value,
 };
 use crate::test_support::e2e_state;
@@ -17,9 +17,9 @@ fn a_string_is_replaced_its_ttl_kept_and_a_hash_field_is_written() {
     let state = redis.state();
 
     block_on(async {
-        write_value(&state, None, &key("s"), None, "new").await.unwrap();
-        write_value(&state, None, &key("h"), Some("f"), "{\"n\":2}").await.unwrap();
-        write_value(&state, None, &key("h"), Some("added"), "x").await.unwrap();
+        write_value(&state, None, &key("s"), None, "new", None).await.unwrap();
+        write_value(&state, None, &key("h"), Some("f"), "{\"n\":2}", None).await.unwrap();
+        write_value(&state, None, &key("h"), Some("added"), "x", None).await.unwrap();
     });
     assert_eq!(redis.query::<String>(&["GET", "s"]), "new");
     let ttl: i64 = redis.query(&["TTL", "s"]);
@@ -40,8 +40,10 @@ fn a_hash_field_is_added_renamed_and_deleted_but_never_over_another() {
         assert!(write_new_hash_field(&state, None, &key("h"), "c", "3").await.unwrap());
         assert!(write_new_hash_field(&state, None, &key("fresh"), "first", "1").await.unwrap(), "a new hash is made");
 
-        assert!(!rename_hash_field(&state, None, &key("h"), "a", "b", "edited").await.unwrap(), "b is taken");
-        assert!(rename_hash_field(&state, None, &key("h"), "a", "renamed", "edited").await.unwrap());
+        let taken = rename_hash_field(&state, None, &key("h"), "a", "b", "edited", None).await.unwrap();
+        assert_eq!(taken, Checked::Taken, "b is taken");
+        let renamed = rename_hash_field(&state, None, &key("h"), "a", "renamed", "edited", None).await.unwrap();
+        assert_eq!(renamed, Checked::Done);
         delete_hash_field(&state, None, &key("h"), "c").await.unwrap();
     });
     let hash: HashMap<String, String> = redis.query(&["HGETALL", "h"]);
@@ -58,8 +60,10 @@ fn a_field_is_renamed_in_two_steps_where_scripts_are_refused() {
     let state = e2e_state(&url);
 
     block_on(async {
-        assert!(rename_hash_field(&state, None, &key("h"), "a", "moved", "1+").await.unwrap());
-        assert!(!rename_hash_field(&state, None, &key("h"), "moved", "taken", "x").await.unwrap());
+        let moved = rename_hash_field(&state, None, &key("h"), "a", "moved", "1+", None).await.unwrap();
+        assert_eq!(moved, Checked::Done);
+        let taken = rename_hash_field(&state, None, &key("h"), "moved", "taken", "x", None).await.unwrap();
+        assert_eq!(taken, Checked::Taken);
     });
     let hash: HashMap<String, String> = redis.query(&["HGETALL", "h"]);
     assert_eq!(hash, HashMap::from([("moved".into(), "1+".into()), ("taken".into(), "2".into())]));

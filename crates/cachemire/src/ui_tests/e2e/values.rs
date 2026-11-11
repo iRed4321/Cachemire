@@ -87,6 +87,9 @@ fn a_string_is_replaced_its_ttl_kept_and_an_unchanged_save_writes_nothing() {
 
     edit(&mut r, &field);
     save(&mut r, "\"hello\"", &field);
+    r.until("the editor to say the value changed", |h| !h.window.global::<ValueEditor>().get_conflict().is_empty());
+    assert_eq!(r.redis.query::<String>(&["GET", "greeting"]), "changed elsewhere", "nothing was written");
+    r.h.window.global::<ValueEditor>().invoke_overwrite("\"hello\"".into(), field.as_str().into());
     r.editor_closes();
     assert_eq!(r.redis.query::<String>(&["GET", "greeting"]), "hello");
     let ttl: i64 = r.redis.query(&["TTL", "greeting"]);

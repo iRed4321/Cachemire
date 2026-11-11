@@ -21,6 +21,11 @@ export global ValueEditor {
     // a save under way, and why the last one failed ("" when it didn't)
     in property <bool> saving: false;
     in property <string> error: "";
+    // what Redis holds changed since the editor opened ("" when it didn't, else the
+    // message): the choice is to leave it (Cancel), take it (`reload`) or write over it
+    in-out property <string> conflict: "";
+    callback reload();
+    callback overwrite(text: string, name: string);
     // `text` colored as JSON, and why it isn't valid JSON ("" when it is)
     pure callback highlight(text: string) -> styled-text;
     pure callback check(text: string) -> string;
@@ -47,7 +52,7 @@ export component ValueEditorModal inherits Rectangle {
     property <string> name-problem: ValueEditor.is-field ? ValueEditor.check-name(ValueEditor.name) : "";
     property <string> problem: name-problem != "" ? name-problem : json-problem;
     function save() {
-        if problem == "" && !ValueEditor.saving {
+        if problem == "" && !ValueEditor.saving && ValueEditor.conflict == "" {
             ValueEditor.save(ValueEditor.text, ValueEditor.name);
         }
     }
@@ -109,7 +114,11 @@ export component ValueEditorModal inherits Rectangle {
             focus-on-click: false;
             key-pressed(event) => {
                 if event.text == Key.Escape {
-                    ValueEditor.open = false;
+                    if ValueEditor.conflict != "" {
+                        ValueEditor.conflict = "";
+                    } else {
+                        ValueEditor.open = false;
+                    }
                     return accept;
                 }
                 return reject;
@@ -353,13 +362,27 @@ export component ValueEditorModal inherits Rectangle {
                     spacing: Theme.px(8px);
                     Text {
                         horizontal-stretch: 1;
-                        text: ValueEditor.error != "" ? ValueEditor.error : root.problem;
+                        text: ValueEditor.conflict != "" ? ValueEditor.conflict : (ValueEditor.error != "" ? ValueEditor.error : root.problem);
                         font-size: Theme.pt(12px);
-                        color: Theme.accent-red;
+                        color: ValueEditor.conflict != "" ? Theme.accent-orange : Theme.accent-red;
                         vertical-alignment: center;
                         overflow: elide;
                     }
-                    if ValueEditor.is-field && !ValueEditor.creating: ModalButton {
+                    if ValueEditor.conflict != "": ModalButton {
+                        text: @tr("Cancel");
+                        clicked => { ValueEditor.conflict = ""; }
+                    }
+                    if ValueEditor.conflict != "": ModalButton {
+                        text: @tr("Reload");
+                        clicked => { ValueEditor.reload(); }
+                    }
+                    if ValueEditor.conflict != "": ModalButton {
+                        text: ValueEditor.saving ? @tr("Saving...") : @tr("Overwrite");
+                        danger: true;
+                        enabled: !ValueEditor.saving;
+                        clicked => { ValueEditor.overwrite(ValueEditor.text, ValueEditor.name); }
+                    }
+                    if ValueEditor.conflict == "" && ValueEditor.is-field && !ValueEditor.creating: ModalButton {
                         text: root.confirming-delete ? @tr("Click again to delete") : @tr("Delete");
                         danger: true;
                         armed: root.confirming-delete;
@@ -372,16 +395,16 @@ export component ValueEditorModal inherits Rectangle {
                             }
                         }
                     }
-                    ModalButton {
+                    if ValueEditor.conflict == "": ModalButton {
                         text: @tr("Cancel");
                         clicked => { ValueEditor.open = false; }
                     }
-                    ModalButton {
+                    if ValueEditor.conflict == "": ModalButton {
                         text: @tr("Format JSON");
                         enabled: root.json-problem == "" && !ValueEditor.saving;
                         clicked => { ValueEditor.text = ValueEditor.format(ValueEditor.text); }
                     }
-                    ModalButton {
+                    if ValueEditor.conflict == "": ModalButton {
                         text: ValueEditor.saving ? @tr("Saving...") : @tr("Save");
                         primary: true;
                         enabled: root.problem == "" && !ValueEditor.saving;

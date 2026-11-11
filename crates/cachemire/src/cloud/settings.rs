@@ -107,7 +107,12 @@ fn open_form(state: &AppState, window: &MainWindow, kind: i32, id: &str) -> Opti
     let global = window.global::<CloudSettings>();
     let rows: Vec<ConnProfileRowData> = profiles
         .into_iter()
-        .map(|p| ConnProfileRowData { id: p.id.into(), name: p.name.into(), tint: crate::connections::profiles::to_tint(p.color) })
+        .map(|p| ConnProfileRowData {
+            id: p.id.into(),
+            name: p.name.into(),
+            tint: crate::connections::profiles::to_tint(p.color),
+            read_only: p.read_only,
+        })
         .collect();
     global.set_profiles(ModelRc::new(VecModel::from(rows)));
     global.set_scope_kind(kind);

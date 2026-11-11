@@ -49,7 +49,7 @@ fn effective(store: &SettingsStore, name: &str) -> (String, Option<String>) {
 #[test]
 fn an_endpoint_inherits_its_accounts_settings_until_it_sets_its_own() {
     let (mut store, _, _) = new_store();
-    let staging = store.create_connection_profile("Staging", ProfileColor::Green).unwrap();
+    let staging = store.create_connection_profile("Staging", ProfileColor::Green, false).unwrap();
     let prod = store.connection_profiles()[0].id.clone();
     store.set_cloud_scope(&account(), "Main", Some(staging.clone()), Some(tunnel("account-bastion", ""))).unwrap();
     store.set_cloud_scope(&endpoint("orders"), "orders", Some(prod.clone()), None).unwrap();
@@ -72,7 +72,7 @@ fn an_endpoint_can_turn_off_what_its_account_sets() {
 #[test]
 fn a_deleted_connection_profile_counts_as_none() {
     let (mut store, _, _) = new_store();
-    let staging = store.create_connection_profile("Staging", ProfileColor::Green).unwrap();
+    let staging = store.create_connection_profile("Staging", ProfileColor::Green, false).unwrap();
     store.set_cloud_scope(&account(), "", Some(staging.clone()), None).unwrap();
     store.remove_connection_profile(&staging).unwrap();
     assert_eq!(effective(&store, "any").0, "");
@@ -103,6 +103,7 @@ fn listed_endpoints_get_their_settings_without_secrets_until_asked() {
         password: String::new(),
         ssh: None,
         profile_id: String::new(),
+        read_only: false,
     }];
     store.apply_cloud("111", "eu-west-1", &mut items);
     let mut ssh = items[0].ssh.clone().unwrap();

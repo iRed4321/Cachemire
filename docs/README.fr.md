@@ -73,6 +73,11 @@ Le chemin est complété à partir des valeurs chargées. Affichez le résultat 
 
   L'éditeur signale les erreurs à l'endroit exact où elles se trouvent, complète les mots-clés, les clés et les `alias.champ`, conserve l'historique des exécutions et permet d'enregistrer des requêtes nommées. Le résultat s'ouvre comme n'importe quelle clé : vues, filtres et exports s'appliquent directement.
 
+### Modifier
+
+- ✏️ **Éditeur de valeurs** : le crayon d'une ligne ouvre sa valeur en JSON, avec numéros de ligne et couleurs, et l'enregistre dans Redis dès qu'elle est valide. Une clé de type chaîne est réécrite en entier, son TTL conservé ; les champs d'un hash peuvent être ajoutés, renommés et supprimés depuis la même fenêtre.
+- 🗂️ **Clés et dossiers** : un clic droit dans l'arbre permet d'ajouter une clé, ou de renommer ou supprimer une clé ou tout un dossier.
+
 ### Onglets
 
 Les clés, les recherches et les requêtes s'ouvrent dans des onglets que vous pouvez réorganiser par glisser-déposer. Chaque onglet conserve ses filtres et sa position de défilement, et chaque connexion garde son propre ensemble d'onglets.
@@ -90,18 +95,18 @@ Les clés, les recherches et les requêtes s'ouvrent dans des onglets que vous p
 ### Sûr par défaut
 
 - 🛡️ Les mots de passe sont stockés dans le trousseau du système (Gestionnaire d'identification ou Secret Service).
-- Rien n'est jamais écrit dans Redis : Cachemire est un explorateur en lecture seule.
+- 🔒 **Profils et connexions en lecture seule** : cochez *Lecture seule* sur un profil de connexion, ou sur une seule connexion, et rien ne peut être écrit dans Redis par ce biais. Le profil `Production` par défaut est en lecture seule.
+- La suppression d'un dossier demande d'abord confirmation, en indiquant le nombre de clés qui seront supprimées.
+- Une valeur qui a changé dans Redis pendant que vous la modifiiez n'est jamais écrasée silencieusement : vous choisissez d'annuler, de la recharger ou de l'écraser.
 
 ### Finitions
 
-Zoomez avec <kbd>Ctrl</kbd>+<kbd>+</kbd>/<kbd>-</kbd>/<kbd>0</kbd> ou <kbd>Ctrl</kbd>+molette. 🌍 **Anglais et français**, selon la langue du système ou votre choix dans les **Paramètres**, avec changement à la volée, sans redémarrage.
+Zoomez avec <kbd>Ctrl</kbd>+<kbd>+</kbd>/<kbd>-</kbd>/<kbd>0</kbd> ou <kbd>Ctrl</kbd>+molette. ⌨️ **Raccourcis clavier configurables**. 🌍 **Anglais et français**, selon la langue du système ou votre choix dans les **Paramètres**, avec changement à la volée, sans redémarrage.
 
 ## Prévu
 
-- ✏️ **Édition** des clés et des valeurs
 - 🗝️ Prise en charge de **Valkey**
 - 🎨 **Thèmes**
-- ⌨️ **Raccourcis clavier avancés**
 - 🖍️ **Coloration syntaxique** des valeurs dans d'autres langages que le JSON
 
 ## Démarrer

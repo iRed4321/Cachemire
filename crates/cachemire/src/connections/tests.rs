@@ -15,6 +15,7 @@ fn form() -> ConnectionForm {
         ssh_key: "~/.ssh/id_ed25519".into(),
         ssh_passphrase: "".into(),
         profile_id: "production".into(),
+        read_only: false,
     }
 }
 

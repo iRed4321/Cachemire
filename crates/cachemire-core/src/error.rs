@@ -44,6 +44,8 @@ pub enum Error {
         "This server runs in cluster mode, which Cachemire doesn't support yet. Connect to a server or endpoint with cluster mode disabled."
     )]
     ClusterMode,
+    #[error("This connection is read-only.")]
+    ReadOnly,
 }
 
 /// What the user gave can't be used.
@@ -178,6 +180,7 @@ impl Error {
             Error::JsonPath(_) => ErrorKind::Parse,
             Error::System(_) => ErrorKind::System,
             Error::ClusterMode => ErrorKind::Unsupported,
+            Error::ReadOnly => ErrorKind::Denied,
         }
     }
 }

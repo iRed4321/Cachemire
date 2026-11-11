@@ -155,7 +155,7 @@ impl Ctx {
                 Ok((key_type, meta, fields, editable, shown, matches, status, av_field_chars, av_rows, renderings)) => {
                     let badge = key_type.as_ref().map(|t| t.as_str().to_uppercase()).unwrap_or_default();
                     window.global::<KeyPanel>().set_badge(badge.into());
-                    window.global::<KeyPanel>().set_editable(editable);
+                    window.global::<KeyPanel>().set_editable(editable && !window.global::<crate::ConnectionState>().get_read_only());
                     window.global::<KeyPanel>().set_loaded(true);
                     show_key_name(window, &key);
                     window.global::<KeyPanel>().set_meta(meta.into());

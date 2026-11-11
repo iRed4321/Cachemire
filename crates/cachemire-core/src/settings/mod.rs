@@ -93,6 +93,10 @@ struct StoredSettings {
     // once, so deleting it sticks
     #[serde(default)]
     connection_profiles_seeded: bool,
+    // the default "Production" profile has been made read-only: done once, so
+    // unticking it sticks
+    #[serde(default)]
+    default_profile_read_only_set: bool,
     // what is set for AWS accounts and their endpoints (none of the endpoints themselves)
     #[serde(default)]
     cloud: StoredCloud,
@@ -145,7 +149,14 @@ impl SettingsStore {
                 id: DEFAULT_PROFILE_ID.to_string(),
                 name: "Production".to_string(),
                 color: ProfileColor::Red.code().to_string(),
+                read_only: true,
             });
+        }
+        if !state.default_profile_read_only_set {
+            state.default_profile_read_only_set = true;
+            if let Some(profile) = state.connection_profiles.iter_mut().find(|p| p.id == DEFAULT_PROFILE_ID) {
+                profile.read_only = true;
+            }
         }
         let mut unloaded: FxHashSet<String> = state.ssh_profiles.iter().filter(|p| p.in_vault).map(|p| p.id.clone()).collect();
         unloaded.extend(cloud_entries(&mut state.cloud).filter(|(_, e)| e.ssh.as_ref().is_some_and(|s| s.in_vault)).map(|(key, _)| key));

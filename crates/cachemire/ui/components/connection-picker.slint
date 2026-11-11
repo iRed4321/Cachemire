@@ -603,6 +603,9 @@ export component ConnectionModal inherits Rectangle {
     // "Add a connection profile" is ticked, and the one chosen
     in-out property <bool> field-profile-enabled <=> ConnectionEditor.profile-enabled;
     in-out property <string> field-profile-id <=> ConnectionEditor.profile-id;
+    // the connection's own read-only setting, and whether the profile chosen is read-only
+    in-out property <bool> field-read-only <=> ConnectionEditor.read-only;
+    property <bool> profile-read-only: field-profile-enabled && ConnectionEditor.profile-read-only(field-profile-id);
     callback save();
     save => { ConnectionEditor.saved(ConnectionEditor.form()); }
     callback cancel();
@@ -719,6 +722,22 @@ export component ConnectionModal inherits Rectangle {
                 }
                 if root.field-profile-enabled && root.profiles.length == 0: Text {
                     text: @tr("No connection profiles yet: create one in Settings.");
+                    font-size: Theme.pt(10.5px);
+                    color: Theme.text-tertiary;
+                    wrap: word-wrap;
+                }
+
+                // ticked and greyed out while the chosen profile is read-only; the connection's own
+                // setting is kept underneath
+                CheckRow {
+                    text: @tr("Read-only");
+                    bold: true;
+                    enabled: !root.profile-read-only;
+                    checked: root.field-read-only || root.profile-read-only;
+                    toggled => { root.field-read-only = !root.field-read-only; }
+                }
+                Text {
+                    text: root.profile-read-only ? @tr("Its profile is read-only.") : @tr("No key or value can be changed through this connection.");
                     font-size: Theme.pt(10.5px);
                     color: Theme.text-tertiary;
                     wrap: word-wrap;

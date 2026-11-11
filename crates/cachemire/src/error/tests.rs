@@ -147,6 +147,7 @@ fn core_errors() -> Vec<CoreError> {
         FileError::NoFileName(PathBuf::from("/")).into(),
         CoreError::from(join_error()),
         CoreError::ClusterMode,
+        CoreError::ReadOnly,
     ]);
     errors
 }

@@ -16,6 +16,7 @@ fn saved(id: &str, name: &str, url: &str, ssh: Option<(&str, u16)>) -> Connectio
             passphrase: String::new(),
         }),
         profile_id: String::new(),
+        read_only: false,
     }
 }
 

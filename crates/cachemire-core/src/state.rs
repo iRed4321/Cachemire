@@ -3,9 +3,9 @@ use std::path::{Path, PathBuf};
 use std::sync::LazyLock;
 use std::sync::atomic::AtomicU64;
 
-use crate::connection::ConnectionItem;
 use crate::connection::pool::ConnectionCache;
 use crate::connection::store::ConnectionStore;
+use crate::connection::{CloudKey, ConnectionItem};
 use crate::error::{Error, NotFound};
 use crate::redisql::history::HistoryStore;
 use crate::settings::SettingsStore;
@@ -138,21 +138,38 @@ impl AppState {
     }
 }
 
+/// The connection `connection_id` names (`None`: the active one) and, for a cloud one, its key.
+fn lookup(state: &AppState, connection_id: Option<&str>) -> Result<(ConnectionItem, Option<CloudKey>), Error> {
+    let store = state.connections.lock();
+    // `Some("")`: a window on no connection, which never means the active one
+    let connection = match connection_id {
+        Some("") => Err(NotFound::ActiveConnection.into()),
+        Some(id) => store.get(id).ok_or_else(|| NotFound::Connection.into()),
+        None => store.get_active(),
+    }?;
+    let cloud_key = store.cloud_key(&connection.id);
+    Ok((connection, cloud_key))
+}
+
+/// Whether no write may be made through the connection: its own setting, or its
+/// profile's (a cloud endpoint has the profile set for it).
+pub fn is_read_only(state: &AppState, connection_id: Option<&str>) -> Result<bool, Error> {
+    let (connection, cloud_key) = lookup(state, connection_id)?;
+    let settings = state.settings.lock();
+    let profile = cloud_key.map_or_else(|| connection.profile_id.clone(), |key| settings.cloud_profile_id(&key));
+    Ok(connection.read_only || settings.connection_profile(&profile).is_some_and(|p| p.read_only))
+}
+
+/// Refuses with [`Error::ReadOnly`] when the connection is read-only: every write to Redis goes through this.
+pub fn ensure_writable(state: &AppState, connection_id: Option<&str>) -> Result<(), Error> {
+    if is_read_only(state, connection_id)? { Err(Error::ReadOnly) } else { Ok(()) }
+}
+
 /// Resolves an explicit connection id if provided (`""` being none), otherwise the
 /// connection marked active. An SSH tunnel with no username of its own comes back
 /// completed with the active SSH profile.
 pub fn resolve_connection(state: &AppState, connection_id: Option<&str>) -> Result<ConnectionItem, Error> {
-    let (mut connection, cloud_key) = {
-        let store = state.connections.lock();
-        // `Some("")`: a window on no connection, which never means the active one
-        let connection = match connection_id {
-            Some("") => Err(NotFound::ActiveConnection.into()),
-            Some(id) => store.get(id).ok_or_else(|| NotFound::Connection.into()),
-            None => store.get_active(),
-        }?;
-        let cloud_key = store.cloud_key(&connection.id);
-        (connection, cloud_key)
-    };
+    let (mut connection, cloud_key) = lookup(state, connection_id)?;
     if let Some(ssh) = connection.ssh.as_mut() {
         let settings = state.settings.lock();
         if let Some(key) = cloud_key {

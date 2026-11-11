@@ -9,7 +9,7 @@ use rust_i18n::t;
 use slint::{ComponentHandle, ModelRc, VecModel};
 
 use crate::app::App;
-use crate::{ConnProfileRowData, MainWindow, Preferences, ProfileTint, Theme};
+use crate::{ConnProfileRowData, ConnectionEditor, ConnectionState, KeyPanel, MainWindow, Preferences, ProfileTint, Theme};
 use cachemire_core::connection::ConnectionItem;
 use cachemire_core::settings::ProfileColor;
 use cachemire_core::state::AppState;
@@ -50,18 +50,23 @@ pub(crate) fn refresh(window: &MainWindow, state: &AppState) {
         .lock()
         .connection_profiles()
         .into_iter()
-        .map(|p| ConnProfileRowData { id: p.id.into(), name: p.name.into(), tint: to_tint(p.color) })
+        .map(|p| ConnProfileRowData { id: p.id.into(), name: p.name.into(), tint: to_tint(p.color), read_only: p.read_only })
         .collect();
     window.global::<Preferences>().set_conn_profiles(ModelRc::new(VecModel::from(rows)));
 }
 
-/// Tints the background for the connection in use — the one connected to, if
-/// its profile still exists — or clears the tint. Called whenever that can have
-/// changed: a connection made or lost, a connection or a profile edited.
+/// Tints the background for the connection in use (if its profile still exists) or clears
+/// the tint, and says whether it is read-only. Called whenever that can have changed:
+/// a connection made or lost, a connection or a profile edited.
 pub(crate) fn apply_tint(window: &MainWindow, state: &AppState) {
     let connection_id = window.connection_id();
     let profile_id = (!connection_id.is_empty()).then(|| state.connections.lock().get(&connection_id).map(|c| c.profile_id)).flatten();
     let color = profile_id.filter(|id| !id.is_empty()).and_then(|id| state.settings.lock().connection_profile(&id)).map(|p| p.color);
+    let read_only = !connection_id.is_empty() && cachemire_core::state::is_read_only(state, Some(&connection_id)).unwrap_or(false);
+    window.global::<ConnectionState>().set_read_only(read_only);
+    if read_only {
+        window.global::<KeyPanel>().set_editable(false);
+    }
     let theme = window.global::<Theme>();
     match color {
         Some(color) => {
@@ -91,6 +96,12 @@ pub fn init(app: &Rc<App>, window: &MainWindow) {
     let state = app.state.clone();
     refresh(window, &state);
 
+    // the connection form's read-only box follows the profile picked in it
+    window.global::<ConnectionEditor>().on_profile_read_only({
+        let state = state.clone();
+        move |id| !id.is_empty() && state.settings.lock().connection_profile(&id).is_some_and(|p| p.read_only)
+    });
+
     window.global::<Preferences>().on_conn_profile_saved({
         let app = app.clone();
         move |form| {
@@ -100,9 +111,9 @@ pub fn init(app: &Rc<App>, window: &MainWindow) {
             let saved = {
                 let mut settings = state.settings.lock();
                 if form.id.is_empty() {
-                    settings.create_connection_profile(&form.name, color).map(|_| ())
+                    settings.create_connection_profile(&form.name, color, form.read_only).map(|_| ())
                 } else {
-                    settings.update_connection_profile(&form.id, &form.name, color)
+                    settings.update_connection_profile(&form.id, &form.name, color, form.read_only)
                 }
             };
             match saved {
@@ -110,7 +121,7 @@ pub fn init(app: &Rc<App>, window: &MainWindow) {
                     window.global::<Preferences>().set_error("".into());
                     window.global::<Preferences>().set_conn_profile_editing(false);
                     refresh(&window, state);
-                    // (the profile in use may be the one that was recolored)
+                    // (the profile in use may be the one that was recolored or made read-only)
                     apply_tint(&window, state);
                     crate::connections::refresh(&app, &window);
                 }

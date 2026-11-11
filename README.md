@@ -71,6 +71,11 @@ The path is completed from the loaded values. Show the result as a **field/value
 
   The editor marks errors in place, completes keywords, keys and `alias.field`, keeps your run history, and lets you save named queries. Results open like any key, so filters, views and exports all work on them.
 
+### Edit
+
+- ✏️ **Value editor**: a row's pencil opens its value as JSON, with line numbers and colors, and saves it back to Redis once it is valid. A string key is rewritten whole, its TTL kept; hash fields can be added, renamed and deleted from the same window.
+- 🗂️ **Keys and folders**: right-click the tree to add a key, or to rename or delete a key or a whole folder.
+
 ### Tabs
 
 Open keys, searches and queries in tabs. Drag them around; each remembers its filters and scroll position, and each connection keeps its own set.
@@ -88,18 +93,18 @@ Open keys, searches and queries in tabs. Drag them around; each remembers its fi
 ### Safe by default
 
 - 🛡️ Passwords go to the OS credential store (Credential Manager or Secret Service).
-- Nothing is ever written to Redis: this is a read-only explorer.
+- 🔒 **Read-only profiles and connections**: tick *Read-only* on a connection profile, or on a single connection, and nothing can be written to Redis through it. The default `Production` profile is read-only.
+- Deleting a folder asks first, with the number of keys it will remove.
+- A value that changed in Redis while you were editing it is never overwritten silently: you choose to cancel, reload it or overwrite it.
 
 ### Polish
 
-Zoom with <kbd>Ctrl</kbd>+<kbd>+</kbd>/<kbd>-</kbd>/<kbd>0</kbd> or <kbd>Ctrl</kbd>+scroll. 🌍 **English and French**, following your system or chosen in **Settings**, switched without a restart.
+Zoom with <kbd>Ctrl</kbd>+<kbd>+</kbd>/<kbd>-</kbd>/<kbd>0</kbd> or <kbd>Ctrl</kbd>+scroll. ⌨️ **Configurable key bindings**. 🌍 **English and French**, following your system or chosen in **Settings**, switched without a restart.
 
 ## Planned
 
-- ✏️ **Editing** keys and values
 - 🗝️ **Valkey** support
 - 🎨 **Themes**
-- ⌨️ **Advanced key bindings**
 - 🖍️ **Syntax highlighting** for values in other languages than JSON
 
 ## Getting started

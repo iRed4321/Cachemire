@@ -16,6 +16,7 @@ fn item(url: &str) -> ConnectionItem {
         password: String::new(),
         ssh: None,
         profile_id: String::new(),
+        read_only: false,
     }
 }
 

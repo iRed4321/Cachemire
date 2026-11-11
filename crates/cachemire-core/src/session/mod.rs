@@ -41,6 +41,56 @@ static RENAME_FIELD_SCRIPT: std::sync::LazyLock<redis::Script> = std::sync::Lazy
     )
 });
 
+/// Writes a hash field's new value if it still holds the expected one: `{1}` done, or
+/// `{0, current}` when it changed (`current` is false when the field is gone).
+static CHECKED_HASH_SET_SCRIPT: std::sync::LazyLock<redis::Script> = std::sync::LazyLock::new(|| {
+    redis::Script::new(
+        "local cur = redis.call('HGET', KEYS[1], ARGV[1]) \
+         if cur == false or cur ~= ARGV[2] then return {0, cur} end \
+         redis.call('HSET', KEYS[1], ARGV[1], ARGV[3]) return {1, false}",
+    )
+});
+
+/// The same for a string key (its TTL kept).
+static CHECKED_STRING_SET_SCRIPT: std::sync::LazyLock<redis::Script> = std::sync::LazyLock::new(|| {
+    redis::Script::new(
+        "local cur = redis.call('GET', KEYS[1]) \
+         if cur == false or cur ~= ARGV[1] then return {0, cur} end \
+         redis.call('SET', KEYS[1], ARGV[2], 'KEEPTTL') return {1, false}",
+    )
+});
+
+/// Moves a hash field to a free name, with a new value, if it still holds the expected
+/// one: `{1}` done, `{2}` the name is taken, or `{0, current}` when it changed.
+static CHECKED_RENAME_FIELD_SCRIPT: std::sync::LazyLock<redis::Script> = std::sync::LazyLock::new(|| {
+    redis::Script::new(
+        "local cur = redis.call('HGET', KEYS[1], ARGV[1]) \
+         if cur == false or cur ~= ARGV[4] then return {0, cur} end \
+         if redis.call('HSETNX', KEYS[1], ARGV[2], ARGV[3]) == 0 then return {2, false} end \
+         redis.call('HDEL', KEYS[1], ARGV[1]) return {1, false}",
+    )
+});
+
+/// What a write that first checks the value it replaces came to.
+#[derive(Debug, PartialEq, Eq)]
+pub enum Checked {
+    /// written
+    Done,
+    /// a renamed field's new name is a field already; nothing changed
+    Taken,
+    /// the value is no longer the expected one (`None`: it is gone); nothing changed
+    Changed(Option<String>),
+}
+
+/// The outcome a checked script answered: its code, and the current value when it changed.
+fn checked_of(reply: (i64, Option<Vec<u8>>)) -> Checked {
+    match reply {
+        (1, _) => Checked::Done,
+        (2, _) => Checked::Taken,
+        (_, current) => Checked::Changed(current.map(lossy)),
+    }
+}
+
 /// Whether the server runs in cluster mode (`cluster_enabled:1` in `INFO cluster`); a
 /// server that won't say (INFO not allowed) is taken not to.
 pub(super) async fn cluster_enabled(con: &mut RedisConnection) -> bool {
@@ -343,6 +393,75 @@ impl Session {
                 }
                 self.hash_delete(key, from).await?;
                 Ok(true)
+            }
+            Err(e) => Err(e),
+        }
+    }
+
+    /// [`hash_set`](Self::hash_set) if the field still holds `expected`, in one script; a
+    /// server that refuses scripts gets the check and the write as two commands.
+    pub async fn hash_set_checked(&mut self, key: &KeyName, field: &str, expected: &str, value: &str) -> Result<Checked, Error> {
+        let reply: Result<(i64, Option<Vec<u8>>), _> =
+            CHECKED_HASH_SET_SCRIPT.key(key).arg(field).arg(expected).arg(value).invoke_async(&mut self.con).await;
+        match reply.map_err(Error::from) {
+            Ok(reply) => Ok(checked_of(reply)),
+            Err(e) if matches!(e.kind(), ErrorKind::Redis | ErrorKind::Denied) => {
+                tracing::info!("the checked write script was refused ({e}); checking then writing");
+                let current: Option<Vec<u8>> = redis::cmd("HGET").arg(key).arg(field).query_async(&mut self.con).await?;
+                if current.as_deref() != Some(expected.as_bytes()) {
+                    return Ok(Checked::Changed(current.map(lossy)));
+                }
+                self.hash_set(key, field, value).await?;
+                Ok(Checked::Done)
+            }
+            Err(e) => Err(e),
+        }
+    }
+
+    /// [`hash_rename`](Self::hash_rename) if field `from` still holds `expected`.
+    pub async fn hash_rename_checked(
+        &mut self,
+        key: &KeyName,
+        from: &str,
+        to: &str,
+        expected: &str,
+        value: &str,
+    ) -> Result<Checked, Error> {
+        let reply: Result<(i64, Option<Vec<u8>>), _> =
+            CHECKED_RENAME_FIELD_SCRIPT.key(key).arg(from).arg(to).arg(value).arg(expected).invoke_async(&mut self.con).await;
+        match reply.map_err(Error::from) {
+            Ok(reply) => Ok(checked_of(reply)),
+            Err(e) if matches!(e.kind(), ErrorKind::Redis | ErrorKind::Denied) => {
+                tracing::info!("the checked rename script was refused ({e}); checking then renaming");
+                let current: Option<Vec<u8>> = redis::cmd("HGET").arg(key).arg(from).query_async(&mut self.con).await?;
+                if current.as_deref() != Some(expected.as_bytes()) {
+                    return Ok(Checked::Changed(current.map(lossy)));
+                }
+                if !self.hash_set_new(key, to, value).await? {
+                    return Ok(Checked::Taken);
+                }
+                self.hash_delete(key, from).await?;
+                Ok(Checked::Done)
+            }
+            Err(e) => Err(e),
+        }
+    }
+
+    /// [`string_set`](Self::string_set) if the string still holds `expected`, in one script
+    /// (Redis 6.0+); otherwise the check and the write are two commands.
+    pub async fn string_set_checked(&mut self, key: &KeyName, expected: &str, value: &str) -> Result<Checked, Error> {
+        let reply: Result<(i64, Option<Vec<u8>>), _> =
+            CHECKED_STRING_SET_SCRIPT.key(key).arg(expected).arg(value).invoke_async(&mut self.con).await;
+        match reply.map_err(Error::from) {
+            Ok(reply) => Ok(checked_of(reply)),
+            Err(e) if matches!(e.kind(), ErrorKind::Redis | ErrorKind::Denied) => {
+                tracing::info!("the checked write script was refused ({e}); checking then writing");
+                let current: Option<Vec<u8>> = redis::cmd("GET").arg(key).query_async(&mut self.con).await?;
+                if current.as_deref() != Some(expected.as_bytes()) {
+                    return Ok(Checked::Changed(current.map(lossy)));
+                }
+                self.string_set(key, value).await?;
+                Ok(Checked::Done)
             }
             Err(e) => Err(e),
         }

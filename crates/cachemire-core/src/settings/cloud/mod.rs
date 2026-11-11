@@ -157,6 +157,11 @@ impl SettingsStore {
         (profile, ssh.filter(|(_, ssh)| ssh.enabled))
     }
 
+    /// The connection profile an endpoint ends up with ("" for none).
+    pub fn cloud_profile_id(&self, key: &CloudKey) -> String {
+        self.cloud_effective(key).0
+    }
+
     /// Gives each of `items`, listed from `account` and `region`, the connection profile and
     /// tunnel set for it (without the secrets: see `fill_cloud_secrets`).
     pub fn apply_cloud(&self, account: &str, region: &str, items: &mut [ConnectionItem]) {

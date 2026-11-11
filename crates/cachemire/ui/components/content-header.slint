@@ -447,11 +447,13 @@ export component RowContextMenu inherits Rectangle {
     // deleting is one click to arm, a second to do it
     callback delete();
     property <bool> confirming-delete: false;
+    // the connection can't be written to: only the export entries are offered
+    in property <bool> read-only: false;
 
     property <length> row-h: Theme.px(28px);
     property <length> pad: Theme.px(4px);
     width: Theme.px(200px);
-    height: (!on-row ? 1 : (selection-count > 0 ? 6 : 5)) * row-h + 2 * pad;
+    height: ((!on-row ? 1 : (selection-count > 0 ? 6 : 5)) - (read-only ? 3 : 0)) * row-h + 2 * pad;
     background: Theme.bg-elevated;
     border-radius: Theme.radius-md;
     border-width: 1px;
@@ -467,9 +469,9 @@ export component RowContextMenu inherits Rectangle {
         if root.on-row: MenuRow { label: @tr("Export…"); clicked => { root.export-row(); } }
         if root.on-row: MenuRow { label: @tr("Select for export"); clicked => { root.select-row(); } }
         if root.on-row && root.selection-count > 0: MenuRow { label: @tr("Export {} selected…", root.selection-count); clicked => { root.export-selection(); } }
-        MenuRow { label: @tr("Add key…"); clicked => { root.add-key(); } }
-        if root.on-row: MenuRow { label: @tr("Rename…"); clicked => { root.rename(); } }
-        if root.on-row: MenuRow {
+        if !root.read-only: MenuRow { label: @tr("Add key…"); clicked => { root.add-key(); } }
+        if root.on-row && !root.read-only: MenuRow { label: @tr("Rename…"); clicked => { root.rename(); } }
+        if root.on-row && !root.read-only: MenuRow {
             label: root.confirming-delete ? @tr("Click again to delete") : @tr("Delete");
             danger: true;
             clicked => {

@@ -30,6 +30,8 @@ export global ConnectionState {
     in-out property <[ConnectionRowData]> cloud-connections: [];
     // memory used by the connected server, refreshed periodically (see server_stats.rs)
     in-out property <string> memory: "";
+    // no write to Redis is made through the connection in use (its own setting, or its profile's)
+    in-out property <bool> read-only: false;
     callback copy-connection-string();
     callback selected(id: string);
     // raised from Rust once a connection picked in the dropdown has connected
@@ -61,6 +63,10 @@ export global ConnectionEditor {
     in-out property <string> ssh-passphrase: "";
     in-out property <bool> profile-enabled: false;
     in-out property <string> profile-id: "";
+    // the connection's own read-only setting; its profile may make it read-only too
+    in-out property <bool> read-only: false;
+    // whether the connection profile `id` ("" for none) is read-only
+    pure callback profile-read-only(id: string) -> bool;
     // "Browse…" for the SSH private key: Rust picks the file and fills `ssh-key`
     callback browse-key();
     callback saved(ConnectionForm);
@@ -83,6 +89,7 @@ export global ConnectionEditor {
         self.ssh-passphrase = "";
         self.profile-enabled = false;
         self.profile-id = "";
+        self.read-only = false;
         self.error = "";
         self.test-status = "";
         self.is-edit = false;
@@ -105,6 +112,7 @@ export global ConnectionEditor {
             ssh-key: ssh-key,
             ssh-passphrase: ssh-passphrase,
             profile-id: profile-enabled ? profile-id : "",
+            read-only: read-only,
         };
     }
 }
@@ -193,6 +201,7 @@ export global Preferences {
     in-out property <string> conn-profile-id: "";
     in-out property <string> conn-profile-name: "";
     in-out property <ProfileTint> conn-profile-tint: ProfileTint.red;
+    in-out property <bool> conn-profile-read-only: false;
     callback conn-profile-saved(ConnProfileForm);
     callback conn-profile-deleted(id: string);
 }
@@ -460,8 +469,8 @@ export global KeyPanel {
     callback open-value(field: string, escaped: bool);
     callback download-value(field: string, escaped: bool);
     callback copy-value(field: string, escaped: bool);
-    // whether the shown key's values can be written (a hash, or a string read whole), and
-    // opening the editor on one row's field
+    // whether the shown key's values can be written (a hash, or a string read whole, on a
+    // connection that isn't read-only), and opening the editor on one row's field
     in property <bool> editable: false;
     callback edit-value(field: string);
     // the header's + on a hash: the editor, open on a new field

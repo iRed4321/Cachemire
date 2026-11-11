@@ -51,6 +51,9 @@ struct StoredConnection {
     // the connection profile it uses ("" for none)
     #[serde(default)]
     profile_id: String,
+    // no write to Redis is made through this connection
+    #[serde(default)]
+    read_only: bool,
     // the passwords and passphrase are in the credential store, not in this file
     #[serde(default)]
     in_vault: bool,
@@ -91,6 +94,7 @@ impl Default for StoredConnection {
             ssh_private_key: String::new(),
             ssh_passphrase: String::new(),
             profile_id: String::new(),
+            read_only: false,
             in_vault: false,
             extra: Default::default(),
         }
@@ -222,6 +226,9 @@ fn apply_payload(conn: &mut StoredConnection, payload: ConnectionPayloadInput) {
     if let Some(profile_id) = payload.profile_id {
         conn.profile_id = profile_id;
     }
+    if let Some(read_only) = payload.read_only {
+        conn.read_only = read_only;
+    }
 }
 
 /// Checks the record can be connected with, moving a password typed into the
@@ -316,6 +323,7 @@ fn to_item(stored: &StoredConnection) -> ConnectionItem {
             passphrase: stored.ssh_passphrase.clone(),
         }),
         profile_id: stored.profile_id.clone(),
+        read_only: stored.read_only,
     }
 }
 

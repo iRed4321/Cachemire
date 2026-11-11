@@ -630,9 +630,12 @@ export component CheckRow inherits Rectangle {
     in property <bool> checked: false;
     // the label in bold, as a form's section switch
     in property <bool> bold: false;
+    // greyed out and not clickable
+    in property <bool> enabled: true;
     callback toggled();
 
     height: Theme.px(24px);
+    opacity: root.enabled ? 1 : 0.5;
 
     HorizontalLayout {
         spacing: Theme.px(8px);
@@ -648,7 +651,8 @@ export component CheckRow inherits Rectangle {
         Rectangle { horizontal-stretch: 1; }
     }
     TouchArea {
-        mouse-cursor: pointer;
+        enabled: root.enabled;
+        mouse-cursor: root.enabled ? pointer : default;
         clicked => { root.toggled(); }
     }
 }

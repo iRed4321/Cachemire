@@ -2,7 +2,7 @@
 //! Add key, Rename and Delete writing to Redis.
 
 use super::*;
-use crate::KeyNameDialog;
+use crate::{FolderDeleteDialog, KeyNameDialog};
 
 /// A few keys in two folders, and one at the root.
 fn shop(redis: &mut TestRedis) {
@@ -146,6 +146,9 @@ fn deleting_a_key_or_a_folder_removes_it_from_redis_and_the_tree() {
     assert_eq!(r.h.window.global::<TabStrip>().get_tabs().row_count(), 0, "its tab closes");
 
     r.h.window.global::<KeyTree>().invoke_delete_requested("user:".into());
+    r.until("the keys under the folder to be counted", |h| !h.window.global::<FolderDeleteDialog>().get_counting());
+    assert_eq!(r.h.window.global::<FolderDeleteDialog>().get_count(), 3);
+    r.h.window.global::<FolderDeleteDialog>().invoke_confirmed();
     r.until("the folder to go", |h| !h.window.global::<KeyTree>().get_rows().iter().any(|row| row.full_name == "user:"));
     assert!(r.redis.query::<Vec<String>>(&["KEYS", "user:*"]).is_empty());
     assert_eq!(r.rows(), ["order:"]);

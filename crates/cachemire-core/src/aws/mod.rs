@@ -288,6 +288,7 @@ pub async fn redis_connections(profile_name: &str, page: &SignInPage) -> Result<
             password: String::new(),
             ssh: None,
             profile_id: String::new(),
+            read_only: false,
         })
     };
 

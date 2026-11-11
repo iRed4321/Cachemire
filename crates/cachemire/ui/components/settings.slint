@@ -157,6 +157,7 @@ component AddLink inherits Rectangle {
 component ConnProfileRow inherits Rectangle {
     in property <string> name;
     in property <ProfileTint> tint;
+    in property <bool> read-only: false;
     in property <length> row-width;
     callback edit();
 
@@ -183,6 +184,12 @@ component ConnProfileRow inherits Rectangle {
                 vertical-alignment: center;
                 horizontal-stretch: 1;
                 overflow: elide;
+            }
+            if root.read-only: Text {
+                text: @tr("Read-only");
+                font-size: Theme.pt(10.5px);
+                color: Theme.text-tertiary;
+                vertical-alignment: center;
             }
             IconPencil { size: Theme.icon-sm; tint: Theme.text-tertiary; }
         }
@@ -858,7 +865,7 @@ component SshProfileList inherits VerticalLayout {
 // the connection profiles under their hint, laid out like SshProfileList
 component ConnProfileList inherits VerticalLayout {
     in property <bool> scrolls: true;
-    callback edit(id: string, name: string, tint: ProfileTint);
+    callback edit(id: string, name: string, tint: ProfileTint, read-only: bool);
     property <[ConnProfileRowData]> profiles: Preferences.conn-profiles;
     property <length> row-height: Theme.px(34px);
 
@@ -894,7 +901,8 @@ component ConnProfileList inherits VerticalLayout {
                         row-width: conn-content.width;
                         name: p.name;
                         tint: p.tint;
-                        edit => { root.edit(p.id, p.name, p.tint); }
+                        read-only: p.read-only;
+                        edit => { root.edit(p.id, p.name, p.tint, p.read-only); }
                     }
                 }
             }
@@ -909,7 +917,8 @@ component ConnProfileList inherits VerticalLayout {
                 row-width: conn-list-box.width - Theme.px(2px);
                 name: p.name;
                 tint: p.tint;
-                edit => { root.edit(p.id, p.name, p.tint); }
+                read-only: p.read-only;
+                edit => { root.edit(p.id, p.name, p.tint, p.read-only); }
             }
         }
     }
@@ -944,8 +953,11 @@ export component SettingsModal inherits Rectangle {
     in-out property <string> conn-field-id <=> Preferences.conn-profile-id;
     in-out property <string> conn-field-name <=> Preferences.conn-profile-name;
     in-out property <ProfileTint> conn-field-tint <=> Preferences.conn-profile-tint;
+    in-out property <bool> conn-field-read-only <=> Preferences.conn-profile-read-only;
     callback conn-save();
-    conn-save => { Preferences.conn-profile-saved({ id: conn-field-id, name: conn-field-name, tint: conn-field-tint }); }
+    conn-save => {
+        Preferences.conn-profile-saved({ id: conn-field-id, name: conn-field-name, tint: conn-field-tint, read-only: conn-field-read-only });
+    }
     callback conn-delete();
     conn-delete => { Preferences.conn-profile-deleted(conn-field-id); }
 
@@ -1007,10 +1019,11 @@ export component SettingsModal inherits Rectangle {
         root.editing = true;
     }
 
-    function show-conn-form(id: string, name: string, tint: ProfileTint) {
+    function show-conn-form(id: string, name: string, tint: ProfileTint, read-only: bool) {
         root.conn-field-id = id;
         root.conn-field-name = name;
         root.conn-field-tint = tint;
+        root.conn-field-read-only = read-only;
         root.confirming-delete = false;
         root.editing-conn-profile = true;
     }
@@ -1158,7 +1171,7 @@ export component SettingsModal inherits Rectangle {
                         }
                         if !root.searching && root.category == SettingsCategory.conn-profiles && !root.on-conn-form: AddLink {
                             text: @tr("Add profile");
-                            clicked => { root.show-conn-form("", "", ProfileTint.red); }
+                            clicked => { root.show-conn-form("", "", ProfileTint.red, false); }
                         }
                     }
 
@@ -1180,7 +1193,7 @@ export component SettingsModal inherits Rectangle {
                     }
                     if !root.searching && root.category == SettingsCategory.conn-profiles && !root.editing-conn-profile: ConnProfileList {
                         vertical-stretch: 1;
-                        edit(id, name, tint) => { root.show-conn-form(id, name, tint); }
+                        edit(id, name, tint, read-only) => { root.show-conn-form(id, name, tint, read-only); }
                     }
 
                     // ---- the search's results, by category, on one page
@@ -1216,10 +1229,10 @@ export component SettingsModal inherits Rectangle {
                             category: SettingsCategory.conn-profiles;
                             text: @tr("Connection profiles");
                             add-text: @tr("Add profile");
-                            add => { root.show-conn-form("", "", ProfileTint.red); }
+                            add => { root.show-conn-form("", "", ProfileTint.red, false); }
                             ConnProfileList {
                                 scrolls: false;
-                                edit(id, name, tint) => { root.show-conn-form(id, name, tint); }
+                                edit(id, name, tint, read-only) => { root.show-conn-form(id, name, tint, read-only); }
                             }
                         }
                         if root.found(SettingsCategory.experimental): ResultSection {
@@ -1271,6 +1284,18 @@ export component SettingsModal inherits Rectangle {
                                 color: Theme.text-secondary;
                             }
                             TintSwatches { tint <=> root.conn-field-tint; }
+                        }
+                        CheckRow {
+                            text: @tr("Read-only");
+                            bold: true;
+                            checked: root.conn-field-read-only;
+                            toggled => { root.conn-field-read-only = !root.conn-field-read-only; }
+                        }
+                        Text {
+                            text: @tr("No key or value can be changed through a connection that has this profile.");
+                            font-size: Theme.pt(10.5px);
+                            color: Theme.text-tertiary;
+                            wrap: word-wrap;
                         }
                     }
 

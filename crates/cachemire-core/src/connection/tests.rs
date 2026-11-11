@@ -9,6 +9,7 @@ fn connection(url: &str) -> ConnectionItem {
         password: "pw".into(),
         ssh: None,
         profile_id: String::new(),
+        read_only: false,
     }
 }
 

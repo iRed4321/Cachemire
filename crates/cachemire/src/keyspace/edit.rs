@@ -1,18 +1,19 @@
 //! Writing from the tree's right-click menu: a new key (an empty hash, which Redis
 //! holds once its first field is written), and renaming or deleting a key or a
-//! folder (every key under it). The tree and the tabs follow what was done.
+//! folder (every key under it, once confirmed with their count). The tree and tabs follow.
 
 use std::cell::RefCell;
 use std::rc::Rc;
 
 use rust_i18n::t;
 use slint::ComponentHandle;
+use tokio::task::AbortHandle;
 
 use super::search::id_matches;
 use super::{DELIMITER, LeafKind, Tree, focus_key, rebuild, show_additions};
 use crate::app::App;
 use crate::error::Localize;
-use crate::{KeyNameAction, KeyNameDialog, KeyTree, MainWindow};
+use crate::{FolderDeleteDialog, KeyNameAction, KeyNameDialog, KeyTree, MainWindow};
 use cachemire_core::explorer::{self, FolderMove};
 use cachemire_core::key_name::KeyName;
 
@@ -239,32 +240,92 @@ fn submit_rename_folder(app: &App, window: &MainWindow, from: String, text: &str
     });
 }
 
-/// "Delete" on key or folder `row` (the menu asked twice): removed from Redis.
-fn delete(app: &App, window: &MainWindow, row: String) {
-    if !row.ends_with(DELIMITER) && app.key_detail.is_new(window.connection_id().as_str(), &row) {
+/// "Delete" on key `row` (the menu asked twice): removed from Redis.
+fn delete_key(app: &App, window: &MainWindow, row: String) {
+    if app.key_detail.is_new(window.connection_id().as_str(), &row) {
         return removed(app, window, &row);
     }
     let (state, connection) = (app.state.clone(), window.connection_id().to_string());
-    let (asked, name, folder) = (connection.clone(), KeyName::from_id(&row), row.ends_with(DELIMITER));
-    let deleted = async move {
-        if folder {
-            explorer::delete_folder(&state, Some(&asked), &name).await.map(Some)
-        } else {
-            explorer::delete_key(&state, Some(&asked), &name).await.map(|()| None)
-        }
-    };
+    let (asked, name) = (connection.clone(), KeyName::from_id(&row));
+    let deleted = async move { explorer::delete_key(&state, Some(&asked), &name).await };
     crate::app::spawn(&app.rt, deleted, move |app, window, deleted| match deleted.flatten() {
-        Ok(count) => {
-            let done = match count {
-                Some(count) => t!("%{count} keys deleted", count = count),
-                None => t!("Deleted"),
-            };
-            crate::toast::show(window, &done);
+        Ok(()) => {
+            crate::toast::show(window, &t!("Deleted"));
             if shown(window, &connection) {
                 removed(app, window, &row);
             }
         }
         Err(e) => crate::toast::show(window, &t!("Deleting failed: %{error}", error = e.localized())),
+    });
+}
+
+/// The folder deletion being asked: the folder, and the count of its keys under way.
+#[derive(Default)]
+struct FolderDeletion {
+    folder: String,
+    counting: Option<AbortHandle>,
+}
+
+impl FolderDeletion {
+    /// Stops the count, if it is still running.
+    fn stop_counting(&mut self) {
+        if let Some(counting) = self.counting.take() {
+            counting.abort();
+        }
+    }
+}
+
+/// "Delete" on folder `row`: the dialog opens and counts the keys under it, to ask with the count.
+fn ask_delete_folder(app: &App, window: &MainWindow, deletion: &Rc<RefCell<FolderDeletion>>, row: String) {
+    let dialog = window.global::<FolderDeleteDialog>();
+    dialog.set_folder(KeyName::display_id(&row).as_ref().into());
+    dialog.set_count(0);
+    dialog.set_counting(true);
+    dialog.set_busy(false);
+    dialog.set_error("".into());
+    dialog.set_open(true);
+    let (state, connection) = (app.state.clone(), window.connection_id().to_string());
+    let (asked, name) = (connection.clone(), KeyName::from_id(&row));
+    let counted = async move { explorer::count_keys_under(&state, Some(&asked), &name).await };
+    let mut current = deletion.borrow_mut();
+    current.stop_counting();
+    current.folder = row;
+    current.counting = Some(crate::app::spawn(&app.rt, counted, move |_, window, counted| {
+        let dialog = window.global::<FolderDeleteDialog>();
+        match counted.flatten() {
+            Ok(count) => {
+                dialog.set_count(i32::try_from(count).unwrap_or(i32::MAX));
+                dialog.set_counting(false);
+            }
+            Err(e) => {
+                dialog.set_open(false);
+                crate::toast::show(window, &t!("Counting failed: %{error}", error = e.localized()));
+            }
+        }
+    }));
+}
+
+/// The dialog's Delete: every key under the folder removed from Redis.
+fn delete_folder(app: &App, window: &MainWindow, row: String) {
+    let dialog = window.global::<FolderDeleteDialog>();
+    dialog.set_busy(true);
+    dialog.set_error("".into());
+    let (state, connection) = (app.state.clone(), window.connection_id().to_string());
+    let (asked, name) = (connection.clone(), KeyName::from_id(&row));
+    let deleted = async move { explorer::delete_folder(&state, Some(&asked), &name).await };
+    crate::app::spawn(&app.rt, deleted, move |app, window, deleted| {
+        let dialog = window.global::<FolderDeleteDialog>();
+        dialog.set_busy(false);
+        match deleted.flatten() {
+            Ok(count) => {
+                dialog.set_open(false);
+                crate::toast::show(window, &t!("%{count} keys deleted", count = count));
+                if shown(window, &connection) {
+                    removed(app, window, &row);
+                }
+            }
+            Err(e) => dialog.set_error(t!("Deleting failed: %{error}", error = e.localized()).into_owned().into()),
+        }
     });
 }
 
@@ -281,7 +342,41 @@ pub(super) fn init(app: &Rc<App>, window: &MainWindow) {
         let target = target.clone();
         move |row| crate::app::with(|_, window| open_rename(window, &target, &row))
     });
-    tree.on_delete_requested(|row| crate::app::with(|app, window| delete(app, window, row.to_string())));
+    let deletion: Rc<RefCell<FolderDeletion>> = Rc::default();
+    tree.on_delete_requested({
+        let deletion = deletion.clone();
+        move |row| {
+            crate::app::with(|app, window| {
+                if row.ends_with(DELIMITER) {
+                    ask_delete_folder(app, window, &deletion, row.to_string());
+                } else {
+                    delete_key(app, window, row.to_string());
+                }
+            })
+        }
+    });
+    let dialog = window.global::<FolderDeleteDialog>();
+    dialog.on_confirmed({
+        let deletion = deletion.clone();
+        move || {
+            crate::app::with(|app, window| {
+                let dialog = window.global::<FolderDeleteDialog>();
+                if !dialog.get_counting() && !dialog.get_busy() {
+                    delete_folder(app, window, deletion.borrow().folder.clone());
+                }
+            })
+        }
+    });
+    // (a deletion under way still ends: the dialog only stops asking)
+    dialog.on_cancelled(move || {
+        deletion.borrow_mut().stop_counting();
+        crate::app::with(|_, window| {
+            let dialog = window.global::<FolderDeleteDialog>();
+            if !dialog.get_busy() {
+                dialog.set_open(false);
+            }
+        });
+    });
     window.global::<KeyNameDialog>().on_submit({
         let app = app.clone();
         move |text| {

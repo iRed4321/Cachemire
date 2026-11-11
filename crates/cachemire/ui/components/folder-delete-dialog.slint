@@ -1,0 +1,112 @@
+import { Theme } from "theme.slint";
+import { ModalButton } from "widgets.slint";
+import { IconSpinner } from "icons.slint";
+
+// The confirmation of a folder's deletion. Rust counts the keys under the folder (`counting`
+// until it knows) and answers `confirmed`; `cancelled` is raised however the dialog is closed
+// (see src/keyspace/edit.rs).
+export global FolderDeleteDialog {
+    in-out property <bool> open: false;
+    // the folder's name as it reads
+    in property <string> folder;
+    // the keys counted under it
+    in property <int> count: 0;
+    in property <bool> counting: true;
+    // the deletion is under way, and why it failed ("" when it didn't)
+    in property <bool> busy: false;
+    in property <string> error: "";
+    callback confirmed();
+    callback cancelled();
+}
+
+// Over the whole window; a click outside the card, or Escape, cancels.
+export component FolderDeleteModal inherits Rectangle {
+    background: #000000aa;
+    TouchArea {
+        clicked => { FolderDeleteDialog.cancelled(); }
+    }
+
+    card := Rectangle {
+        width: min(parent.width - Theme.px(80px), Theme.px(460px));
+        height: layout.preferred-height;
+        x: (parent.width - self.width) / 2;
+        y: (parent.height - self.height) / 2;
+        background: Theme.bg-elevated;
+        border-radius: Theme.radius-lg;
+        border-width: 1px;
+        border-color: Theme.border-soft;
+        drop-shadow-color: Theme.shadow-color;
+        drop-shadow-blur: Theme.shadow-blur;
+        drop-shadow-offset-y: Theme.shadow-offset-y;
+
+        // swallow clicks so they don't reach the backdrop's cancel
+        TouchArea { }
+
+        FocusScope {
+            focus-on-click: false;
+            init => { self.focus(); }
+            key-pressed(event) => {
+                if event.text == Key.Escape {
+                    FolderDeleteDialog.cancelled();
+                    return accept;
+                }
+                return reject;
+            }
+            layout := VerticalLayout {
+                padding: Theme.px(18px);
+                spacing: Theme.px(12px);
+
+                Text {
+                    text: @tr("Delete folder");
+                    font-size: Theme.pt(14px);
+                    font-weight: 700;
+                    color: Theme.text-primary;
+                }
+                if FolderDeleteDialog.counting: HorizontalLayout {
+                    spacing: Theme.px(8px);
+                    cross-axis-alignment: center;
+                    IconSpinner { size: Theme.icon-sm; }
+                    Text {
+                        horizontal-stretch: 1;
+                        text: @tr("Counting the keys under {}…", FolderDeleteDialog.folder);
+                        font-size: Theme.pt(12px);
+                        color: Theme.text-secondary;
+                        vertical-alignment: center;
+                        wrap: word-wrap;
+                    }
+                }
+                if !FolderDeleteDialog.counting: Text {
+                    text: FolderDeleteDialog.count == 0 ? @tr("No key was found under {}: the folder is only removed from the tree.", FolderDeleteDialog.folder)
+                        : (FolderDeleteDialog.count == 1 ? @tr("Delete 1 key under {}?", FolderDeleteDialog.folder)
+                        : @tr("Delete {} keys under {}?", FolderDeleteDialog.count, FolderDeleteDialog.folder));
+                    font-size: Theme.pt(12px);
+                    color: Theme.text-primary;
+                    wrap: word-wrap;
+                }
+
+                HorizontalLayout {
+                    spacing: Theme.px(8px);
+                    Text {
+                        horizontal-stretch: 1;
+                        text: FolderDeleteDialog.error;
+                        font-size: Theme.pt(12px);
+                        color: Theme.accent-red;
+                        vertical-alignment: center;
+                        wrap: word-wrap;
+                    }
+                    ModalButton {
+                        text: @tr("Cancel");
+                        clicked => { FolderDeleteDialog.cancelled(); }
+                    }
+                    ModalButton {
+                        text: FolderDeleteDialog.busy ? @tr("Deleting...") : @tr("Delete");
+                        danger: true;
+                        armed: true;
+                        enabled: !FolderDeleteDialog.counting && !FolderDeleteDialog.busy;
+                        clicked => { FolderDeleteDialog.confirmed(); }
+                    }
+                }
+            }
+        }
+    }
+}

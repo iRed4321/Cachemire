@@ -61,6 +61,7 @@ pub(crate) fn refresh(app: &App, window: &MainWindow) {
                 profile_id: if profiles.contains_key(&c.profile_id) { c.profile_id.clone() } else { String::new() }.into(),
                 profile_name: profile_name.into(),
                 profile_tint,
+                read_only: c.read_only,
             }
         })
         .collect();
@@ -86,6 +87,7 @@ pub(crate) fn refresh(app: &App, window: &MainWindow) {
                 profile_id: "".into(),
                 profile_name: profile_name.into(),
                 profile_tint,
+                read_only: false,
             }
         })
         .collect();
@@ -305,6 +307,7 @@ fn payload_from_form(form: &ConnectionForm) -> Result<ConnectionPayloadInput, Er
         ssh_private_key: Some(form.ssh_key.to_string()),
         ssh_passphrase: keep_if_blank(&form.ssh_passphrase),
         profile_id: Some(form.profile_id.to_string()),
+        read_only: Some(form.read_only),
     })
 }
 

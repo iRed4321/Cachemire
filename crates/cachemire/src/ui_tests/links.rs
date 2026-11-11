@@ -195,6 +195,7 @@ fn an_aws_link_follows_once_its_account_is_listed() {
         password: String::new(),
         ssh: None,
         profile_id: String::new(),
+        read_only: false,
     };
     state.connections.lock().set_cloud_connections("111", "eu-west-1", vec![endpoint("dev", "sessions")]);
 

@@ -23,6 +23,7 @@ fn form_ready() -> (Harness, Rc<crate::app::App>, tokio::runtime::Runtime, Event
         password: String::new(),
         ssh: None,
         profile_id: String::new(),
+        read_only: false,
     };
     app.state.connections.lock().set_cloud_connections(ACCOUNT, "eu-west-1", vec![orders]);
     (h, app, runtime, turn)

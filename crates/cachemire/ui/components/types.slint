@@ -134,6 +134,7 @@ export struct ConnProfileRowData {
     id: string,
     name: string,
     tint: ProfileTint,
+    read-only: bool,
 }
 
 export struct ConnectionRowData {
@@ -155,6 +156,8 @@ export struct ConnectionRowData {
     profile-id: string,
     profile-name: string,
     profile-tint: ProfileTint,
+    // the connection's own read-only setting (its profile may make it read-only too)
+    read-only: bool,
 }
 
 // what the add/edit form holds when it's saved
@@ -172,6 +175,7 @@ export struct ConnectionForm {
     ssh-key: string,
     ssh-passphrase: string,
     profile-id: string, // "" for none
+    read-only: bool, // the connection's own setting
 }
 
 // one SSH profile as the settings window lists it: never its password
@@ -195,6 +199,7 @@ export struct ConnProfileForm {
     id: string, // empty for a new profile
     name: string,
     tint: ProfileTint,
+    read-only: bool,
 }
 
 export struct KeyspaceRowData {

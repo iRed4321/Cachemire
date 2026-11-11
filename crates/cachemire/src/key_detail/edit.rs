@@ -2,6 +2,7 @@
 //! it's typed, then written back to its hash field or string key once it's valid JSON;
 //! or a new field of a hash, written once it has a name and a value.
 
+use parking_lot::Mutex;
 use std::cell::RefCell;
 use std::ops::Range;
 use std::rc::Rc;
@@ -14,7 +15,7 @@ use slint::{ComponentHandle, Model, ModelRc, SharedString, VecModel};
 
 use crate::error::Localize;
 use crate::{KeyPanel, MainWindow, ValueEditor};
-use cachemire_core::explorer;
+use cachemire_core::explorer::{self, Checked};
 use cachemire_core::key_name::KeyName;
 use cachemire_core::state::AppState;
 
@@ -38,6 +39,11 @@ struct EditTarget {
     as_text: bool,
     /// the value's JSON was laid out on several lines, and is written back as typed
     multiline: bool,
+    /// the value as Redis held it when the editor opened (`None` for a new field): a save
+    /// finding another one stops, unless it overwrites
+    opened: Option<String>,
+    /// what a save that found another value saw: `Some(None)` when it is gone
+    seen: Arc<Mutex<Option<Option<String>>>>,
 }
 
 /// What a write did to the field the editor was open on.
@@ -48,9 +54,11 @@ enum Written {
     Added(String),
 }
 
-/// Why a write didn't happen: the server refused it, or it failed.
+/// Why a write didn't happen: the server refused it, the value in Redis is not the one
+/// the editor opened on (`None`: it is gone), or it failed.
 enum WriteError {
     Refused(String),
+    Changed(Option<String>),
     Failed(cachemire_core::error::Error),
 }
 
@@ -223,6 +231,19 @@ fn fits(text: &str, columns: i32, max_lines: i32) -> bool {
     lines <= max_lines.max(0) as usize
 }
 
+/// What the editor shows for the stored value `raw`: its text (pretty JSON), whether the
+/// value is plain text shown as a JSON string, and whether its JSON spans several lines.
+fn editor_view(raw: &str, hash: bool) -> (String, bool, bool) {
+    // (a hash field is JSON when it parses; a string key only when it is an object or array)
+    let json = match serde_json::from_str::<Value>(raw) {
+        Ok(Value::Object(_) | Value::Array(_)) => true,
+        Ok(_) => hash,
+        Err(_) => false,
+    };
+    let text = if json { relayout(raw, true) } else { serde_json::to_string_pretty(raw).unwrap_or_default() };
+    (text, !json, json && raw.contains('\n'))
+}
+
 impl Ctx {
     /// Opens the editor on field `name` of the shown key, as pretty JSON.
     fn edit_value(&self, name: &str, target: &RefCell<Option<EditTarget>>) {
@@ -239,18 +260,17 @@ impl Ctx {
             return;
         }
         let hash = self.shared.content.lock().is_hash();
-        let text = match field.json {
-            Some(_) => relayout(&field.raw, true),
-            None => serde_json::to_string_pretty(&field.raw).unwrap_or_default(),
-        };
+        let (text, as_text, multiline) = editor_view(&field.raw, hash);
         *target.borrow_mut() = Some(EditTarget {
             connection: window.connection_id().to_string(),
             key: panel.get_key_id().to_string(),
             field: hash.then(|| name.to_string()),
             creating: false,
             shown: text.clone(),
-            as_text: field.json.is_none(),
-            multiline: field.json.is_some() && field.raw.contains('\n'),
+            as_text,
+            multiline,
+            opened: Some(field.raw.clone()),
+            seen: Arc::default(),
         });
         let editor = window.global::<ValueEditor>();
         editor.set_creating(false);
@@ -260,6 +280,7 @@ impl Ctx {
         editor.set_name(name.into());
         editor.set_text(text.into());
         editor.set_error(Default::default());
+        editor.set_conflict(Default::default());
         editor.set_saving(false);
         editor.set_open(true);
     }
@@ -279,6 +300,8 @@ impl Ctx {
             shown: String::new(),
             as_text: true,
             multiline: false,
+            opened: None,
+            seen: Arc::default(),
         });
         let editor = window.global::<ValueEditor>();
         editor.set_creating(true);
@@ -288,6 +311,7 @@ impl Ctx {
         editor.set_name(Default::default());
         editor.set_text("\"\"".into());
         editor.set_error(Default::default());
+        editor.set_conflict(Default::default());
         editor.set_saving(false);
         editor.set_open(true);
     }
@@ -316,7 +340,8 @@ impl Ctx {
     /// Writes `text` (valid JSON) to what the editor is open on, under the field name
     /// `name` for a hash: a string as its text when the value was text, anything else as
     /// JSON (as typed when it was on several lines, else on one); nothing when unchanged.
-    fn save_value(&self, text: &str, name: &str, target: &RefCell<Option<EditTarget>>) {
+    /// Unless `overwrite`, a value in Redis other than the one opened on is not written over.
+    fn save_value(&self, text: &str, name: &str, overwrite: bool, target: &RefCell<Option<EditTarget>>) {
         let Ok(value) = serde_json::from_str::<Value>(text) else { return };
         let Some(target) = target.borrow().clone() else { return };
         let renamed = target.field.as_deref().filter(|field| *field != name).map(|_| name.to_string());
@@ -332,6 +357,7 @@ impl Ctx {
             _ => relayout(text, false),
         };
         let added = target.creating.then(|| name.to_string());
+        let expected = target.opened.clone().filter(|_| !overwrite && !target.creating);
         self.run_write(target, t!("Saved").into_owned(), move |state, connection, key, field| async move {
             let connection = Some(connection.as_str());
             if let Some(name) = added {
@@ -341,17 +367,47 @@ impl Ctx {
                 };
             }
             let written: Result<Written, WriteError> = match (field, renamed) {
-                (Some(from), Some(to)) => match explorer::rename_hash_field(&state, connection, &key, &from, &to, &raw).await? {
-                    true => Ok(Written::Renamed(to)),
-                    false => Err(WriteError::Refused(t!("This hash already has a field with this name").into_owned())),
-                },
-                (field, _) => {
-                    explorer::write_value(&state, connection, &key, field.as_deref(), &raw).await?;
-                    Ok(Written::Value)
+                (Some(from), Some(to)) => {
+                    match explorer::rename_hash_field(&state, connection, &key, &from, &to, &raw, expected.as_deref()).await? {
+                        Checked::Done => Ok(Written::Renamed(to)),
+                        Checked::Taken => Err(WriteError::Refused(t!("This hash already has a field with this name").into_owned())),
+                        Checked::Changed(current) => Err(WriteError::Changed(current)),
+                    }
                 }
+                (field, _) => match explorer::write_value(&state, connection, &key, field.as_deref(), &raw, expected.as_deref()).await? {
+                    Checked::Changed(current) => Err(WriteError::Changed(current)),
+                    Checked::Done | Checked::Taken => Ok(Written::Value),
+                },
             };
             written
         });
+    }
+
+    /// "Reload" after a save found another value: the editor takes the value now in Redis,
+    /// which becomes what a save is checked against; if it is gone, the editor closes.
+    fn reload(&self, target: &RefCell<Option<EditTarget>>) {
+        let Some(window) = self.weak.upgrade() else { return };
+        let editor = window.global::<ValueEditor>();
+        let Some(seen) = target.borrow().as_ref().and_then(|t| t.seen.lock().take()) else { return };
+        editor.set_conflict(Default::default());
+        editor.set_error(Default::default());
+        match seen {
+            Some(raw) => {
+                let mut target = target.borrow_mut();
+                let Some(target) = target.as_mut() else { return };
+                let (text, as_text, multiline) = editor_view(&raw, target.field.is_some());
+                (target.opened, target.shown, target.as_text, target.multiline) = (Some(raw), text.clone(), as_text, multiline);
+                if let Some(field) = &target.field {
+                    editor.set_name(field.as_str().into());
+                }
+                editor.set_text(text.into());
+            }
+            None => {
+                let Some(target) = target.borrow().clone() else { return };
+                editor.set_open(false);
+                self.show_written(&window, &target, Written::Deleted);
+            }
+        }
     }
 
     /// Removes the hash field the editor is open on.
@@ -375,6 +431,7 @@ impl Ctx {
     {
         let Some(window) = self.weak.upgrade() else { return };
         window.global::<ValueEditor>().set_saving(true);
+        window.global::<ValueEditor>().set_conflict(Default::default());
         let (connection, key, field) = (target.connection.clone(), KeyName::from_id(&target.key), target.field.clone());
         let written = write(self.state.clone(), connection, key, field);
         let ctx = self.clone();
@@ -388,6 +445,15 @@ impl Ctx {
                     ctx.show_written(window, &target, written);
                 }
                 Err(WriteError::Refused(why)) => editor.set_error(why.into()),
+                Err(WriteError::Changed(current)) => {
+                    let why = match (&current, &target.field) {
+                        (Some(_), _) => t!("This value changed in Redis since you opened it."),
+                        (None, Some(_)) => t!("This field no longer exists in Redis."),
+                        (None, None) => t!("This key no longer exists in Redis."),
+                    };
+                    *target.seen.lock() = Some(current);
+                    editor.set_conflict(why.as_ref().into());
+                }
                 Err(WriteError::Failed(e)) => editor.set_error(t!("Saving failed: %{error}", error = e.localized()).as_ref().into()),
             }
         });
@@ -451,7 +517,15 @@ pub(super) fn init(window: &MainWindow, ctx: &Ctx) {
     });
     editor.on_save({
         let (ctx, target) = (ctx.clone(), target.clone());
-        move |text, name| ctx.save_value(&text, &name, &target)
+        move |text, name| ctx.save_value(&text, &name, false, &target)
+    });
+    editor.on_overwrite({
+        let (ctx, target) = (ctx.clone(), target.clone());
+        move |text, name| ctx.save_value(&text, &name, true, &target)
+    });
+    editor.on_reload({
+        let (ctx, target) = (ctx.clone(), target.clone());
+        move || ctx.reload(&target)
     });
     editor.on_delete({
         let (ctx, target) = (ctx.clone(), target.clone());
