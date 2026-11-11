@@ -178,8 +178,8 @@ fn form_values(global: &CloudSettings, endpoint: bool) -> Result<(Option<String>
                 port,
                 username: global.get_ssh_username().trim().to_string(),
                 private_key: global.get_ssh_key().trim().to_string(),
-                password: global.get_ssh_password().to_string(),
-                passphrase: global.get_ssh_passphrase().to_string(),
+                password: global.get_ssh_password().as_str().into(),
+                passphrase: global.get_ssh_passphrase().as_str().into(),
                 in_vault: false,
             })
         }

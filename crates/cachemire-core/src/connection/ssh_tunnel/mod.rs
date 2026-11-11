@@ -205,7 +205,7 @@ async fn authenticate(session: &mut Handle<HostKeyCheck>, ssh: &SshSettings) -> 
 
     if !ssh.private_key.trim().is_empty() {
         let path = expand_home(ssh.private_key.trim());
-        let passphrase = if ssh.passphrase.is_empty() { None } else { Some(ssh.passphrase.as_str()) };
+        let passphrase = if ssh.passphrase.is_empty() { None } else { Some(ssh.passphrase.expose()) };
         let unreadable = |source| TunnelError::KeyUnreadable { file: path.clone(), source };
         let text = std::fs::read_to_string(&path).map_err(|e| unreadable(e.into()))?;
         let key = russh::keys::decode_secret_key(&text, passphrase).map_err(|source| {
@@ -226,7 +226,7 @@ async fn authenticate(session: &mut Handle<HostKeyCheck>, ssh: &SshSettings) -> 
     }
 
     if !ssh.password.is_empty() {
-        let result = session.authenticate_password(&ssh.username, &ssh.password).await?;
+        let result = session.authenticate_password(&ssh.username, ssh.password.expose()).await?;
         if result.success() {
             return Ok(());
         }

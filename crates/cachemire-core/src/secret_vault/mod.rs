@@ -1,6 +1,7 @@
 //! Where saved connections' passwords/passphrases live: the OS credential
 //! store (Windows Credential Manager, or Secret Service on Linux), so `databases.json` doesn't hold them in clear text.
 
+use crate::secret::Secret;
 use parking_lot::Mutex;
 use rustc_hash::FxHashMap;
 use serde::{Deserialize, Serialize};
@@ -45,9 +46,9 @@ const FORMER_SERVICE: &str = "Redust";
 #[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
 #[serde(default)]
 pub struct Secrets {
-    pub password: String,
-    pub ssh_password: String,
-    pub ssh_passphrase: String,
+    pub password: Secret,
+    pub ssh_password: Secret,
+    pub ssh_passphrase: Secret,
 }
 
 impl Secrets {
@@ -95,7 +96,7 @@ impl Secrets {
 
     /// These secrets without the ones `left_out` names.
     pub fn without(&self, left_out: LeftOut) -> Secrets {
-        let keep = |text: &String, left: bool| if left { String::new() } else { text.clone() };
+        let keep = |text: &Secret, left: bool| if left { Secret::default() } else { text.clone() };
         Secrets {
             password: keep(&self.password, left_out.password),
             ssh_password: keep(&self.ssh_password, left_out.ssh_password),

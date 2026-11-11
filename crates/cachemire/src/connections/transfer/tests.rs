@@ -46,14 +46,17 @@ fn an_export_reads_back_as_the_same_connections() {
     let (prod, local) = (drafts[0].payload(), drafts[1].payload());
     assert_eq!(prod.name.as_deref(), Some("Prod"));
     assert_eq!(prod.connection_url.as_deref(), Some("redis://app@cache.example:6380/3"));
-    assert_eq!(prod.password.as_deref(), Some("redis-secret"));
+    assert_eq!(prod.password.as_ref().map(Secret::expose), Some("redis-secret"));
     assert_eq!(prod.ssh_enabled, Some(true));
     assert_eq!(
         (prod.ssh_host.as_deref(), prod.ssh_port, prod.ssh_username.as_deref()),
         (Some("bastion.example"), Some(2222), Some("deploy"))
     );
     assert_eq!(prod.ssh_private_key.as_deref(), Some("~/.ssh/id_ed25519"));
-    assert_eq!((prod.ssh_password.as_deref(), prod.ssh_passphrase.as_deref()), (Some("ssh-secret"), Some("key-secret")));
+    assert_eq!(
+        (prod.ssh_password.as_ref().map(Secret::expose), prod.ssh_passphrase.as_ref().map(Secret::expose)),
+        (Some("ssh-secret"), Some("key-secret"))
+    );
     assert_eq!(local.ssh_enabled, Some(false));
     assert_eq!(local.password, None);
 }

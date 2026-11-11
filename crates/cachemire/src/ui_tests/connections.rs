@@ -58,7 +58,7 @@ fn saving_the_form_adds_the_connection_closes_the_form_and_lists_it() {
     let row = (0..listed.row_count()).filter_map(|i| listed.row_data(i)).find(|r| r.name == "Orders cache").expect("the list shows it");
     assert_eq!(row.connection_url, "redis://orders.example:6380/2");
     let saved = app.state.connections.lock().list_state().connections.into_iter().find(|c| c.name == "Orders cache").unwrap();
-    assert_eq!(saved.password, "s3cret");
+    assert_eq!(saved.password.expose(), "s3cret");
 }
 
 #[test]
@@ -76,7 +76,7 @@ fn editing_a_connection_with_a_blank_password_keeps_the_stored_one() {
     h.frame();
     press_save(&mut h, form, || app.state.connections.lock().get("prod").is_some_and(|c| c.name == "Prod (renamed)"));
     let prod = app.state.connections.lock().get("prod").unwrap();
-    assert_eq!((prod.connection_url.as_str(), prod.password.as_str()), ("redis://prod:6390", "kept"));
+    assert_eq!((prod.connection_url.as_str(), prod.password.expose()), ("redis://prod:6390", "kept"));
 }
 
 #[test]

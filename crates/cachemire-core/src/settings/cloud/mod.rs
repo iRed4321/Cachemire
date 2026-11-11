@@ -9,6 +9,7 @@ use serde::{Deserialize, Serialize};
 use super::{SettingsStore, StoredSettings};
 use crate::connection::{CloudKey, ConnectionItem, SshSettings};
 use crate::error::{Error, Invalid, NotFound};
+use crate::secret::Secret;
 use crate::secret_vault::KeyringError;
 use crate::secret_vault::{Secrets, SecretsCleanup, SecretsPolicy, Vaulting, place};
 
@@ -24,9 +25,9 @@ pub struct CloudSsh {
     pub private_key: String,
     // only while they aren't in the credential store
     #[serde(default)]
-    pub password: String,
+    pub password: Secret,
     #[serde(default)]
-    pub passphrase: String,
+    pub passphrase: Secret,
     #[serde(default)]
     pub in_vault: bool,
 }
@@ -40,8 +41,8 @@ impl CloudSsh {
             port: 22,
             username: String::new(),
             private_key: String::new(),
-            password: String::new(),
-            passphrase: String::new(),
+            password: Secret::default(),
+            passphrase: Secret::default(),
             in_vault: false,
         }
     }
@@ -173,9 +174,9 @@ impl SettingsStore {
                 host: ssh.host.clone(),
                 port: ssh.port,
                 username: ssh.username.clone(),
-                password: String::new(),
+                password: Secret::default(),
                 private_key: ssh.private_key.clone(),
-                passphrase: String::new(),
+                passphrase: Secret::default(),
             });
         }
     }
@@ -341,7 +342,7 @@ impl SettingsStore {
         vaulting: Vaulting<'_>,
         policy: SecretsPolicy,
     ) -> Result<(), Error> {
-        let mut before: FxHashMap<String, (String, String, bool)> = FxHashMap::default();
+        let mut before: FxHashMap<String, (Secret, Secret, bool)> = FxHashMap::default();
         for (key, entry) in cloud_entries(&mut self.state.cloud.clone()) {
             if let Some(ssh) = entry.ssh.as_ref() {
                 before.insert(key, (ssh.password.clone(), ssh.passphrase.clone(), ssh.in_vault));

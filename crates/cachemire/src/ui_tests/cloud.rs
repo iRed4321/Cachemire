@@ -20,7 +20,7 @@ fn form_ready() -> (Harness, Rc<crate::app::App>, tokio::runtime::Runtime, Event
         name: "orders".into(),
         connection_url: "rediss://orders.cache.amazonaws.com:6379".into(),
         username: String::new(),
-        password: String::new(),
+        password: Default::default(),
         ssh: None,
         profile_id: String::new(),
         read_only: false,

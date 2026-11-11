@@ -17,7 +17,7 @@ fn ssh(username: &str, password: &str) -> SshSettings {
         username: username.into(),
         password: password.into(),
         private_key: String::new(),
-        passphrase: String::new(),
+        passphrase: Default::default(),
     }
 }
 
@@ -54,7 +54,7 @@ fn passwords_go_to_the_vault_and_are_only_read_when_needed() {
     let mut store = SettingsStore::with_vault(file.clone(), Arc::new(vault.clone()));
     let id = store.create_ssh_profile("Work", "deploy", "s3cret").unwrap();
     assert!(!fs::read_to_string(&file).unwrap().contains("s3cret"), "the file holds no password");
-    assert_eq!(vault.entries.lock()[&vault_key(&id)].ssh_password, "s3cret");
+    assert_eq!(vault.entries.lock()[&vault_key(&id)].ssh_password.expose(), "s3cret");
 
     // a new run reads nothing until a connection needs the profile
     let mut reopened = SettingsStore::with_vault(file.clone(), Arc::new(vault.clone()));
@@ -63,15 +63,15 @@ fn passwords_go_to_the_vault_and_are_only_read_when_needed() {
     assert_eq!(vault.reads.load(Ordering::SeqCst), 1);
     let mut settings = ssh("", "");
     reopened.fill_ssh(&mut settings).unwrap();
-    assert_eq!((settings.username.as_str(), settings.password.as_str()), ("deploy", "s3cret"));
+    assert_eq!((settings.username.as_str(), settings.password.expose()), ("deploy", "s3cret"));
 
     // changing the name or the username keeps the password; a new one replaces it
     reopened.update_ssh_profile(&id, "Work 2", "deploy2", None, SecretsPolicy::PlainText).unwrap();
-    assert_eq!(vault.entries.lock()[&vault_key(&id)].ssh_password, "s3cret");
+    assert_eq!(vault.entries.lock()[&vault_key(&id)].ssh_password.expose(), "s3cret");
     reopened.update_ssh_profile(&id, "Work 2", "deploy2", Some(""), SecretsPolicy::PlainText).unwrap();
-    assert_eq!(vault.entries.lock()[&vault_key(&id)].ssh_password, "s3cret", "a blank box keeps it");
+    assert_eq!(vault.entries.lock()[&vault_key(&id)].ssh_password.expose(), "s3cret", "a blank box keeps it");
     reopened.update_ssh_profile(&id, "Work 2", "deploy2", Some("n3w"), SecretsPolicy::PlainText).unwrap();
-    assert_eq!(vault.entries.lock()[&vault_key(&id)].ssh_password, "n3w");
+    assert_eq!(vault.entries.lock()[&vault_key(&id)].ssh_password.expose(), "n3w");
     assert!(!fs::read_to_string(&file).unwrap().contains("n3w"));
 }
 
@@ -88,7 +88,7 @@ fn editing_an_unloaded_profile_does_not_touch_the_vault() {
     reopened.set_active_ssh_profile(&id).unwrap();
     assert!(reopened.unlock_active_ssh_profile().unwrap_err().to_string().contains("system keyring"));
     vault.broken.store(false, Ordering::SeqCst);
-    assert_eq!(vault.entries.lock()[&vault_key(&id)].ssh_password, "s3cret", "nothing was lost");
+    assert_eq!(vault.entries.lock()[&vault_key(&id)].ssh_password.expose(), "s3cret", "nothing was lost");
 }
 
 #[test]
@@ -105,7 +105,7 @@ fn without_a_credential_store_the_password_stays_in_the_file() {
     let mut reopened = SettingsStore::with_vault(file.clone(), Arc::new(vault.clone()));
     reopened.unlock_active_ssh_profile().unwrap();
     assert!(!fs::read_to_string(&file).unwrap().contains("s3cret"));
-    assert_eq!(vault.entries.lock().values().next().unwrap().ssh_password, "s3cret");
+    assert_eq!(vault.entries.lock().values().next().unwrap().ssh_password.expose(), "s3cret");
 }
 
 #[test]
@@ -118,18 +118,18 @@ fn a_connection_with_its_own_username_ignores_the_profile() {
     store.create_ssh_profile("Work", "deploy", "profile-pw").unwrap();
     let mut own = ssh("me", "my-pw");
     store.fill_ssh(&mut own).unwrap();
-    assert_eq!((own.username.as_str(), own.password.as_str()), ("me", "my-pw"));
+    assert_eq!((own.username.as_str(), own.password.expose()), ("me", "my-pw"));
     let mut key_only = ssh("me", "");
     store.fill_ssh(&mut key_only).unwrap();
     assert_eq!(
-        (key_only.username.as_str(), key_only.password.as_str()),
+        (key_only.username.as_str(), key_only.password.expose()),
         ("me", ""),
         "the profile's password never goes with another username"
     );
 
     let mut empty = ssh("", "");
     store.fill_ssh(&mut empty).unwrap();
-    assert_eq!((empty.username.as_str(), empty.password.as_str()), ("deploy", "profile-pw"));
+    assert_eq!((empty.username.as_str(), empty.password.expose()), ("deploy", "profile-pw"));
 }
 
 #[test]

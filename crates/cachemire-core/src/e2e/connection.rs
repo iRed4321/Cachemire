@@ -13,7 +13,7 @@ fn item(url: &str) -> ConnectionItem {
         name: "Form".into(),
         connection_url: url.into(),
         username: String::new(),
-        password: String::new(),
+        password: Default::default(),
         ssh: None,
         profile_id: String::new(),
         read_only: false,

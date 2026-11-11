@@ -17,7 +17,7 @@ fn tunnel(host: &str, password: &str) -> CloudSsh {
         username: "ec2-user".into(),
         private_key: String::new(),
         password: password.into(),
-        passphrase: String::new(),
+        passphrase: Default::default(),
         in_vault: false,
     }
 }
@@ -102,17 +102,17 @@ fn listed_endpoints_get_their_settings_without_secrets_until_asked() {
         name: "orders".into(),
         connection_url: "redis://h:6379".into(),
         username: String::new(),
-        password: String::new(),
+        password: Default::default(),
         ssh: None,
         profile_id: String::new(),
         read_only: false,
     }];
     store.apply_cloud("111", "eu-west-1", &mut items);
     let mut ssh = items[0].ssh.clone().unwrap();
-    assert_eq!((ssh.host.as_str(), ssh.password.as_str()), ("bastion", ""));
+    assert_eq!((ssh.host.as_str(), ssh.password.expose()), ("bastion", ""));
     store.fill_cloud_secrets(&key("orders"), &mut ssh);
-    assert_eq!(ssh.password, "pw");
-    assert_eq!(store.cloud_settings(&account()).ssh.unwrap().password, "", "what the settings show holds no secret");
+    assert_eq!(ssh.password.expose(), "pw");
+    assert_eq!(store.cloud_settings(&account()).ssh.unwrap().password.expose(), "", "what the settings show holds no secret");
 
     store.apply_cloud("222", "eu-west-1", &mut items);
     assert!(items[0].ssh.is_none(), "another account's endpoint has nothing set");
@@ -123,22 +123,22 @@ fn tunnel_secrets_live_in_the_vault_and_come_back_after_a_restart() {
     let (mut store, vault, file) = new_store();
     store.set_cloud_scope(&endpoint("orders"), "", None, Some(tunnel("bastion", "s3cret")), SecretsPolicy::PlainText).unwrap();
     assert!(!std::fs::read_to_string(&file).unwrap().contains("s3cret"));
-    assert_eq!(vault.entries.lock()[&cloud_vault_key(&endpoint("orders"))].ssh_password, "s3cret");
+    assert_eq!(vault.entries.lock()[&cloud_vault_key(&endpoint("orders"))].ssh_password.expose(), "s3cret");
 
     let mut reopened = store_in(&file, &vault);
     let mut ssh = SshSettings {
         host: String::new(),
         port: 22,
         username: String::new(),
-        password: String::new(),
+        password: Default::default(),
         private_key: String::new(),
-        passphrase: String::new(),
+        passphrase: Default::default(),
     };
     reopened.fill_cloud_secrets(&key("orders"), &mut ssh);
-    assert_eq!(ssh.password, "", "nothing is read from the vault before it's needed");
+    assert_eq!(ssh.password.expose(), "", "nothing is read from the vault before it's needed");
     reopened.unlock_cloud(&key("orders")).unwrap();
     reopened.fill_cloud_secrets(&key("orders"), &mut ssh);
-    assert_eq!(ssh.password, "s3cret");
+    assert_eq!(ssh.password.expose(), "s3cret");
 }
 
 #[test]
@@ -153,12 +153,12 @@ fn a_blank_password_keeps_the_stored_one() {
         host: String::new(),
         port: 22,
         username: String::new(),
-        password: String::new(),
+        password: Default::default(),
         private_key: String::new(),
-        passphrase: String::new(),
+        passphrase: Default::default(),
     };
     reopened.fill_cloud_secrets(&key("any"), &mut ssh);
-    assert_eq!(ssh.password, "s3cret");
+    assert_eq!(ssh.password.expose(), "s3cret");
     assert_eq!(effective(&reopened, "any").1.as_deref(), Some("new-bastion"));
 }
 

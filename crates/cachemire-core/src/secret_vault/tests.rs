@@ -62,7 +62,7 @@ fn the_vault_is_never_called_while_the_store_is_locked() {
     staged(&store, |s| s.create_with_id("c1", with_password("prod", "s3cret"), SecretsPolicy::PlainText)).unwrap();
     staged(&store, |s| s.unlock_secrets("c1")).unwrap();
     assert_eq!(watcher.calls_while_locked.load(Ordering::SeqCst), 0);
-    assert_eq!(watcher.inner.entries.lock()["c1"].password, "s3cret");
+    assert_eq!(watcher.inner.entries.lock()["c1"].password.expose(), "s3cret");
 }
 
 #[test]
@@ -72,7 +72,7 @@ fn a_staged_save_lands_once_in_the_store_the_vault_and_the_file() {
     staged(&store, |s| s.create_with_id("c1", with_password("prod", "s3cret"), SecretsPolicy::PlainText)).unwrap();
 
     let saved = store.lock().get("c1").unwrap();
-    assert_eq!((saved.name.as_str(), saved.password.as_str()), ("prod", "s3cret"));
+    assert_eq!((saved.name.as_str(), saved.password.expose()), ("prod", "s3cret"));
     assert_eq!(vault.entries.lock().len(), 1);
     let on_disk = std::fs::read_to_string(&file).unwrap();
     assert!(on_disk.contains("prod") && !on_disk.contains("s3cret"), "{on_disk}");
@@ -89,7 +89,7 @@ fn a_secret_read_while_rehearsing_isnt_read_again_for_real() {
     let before = vault.reads.load(Ordering::SeqCst);
     staged(&reopened, |s| s.unlock_secrets("c1")).unwrap();
     assert_eq!(vault.reads.load(Ordering::SeqCst) - before, 1);
-    assert_eq!(reopened.lock().get("c1").unwrap().password, "s3cret");
+    assert_eq!(reopened.lock().get("c1").unwrap().password.expose(), "s3cret");
 }
 
 #[test]
@@ -99,7 +99,7 @@ fn the_store_keeps_its_own_vault_after_a_staged_run() {
     staged(&store, |s| s.create_with_id("c1", with_password("prod", "first"), SecretsPolicy::PlainText)).unwrap();
     // an edit outside `staged` reaches the real vault directly
     store.lock().create_with_id("c2", with_password("staging", "second"), SecretsPolicy::PlainText).unwrap();
-    assert_eq!(vault.entries.lock()["c2"].password, "second");
+    assert_eq!(vault.entries.lock()["c2"].password.expose(), "second");
 }
 
 #[test]
@@ -109,7 +109,7 @@ fn a_vault_that_fails_while_writing_out_fails_the_real_run_the_same_way() {
     vault.broken.store(true, Ordering::SeqCst);
     // no credential store: the password stays usable rather than lost
     staged(&store, |s| s.create_with_id("c1", with_password("prod", "s3cret"), SecretsPolicy::PlainText)).unwrap();
-    assert_eq!(store.lock().get("c1").unwrap().password, "s3cret");
+    assert_eq!(store.lock().get("c1").unwrap().password.expose(), "s3cret");
     assert!(vault.entries.lock().is_empty());
 }
 

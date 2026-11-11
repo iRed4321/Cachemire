@@ -336,7 +336,7 @@ pub(crate) fn browse_ssh_key(rt: &Handle, weak: slint::Weak<MainWindow>, set: fn
 /// What the form's fields say, as a payload. A blank password box leaves the
 /// stored password alone (`None`); everything else is taken as typed.
 fn payload_from_form(form: &ConnectionForm) -> Result<ConnectionPayloadInput, Error> {
-    let keep_if_blank = |text: &slint::SharedString| if text.is_empty() { None } else { Some(text.to_string()) };
+    let keep_if_blank = |text: &slint::SharedString| if text.is_empty() { None } else { Some(text.as_str().into()) };
     let ssh_port = match form.ssh_port.trim() {
         "" => 22,
         text => text.parse::<u16>().ok().filter(|port| *port > 0).ok_or(Invalid::SshPort)?,

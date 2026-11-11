@@ -46,7 +46,7 @@ pub(crate) fn build_client(connection: &ConnectionItem, via_local_port: Option<u
         redis_settings = redis_settings.set_username(username);
     }
     if let Some(password) = endpoint.password {
-        redis_settings = redis_settings.set_password(password);
+        redis_settings = redis_settings.set_password(password.expose());
     }
 
     let tls = endpoint.tls;

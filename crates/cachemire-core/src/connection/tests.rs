@@ -22,7 +22,7 @@ fn the_url_fills_in_the_endpoint_and_the_fields_what_it_leaves_out() {
     );
     let own = connection("redis://url-user:url-pw@h:0").endpoint().unwrap();
     assert_eq!(
-        (own.port, own.username.as_deref(), own.password.as_deref()),
+        (own.port, own.username.as_deref(), own.password.as_ref().map(Secret::expose)),
         (6379, Some("url-user"), Some("url-pw")),
         "port 0 means the default"
     );

@@ -75,9 +75,9 @@ pub fn init(window: &MainWindow) {
         crate::app::with(|app, window| {
             let prompt = window.global::<SecretsPrompt>();
             let given = Secrets {
-                password: prompt.get_password().to_string(),
-                ssh_password: prompt.get_ssh_password().to_string(),
-                ssh_passphrase: prompt.get_ssh_passphrase().to_string(),
+                password: prompt.get_password().as_str().into(),
+                ssh_password: prompt.get_ssh_password().as_str().into(),
+                ssh_passphrase: prompt.get_ssh_passphrase().as_str().into(),
             };
             prompt.set_password("".into());
             prompt.set_ssh_password("".into());

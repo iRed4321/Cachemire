@@ -1144,6 +1144,7 @@ dependencies = [
  "webpki-root-certs",
  "windows-native-keyring-store",
  "zbus-secret-service-keyring-store",
+ "zeroize",
 ]
 
 [[package]]

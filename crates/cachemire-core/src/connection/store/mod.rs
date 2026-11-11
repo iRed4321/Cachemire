@@ -9,6 +9,7 @@ use crate::connection::{CloudKey, ConnectionItem, ConnectionPayloadInput, Connec
 use crate::error::{Error, Invalid, NotFound};
 use crate::now_ms;
 use crate::persist;
+use crate::secret::Secret;
 use crate::secret_vault::{KeyringError, LeftOut, OsVault, Secrets, SecretsCleanup, SecretsPolicy, Vault, VaultBacked, Vaulting, place};
 
 fn default_ssh_port() -> u16 {
@@ -30,7 +31,7 @@ struct StoredConnection {
     #[serde(default, skip_serializing)]
     db: Option<u32>,
     username: String,
-    password: String,
+    password: Secret,
     last_connected_at: Option<i64>,
     // (`default`s: connections saved before SSH tunnels existed have none of these)
     #[serde(default)]
@@ -42,11 +43,11 @@ struct StoredConnection {
     #[serde(default)]
     ssh_username: String,
     #[serde(default)]
-    ssh_password: String,
+    ssh_password: Secret,
     #[serde(default)]
     ssh_private_key: String,
     #[serde(default)]
-    ssh_passphrase: String,
+    ssh_passphrase: Secret,
     // the connection profile it uses ("" for none)
     #[serde(default)]
     profile_id: String,
@@ -86,15 +87,15 @@ impl Default for StoredConnection {
             port: None,
             db: None,
             username: String::new(),
-            password: String::new(),
+            password: Secret::default(),
             last_connected_at: None,
             ssh_enabled: false,
             ssh_host: String::new(),
             ssh_port: default_ssh_port(),
             ssh_username: String::new(),
-            ssh_password: String::new(),
+            ssh_password: Secret::default(),
             ssh_private_key: String::new(),
-            ssh_passphrase: String::new(),
+            ssh_passphrase: Secret::default(),
             profile_id: String::new(),
             read_only: false,
             in_vault: false,
@@ -156,7 +157,7 @@ fn without_password(url: &str) -> Option<String> {
 }
 
 /// `url` with the saved username and password added where the URL has none.
-fn with_credentials(url: &str, username: &str, password: &str) -> String {
+fn with_credentials(url: &str, username: &str, password: &Secret) -> String {
     let Some(mut parsed) = (if url.contains("://") { url::Url::parse(url) } else { url::Url::parse(&format!("redis://{url}")) }).ok()
     else {
         return url.to_string();
@@ -165,7 +166,7 @@ fn with_credentials(url: &str, username: &str, password: &str) -> String {
     if parsed.username().is_empty() && !username.is_empty() && parsed.set_username(username).is_ok() {
         changed = true;
     }
-    if parsed.password().is_none() && !password.is_empty() && parsed.set_password(Some(password)).is_ok() {
+    if parsed.password().is_none() && !password.is_empty() && parsed.set_password(Some(password.expose())).is_ok() {
         changed = true;
     }
     if changed { parsed.to_string() } else { url.to_string() }
@@ -173,7 +174,7 @@ fn with_credentials(url: &str, username: &str, password: &str) -> String {
 
 /// `redis://[user[:password]@]host:port[/db]`, with user and password
 /// percent-encoded (via `url`) and IPv6 hosts bracketed; db 0 is left out.
-pub fn build_connection_string(host: &str, port: u16, db: u32, username: &str, password: &str) -> String {
+pub fn build_connection_string(host: &str, port: u16, db: u32, username: &str, password: &Secret) -> String {
     let host = if host.contains(':') && !host.starts_with('[') { format!("[{host}]") } else { host.to_string() };
     let mut base = format!("redis://{host}:{port}");
     if db != 0 {
@@ -184,7 +185,7 @@ pub fn build_connection_string(host: &str, port: u16, db: u32, username: &str, p
         let _ = url.set_username(username);
     }
     if !password.is_empty() {
-        let _ = url.set_password(Some(password));
+        let _ = url.set_password(Some(password.expose()));
     }
     url.to_string()
 }
@@ -302,7 +303,7 @@ fn initial_state() -> StoredState {
             port: std::env::var("REDIS_PORT").ok().and_then(|v| v.parse().ok()),
             db: std::env::var("REDIS_DB").ok().and_then(|v| v.parse().ok()),
             username: std::env::var("REDIS_USERNAME").unwrap_or_default(),
-            password: std::env::var("REDIS_PASSWORD").unwrap_or_default(),
+            password: std::env::var("REDIS_PASSWORD").unwrap_or_default().into(),
             ..Default::default()
         }],
         extra: Default::default(),
@@ -314,7 +315,7 @@ fn initial_state() -> StoredState {
 /// Builds a URL for each connection that has only a host, port and database.
 fn give_urls(state: &mut StoredState) {
     for conn in state.connections.iter_mut().filter(|c| c.connection_url.trim().is_empty() && !c.host.is_empty()) {
-        conn.connection_url = build_connection_string(&conn.host, conn.port.unwrap_or(6379), conn.db.unwrap_or(0), "", "");
+        conn.connection_url = build_connection_string(&conn.host, conn.port.unwrap_or(6379), conn.db.unwrap_or(0), "", &Secret::default());
     }
 }
 

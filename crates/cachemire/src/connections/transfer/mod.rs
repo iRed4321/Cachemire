@@ -15,6 +15,7 @@ use crate::error::{Error, Localize};
 use crate::{ConnectionTransfer, MainWindow, TransferRow};
 use cachemire_core::connection::ConnectionPayloadInput;
 use cachemire_core::connection::store::build_connection_string;
+use cachemire_core::secret::Secret;
 use cachemire_core::secret_vault::{SecretsPolicy, staged};
 use cachemire_core::state::AppState;
 use cachemire_core::{now_ms, persist};
@@ -25,8 +26,8 @@ struct SshDraft {
     port: u16,
     username: String,
     private_key: String,
-    password: Option<String>,
-    passphrase: Option<String>,
+    password: Option<Secret>,
+    passphrase: Option<Secret>,
 }
 
 /// One connection of an import file.
@@ -34,7 +35,7 @@ struct Draft {
     name: String,
     connection_url: String,
     username: String,
-    password: Option<String>,
+    password: Option<Secret>,
     ssh: Option<SshDraft>,
     read_only: bool,
 }
@@ -49,7 +50,7 @@ pub struct TransferLists {
 fn ssh_draft_of(item: &Value) -> Option<SshDraft> {
     let ssh = item.get("ssh").filter(|ssh| ssh.is_object())?;
     let text = |key: &str| ssh.get(key).and_then(Value::as_str).unwrap_or_default().trim().to_string();
-    let secret = |key: &str| ssh.get(key).and_then(Value::as_str).filter(|s| !s.is_empty()).map(str::to_string);
+    let secret = |key: &str| ssh.get(key).and_then(Value::as_str).filter(|s| !s.is_empty()).map(Secret::from);
     let host = text("host");
     let port = ssh.get("port").and_then(Value::as_u64).and_then(|p| u16::try_from(p).ok()).filter(|p| *p > 0).unwrap_or(22);
     (!host.is_empty()).then(|| SshDraft {
@@ -70,12 +71,13 @@ fn draft_of(item: &Value) -> Option<Draft> {
     }
     let port = item.get("port").and_then(Value::as_u64).and_then(|p| u16::try_from(p).ok()).filter(|p| *p > 0).unwrap_or(6379);
     let db = item.get("db").and_then(Value::as_u64).and_then(|d| u32::try_from(d).ok()).unwrap_or(0);
-    let connection_url = if connection_url.is_empty() { build_connection_string(&host, port, db, "", "") } else { connection_url };
+    let connection_url =
+        if connection_url.is_empty() { build_connection_string(&host, port, db, "", &Secret::default()) } else { connection_url };
     Some(Draft {
         name,
         connection_url,
         username: text("username"),
-        password: item.get("password").and_then(Value::as_str).map(str::to_string),
+        password: item.get("password").and_then(Value::as_str).map(Secret::from),
         ssh: ssh_draft_of(item),
         read_only: item.get("readOnly").and_then(Value::as_bool).unwrap_or(false),
     })
@@ -406,7 +408,7 @@ fn write_export(state: &AppState, ids: &[String], passwords: bool, now: i64, pat
         ids.iter()
             .filter_map(|id| store.get(id))
             .map(|c| {
-                let secret = |text: String| if passwords { Value::String(text) } else { Value::Null };
+                let secret = |text: Secret| if passwords { Value::String(text.expose().to_string()) } else { Value::Null };
                 // host, port and db as well, for a version that reads them
                 let (host, port, db) = c.endpoint().map_or((String::new(), 6379, 0), |e| (e.host, e.port, e.db));
                 let mut item = json!({

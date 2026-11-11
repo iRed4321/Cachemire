@@ -1,4 +1,5 @@
 use crate::error::Invalid;
+use crate::secret::Secret;
 use percent_encoding::percent_decode_str;
 
 /// What a `redis://[user[:password]@]host[:port][/db]` URL spells out; the scheme
@@ -10,7 +11,7 @@ pub struct UrlParts {
     pub port: Option<u16>,
     pub db: Option<i64>,
     pub username: String,
-    pub password: String,
+    pub password: Secret,
 }
 
 pub fn parse(value: &str) -> Result<UrlParts, Invalid> {
@@ -41,7 +42,7 @@ pub fn parse(value: &str) -> Result<UrlParts, Invalid> {
         port: uri.port(),
         db,
         username: decode(uri.username()),
-        password: uri.password().map(decode).unwrap_or_default(),
+        password: uri.password().map(decode).map(Secret::new).unwrap_or_default(),
     })
 }
 
@@ -51,7 +52,7 @@ mod tests {
 
     fn parts(url: &str) -> (bool, String, Option<u16>, Option<i64>, String, String) {
         let p = parse(url).unwrap_or_else(|error| panic!("{url} wasn't understood: {error}"));
-        (p.tls, p.host, p.port, p.db, p.username, p.password)
+        (p.tls, p.host, p.port, p.db, p.username, p.password.expose().to_string())
     }
 
     #[test]

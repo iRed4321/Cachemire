@@ -16,6 +16,7 @@ pub mod persist;
 pub mod redis_value_type;
 pub mod redisql;
 pub mod runtime;
+pub mod secret;
 pub mod secret_vault;
 pub mod server_info;
 pub mod session;

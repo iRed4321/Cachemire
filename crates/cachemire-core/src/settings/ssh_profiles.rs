@@ -6,6 +6,7 @@ use serde::{Deserialize, Serialize};
 use super::{SettingsStore, StoredSettings};
 use crate::connection::SshSettings;
 use crate::error::{Error, Invalid, NotFound};
+use crate::secret::Secret;
 use crate::secret_vault::KeyringError;
 use crate::secret_vault::{Secrets, SecretsCleanup, SecretsPolicy, Vaulting, place};
 
@@ -17,7 +18,7 @@ pub(super) struct StoredProfile {
     pub(super) username: String,
     // only while the password isn't in the credential store
     #[serde(default)]
-    pub(super) password: String,
+    pub(super) password: Secret,
     #[serde(default)]
     pub(super) in_vault: bool,
 }
@@ -87,7 +88,7 @@ impl SettingsStore {
             id: id.clone(),
             name: name.to_string(),
             username: username.to_string(),
-            password: password.to_string(),
+            password: Secret::from(password),
             in_vault: false,
         });
         if next.active_ssh_profile.is_empty() {
@@ -119,7 +120,7 @@ impl SettingsStore {
         profile.username = username.to_string();
         let new_password = password.filter(|p| !p.is_empty());
         if let Some(password) = new_password {
-            profile.password = password.to_string();
+            profile.password = Secret::from(password);
         }
         // a new password is loaded as of now, so the commit stores it in the vault
         let was_unloaded = new_password.is_some() && self.unloaded.remove(id);

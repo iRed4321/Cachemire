@@ -192,7 +192,7 @@ fn an_aws_link_follows_once_its_account_is_listed() {
         name: name.into(),
         connection_url: format!("rediss://{name}.cache.test:6379"),
         username: String::new(),
-        password: String::new(),
+        password: Default::default(),
         ssh: None,
         profile_id: String::new(),
         read_only: false,

@@ -6,7 +6,7 @@ fn connection(name: &str, profile_id: &str) -> ConnectionItem {
         name: name.into(),
         connection_url: String::new(),
         username: String::new(),
-        password: String::new(),
+        password: Default::default(),
         ssh: None,
         profile_id: profile_id.into(),
         read_only: false,

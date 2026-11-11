@@ -2,6 +2,7 @@
 //! store that keeps them, the client and pool, and the SSH tunnel in between.
 
 use crate::error::{Error, Invalid, NotFound};
+use crate::secret::Secret;
 use crate::secret_vault::staged;
 use crate::state::{AppState, resolve_connection};
 use std::sync::Arc;
@@ -22,10 +23,10 @@ pub struct SshSettings {
     pub host: String,
     pub port: u16,
     pub username: String,
-    pub password: String,
+    pub password: Secret,
     /// path of a private key file (`~` stands for the home directory)
     pub private_key: String,
-    pub passphrase: String,
+    pub passphrase: Secret,
 }
 
 /// Identifies a cloud endpoint across runs: the account and region it lives in
@@ -52,7 +53,7 @@ pub struct ConnectionItem {
     pub connection_url: String,
     /// used for whatever the connection URL doesn't say itself
     pub username: String,
-    pub password: String,
+    pub password: Secret,
     /// `Some` when the connection goes through an SSH tunnel
     pub ssh: Option<SshSettings>,
     /// the connection profile (see Settings) it belongs to; "" for none
@@ -70,7 +71,7 @@ pub struct Endpoint {
     pub db: i64,
     pub tls: bool,
     pub username: Option<String>,
-    pub password: Option<String>,
+    pub password: Option<Secret>,
 }
 
 impl ConnectionItem {
@@ -88,7 +89,7 @@ impl ConnectionItem {
             db: parts.db.unwrap_or(0),
             tls: parts.tls,
             username: non_empty(parts.username).or_else(|| non_empty(self.username.trim().to_string())),
-            password: non_empty(parts.password).or_else(|| non_empty(self.password.clone())),
+            password: Some(parts.password).filter(|p| !p.is_empty()).or_else(|| Some(self.password.clone()).filter(|p| !p.is_empty())),
         })
     }
 
@@ -113,14 +114,14 @@ pub struct ConnectionPayloadInput {
     pub name: Option<String>,
     pub connection_url: Option<String>,
     pub username: Option<String>,
-    pub password: Option<String>,
+    pub password: Option<Secret>,
     pub ssh_enabled: Option<bool>,
     pub ssh_host: Option<String>,
     pub ssh_port: Option<u16>,
     pub ssh_username: Option<String>,
-    pub ssh_password: Option<String>,
+    pub ssh_password: Option<Secret>,
     pub ssh_private_key: Option<String>,
-    pub ssh_passphrase: Option<String>,
+    pub ssh_passphrase: Option<Secret>,
     /// the connection profile to use; `Some("")` for none
     pub profile_id: Option<String>,
     pub read_only: Option<bool>,

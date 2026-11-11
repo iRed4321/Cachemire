@@ -243,7 +243,7 @@ mod tests {
         let profile = state.settings.lock().create_ssh_profile("Work", "deploy", "s3cret").unwrap();
         state.settings.lock().set_active_ssh_profile(&profile).unwrap();
         let ssh = resolve_connection(&state, Some("tunnelled")).unwrap().ssh.unwrap();
-        assert_eq!((ssh.username.as_str(), ssh.password.as_str()), ("deploy", "s3cret"));
+        assert_eq!((ssh.username.as_str(), ssh.password.expose()), ("deploy", "s3cret"));
 
         assert_eq!(resolve_connection(&state, None).unwrap().id, "plain");
         let blank = resolve_connection(&state, Some(""));

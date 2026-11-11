@@ -18,6 +18,7 @@ use aws_types::os_shim_internal::{Env, Fs};
 use crate::connection::ConnectionItem;
 use crate::connection::store::build_connection_string;
 use crate::error::{Error, ErrorKind};
+use crate::secret::Secret;
 
 mod sso;
 
@@ -191,7 +192,7 @@ async fn sign_in(profile: &Profile, page: &SignInPage) -> Result<SdkConfig, Erro
         .get_role_credentials()
         .role_name(&sso.role_name)
         .account_id(&sso.account_id)
-        .access_token(access_token)
+        .access_token(access_token.expose())
         .send()
         .await
         .map_err(|e| AwsError::RoleRefused {
@@ -247,7 +248,7 @@ pub fn connection_id(profile: &str, name: &str) -> String {
 
 /// The URL of an ElastiCache endpoint: `rediss://` when it takes TLS.
 fn cloud_url(host: &str, port: u16, tls: bool) -> String {
-    let url = build_connection_string(host, port, 0, "", "");
+    let url = build_connection_string(host, port, 0, "", &crate::secret::Secret::default());
     if tls { url.replacen("redis://", "rediss://", 1) } else { url }
 }
 
@@ -285,7 +286,7 @@ pub async fn redis_connections(profile_name: &str, page: &SignInPage) -> Result<
             name: name.to_string(),
             connection_url: cloud_url(endpoint.address()?, endpoint.port().and_then(|p| u16::try_from(p).ok()).unwrap_or(6379), tls),
             username: String::new(),
-            password: String::new(),
+            password: Secret::default(),
             ssh: None,
             profile_id: String::new(),
             read_only: false,

@@ -5,11 +5,11 @@ use std::sync::atomic::Ordering;
 
 #[test]
 fn builds_redis_urls_from_parts() {
-    assert_eq!(build_connection_string("127.0.0.1", 6379, 0, "", ""), "redis://127.0.0.1:6379");
-    assert_eq!(build_connection_string("cache.local", 6380, 2, "", ""), "redis://cache.local:6380/2");
-    assert_eq!(build_connection_string("h", 6379, 0, "", "s3cr@t"), "redis://:s3cr%40t@h:6379");
-    assert_eq!(build_connection_string("h", 6379, 1, "app", "p w"), "redis://app:p%20w@h:6379/1");
-    assert_eq!(build_connection_string("::1", 6379, 0, "", ""), "redis://[::1]:6379");
+    assert_eq!(build_connection_string("127.0.0.1", 6379, 0, "", &Secret::default()), "redis://127.0.0.1:6379");
+    assert_eq!(build_connection_string("cache.local", 6380, 2, "", &Secret::default()), "redis://cache.local:6380/2");
+    assert_eq!(build_connection_string("h", 6379, 0, "", &"s3cr@t".into()), "redis://:s3cr%40t@h:6379");
+    assert_eq!(build_connection_string("h", 6379, 1, "app", &"p w".into()), "redis://app:p%20w@h:6379/1");
+    assert_eq!(build_connection_string("::1", 6379, 0, "", &Secret::default()), "redis://[::1]:6379");
 }
 
 fn payload(name: &str, url: &str) -> ConnectionPayloadInput {
@@ -46,7 +46,7 @@ fn an_ssh_tunnel_needs_a_host_a_username_and_a_way_to_log_in() {
     let c = with_ssh(&|_| {}).unwrap();
     let item = to_item(&c);
     let ssh = item.ssh.expect("tunnel settings");
-    assert_eq!((ssh.host.as_str(), ssh.port, ssh.username.as_str(), ssh.password.as_str()), ("bastion.example.com", 22, "deploy", "pw"));
+    assert_eq!((ssh.host.as_str(), ssh.port, ssh.username.as_str(), ssh.password.expose()), ("bastion.example.com", 22, "deploy", "pw"));
 
     assert_eq!(with_ssh(&|p| p.ssh_host = Some("  ".into())).unwrap_err().to_string(), "SSH host is required.");
     // without a username the SSH profile from the settings is used at connect time
@@ -95,9 +95,9 @@ fn updating_keeps_what_the_form_leaves_out_and_reads_the_new_url() {
     store.update(&id, edit, SecretsPolicy::PlainText).unwrap();
     let item = store.get(&id).unwrap();
     let e = item.endpoint().unwrap();
-    assert_eq!((item.name.as_str(), e.host.as_str(), e.port, e.db, item.password.as_str()), ("t2", "new.host", 6400, 2, "keep-me"));
+    assert_eq!((item.name.as_str(), e.host.as_str(), e.port, e.db, item.password.expose()), ("t2", "new.host", 6400, 2, "keep-me"));
     let ssh = item.ssh.unwrap();
-    assert_eq!((ssh.host.as_str(), ssh.password.as_str()), ("bastion2", "ssh-secret"));
+    assert_eq!((ssh.host.as_str(), ssh.password.expose()), ("bastion2", "ssh-secret"));
 
     // an invalid edit changes nothing
     let mut bad = payload("t3", "redis://x:6379");
@@ -144,8 +144,8 @@ fn secrets_go_to_the_vault_and_stay_out_of_the_file() {
     for secret in ["redis-secret", "ssh-secret", "phrase-secret"] {
         assert!(!saved.contains(secret), "{secret} leaked into the file");
     }
-    assert_eq!(vault.entries.lock()[&id].ssh_passphrase, "phrase-secret");
-    assert_eq!(store.get(&id).unwrap().password, "redis-secret");
+    assert_eq!(vault.entries.lock()[&id].ssh_passphrase.expose(), "phrase-secret");
+    assert_eq!(store.get(&id).unwrap().password.expose(), "redis-secret");
 
     // unrelated changes keep the file clean
     store.set_active(&id).unwrap();
@@ -154,10 +154,10 @@ fn secrets_go_to_the_vault_and_stay_out_of_the_file() {
     // a new run doesn't ask the vault for anything until the connection is used
     let mut reopened = ConnectionStore::with_vault(file, Arc::new(vault.clone()));
     assert_eq!(reads(&vault), 0);
-    assert_eq!(reopened.get(&id).unwrap().password, "");
+    assert_eq!(reopened.get(&id).unwrap().password.expose(), "");
     reopened.unlock_secrets(&id).unwrap();
     let item = reopened.get(&id).unwrap();
-    assert_eq!((item.password.as_str(), item.ssh.unwrap().passphrase.as_str()), ("redis-secret", "phrase-secret"));
+    assert_eq!((item.password.expose(), item.ssh.unwrap().passphrase.expose()), ("redis-secret", "phrase-secret"));
     assert_eq!(reads(&vault), 1);
     reopened.unlock_secrets(&id).unwrap();
     assert_eq!(reads(&vault), 1, "read once");
@@ -190,7 +190,7 @@ fn without_a_credential_store_the_secrets_stay_in_the_file_until_a_store_appears
     assert!(fs::read_to_string(&file).unwrap().contains("redis-secret"));
 
     let mut again = ConnectionStore::with_vault(file.clone(), Arc::new(vault.clone()));
-    assert_eq!(again.get(&id).unwrap().password, "redis-secret");
+    assert_eq!(again.get(&id).unwrap().password.expose(), "redis-secret");
     again.unlock_secrets(&id).unwrap();
 
     // with a store, using the connection moves them there
@@ -198,9 +198,9 @@ fn without_a_credential_store_the_secrets_stay_in_the_file_until_a_store_appears
     let mut reopened = ConnectionStore::with_vault(file.clone(), Arc::new(vault.clone()));
     assert!(fs::read_to_string(&file).unwrap().contains("redis-secret"), "not before the connection is used");
     reopened.unlock_secrets(&id).unwrap();
-    assert_eq!(reopened.get(&id).unwrap().password, "redis-secret");
+    assert_eq!(reopened.get(&id).unwrap().password.expose(), "redis-secret");
     assert!(!fs::read_to_string(&file).unwrap().contains("redis-secret"));
-    assert_eq!(vault.entries.lock()[&id].password, "redis-secret");
+    assert_eq!(vault.entries.lock()[&id].password.expose(), "redis-secret");
 }
 
 #[test]
@@ -232,7 +232,7 @@ fn a_vault_that_cannot_be_read_never_costs_the_stored_secrets() {
         Secrets { password: "redis-secret".into(), ssh_password: "ssh-secret".into(), ssh_passphrase: "phrase-secret".into() }
     );
     locked.unlock_secrets(&id).unwrap();
-    assert_eq!(locked.get(&id).unwrap().password, "redis-secret");
+    assert_eq!(locked.get(&id).unwrap().password.expose(), "redis-secret");
 }
 
 #[test]
@@ -248,7 +248,7 @@ fn changing_one_secret_keeps_the_others() {
     reopened.update(&id, edit, SecretsPolicy::PlainText).unwrap();
     let stored = vault.entries.lock()[&id].clone();
     assert_eq!(
-        (stored.password.as_str(), stored.ssh_password.as_str(), stored.ssh_passphrase.as_str()),
+        (stored.password.expose(), stored.ssh_password.expose(), stored.ssh_passphrase.expose()),
         ("new", "ssh-secret", "phrase-secret")
     );
 }
@@ -262,14 +262,14 @@ fn a_password_typed_into_the_url_is_moved_out_of_it() {
     let id = store.active_connection_id().to_string();
 
     let item = store.get(&id).unwrap();
-    assert_eq!((item.connection_url.as_str(), item.username.as_str(), item.password.as_str()), ("redis://app@cache:6380/2", "", "s3cr@t"));
+    assert_eq!((item.connection_url.as_str(), item.username.as_str(), item.password.expose()), ("redis://app@cache:6380/2", "", "s3cr@t"));
     assert!(!fs::read_to_string(&file).unwrap().contains("s3cr"));
     // copying still gives the complete string
     assert_eq!(store.connection_string(&id).unwrap(), "redis://app:s3cr%40t@cache:6380/2");
 
     // a URL without credentials picks up the saved ones
-    assert_eq!(with_credentials("cache:6379", "", "pw"), "redis://:pw@cache:6379");
-    assert_eq!(with_credentials("redis://cache:6379", "", ""), "redis://cache:6379");
+    assert_eq!(with_credentials("cache:6379", "", &"pw".into()), "redis://:pw@cache:6379");
+    assert_eq!(with_credentials("redis://cache:6379", "", &Secret::default()), "redis://cache:6379");
     assert_eq!(without_password("redis://:pw@cache:6379").unwrap(), "redis://cache:6379");
 }
 
