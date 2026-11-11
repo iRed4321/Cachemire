@@ -231,6 +231,8 @@ _version: 2
   fr: "Impossible de lire le mot de passe du profil SSH dans le trousseau du système : %{error}"
 "Couldn't read the SSH tunnel's secrets from the system keyring: %{error}":
   fr: "Impossible de lire les secrets du tunnel SSH dans le trousseau du système : %{error}"
+"The system keyring is unavailable, so the passwords can't be stored in it: %{error}":
+  fr: "Le trousseau du système est indisponible : les mots de passe ne peuvent pas y être enregistrés : %{error}"
 "This SSH connection has no username or password: fill them in, or make an SSH profile active in Settings.":
   fr: "Cette connexion SSH n'a ni utilisateur ni mot de passe : renseignez-les, ou activez un profil SSH dans les Paramètres."
 

@@ -18,6 +18,7 @@ mod drag_latch;
 mod error;
 mod i18n;
 mod key_detail;
+mod keyring_dialogs;
 mod keyspace;
 mod last_session;
 mod links;
@@ -201,6 +202,7 @@ fn main() -> Result<(), slint::PlatformError> {
         queries: Default::default(),
         transfer: Default::default(),
         cloud: Default::default(),
+        asked: Default::default(),
     });
 
     // what needs the app's shared state (tabs, the tree, search and query tabs...)
@@ -214,6 +216,7 @@ fn main() -> Result<(), slint::PlatformError> {
     cloud::settings::init(&window);
     connections::profiles::init(&app, &window);
     links::init(&app, &window);
+    keyring_dialogs::init(&window);
 
     // what only needs the stores and the runtime
     server_stats::init(&window, state.clone(), rt.clone());

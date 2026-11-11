@@ -23,7 +23,7 @@ fn links_ready(connections: &[(&str, &str)]) -> Ready {
                 password: Some("secret".into()),
                 ..Default::default()
             };
-            store.create_with_id(id, payload).unwrap();
+            store.create_with_id(id, payload, cachemire_core::secret_vault::SecretsPolicy::PlainText).unwrap();
         }
     }
     let h = Harness::new();

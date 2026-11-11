@@ -15,7 +15,7 @@ use crate::error::{Error, Localize};
 use crate::{ConnectionTransfer, MainWindow, TransferRow};
 use cachemire_core::connection::ConnectionPayloadInput;
 use cachemire_core::connection::store::build_connection_string;
-use cachemire_core::secret_vault::staged;
+use cachemire_core::secret_vault::{SecretsPolicy, staged};
 use cachemire_core::state::AppState;
 use cachemire_core::{now_ms, persist};
 
@@ -299,7 +299,14 @@ fn run_import(app: &Rc<App>, window: &MainWindow) {
         return;
     }
     global.set_busy(true);
+    import_drafts(app, chosen, SecretsPolicy::VaultOrFail);
+}
+
+/// Saves `chosen` as new connections, all or none; if the keyring is unavailable, the user is
+/// asked what to do with the passwords.
+fn import_drafts(app: &Rc<App>, chosen: Vec<ConnectionPayloadInput>, policy: SecretsPolicy) {
     let state = app.state.clone();
+    let retry_with = chosen.clone();
     let import = move || {
         // the names are chosen once, so the rehearsal and the real run save the same thing
         let mut taken: FxHashSet<String> =
@@ -311,12 +318,11 @@ fn run_import(app: &Rc<App>, window: &MainWindow) {
                 (uuid::Uuid::new_v4().to_string(), payload)
             })
             .collect();
-        let result =
-            staged(&state.connections, |store| items.iter().try_for_each(|(id, payload)| store.import_with_id(id, payload.clone())));
+        let result = staged(&state.connections, |store| store.import_all(&items, policy));
         tracing::info!(count = items.len(), ok = result.is_ok(), "imported connections");
         result.map(|()| items.len())
     };
-    crate::app::spawn_blocking(&app.rt, import, |app, window, imported| {
+    crate::app::spawn_blocking(&app.rt, import, move |app, window, imported| {
         window.global::<ConnectionTransfer>().set_busy(false);
         match imported.map_err(Error::from).and_then(|done| done.map_err(Error::from)) {
             Ok(count) => {
@@ -327,6 +333,13 @@ fn run_import(app: &Rc<App>, window: &MainWindow) {
                 refresh_counts(window);
                 crate::connections::refresh(app, window);
                 set_message(window, t!("Imported %{count} connection(s).", count = count).into_owned(), true);
+            }
+            Err(Error::Core(e)) if crate::keyring_dialogs::is_unavailable(&e) => {
+                let retry = Box::new(move |app: &Rc<App>, window: &MainWindow, policy| {
+                    window.global::<ConnectionTransfer>().set_busy(true);
+                    import_drafts(app, retry_with, policy);
+                });
+                crate::keyring_dialogs::ask_keyring(app, window, true, retry);
             }
             Err(e) => set_message(window, e.localized(), false),
         }

@@ -10,7 +10,7 @@ use super::{SettingsStore, StoredSettings};
 use crate::connection::{CloudKey, ConnectionItem, SshSettings};
 use crate::error::{Error, Invalid, NotFound};
 use crate::secret_vault::KeyringError;
-use crate::secret_vault::{Secrets, SecretsCleanup};
+use crate::secret_vault::{Secrets, SecretsCleanup, SecretsPolicy, Vaulting, place};
 
 /// An SSH tunnel set for cloud endpoints, as `settings.json` keeps it.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -225,6 +225,7 @@ impl SettingsStore {
         label: &str,
         profile: Option<String>,
         ssh: Option<CloudSsh>,
+        policy: SecretsPolicy,
     ) -> Result<Option<SecretsCleanup>, Error> {
         if profile.as_ref().is_some_and(|id| !id.is_empty() && !self.state.connection_profiles.iter().any(|p| &p.id == id)) {
             return Err(NotFound::ConnectionProfile.into());
@@ -272,7 +273,7 @@ impl SettingsStore {
         } else {
             map.insert(id, entry);
         }
-        self.commit(next, true)?;
+        self.commit_with(next, Vaulting::Saving(&[&vault_key]), policy)?;
         self.unloaded.remove(&vault_key);
         let now_in_vault = self.cloud_entry(scope).and_then(|e| e.ssh.as_ref()).is_some_and(|s| s.in_vault);
         Ok((was_in_vault && !now_in_vault).then(|| SecretsCleanup::new(self.vault.clone(), &vault_key)))
@@ -334,7 +335,12 @@ impl SettingsStore {
     }
 
     /// Vaults the cloud tunnels' secrets that changed (see `vault_secrets`).
-    pub(super) fn vault_cloud_secrets(&mut self, next: &mut StoredSettings) {
+    pub(super) fn vault_cloud_secrets(
+        &mut self,
+        next: &mut StoredSettings,
+        vaulting: Vaulting<'_>,
+        policy: SecretsPolicy,
+    ) -> Result<(), Error> {
         let mut before: FxHashMap<String, (String, String, bool)> = FxHashMap::default();
         for (key, entry) in cloud_entries(&mut self.state.cloud.clone()) {
             if let Some(ssh) = entry.ssh.as_ref() {
@@ -358,8 +364,10 @@ impl SettingsStore {
                 continue;
             }
             let secrets = Secrets { ssh_password: ssh.password.clone(), ssh_passphrase: ssh.passphrase.clone(), ..Default::default() };
-            ssh.in_vault = self.store_secret(&key, &secrets);
+            let policy = if vaulting == Vaulting::Saving(&[&key]) { policy } else { SecretsPolicy::PlainText };
+            ssh.in_vault = place(&*self.vault, &key, &secrets, policy, &mut self.vault_usable)?;
         }
+        Ok(())
     }
 }
 

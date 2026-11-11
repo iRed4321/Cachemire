@@ -91,7 +91,7 @@ pub fn e2e_state(url: &str) -> crate::state::AppState {
         connection_url: Some(url.to_string()),
         ..Default::default()
     };
-    state.connections.lock().create_with_id("e2e", payload).expect("save the connection");
+    state.connections.lock().create_with_id("e2e", payload, crate::secret_vault::SecretsPolicy::PlainText).expect("save the connection");
     state.connections.lock().set_active("e2e").expect("make it active");
     state
 }

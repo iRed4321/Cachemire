@@ -12,42 +12,42 @@ msgstr ""
 "Content-Transfer-Encoding: 8bit\n"
 "Plural-Forms: nplurals=1; plural=0;\n"
 
-#: crates/cachemire/ui/main.slint:290
-#: crates/cachemire/ui/main.slint:290
+#: crates/cachemire/ui/main.slint:291
+#: crates/cachemire/ui/main.slint:291
 msgid "Show sidebar"
 msgstr ""
 
-#: crates/cachemire/ui/main.slint:309
+#: crates/cachemire/ui/main.slint:310
 msgid "Couldn't use the AWS account"
 msgstr ""
 
-#: crates/cachemire/ui/main.slint:310
+#: crates/cachemire/ui/main.slint:311
 msgid "Select a key to open it"
 msgstr ""
 
-#: crates/cachemire/ui/main.slint:311
+#: crates/cachemire/ui/main.slint:312
 msgid "Couldn't connect"
 msgstr ""
 
-#: crates/cachemire/ui/main.slint:312
+#: crates/cachemire/ui/main.slint:313
 msgid "Pick a connection to get started"
 msgstr ""
 
-#: crates/cachemire/ui/main.slint:320
+#: crates/cachemire/ui/main.slint:321
 msgid "Browse the keyspace on the left and click a key."
 msgstr ""
 
-#: crates/cachemire/ui/main.slint:321
+#: crates/cachemire/ui/main.slint:322
 msgid ""
 "Hover the connection status in the top bar to see why, or pick another "
 "connection."
 msgstr ""
 
-#: crates/cachemire/ui/main.slint:322
+#: crates/cachemire/ui/main.slint:323
 msgid "Use the connection selector in the top bar."
 msgstr ""
 
-#: crates/cachemire/ui/main.slint:369
+#: crates/cachemire/ui/main.slint:370
 msgid "Write a Redisql query above (FROM/JOIN/WHERE/SELECT/LIMIT), then Run."
 msgstr ""
 
@@ -96,6 +96,8 @@ msgstr ""
 msgid "SSH tunnel"
 msgstr ""
 
+#: crates/cachemire/ui/components/cloud-settings.slint:178
+#: crates/cachemire/ui/components/cloud-settings.slint:178
 #: crates/cachemire/ui/components/cloud-settings.slint:178
 #: crates/cachemire/ui/components/cloud-settings.slint:178
 #: crates/cachemire/ui/components/cloud-settings.slint:178
@@ -157,6 +159,7 @@ msgstr ""
 
 #: crates/cachemire/ui/components/connection-picker.slint:529
 #: crates/cachemire/ui/components/connection-picker.slint:529
+#: crates/cachemire/ui/components/connection-picker.slint:529
 msgid "SSH password"
 msgstr ""
 
@@ -203,6 +206,7 @@ msgstr ""
 msgid "Username (optional)"
 msgstr ""
 
+#: crates/cachemire/ui/components/connection-picker.slint:680
 #: crates/cachemire/ui/components/connection-picker.slint:680
 msgid "Password"
 msgstr ""
@@ -702,6 +706,49 @@ msgstr ""
 
 #: crates/cachemire/ui/components/search-panel.slint:238
 msgid "Key"
+msgstr ""
+
+#: crates/cachemire/ui/components/secrets-dialogs.slint:73
+msgid "System keyring unavailable"
+msgstr ""
+
+#: crates/cachemire/ui/components/secrets-dialogs.slint:79
+msgid ""
+"The system keyring is unavailable, so the password can't be stored safely."
+msgstr ""
+
+#: crates/cachemire/ui/components/secrets-dialogs.slint:86
+msgid ""
+"Save it in the data file as plain text, or save without it and be asked for "
+"it each time you connect."
+msgstr ""
+
+#: crates/cachemire/ui/components/secrets-dialogs.slint:87
+msgid "Save it in the data file as plain text, or cancel."
+msgstr ""
+
+#: crates/cachemire/ui/components/secrets-dialogs.slint:100
+msgid "Save without the password"
+msgstr ""
+
+#: crates/cachemire/ui/components/secrets-dialogs.slint:104
+msgid "Save in the file anyway"
+msgstr ""
+
+#: crates/cachemire/ui/components/secrets-dialogs.slint:121
+msgid "Password needed"
+msgstr ""
+
+#: crates/cachemire/ui/components/secrets-dialogs.slint:149
+msgid "Key passphrase"
+msgstr ""
+
+#: crates/cachemire/ui/components/secrets-dialogs.slint:157
+msgid "Kept in memory until Cachemire closes, never saved."
+msgstr ""
+
+#: crates/cachemire/ui/components/secrets-dialogs.slint:170
+msgid "Connect"
 msgstr ""
 
 #: crates/cachemire/ui/components/settings.slint:100

@@ -39,6 +39,8 @@ pub struct App {
     pub keyspace: Keyspace,
     /// the connection last picked, which a retry connects to ("" for none)
     pub picked: RefCell<String>,
+    /// what the open dialogs about secrets will do with the answer
+    pub asked: RefCell<crate::keyring_dialogs::Asked>,
 }
 
 thread_local! {

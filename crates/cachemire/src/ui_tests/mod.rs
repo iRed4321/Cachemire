@@ -170,6 +170,7 @@ fn install_app(
         queries: Default::default(),
         transfer: Default::default(),
         cloud: Default::default(),
+        asked: Default::default(),
     });
     (app, runtime, turn)
 }

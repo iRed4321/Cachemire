@@ -130,6 +130,7 @@ fn core_errors() -> Vec<CoreError> {
         KeyringError::ConnectionPasswords(VaultError::Json(Arc::new(json()))),
         KeyringError::SshProfilePassword(VaultError::Unavailable),
         KeyringError::TunnelSecrets(VaultError::Unavailable),
+        KeyringError::CantStore(VaultError::Unavailable),
     ];
 
     let mut errors: Vec<CoreError> = Vec::new();

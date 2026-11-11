@@ -23,7 +23,8 @@ pub(crate) fn connect_to(window: &MainWindow, state: Arc<AppState>, rt: &Handle,
     connect_then(window, state, rt, connection_id, announce, || {});
 }
 
-/// [`connect_to`], with `then` run on the UI thread once connected.
+/// [`connect_to`], with `then` run on the UI thread once connected. A connection saved
+/// without some of its passwords asks for them first.
 fn connect_then(
     window: &MainWindow,
     state: Arc<AppState>,
@@ -32,6 +33,18 @@ fn connect_then(
     announce: bool,
     then: impl FnOnce() + Send + 'static,
 ) {
+    let (missing, name) = {
+        let store = state.connections.lock();
+        (store.missing_secrets(&connection_id), store.get(&connection_id).map(|c| c.name).unwrap_or_default())
+    };
+    if !missing.is_empty() {
+        let asked_id = connection_id.clone();
+        let resume = Box::new(move |app: &Rc<App>, window: &MainWindow| {
+            connect_then(window, state, &app.rt, connection_id.clone(), announce, then);
+        });
+        crate::app::with(|app, window| crate::keyring_dialogs::ask_secrets(app, window, &asked_id, &name, missing, resume));
+        return;
+    }
     let attempt = state.connect_attempt.fetch_add(1, Ordering::SeqCst) + 1;
     crate::app::with(|app, _| connection_id.clone_into(&mut app.picked.borrow_mut()));
     let connection = window.global::<ConnectionState>();

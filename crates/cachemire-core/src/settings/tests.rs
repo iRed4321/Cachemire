@@ -66,11 +66,11 @@ fn passwords_go_to_the_vault_and_are_only_read_when_needed() {
     assert_eq!((settings.username.as_str(), settings.password.as_str()), ("deploy", "s3cret"));
 
     // changing the name or the username keeps the password; a new one replaces it
-    reopened.update_ssh_profile(&id, "Work 2", "deploy2", None).unwrap();
+    reopened.update_ssh_profile(&id, "Work 2", "deploy2", None, SecretsPolicy::PlainText).unwrap();
     assert_eq!(vault.entries.lock()[&vault_key(&id)].ssh_password, "s3cret");
-    reopened.update_ssh_profile(&id, "Work 2", "deploy2", Some("")).unwrap();
+    reopened.update_ssh_profile(&id, "Work 2", "deploy2", Some(""), SecretsPolicy::PlainText).unwrap();
     assert_eq!(vault.entries.lock()[&vault_key(&id)].ssh_password, "s3cret", "a blank box keeps it");
-    reopened.update_ssh_profile(&id, "Work 2", "deploy2", Some("n3w")).unwrap();
+    reopened.update_ssh_profile(&id, "Work 2", "deploy2", Some("n3w"), SecretsPolicy::PlainText).unwrap();
     assert_eq!(vault.entries.lock()[&vault_key(&id)].ssh_password, "n3w");
     assert!(!fs::read_to_string(&file).unwrap().contains("n3w"));
 }
@@ -84,7 +84,7 @@ fn editing_an_unloaded_profile_does_not_touch_the_vault() {
 
     let mut reopened = SettingsStore::with_vault(file, Arc::new(vault.clone()));
     vault.broken.store(true, Ordering::SeqCst);
-    reopened.update_ssh_profile(&id, "Renamed", "deploy", None).unwrap();
+    reopened.update_ssh_profile(&id, "Renamed", "deploy", None, SecretsPolicy::PlainText).unwrap();
     reopened.set_active_ssh_profile(&id).unwrap();
     assert!(reopened.unlock_active_ssh_profile().unwrap_err().to_string().contains("system keyring"));
     vault.broken.store(false, Ordering::SeqCst);

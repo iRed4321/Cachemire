@@ -411,6 +411,7 @@ fn a_saved_query_appears_in_the_sidebar_and_its_own_x_removes_it() {
         queries: Default::default(),
         transfer: Default::default(),
         cloud: Default::default(),
+        asked: Default::default(),
     });
     crate::redisql::init(&app, &h.window);
     h.frame();

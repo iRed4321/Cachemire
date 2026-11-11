@@ -29,6 +29,8 @@ pub enum KeyringError {
     SshProfilePassword(#[source] VaultError),
     #[error("Couldn't read the SSH tunnel's secrets from the system keyring: {0}")]
     TunnelSecrets(#[source] VaultError),
+    #[error("The system keyring is unavailable, so the passwords can't be stored in it: {0}")]
+    CantStore(#[source] VaultError),
 }
 
 /// The name the entries are filed under in the credential store.
@@ -51,6 +53,94 @@ pub struct Secrets {
 impl Secrets {
     pub fn is_empty(&self) -> bool {
         self.password.is_empty() && self.ssh_password.is_empty() && self.ssh_passphrase.is_empty()
+    }
+}
+
+/// What a save does with a secret the credential store won't take.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub enum SecretsPolicy {
+    /// the save fails with [`KeyringError::CantStore`]
+    #[default]
+    VaultOrFail,
+    /// the secret is kept in clear text in the data file
+    PlainText,
+    /// the secret is kept nowhere: it is asked for when needed, and held in memory
+    LeaveOut,
+}
+
+/// Which of a connection's secrets were left out of every store.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(default, rename_all = "camelCase")]
+pub struct LeftOut {
+    pub password: bool,
+    pub ssh_password: bool,
+    pub ssh_passphrase: bool,
+}
+
+impl LeftOut {
+    pub fn is_empty(&self) -> bool {
+        *self == Self::default()
+    }
+}
+
+impl Secrets {
+    /// The secrets that are set.
+    pub fn set_ones(&self) -> LeftOut {
+        LeftOut {
+            password: !self.password.is_empty(),
+            ssh_password: !self.ssh_password.is_empty(),
+            ssh_passphrase: !self.ssh_passphrase.is_empty(),
+        }
+    }
+
+    /// These secrets without the ones `left_out` names.
+    pub fn without(&self, left_out: LeftOut) -> Secrets {
+        let keep = |text: &String, left: bool| if left { String::new() } else { text.clone() };
+        Secrets {
+            password: keep(&self.password, left_out.password),
+            ssh_password: keep(&self.ssh_password, left_out.ssh_password),
+            ssh_passphrase: keep(&self.ssh_passphrase, left_out.ssh_passphrase),
+        }
+    }
+
+    /// The secrets `left_out` names that are still empty.
+    pub fn missing(&self, left_out: LeftOut) -> LeftOut {
+        LeftOut {
+            password: left_out.password && self.password.is_empty(),
+            ssh_password: left_out.ssh_password && self.ssh_password.is_empty(),
+            ssh_passphrase: left_out.ssh_passphrase && self.ssh_passphrase.is_empty(),
+        }
+    }
+}
+
+/// What a store's commit does with secrets.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Vaulting<'a> {
+    /// leaves them as they are
+    Untouched,
+    /// moves what isn't in the vault to it while it works; failures are kept in the file
+    Quietly,
+    /// stores those of the items named, under the policy the caller gave
+    Saving(&'a [&'a str]),
+}
+
+/// Stores `secrets` under `key` as `policy` says, and where they went: `Ok(true)` for the
+/// vault. `usable` is cleared by a failure, so that a `PlainText` run makes no more attempts.
+pub fn place(vault: &dyn Vault, key: &str, secrets: &Secrets, policy: SecretsPolicy, usable: &mut bool) -> Result<bool, KeyringError> {
+    if policy == SecretsPolicy::LeaveOut || (policy == SecretsPolicy::PlainText && !*usable) {
+        return Ok(false);
+    }
+    match vault.set(key, secrets) {
+        Ok(()) => Ok(true),
+        Err(e) => {
+            *usable = false;
+            if policy == SecretsPolicy::PlainText {
+                tracing::warn!("the system keyring can't store passwords ({e}); they stay in the data file");
+                Ok(false)
+            } else {
+                Err(KeyringError::CantStore(e))
+            }
+        }
     }
 }
 

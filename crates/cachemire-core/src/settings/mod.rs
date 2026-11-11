@@ -12,7 +12,7 @@ use serde::{Deserialize, Serialize};
 use crate::error::{Error, Invalid};
 use crate::i18n::Language;
 use crate::persist;
-use crate::secret_vault::{OsVault, Secrets, Vault, VaultBacked};
+use crate::secret_vault::{OsVault, SecretsPolicy, Vault, VaultBacked, Vaulting};
 use crate::updates::Channel;
 
 mod cloud;
@@ -288,28 +288,20 @@ impl SettingsStore {
     }
 
     /// Puts the passwords that changed (or aren't in the vault yet) into it and
-    /// marks them as living there. One that can't be stored stays in the file; one
-    /// that isn't loaded is left alone.
-    fn vault_secrets(&mut self, next: &mut StoredSettings) {
-        self.vault_cloud_secrets(next);
-        self.vault_profile_secrets(next);
+    /// marks them as living there. The one `vaulting` names is stored as `policy` says;
+    /// another that can't be stored stays in the file. One that isn't loaded is left alone.
+    fn vault_secrets(&mut self, next: &mut StoredSettings, vaulting: Vaulting<'_>, policy: SecretsPolicy) -> Result<(), Error> {
+        self.vault_cloud_secrets(next, vaulting, policy)?;
+        self.vault_profile_secrets(next, vaulting, policy)
     }
 
-    /// Stores `secrets` under `key` while the vault is usable: the first failure makes
-    /// it unusable for the rest of the run. Whether they are stored.
-    fn store_secret(&mut self, key: &str, secrets: &Secrets) -> bool {
-        if self.vault_usable
-            && let Err(e) = self.vault.set(key, secrets)
-        {
-            tracing::warn!("the system keyring can't store passwords ({e}); they stay in the settings file this run");
-            self.vault_usable = false;
-        }
-        self.vault_usable
+    fn commit(&mut self, next: StoredSettings, store_secrets: bool) -> Result<(), Error> {
+        self.commit_with(next, if store_secrets { Vaulting::Quietly } else { Vaulting::Untouched }, SecretsPolicy::PlainText)
     }
 
-    fn commit(&mut self, mut next: StoredSettings, store_secrets: bool) -> Result<(), Error> {
-        if store_secrets {
-            self.vault_secrets(&mut next);
+    fn commit_with(&mut self, mut next: StoredSettings, vaulting: Vaulting<'_>, policy: SecretsPolicy) -> Result<(), Error> {
+        if vaulting != Vaulting::Untouched {
+            self.vault_secrets(&mut next, vaulting, policy)?;
         }
         let mut on_disk = next.clone();
         for profile in on_disk.ssh_profiles.iter_mut().filter(|p| p.in_vault) {

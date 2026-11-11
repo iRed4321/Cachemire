@@ -11,7 +11,7 @@ use slint::{ComponentHandle, ModelRc, VecModel};
 
 use crate::app::App;
 use crate::{AwsAccount, CloudSettings, ConnProfileRowData, MainWindow};
-use cachemire_core::secret_vault::staged;
+use cachemire_core::secret_vault::{SecretsPolicy, staged};
 use cachemire_core::settings::{CloudScope, CloudSsh};
 use cachemire_core::state::AppState;
 
@@ -195,10 +195,16 @@ fn save(app: &Rc<App>, window: &MainWindow, Open { scope, label }: Open) {
         Ok(values) => values,
         Err(message) => return global.set_error(message.into()),
     };
+    save_values(app, scope, label, profile, ssh, SecretsPolicy::VaultOrFail);
+}
+
+/// Saves the values of the form; if the keyring is unavailable, asks whether to keep the
+/// tunnel's secrets in the settings file.
+fn save_values(app: &Rc<App>, scope: CloudScope, label: String, profile: Option<String>, ssh: Option<CloudSsh>, policy: SecretsPolicy) {
     // off the UI thread: the secrets go through the OS credential store
     let state = app.state.clone();
     app.rt.spawn_blocking(move || {
-        let saved = staged(&state.settings, |settings| settings.set_cloud_scope(&scope, &label, profile.clone(), ssh.clone()));
+        let saved = staged(&state.settings, |settings| settings.set_cloud_scope(&scope, &label, profile.clone(), ssh.clone(), policy));
         let result = saved.map(|cleanup| {
             if let Some(cleanup) = cleanup {
                 cleanup.run();
@@ -210,6 +216,10 @@ fn save(app: &Rc<App>, window: &MainWindow, Open { scope, label }: Open) {
                 Ok(()) => {
                     reapply(app, window);
                     global.set_open(false);
+                }
+                Err(e) if crate::keyring_dialogs::is_unavailable(&e) => {
+                    let retry = Box::new(move |app: &Rc<App>, _: &MainWindow, policy| save_values(app, scope, label, profile, ssh, policy));
+                    crate::keyring_dialogs::ask_keyring(app, window, false, retry);
                 }
                 Err(e) => global.set_error(e.localized().into()),
             }

@@ -4,6 +4,7 @@ import { AwsProfileDropdown } from "components/cloud-picker.slint";
 import { ValueEditor, ValueEditorModal } from "components/value-editor.slint";
 import { KeyNameDialog, KeyNameModal, KeyNameAction } from "components/key-name-dialog.slint";
 import { FolderDeleteDialog, FolderDeleteModal } from "components/folder-delete-dialog.slint";
+import { KeyringDialog, KeyringModal, SecretsPrompt, SecretsPromptModal } from "components/secrets-dialogs.slint";
 import { CloudSettings, CloudSettingsModal } from "components/cloud-settings.slint";
 import { ConnectionTransfer, ConnectionTransferModal } from "components/connection-transfer.slint";
 import { ConnectionDropdown, ConnectionModal, ConnectionRowData, ConnectionForm, ConnProfileRowData } from "components/connection-picker.slint";
@@ -21,7 +22,7 @@ import { ConnectionView, ConnectionState, ConnectionEditor, AwsAccount, About, P
 
 // read and written by Rust: where each tab left the key panel scrolled to
 // (Rust tints the background: see Theme.env-tint)
-export { KeyScroll, ExportPrefs, Theme, About, CloudSettings, ConnectionTransfer, LineSelection, ValueLine, ValueEditor, KeyNameDialog, KeyNameAction, FolderDeleteDialog }
+export { KeyScroll, ExportPrefs, Theme, About, CloudSettings, ConnectionTransfer, LineSelection, ValueLine, ValueEditor, KeyNameDialog, KeyNameAction, FolderDeleteDialog, KeyringDialog, SecretsPrompt }
 // the enumerations Rust shares with the UI
 export { ConnectionStatus, TreeRowKind, ExportFormat, ExportTarget, LanguageSetting, SettingsCategory, ProfileTint, KeyView, OpeningView, SidebarView, SearchScope, ShortcutAction }
 // a row of the settings' Key bindings page
@@ -669,6 +670,15 @@ export component MainWindow inherits Window {
             height: 100%;
             clipboard-has-text() => { return root.clipboard-has-text(); }
             is-edit: ConnectionEditor.is-edit;
+        }
+        if KeyringDialog.open: KeyringModal {
+            width: 100%;
+            height: 100%;
+        }
+        if SecretsPrompt.open: SecretsPromptModal {
+            width: 100%;
+            height: 100%;
+            clipboard-has-text() => { return root.clipboard-has-text(); }
         }
     }
 

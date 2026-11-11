@@ -169,7 +169,7 @@ fn transfer_open(names: &[&str]) -> (Harness, Rc<crate::app::App>, (tokio::runti
                 connection_url: Some(format!("redis://h{i}:6379")),
                 ..Default::default()
             };
-            store.create_with_id(&format!("c{i}"), payload).unwrap();
+            store.create_with_id(&format!("c{i}"), payload, cachemire_core::secret_vault::SecretsPolicy::PlainText).unwrap();
         }
     }
     let h = Harness::new();

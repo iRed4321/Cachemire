@@ -7,7 +7,7 @@ use super::{SettingsStore, StoredSettings};
 use crate::connection::SshSettings;
 use crate::error::{Error, Invalid, NotFound};
 use crate::secret_vault::KeyringError;
-use crate::secret_vault::{Secrets, SecretsCleanup};
+use crate::secret_vault::{Secrets, SecretsCleanup, SecretsPolicy, Vaulting, place};
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -58,11 +58,19 @@ impl SettingsStore {
     /// Adds a profile; the first one added becomes the active one.
     #[cfg(test)]
     pub fn create_ssh_profile(&mut self, name: &str, username: &str, password: &str) -> Result<String, Error> {
-        self.create_ssh_profile_with_id(&uuid::Uuid::new_v4().to_string(), name, username, password)
+        self.create_ssh_profile_with_id(&uuid::Uuid::new_v4().to_string(), name, username, password, SecretsPolicy::PlainText)
     }
 
-    /// `create_ssh_profile`, under an id chosen by the caller.
-    pub fn create_ssh_profile_with_id(&mut self, id: &str, name: &str, username: &str, password: &str) -> Result<String, Error> {
+    /// `create_ssh_profile`, under an id chosen by the caller; `policy` says what to do
+    /// with a password the credential store won't take.
+    pub fn create_ssh_profile_with_id(
+        &mut self,
+        id: &str,
+        name: &str,
+        username: &str,
+        password: &str,
+        policy: SecretsPolicy,
+    ) -> Result<String, Error> {
         let (name, username) = (name.trim(), username.trim());
         if name.is_empty() {
             return Err(Invalid::ProfileName.into());
@@ -85,12 +93,19 @@ impl SettingsStore {
         if next.active_ssh_profile.is_empty() {
             next.active_ssh_profile.clone_from(&id);
         }
-        self.commit(next, true)?;
+        self.commit_with(next, Vaulting::Saving(&[&id]), policy)?;
         Ok(id)
     }
 
     /// Changes a profile; `password` is `None` to keep the one it has.
-    pub fn update_ssh_profile(&mut self, id: &str, name: &str, username: &str, password: Option<&str>) -> Result<(), Error> {
+    pub fn update_ssh_profile(
+        &mut self,
+        id: &str,
+        name: &str,
+        username: &str,
+        password: Option<&str>,
+        policy: SecretsPolicy,
+    ) -> Result<(), Error> {
         let (name, username) = (name.trim(), username.trim());
         if name.is_empty() {
             return Err(Invalid::ProfileName.into());
@@ -108,7 +123,7 @@ impl SettingsStore {
         }
         // a new password is loaded as of now, so the commit stores it in the vault
         let was_unloaded = new_password.is_some() && self.unloaded.remove(id);
-        let committed = self.commit(next, true);
+        let committed = self.commit_with(next, Vaulting::Saving(&[id]), policy);
         if committed.is_err() && was_unloaded {
             self.unloaded.insert(id.to_string());
         }
@@ -180,7 +195,12 @@ impl SettingsStore {
     }
 
     /// Vaults the SSH profiles' passwords that changed (see `vault_secrets`).
-    pub(super) fn vault_profile_secrets(&mut self, next: &mut StoredSettings) {
+    pub(super) fn vault_profile_secrets(
+        &mut self,
+        next: &mut StoredSettings,
+        vaulting: Vaulting<'_>,
+        policy: SecretsPolicy,
+    ) -> Result<(), Error> {
         for profile in &mut next.ssh_profiles {
             if self.unloaded.contains(&profile.id) {
                 continue;
@@ -194,8 +214,10 @@ impl SettingsStore {
             if unchanged {
                 continue;
             }
-            profile.in_vault =
-                self.store_secret(&vault_key(&profile.id), &Secrets { ssh_password: profile.password.clone(), ..Default::default() });
+            let policy = if vaulting == Vaulting::Saving(&[&profile.id]) { policy } else { SecretsPolicy::PlainText };
+            let secrets = Secrets { ssh_password: profile.password.clone(), ..Default::default() };
+            profile.in_vault = place(&*self.vault, &vault_key(&profile.id), &secrets, policy, &mut self.vault_usable)?;
         }
+        Ok(())
     }
 }

@@ -15,6 +15,7 @@ Every stable release of Cachemire; `Unreleased` is what the next one brings. Bet
 - **Read-only mode**: tick *Read-only* on a connection profile or on a connection and nothing can be written to Redis through it. The default Production profile is read-only
 - **Folder deletion**: deleting a folder asks first, with the number of keys it will remove
 - **Changed values**: saving an edit to a value that changed in Redis meanwhile asks whether to cancel, reload the new value or overwrite it
+- **Passwords without a keyring**: when the system keyring can't store a password, Cachemire now asks instead of writing it to the data file in clear text. Choose to save it in the file anyway, or (for a connection) to save without it: the Redis password, SSH password or key passphrase is then asked for each time you connect, kept in memory only. This covers connections, imports, SSH profiles and the AWS tunnel settings
 
 ### Changed
 

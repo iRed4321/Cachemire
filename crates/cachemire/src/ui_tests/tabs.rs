@@ -122,8 +122,8 @@ fn each_connection_gets_its_own_tabs_back_and_a_new_one_starts_with_none() {
         connection_url: Some("redis://localhost:6379".into()),
         ..Default::default()
     };
-    app.state.connections.lock().create_with_id("a", payload("A")).unwrap();
-    app.state.connections.lock().create_with_id("b", payload("B")).unwrap();
+    app.state.connections.lock().create_with_id("a", payload("A"), cachemire_core::secret_vault::SecretsPolicy::PlainText).unwrap();
+    app.state.connections.lock().create_with_id("b", payload("B"), cachemire_core::secret_vault::SecretsPolicy::PlainText).unwrap();
     crate::tabs::open_query(&app, "on a".into());
     h.window.global::<QueryTab>().set_text("on a, edited".into());
     let on_a = strip(&h);

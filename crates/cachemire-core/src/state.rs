@@ -212,8 +212,12 @@ mod tests {
             ssh_host: ssh.then(|| "bastion".into()),
             ..Default::default()
         };
-        state.connections.lock().create_with_id("plain", payload("Plain", false)).unwrap();
-        state.connections.lock().create_with_id("tunnelled", payload("Tunnelled", true)).unwrap();
+        state.connections.lock().create_with_id("plain", payload("Plain", false), crate::secret_vault::SecretsPolicy::PlainText).unwrap();
+        state
+            .connections
+            .lock()
+            .create_with_id("tunnelled", payload("Tunnelled", true), crate::secret_vault::SecretsPolicy::PlainText)
+            .unwrap();
         state.connections.lock().set_active("plain").unwrap();
 
         assert!(resolve_connection(&state, Some("tunnelled")).is_err(), "no SSH profile to sign in with");

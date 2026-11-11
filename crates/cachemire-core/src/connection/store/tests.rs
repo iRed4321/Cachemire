@@ -92,7 +92,7 @@ fn updating_keeps_what_the_form_leaves_out_and_reads_the_new_url() {
     // a blank password box arrives as None: both stored secrets stay
     let mut edit = payload("t2", "redis://new.host:6400/2");
     edit.ssh_host = Some("bastion2".into());
-    store.update(&id, edit).unwrap();
+    store.update(&id, edit, SecretsPolicy::PlainText).unwrap();
     let item = store.get(&id).unwrap();
     let e = item.endpoint().unwrap();
     assert_eq!((item.name.as_str(), e.host.as_str(), e.port, e.db, item.password.as_str()), ("t2", "new.host", 6400, 2, "keep-me"));
@@ -102,7 +102,7 @@ fn updating_keeps_what_the_form_leaves_out_and_reads_the_new_url() {
     // an invalid edit changes nothing
     let mut bad = payload("t3", "redis://x:6379");
     bad.ssh_host = Some("".into());
-    assert!(store.update(&id, bad).is_err());
+    assert!(store.update(&id, bad, SecretsPolicy::PlainText).is_err());
     assert_eq!(store.get(&id).unwrap().name, "t2");
 
     // a file from before SSH tunnels existed still loads
@@ -175,7 +175,7 @@ fn a_connection_without_secrets_never_touches_the_vault() {
     let mut reopened = ConnectionStore::with_vault(file, Arc::new(vault.clone()));
     reopened.unlock_secrets(&id).unwrap();
     reopened.set_active(&id).unwrap();
-    reopened.update(&id, payload("renamed", "redis://cache:6379")).unwrap();
+    reopened.update(&id, payload("renamed", "redis://cache:6379"), SecretsPolicy::PlainText).unwrap();
     assert_eq!(reads(&vault), 0);
 }
 
@@ -216,9 +216,15 @@ fn a_vault_that_cannot_be_read_never_costs_the_stored_secrets() {
     assert!(locked.unlock_secrets(&id).unwrap_err().to_string().contains("system keyring"));
     // everything that doesn't need the secrets still works, and they stay put
     locked.set_active(&id).unwrap();
-    locked.update(&id, payload("renamed", "redis://cache:6379")).unwrap();
+    locked.update(&id, payload("renamed", "redis://cache:6379"), SecretsPolicy::PlainText).unwrap();
     assert!(
-        locked.update(&id, ConnectionPayloadInput { password: Some("new".into()), ..payload("renamed", "redis://cache:6379") }).is_err()
+        locked
+            .update(
+                &id,
+                ConnectionPayloadInput { password: Some("new".into()), ..payload("renamed", "redis://cache:6379") },
+                SecretsPolicy::PlainText
+            )
+            .is_err()
     );
     vault.broken.store(false, Ordering::SeqCst);
     assert_eq!(
@@ -239,7 +245,7 @@ fn changing_one_secret_keeps_the_others() {
 
     let mut reopened = ConnectionStore::with_vault(file, Arc::new(vault.clone()));
     let edit = ConnectionPayloadInput { password: Some("new".into()), ..payload("t", "redis://cache:6379") };
-    reopened.update(&id, edit).unwrap();
+    reopened.update(&id, edit, SecretsPolicy::PlainText).unwrap();
     let stored = vault.entries.lock()[&id].clone();
     assert_eq!(
         (stored.password.as_str(), stored.ssh_password.as_str(), stored.ssh_passphrase.as_str()),

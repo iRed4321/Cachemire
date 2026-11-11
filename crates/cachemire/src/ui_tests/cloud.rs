@@ -41,7 +41,11 @@ fn tunnel(host: &str, port: u16) -> CloudSsh {
 fn an_endpoint_left_to_its_account_says_what_it_inherits_and_can_take_a_tunnel_of_its_own() {
     let (mut h, app, _rt, _turn) = form_ready();
     let account = CloudScope::Account(ACCOUNT.into());
-    app.state.settings.lock().set_cloud_scope(&account, "dev", None, Some(tunnel("bastion", 2222))).unwrap();
+    app.state
+        .settings
+        .lock()
+        .set_cloud_scope(&account, "dev", None, Some(tunnel("bastion", 2222)), cachemire_core::secret_vault::SecretsPolicy::PlainText)
+        .unwrap();
 
     let form = h.window.global::<CloudSettings>();
     form.invoke_open_requested(1, ENDPOINT.into());
@@ -67,7 +71,11 @@ fn an_endpoint_left_to_its_account_says_what_it_inherits_and_can_take_a_tunnel_o
 fn the_account_form_opens_on_what_it_sets_and_needs_a_signed_in_account() {
     let (h, app, _rt, _turn) = form_ready();
     let account = CloudScope::Account(ACCOUNT.into());
-    app.state.settings.lock().set_cloud_scope(&account, "dev", None, Some(tunnel("bastion", 2222))).unwrap();
+    app.state
+        .settings
+        .lock()
+        .set_cloud_scope(&account, "dev", None, Some(tunnel("bastion", 2222)), cachemire_core::secret_vault::SecretsPolicy::PlainText)
+        .unwrap();
     let form = h.window.global::<CloudSettings>();
     form.invoke_open_requested(0, "".into());
     assert_eq!((form.get_scope_name().as_str(), form.get_scope_detail().as_str()), ("dev", ACCOUNT));

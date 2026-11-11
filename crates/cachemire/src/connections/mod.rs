@@ -15,7 +15,7 @@ use crate::error::Localize;
 use crate::{ConnectionEditor, ConnectionForm, ConnectionRowData, ConnectionState, ConnectionView, MainWindow, ProfileTint};
 use cachemire_core::connection::ConnectionPayloadInput;
 use cachemire_core::error::{Error, Invalid};
-use cachemire_core::secret_vault::staged;
+use cachemire_core::secret_vault::{LeftOut, SecretsPolicy, staged};
 use cachemire_core::settings::ConnectionProfile;
 
 mod connect;
@@ -206,6 +206,24 @@ fn test_form(app: &Rc<App>, window: &MainWindow, form: &ConnectionForm) {
             return;
         }
     };
+    // a connection saved without a password the form leaves blank asks for it first
+    if !form.id.is_empty() {
+        let (missing, name) = {
+            let store = app.state.connections.lock();
+            (store.missing_secrets(&form.id), form.name.to_string())
+        };
+        let needed = LeftOut {
+            password: missing.password && payload.password.is_none(),
+            ssh_password: missing.ssh_password && payload.ssh_password.is_none(),
+            ssh_passphrase: missing.ssh_passphrase && payload.ssh_passphrase.is_none(),
+        };
+        if !needed.is_empty() {
+            let (form, id) = (form.clone(), form.id.to_string());
+            let resume = Box::new(move |app: &Rc<App>, window: &MainWindow| test_form(app, window, &form));
+            crate::keyring_dialogs::ask_secrets(app, window, &id, &name, needed, resume);
+            return;
+        }
+    }
     editor.set_testing(true);
     let (state, id) = (app.state.clone(), form.id.to_string());
     let test = async move {
@@ -242,13 +260,19 @@ fn save_form(app: &Rc<App>, window: &MainWindow, form: &ConnectionForm) {
             return;
         }
     };
+    save_payload(app, form.id.to_string(), payload, SecretsPolicy::VaultOrFail);
+}
+
+/// Saves `payload` as the connection `id` (a new one when empty), as `policy` says for the
+/// secrets the keyring can't take. If it is unavailable, the user is asked what to do.
+fn save_payload(app: &Rc<App>, id: String, payload: ConnectionPayloadInput, policy: SecretsPolicy) {
     // off the UI thread: storing the secrets can wait on the OS credential
     // store (a first-time setup, an unlock prompt)
-    let (state, id) = (app.state.clone(), form.id.to_string());
+    let state = app.state.clone();
     app.rt.spawn_blocking(move || {
         let new_id = uuid::Uuid::new_v4().to_string();
         let result = staged(&state.connections, |store| {
-            if id.is_empty() { store.create_with_id(&new_id, payload.clone()) } else { store.update(&id, payload.clone()) }
+            if id.is_empty() { store.create_with_id(&new_id, payload.clone(), policy) } else { store.update(&id, payload.clone(), policy) }
         });
         // an open pool still reaches the server as it was before the edit
         if result.is_ok() && !id.is_empty() {
@@ -265,6 +289,10 @@ fn save_form(app: &Rc<App>, window: &MainWindow, form: &ConnectionForm) {
                 crate::connections::profiles::apply_tint(window, &app.state);
                 // a link that waited for a connection to its server
                 crate::links::retry_pending(app, window);
+            }
+            Err(e) if crate::keyring_dialogs::is_unavailable(&e) => {
+                let retry = Box::new(move |app: &Rc<App>, _: &MainWindow, policy| save_payload(app, id, payload, policy));
+                crate::keyring_dialogs::ask_keyring(app, window, true, retry);
             }
             Err(e) => window.global::<ConnectionEditor>().set_error(e.localized().into()),
         });

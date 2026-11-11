@@ -59,7 +59,7 @@ fn the_vault_is_never_called_while_the_store_is_locked() {
     let (store, _) = store_with(Arc::new(watcher.clone()));
     watcher.store.set(Arc::downgrade(&store)).unwrap();
 
-    staged(&store, |s| s.create_with_id("c1", with_password("prod", "s3cret"))).unwrap();
+    staged(&store, |s| s.create_with_id("c1", with_password("prod", "s3cret"), SecretsPolicy::PlainText)).unwrap();
     staged(&store, |s| s.unlock_secrets("c1")).unwrap();
     assert_eq!(watcher.calls_while_locked.load(Ordering::SeqCst), 0);
     assert_eq!(watcher.inner.entries.lock()["c1"].password, "s3cret");
@@ -69,7 +69,7 @@ fn the_vault_is_never_called_while_the_store_is_locked() {
 fn a_staged_save_lands_once_in_the_store_the_vault_and_the_file() {
     let vault = MemoryVault::default();
     let (store, file) = store_with(Arc::new(vault.clone()));
-    staged(&store, |s| s.create_with_id("c1", with_password("prod", "s3cret"))).unwrap();
+    staged(&store, |s| s.create_with_id("c1", with_password("prod", "s3cret"), SecretsPolicy::PlainText)).unwrap();
 
     let saved = store.lock().get("c1").unwrap();
     assert_eq!((saved.name.as_str(), saved.password.as_str()), ("prod", "s3cret"));
@@ -82,7 +82,7 @@ fn a_staged_save_lands_once_in_the_store_the_vault_and_the_file() {
 fn a_secret_read_while_rehearsing_isnt_read_again_for_real() {
     let vault = MemoryVault::default();
     let (store, file) = store_with(Arc::new(vault.clone()));
-    staged(&store, |s| s.create_with_id("c1", with_password("prod", "s3cret"))).unwrap();
+    staged(&store, |s| s.create_with_id("c1", with_password("prod", "s3cret"), SecretsPolicy::PlainText)).unwrap();
 
     // a new run: the secret is only in the vault
     let reopened = Mutex::new(ConnectionStore::with_vault(file, Arc::new(vault.clone())));
@@ -96,9 +96,9 @@ fn a_secret_read_while_rehearsing_isnt_read_again_for_real() {
 fn the_store_keeps_its_own_vault_after_a_staged_run() {
     let vault = MemoryVault::default();
     let (store, _) = store_with(Arc::new(vault.clone()));
-    staged(&store, |s| s.create_with_id("c1", with_password("prod", "first"))).unwrap();
+    staged(&store, |s| s.create_with_id("c1", with_password("prod", "first"), SecretsPolicy::PlainText)).unwrap();
     // an edit outside `staged` reaches the real vault directly
-    store.lock().create_with_id("c2", with_password("staging", "second")).unwrap();
+    store.lock().create_with_id("c2", with_password("staging", "second"), SecretsPolicy::PlainText).unwrap();
     assert_eq!(vault.entries.lock()["c2"].password, "second");
 }
 
@@ -108,7 +108,7 @@ fn a_vault_that_fails_while_writing_out_fails_the_real_run_the_same_way() {
     let (store, _) = store_with(Arc::new(vault.clone()));
     vault.broken.store(true, Ordering::SeqCst);
     // no credential store: the password stays usable rather than lost
-    staged(&store, |s| s.create_with_id("c1", with_password("prod", "s3cret"))).unwrap();
+    staged(&store, |s| s.create_with_id("c1", with_password("prod", "s3cret"), SecretsPolicy::PlainText)).unwrap();
     assert_eq!(store.lock().get("c1").unwrap().password, "s3cret");
     assert!(vault.entries.lock().is_empty());
 }

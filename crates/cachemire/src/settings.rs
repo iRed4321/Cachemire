@@ -4,12 +4,14 @@
 
 use crate::error::Localize;
 use cachemire_core::error::Error;
-use cachemire_core::secret_vault::staged;
+use cachemire_core::secret_vault::{SecretsPolicy, staged};
+use std::rc::Rc;
 use std::sync::Arc;
 
 use slint::{ComponentHandle, ModelRc, VecModel};
 use tokio::runtime::Handle;
 
+use crate::app::App;
 use crate::{ExportPrefs, KeyView, LanguageSetting, MainWindow, OpeningView, Preferences, SshProfileForm, SshProfileRowData};
 use cachemire_core::i18n::Language;
 use cachemire_core::settings::OpeningView as StoredView;
@@ -46,16 +48,40 @@ fn refresh(window: &MainWindow, state: &Arc<AppState>) {
 
 /// Adds the profile the form holds, or changes the one it names: a blank
 /// password box on an existing profile keeps its password.
-fn save_profile(state: &AppState, form: &SshProfileForm) -> Result<(), Error> {
+fn save_profile(state: &AppState, form: &SshProfileForm, policy: SecretsPolicy) -> Result<(), Error> {
     let new_id = uuid::Uuid::new_v4().to_string();
     staged(&state.settings, |settings| {
         if form.id.is_empty() {
-            settings.create_ssh_profile_with_id(&new_id, &form.name, &form.username, &form.password).map(|_| ())
+            settings.create_ssh_profile_with_id(&new_id, &form.name, &form.username, &form.password, policy).map(|_| ())
         } else {
             let password = (!form.password.is_empty()).then_some(form.password.as_str());
-            settings.update_ssh_profile(&form.id, &form.name, &form.username, password)
+            settings.update_ssh_profile(&form.id, &form.name, &form.username, password, policy)
         }
     })
+}
+
+/// [`save_profile`] off the UI thread: storing the password can wait on the OS credential
+/// store (a first-time setup, an unlock prompt). If the keyring is unavailable, the user is
+/// asked whether to keep the password in the settings file.
+fn save_profile_off_thread(app: &Rc<App>, form: SshProfileForm, policy: SecretsPolicy) {
+    let state = app.state.clone();
+    app.rt.spawn_blocking(move || {
+        let result = save_profile(&state, &form, policy);
+        if result.is_ok() {
+            drop_profile_pools(&state);
+        }
+        crate::app::later(move |app, window| match result {
+            Ok(()) => {
+                window.global::<Preferences>().set_ssh_profile_editing(false);
+                refresh(window, &app.state);
+            }
+            Err(e) if crate::keyring_dialogs::is_unavailable(&e) => {
+                let retry = Box::new(move |app: &Rc<App>, _: &MainWindow, policy| save_profile_off_thread(app, form, policy));
+                crate::keyring_dialogs::ask_keyring(app, window, false, retry);
+            }
+            Err(e) => window.global::<Preferences>().set_error(e.localized().into()),
+        });
+    });
 }
 
 /// Drops the open pools of the connections whose SSH tunnel logs in with the
@@ -247,31 +273,11 @@ pub fn init(window: &MainWindow, state: Arc<AppState>, rt: Handle) {
         }
     });
 
-    window.global::<Preferences>().on_ssh_profile_saved({
-        let weak = window.as_weak();
-        let state = state.clone();
-        let rt = rt.clone();
-        move |form| {
-            let Some(window) = weak.upgrade() else { return };
+    window.global::<Preferences>().on_ssh_profile_saved(|form| {
+        crate::app::with(|app, window| {
             window.global::<Preferences>().set_error("".into());
-            // off the UI thread: storing the password can wait on the OS
-            // credential store (a first-time setup, an unlock prompt)
-            let weak = weak.clone();
-            let state = state.clone();
-            rt.spawn_blocking(move || {
-                let result = save_profile(&state, &form);
-                if result.is_ok() {
-                    drop_profile_pools(&state);
-                }
-                let _ = weak.upgrade_in_event_loop(move |window| match result {
-                    Ok(()) => {
-                        window.global::<Preferences>().set_ssh_profile_editing(false);
-                        refresh(&window, &state);
-                    }
-                    Err(e) => window.global::<Preferences>().set_error(e.localized().into()),
-                });
-            });
-        }
+            save_profile_off_thread(app, form, SecretsPolicy::VaultOrFail);
+        });
     });
 
     window.global::<Preferences>().on_ssh_profile_deleted({

@@ -23,7 +23,7 @@ fn state_with(payloads: Vec<ConnectionPayloadInput>) -> (AppState, Vec<String>) 
     {
         let mut store = state.connections.lock();
         for (id, payload) in ids.iter().zip(payloads) {
-            store.create_with_id(id, payload).unwrap();
+            store.create_with_id(id, payload, SecretsPolicy::PlainText).unwrap();
         }
     }
     (state, ids)
@@ -86,7 +86,7 @@ fn an_exported_file_imports_into_a_store_as_new_connections() {
     let mut store = target.connections.lock();
     let active_before = store.active_connection_id().to_string();
     for draft in parse_drafts(&text).unwrap() {
-        store.import_with_id("imported", draft.payload()).unwrap();
+        store.import_with_id("imported", draft.payload(), SecretsPolicy::PlainText).unwrap();
     }
     let imported = store.get("imported").unwrap();
     assert_eq!(imported.name, "Prod");

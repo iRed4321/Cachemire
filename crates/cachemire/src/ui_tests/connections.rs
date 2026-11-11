@@ -70,7 +70,7 @@ fn editing_a_connection_with_a_blank_password_keeps_the_stored_one() {
         password: Some("kept".into()),
         ..Default::default()
     };
-    app.state.connections.lock().create_with_id("prod", payload).unwrap();
+    app.state.connections.lock().create_with_id("prod", payload, cachemire_core::secret_vault::SecretsPolicy::PlainText).unwrap();
     let form = ("prod", "Prod (renamed)", "redis://prod:6390", "");
     fill(&h, form.0, form.1, form.2, form.3);
     h.frame();

@@ -159,6 +159,10 @@ impl Localize for KeyringError {
             KeyringError::SshProfilePassword(error) => {
                 t!("Couldn't read the SSH profile's password from the system keyring: %{error}", error = error.localized()).into_owned()
             }
+            KeyringError::CantStore(error) => {
+                t!("The system keyring is unavailable, so the passwords can't be stored in it: %{error}", error = error.localized())
+                    .into_owned()
+            }
             KeyringError::TunnelSecrets(error) => {
                 t!("Couldn't read the SSH tunnel's secrets from the system keyring: %{error}", error = error.localized()).into_owned()
             }
