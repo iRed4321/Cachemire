@@ -36,3 +36,14 @@ fn an_ipv6_server_is_reached_by_its_bare_address_and_shown_bracketed() {
     assert_eq!(connection("cache.example").address(), "cache.example:6379");
     assert_eq!(connection("not a url").address(), "not a url");
 }
+
+#[test]
+fn through_a_tunnel_the_secured_handshake_checks_the_endpoints_real_host() {
+    let secured = connection("rediss://cache.example:6380");
+    let client = client::build_client(&secured, Some(4242)).unwrap();
+    // redis-rs talks plain TCP to the tunnel's local port...
+    assert_eq!(*client.get_connection_info().addr(), redis::ConnectionAddr::Tcp("127.0.0.1".into(), 4242));
+    // ...and the tunnel verifies the certificate against the real host name
+    assert_eq!(client::tls_name_of(&secured).unwrap(), Some(rustls::pki_types::ServerName::try_from("cache.example").unwrap()));
+    assert_eq!(client::tls_name_of(&connection("redis://cache.example")).unwrap(), None);
+}

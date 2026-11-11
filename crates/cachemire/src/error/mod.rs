@@ -181,6 +181,7 @@ impl Localize for TunnelError {
             TunnelError::Connect { host, port, source } => t!("couldn't connect to the SSH server %{host}:%{port}: %{error}", host = host, port = port, error = source),
             TunnelError::Timeout { host, port } => t!("timed out connecting to the SSH server %{host}:%{port}", host = host, port = port),
             TunnelError::Unreachable { host, port, source } => t!("the SSH server couldn't reach %{host}:%{port}: %{error}", host = host, port = port, error = source),
+            TunnelError::Tls { host, source } => t!("couldn't make a secure connection to %{host} through the SSH tunnel: %{error}", host = host, error = source),
             TunnelError::LocalPort(error) => t!("couldn't open a local port for the SSH tunnel: %{error}", error = error),
             TunnelError::Ssh(_) => return self.to_string(),
         }

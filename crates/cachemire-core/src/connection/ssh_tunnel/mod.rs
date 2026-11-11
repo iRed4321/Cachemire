@@ -14,6 +14,8 @@ use tokio::net::TcpListener;
 use tokio::task::{JoinHandle, JoinSet};
 
 use crate::connection::SshSettings;
+use crate::connection::tls;
+use rustls::pki_types::ServerName;
 
 /// Why the tunnel couldn't be set up.
 #[derive(Debug, thiserror::Error)]
@@ -38,6 +40,8 @@ pub enum TunnelError {
     Timeout { host: String, port: u16 },
     #[error("the SSH server couldn't reach {host}:{port}: {source}")]
     Unreachable { host: String, port: u16, source: russh::Error },
+    #[error("couldn't make a secure connection to {host} through the SSH tunnel: {source}")]
+    Tls { host: String, source: std::io::Error },
     #[error("couldn't open a local port for the SSH tunnel: {0}")]
     LocalPort(#[source] std::io::Error),
     #[error(transparent)]
@@ -152,18 +156,34 @@ async fn connect(ssh: &SshSettings, known_hosts: &Path) -> Result<Handle<HostKey
 /// Accepts connections on the local end and forwards each through its own
 /// channel of the SSH session. Owns the session and every forwarding task, so
 /// dropping this future (aborting the task running it) closes them all.
-async fn forward_loop(listener: TcpListener, session: Arc<Handle<HostKeyCheck>>, host: String, port: u16) {
+async fn forward_loop(
+    listener: TcpListener,
+    session: Arc<Handle<HostKeyCheck>>,
+    host: String,
+    port: u16,
+    tls: Option<ServerName<'static>>,
+) {
     let mut forwards = JoinSet::new();
     while let Ok((mut socket, peer)) = listener.accept().await {
         let session = session.clone();
         let host = host.clone();
+        let tls = tls.clone();
         forwards.spawn(async move {
             let Ok(channel) = session.channel_open_direct_tcpip(host, u32::from(port), peer.ip().to_string(), u32::from(peer.port())).await
             else {
                 return; // the client sees its connection closed
             };
             let mut stream = channel.into_stream();
-            let _ = tokio::io::copy_bidirectional(&mut socket, &mut stream).await;
+            let _ = match tls {
+                Some(name) => match tls::connector().connect(name, stream).await {
+                    Ok(mut secured) => tokio::io::copy_bidirectional(&mut socket, &mut secured).await,
+                    Err(error) => {
+                        tracing::warn!(%error, "TLS handshake through the SSH tunnel failed");
+                        return;
+                    }
+                },
+                None => tokio::io::copy_bidirectional(&mut socket, &mut stream).await,
+            };
         });
     }
 }
@@ -177,8 +197,15 @@ pub struct SshTunnel {
 impl SshTunnel {
     /// Sets up a tunnel to `target_host:target_port` (as the SSH server sees
     /// it) and checks that the SSH server can reach it, so a wrong host or port
-    /// is reported here rather than as a bare "connection closed" later.
-    pub async fn open(ssh: &SshSettings, target_host: &str, target_port: u16, known_hosts: &Path) -> Result<SshTunnel, TunnelError> {
+    /// is reported here rather than as a bare "connection closed" later. With a `tls`
+    /// name, each forwarded connection is secured and checked against that name.
+    pub async fn open(
+        ssh: &SshSettings,
+        target_host: &str,
+        target_port: u16,
+        tls: Option<ServerName<'static>>,
+        known_hosts: &Path,
+    ) -> Result<SshTunnel, TunnelError> {
         let session = tokio::time::timeout(SETUP_TIMEOUT, connect(ssh, known_hosts))
             .await
             .map_err(|_| TunnelError::Timeout { host: ssh.host.clone(), port: ssh.port })??;
@@ -187,12 +214,20 @@ impl SshTunnel {
             .channel_open_direct_tcpip(target_host, u32::from(target_port), "127.0.0.1", 0)
             .await
             .map_err(|source| TunnelError::Unreachable { host: target_host.to_string(), port: target_port, source })?;
-        drop(probe);
+        match &tls {
+            Some(name) => {
+                tls::connector()
+                    .connect(name.clone(), probe.into_stream())
+                    .await
+                    .map_err(|source| TunnelError::Tls { host: target_host.to_string(), source })?;
+            }
+            None => drop(probe),
+        }
 
         let listener = TcpListener::bind(("127.0.0.1", 0)).await.map_err(TunnelError::LocalPort)?;
         let local_port = listener.local_addr().map_err(TunnelError::LocalPort)?.port();
         let session = Arc::new(session);
-        let forwarding = tokio::spawn(forward_loop(listener, session.clone(), target_host.to_string(), target_port));
+        let forwarding = tokio::spawn(forward_loop(listener, session.clone(), target_host.to_string(), target_port, tls));
         Ok(SshTunnel { local_port, forwarding, session })
     }
 

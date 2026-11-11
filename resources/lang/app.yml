@@ -255,6 +255,8 @@ _version: 2
   fr: "délai dépassé pour la connexion au serveur SSH %{host}:%{port}"
 "the SSH server couldn't reach %{host}:%{port}: %{error}":
   fr: "le serveur SSH n'a pas pu joindre %{host}:%{port} : %{error}"
+"couldn't make a secure connection to %{host} through the SSH tunnel: %{error}":
+  fr: "impossible d'établir une connexion sécurisée avec %{host} via le tunnel SSH : %{error}"
 "couldn't open a local port for the SSH tunnel: %{error}":
   fr: "impossible d'ouvrir un port local pour le tunnel SSH : %{error}"
 

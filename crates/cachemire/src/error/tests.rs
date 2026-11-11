@@ -66,6 +66,7 @@ fn core_errors() -> Vec<CoreError> {
         TunnelError::Connect { host: "bastion".into(), port: 22, source: russh::Error::KexInit },
         TunnelError::Timeout { host: "bastion".into(), port: 22 },
         TunnelError::Unreachable { host: "cache".into(), port: 6379, source: russh::Error::KexInit },
+        TunnelError::Tls { host: "cache".into(), source: io() },
         TunnelError::LocalPort(io()),
         TunnelError::Ssh(russh::Error::KexInit),
     ];

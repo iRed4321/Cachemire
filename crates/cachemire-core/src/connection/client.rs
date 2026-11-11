@@ -3,9 +3,10 @@ use std::time::Duration;
 use redis::aio::{ConnectionManager, ConnectionManagerConfig};
 use redis::io::tcp::TcpSettings;
 use redis::io::tcp::socket2::TcpKeepalive;
+use rustls::pki_types::ServerName;
 
 use crate::connection::ConnectionItem;
-use crate::error::Error;
+use crate::error::{Error, Invalid};
 
 /// Where the Redis server is, as the connection says (through an SSH tunnel,
 /// this is where the SSH server has to reach).
@@ -14,14 +15,27 @@ pub fn target_of(connection: &ConnectionItem) -> Result<(String, u16), Error> {
     Ok((endpoint.host, endpoint.port))
 }
 
-fn build_client(connection: &ConnectionItem, via_local_port: Option<u16>) -> Result<redis::Client, Error> {
+/// The name a `rediss://` endpoint's certificate has to match, when the connection is
+/// secured; through an SSH tunnel the tunnel does the TLS handshake with it.
+pub fn tls_name_of(connection: &ConnectionItem) -> Result<Option<ServerName<'static>>, Error> {
+    let endpoint = connection.endpoint()?;
+    if !endpoint.tls {
+        return Ok(None);
+    }
+    let name = ServerName::try_from(endpoint.host).map_err(|_| Invalid::UnreadableUrl)?;
+    Ok(Some(name))
+}
+
+pub(crate) fn build_client(connection: &ConnectionItem, via_local_port: Option<u16>) -> Result<redis::Client, Error> {
     use redis::IntoConnectionInfo;
 
     let mut endpoint = connection.endpoint()?;
-    // through an SSH tunnel, the server is the tunnel's end on this machine
+    // through an SSH tunnel, the server is the tunnel's end on this machine, in plain
+    // TCP: the tunnel does the TLS handshake with the endpoint's real host name
     if let Some(port) = via_local_port {
         endpoint.host = "127.0.0.1".to_string();
         endpoint.port = port;
+        endpoint.tls = false;
     }
 
     // RESP2 on purpose: every server speaks it (RESP3 needs Redis 6+), the replies are

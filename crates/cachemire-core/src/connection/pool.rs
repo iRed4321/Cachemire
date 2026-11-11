@@ -10,7 +10,7 @@ use tokio::sync::OnceCell;
 use tokio::task::JoinSet;
 
 use crate::connection::ConnectionItem;
-use crate::connection::client::{create_connection, target_of};
+use crate::connection::client::{create_connection, target_of, tls_name_of};
 use crate::connection::ssh_tunnel::SshTunnel;
 use crate::error::{Error, Timeout};
 use crate::session::{Session, cluster_enabled, ping};
@@ -44,7 +44,7 @@ impl ConnectionPool {
         let tunnel = match &connection.ssh {
             Some(ssh) => {
                 let (host, port) = target_of(connection)?;
-                let tunnel = SshTunnel::open(ssh, &host, port, known_hosts).await?;
+                let tunnel = SshTunnel::open(ssh, &host, port, tls_name_of(connection)?, known_hosts).await?;
                 tracing::info!(ssh_server = %format_args!("{}:{}", ssh.host, ssh.port), local_port = tunnel.local_port(), "SSH tunnel opened");
                 Some(tunnel)
             }
