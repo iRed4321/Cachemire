@@ -73,12 +73,21 @@ pub fn summary(markdown: &str) -> Result<()> {
 
 /// Writes `zip_path`, a zip holding just `file` with the Unix `mode`.
 pub fn zip_file(file: &Path, zip_path: &Path, mode: u32) -> Result<()> {
+    zip_file_with(file, zip_path, mode, &[])
+}
+
+/// [`zip_file`], plus the `extra` files (name and content) beside it.
+pub fn zip_file_with(file: &Path, zip_path: &Path, mode: u32, extra: &[(&str, &[u8])]) -> Result<()> {
     println!("Creating zip: {}", zip_path.display());
     let err = |e: &dyn std::fmt::Display| format!("zip {}: {e}", zip_path.display());
     let mut zip = zip::ZipWriter::new(File::create(zip_path).map_err(|e| err(&e))?);
     let options = zip::write::SimpleFileOptions::default().compression_method(zip::CompressionMethod::Deflated).unix_permissions(mode);
     zip.start_file(file.file_name().and_then(|n| n.to_str()).unwrap_or("cachemire"), options).map_err(|e| err(&e))?;
     io::copy(&mut File::open(file).map_err(|e| err(&e))?, &mut zip).map_err(|e| err(&e))?;
+    for (name, content) in extra {
+        zip.start_file(*name, options).map_err(|e| err(&e))?;
+        io::Write::write_all(&mut zip, content).map_err(|e| err(&e))?;
+    }
     zip.finish().map_err(|e| err(&e))?;
     Ok(())
 }

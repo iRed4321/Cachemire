@@ -128,7 +128,7 @@ Pour essayer le MSI seul, `cargo xtask build-installer-test --version 1.2.0` y m
 
 ## Vos données
 
-Elles sont enregistrées dans le dossier de données de l'utilisateur (`%APPDATA%\Cachemire` ou `~/.local/share/Cachemire`) : connexions, réglages, requêtes enregistrées, clés d'hôte SSH et historique des requêtes.
+Elles sont enregistrées dans le dossier de données de l'utilisateur (`%APPDATA%\Cachemire` ou `~/.local/share/Cachemire`) : connexions, réglages, requêtes enregistrées, clés d'hôte SSH et historique des requêtes. Le zip portable de Windows garde tout dans un dossier `data` à côté de l'exécutable.
 
 ## À propos du projet
 

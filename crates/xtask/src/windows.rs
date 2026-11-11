@@ -6,7 +6,7 @@ use std::path::{Path, PathBuf};
 use std::process::Command;
 
 use crate::report;
-use crate::tools::{APP_MANIFEST, Result, cargo, repo_root, run, works, zip_file};
+use crate::tools::{APP_MANIFEST, Result, cargo, repo_root, run, works, zip_file, zip_file_with};
 use crate::version::{in_release, msi_version, read_version};
 
 pub fn run_task(
@@ -40,7 +40,8 @@ fn build(fast: bool, clean: bool, skip_installer: bool, with_zip: bool, reported
 
     std::fs::create_dir_all(&out).map_err(|e| e.to_string())?;
     let zip_path = out.join(format!("Cachemire-Portable-{version}-x64.zip"));
-    zip_file(&exe, &zip_path, 0o755)?;
+    // the empty `portable` file next to the exe keeps the app's data in a `data` folder beside it
+    zip_file_with(&exe, &zip_path, 0o755, &[("portable", b"")])?;
 
     let mut msi = None;
     if !skip_installer {

@@ -126,7 +126,7 @@ To try the MSI alone, `cargo xtask build-installer-test --version 1.2.0` packs a
 
 ## Your data
 
-Saved in your user data folder (`%APPDATA%\Cachemire` or `~/.local/share/Cachemire`): your connections, settings, saved queries, SSH host keys and query history.
+Saved in your user data folder (`%APPDATA%\Cachemire` or `~/.local/share/Cachemire`): your connections, settings, saved queries, SSH host keys and query history. The portable Windows zip keeps everything in a `data` folder beside the executable instead.
 
 ## About this project
 

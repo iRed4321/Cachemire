@@ -62,6 +62,9 @@ pub fn lock_instance() -> InstanceLock {
     }
 }
 
+/// The file whose presence next to the executable keeps all the data beside it.
+const PORTABLE_MARKER: &str = "portable";
+
 /// The directory the executable lives in: the fallback if the platform has no
 /// per-user data directory.
 fn exe_dir() -> PathBuf {
@@ -82,10 +85,15 @@ fn migrate_legacy_data(legacy: &Path, dir: &Path, files: &[&str]) -> bool {
 }
 
 /// `databases.json` in the platform's per-user data directory (`%APPDATA%\Cachemire` or
-/// `~/.local/share/Cachemire`), resolved once. The former name's folder (`Redust`) is
-/// moved over once; data next to the executable (an older layout) is copied once.
+/// `~/.local/share/Cachemire`), resolved once; with a `portable` file next to the
+/// executable, in a `data` folder there instead. Older layouts are copied over once.
 pub fn resolve_data_file() -> PathBuf {
     static DATA_FILE_PATH: LazyLock<PathBuf> = LazyLock::new(|| {
+        if exe_dir().join(PORTABLE_MARKER).is_file() {
+            let dir = exe_dir().join("data");
+            let _ = std::fs::create_dir_all(&dir);
+            return dir.join(DATA_FILE);
+        }
         let Some(data) = dirs::data_dir() else {
             return exe_dir().join(DATA_FILE);
         };
