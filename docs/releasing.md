@@ -40,7 +40,7 @@ next      ●──β1──●──β2───┴─merge──●──β3�
 
 - **Versions only exist as tags** (`v3.2.0-beta.3`, `v3.1.1`). `crates/cachemire/Cargo.toml` always says `0.0.0-dev`: the release build writes the real version into its own checkout and never commits it.
 - **`cargo ship` does the git and GitHub work**: it makes the branches, pushes them, opens the pull requests, labels them and turns their auto-merge on, through git and the [GitHub CLI](https://cli.github.com) (`gh`, signed in with `gh auth login`). There's nothing to do on github.com.
-- **The Release workflow publishes**: it works out the version from the tags, runs the tests, builds the Windows and Linux packages as that version, and only if everything passed, tags the commit and publishes the GitHub release. A beta starts it by a pushed `release/<request>` branch; a fix or a stable release by its pull request being merged into `main` with the `release` label.
+- **The Release workflow publishes**: it works out the version from the tags, runs the tests, builds the Windows and Linux packages as that version, and only if everything passed, tags the commit and publishes the GitHub release, with a `SHA256SUMS` file of its packages and a build provenance attestation for each (`gh attestation verify <package> --repo iRed4321/Cachemire`). A beta starts it by a pushed `release/<request>` branch; a fix or a stable release by its pull request being merged into `main` with the `release` label.
 - **Betas are pre-releases** with automatic notes. **Stable releases and fixes** get hand-written notes from [`CHANGELOG.md`](../CHANGELOG.md).
 - **The app updates itself from these releases**: the stable channel only sees stable releases, the beta channel sees both. On Windows the update installs in one click; on Linux the app opens the release page. The app looks when asked (**Check for updates** on the About page of Settings, which the title bar's i button opens), or at each start once **Check for Updates at startup** is on in Settings.
 
@@ -206,7 +206,7 @@ A try build counts as a beta for the app's updates.
 | minor and patch, in one pull request, and the refresh of `Cargo.lock` | Monday night | `main` | as a fix, Monday |
 | major, and minor of a `0.x` crate (`0.12` → `0.13`, breaking for Cargo) | Monday night | `next` | with the next beta |
 
-The Slint fork is left alone: it's pinned to a commit on purpose. The config is [`.github/renovate.json`](../.github/renovate.json).
+A new version is only taken 3 days after its release (Renovate opens no branch before), in case it gets yanked or is found to be hijacked; a security fix doesn't wait. The Slint fork is left alone: it's pinned to a commit on purpose. The config is [`.github/renovate.json`](../.github/renovate.json).
 
 **What happens, each night** (scheduled at 01:00 UTC: 2am in Paris in winter, 3am in summer; GitHub often starts it a few hours later):
 
@@ -377,7 +377,7 @@ The same builds the workflow runs, for trying a package before releasing it. Eac
 | `cargo xtask build-windows` | exe, MSI, portable zip | `target/windows/` | Windows, the WiX CLI (installed as a .NET tool if missing, needs the .NET SDK) |
 | `cargo xtask build-linux` | .deb and AppImage, from one build | `target/debian/`, `target/appimage/` | Linux, `cargo-deb` (installed if missing) |
 | `cargo xtask build-deb` | .deb only | `target/debian/` | Linux, `cargo-deb` |
-| `cargo xtask build-appimage` | AppImage only | `target/appimage/` | Linux; `appimagetool` is downloaded into `target/tools/` if missing |
+| `cargo xtask build-appimage` | AppImage only | `target/appimage/` | Linux; `appimagetool` (a pinned release, its SHA-256 checked) is downloaded into `target/tools/` if missing |
 
 **What gets built**, by default: the latest release tag, checked out for the build, then HEAD is put back. If HEAD is on a release tag, that one. The working tree must be clean.
 

@@ -1,11 +1,15 @@
 {
   "$schema": "https://docs.renovatebot.com/renovate-schema.json",
-  "description": "Run by the Dependencies workflow (docs/releasing.md). main gets every update but majors (and 0.x minors, as breaking), grouped once a week, and security fixes at once: merged once their checks pass, then released as a fix. next gets the majors.",
+  "description": "Run by the Dependencies workflow (docs/releasing.md). main gets every update but majors (and 0.x minors, as breaking), grouped once a week, and security fixes at once: merged once their checks pass, then released as a fix. A version is only taken 3 days after its release, but security fixes don't wait. next gets the majors.",
   "extends": ["config:recommended"],
   "timezone": "Europe/Paris",
   "baseBranchPatterns": ["main", "next"],
   "labels": ["dependencies"],
   "osvVulnerabilityAlerts": true,
+  "minimumReleaseAge": "3 days",
+  "vulnerabilityAlerts": {
+    "minimumReleaseAge": null
+  },
   "automerge": true,
   "automergeType": "pr",
   "platformAutomerge": true,

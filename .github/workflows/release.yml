@@ -17,6 +17,10 @@ on:
         options: [try, beta]
         default: try
 
+# nothing beyond reading the repository, unless a job asks for more
+permissions:
+  contents: read
+
 # one release at a time, so two can't work out the same version; a try build has a group per branch, and a
 # pull request closed without being released one of its own, so neither holds up or cancels a waiting release
 concurrency:
@@ -55,6 +59,7 @@ jobs:
       # the whole history, for the tags the version is worked out from and the branches checked
       - uses: actions/checkout@v7
         with:
+          persist-credentials: false
           fetch-depth: 0
           ref: ${{ github.event.pull_request.merge_commit_sha || github.sha }}
       # xtask's own build (target/xtask) as the CI saved it from main
@@ -116,6 +121,7 @@ jobs:
     steps:
       - uses: actions/checkout@v7
         with:
+          persist-credentials: false
           ref: ${{ needs.plan.outputs.sha }}
       # xtask's own build (target/xtask) as the CI saved it from main; the app's builds aren't cached
       - uses: Swatinem/rust-cache@v2
@@ -151,6 +157,7 @@ jobs:
     steps:
       - uses: actions/checkout@v7
         with:
+          persist-credentials: false
           ref: ${{ needs.plan.outputs.sha }}
       # xtask's own build (target/xtask) as the CI saved it from main; the app's builds aren't cached
       - uses: Swatinem/rust-cache@v2
@@ -191,6 +198,7 @@ jobs:
     steps:
       - uses: actions/checkout@v7
         with:
+          persist-credentials: false
           ref: ${{ needs.plan.outputs.sha }}
       # xtask's own build (target/xtask) as the CI saved it from main; the app's builds aren't cached
       - uses: Swatinem/rust-cache@v2
@@ -248,12 +256,31 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: write
+      # the build provenance attestations of the packages
+      id-token: write
+      attestations: write
     steps:
       - uses: actions/download-artifact@v8
         with:
           pattern: package-*
           path: dist
           merge-multiple: true
+      # signed proof of which workflow run built each package (`gh attestation verify <file> --repo <owner/repo>`)
+      - uses: actions/attest-build-provenance@v4
+        with:
+          subject-path: |
+            dist/**/*.msi
+            dist/**/*.zip
+            dist/**/*.deb
+            dist/**/*.AppImage
+      # SHA256SUMS: one line per package, by file name (`sha256sum --check SHA256SUMS` next to the downloads)
+      - name: Checksums
+        run: |
+          mkdir sums
+          find dist -type f | sort | while read -r file; do
+            (cd "$(dirname "$file")" && sha256sum "$(basename "$file")")
+          done > sums/SHA256SUMS
+          cat sums/SHA256SUMS
       - if: ${{ !contains(needs.plan.outputs.version, '-') }}
         uses: actions/download-artifact@v8
         with:
@@ -272,6 +299,7 @@ jobs:
           [[ -f notes/release-notes.md ]] && flags+=(--notes-file notes/release-notes.md)
           # every file, as an artifact keeps the folders of its files (the linux one: debian/, appimage/)
           mapfile -t files < <(find dist -type f)
+          files+=(sums/SHA256SUMS)
           gh release create "v$VERSION" "${files[@]}" --repo "$GITHUB_REPOSITORY" --target "$SHA" \
             --title "v$VERSION" --generate-notes "${flags[@]}"
 
@@ -303,6 +331,7 @@ jobs:
     steps:
       - uses: actions/checkout@v7
         with:
+          persist-credentials: false
           ref: ${{ needs.plan.outputs.sha || github.sha }}
       # xtask's own build (target/xtask) as the CI saved it from main; the app's builds aren't cached
       - uses: Swatinem/rust-cache@v2

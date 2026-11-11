@@ -8160,6 +8160,7 @@ dependencies = [
  "rspolib",
  "semver",
  "serde_json",
+ "sha2",
  "zip",
 ]
 

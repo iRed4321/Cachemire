@@ -10,6 +10,10 @@ on:
     # checks anyway (`main` requires them), each step skipped then (see "Anything to test")
     paths-ignore: ["**.md", "docs/**", "LICENSE", ".github/**"]
 
+# nothing beyond reading the repository, unless a job asks for more
+permissions:
+  contents: read
+
 concurrency:
   group: ci-${{ github.ref }}
   cancel-in-progress: true
@@ -39,6 +43,7 @@ jobs:
       # with the merge commit's parent, the base the pull request is compared with
       - uses: actions/checkout@v7
         with:
+          persist-credentials: false
           fetch-depth: 2
       # CODE set when there's something to test: always on a push, on a pull request a file
       # other than text or the workflows (the steps below check it)
@@ -163,6 +168,8 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
       # xtask's own build (target/xtask), shared by every job of the OS, in both workflows
       - uses: Swatinem/rust-cache@v2
         with:

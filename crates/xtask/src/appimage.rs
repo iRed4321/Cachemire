@@ -8,7 +8,10 @@ use crate::report;
 use crate::tools::{APP_MANIFEST, Result, cargo, repo_root, run, works, zip_file};
 use crate::version::{in_release, read_version};
 
-const TOOL_URL: &str = "https://github.com/AppImage/appimagetool/releases/download/continuous/appimagetool-x86_64.AppImage";
+const TOOL_VERSION: &str = "1.9.1";
+const TOOL_URL: &str = "https://github.com/AppImage/appimagetool/releases/download/1.9.1/appimagetool-x86_64.AppImage";
+/// The SHA-256 of that release's file: a download (or a cached copy) that differs is refused.
+const TOOL_SHA256: &str = "ed4ce84f0d9caff66f50bcca6ff6f35aae54ce8135408b3fa33abfc3cb384eb0";
 
 pub fn run_task(fast: bool, stable: bool, as_version: Option<&str>, with_zip: bool, reported: bool) -> Result<()> {
     if !cfg!(all(target_os = "linux", target_arch = "x86_64")) {
@@ -71,19 +74,38 @@ fn stage(root: &Path, app_dir: &Path, profile: &str) -> Result<()> {
     symlink("usr/bin/cachemire", &app_dir.join("AppRun"))
 }
 
-/// `appimagetool` from PATH, else the copy kept in `target/tools/`, downloaded on first use.
+/// `appimagetool` from PATH, else the pinned release kept in `target/tools/`, downloaded on
+/// first use; the copy kept is checked against [`TOOL_SHA256`] every time.
 fn appimagetool(root: &Path) -> Result<PathBuf> {
     if works("appimagetool", "--version") {
         return Ok("appimagetool".into());
     }
-    let tool = root.join("target/tools/appimagetool-x86_64.AppImage");
+    let tool = root.join(format!("target/tools/appimagetool-{TOOL_VERSION}-x86_64.AppImage"));
     if !tool.is_file() {
-        println!("appimagetool is not installed: downloading it (once)...");
+        println!("appimagetool is not installed: downloading version {TOOL_VERSION} (once)...");
         std::fs::create_dir_all(tool.parent().expect("a file path")).map_err(|e| e.to_string())?;
-        run(Command::new("curl").args(["--fail", "--location", "--silent", "--show-error", "-o"]).arg(&tool).arg(TOOL_URL))?;
-        set_mode(&tool, 0o755)?;
+        let partial = tool.with_extension("AppImage.part");
+        run(Command::new("curl").args(["--fail", "--location", "--silent", "--show-error", "-o"]).arg(&partial).arg(TOOL_URL))?;
+        if let Err(e) = check_sha256(&partial) {
+            let _ = std::fs::remove_file(&partial);
+            return Err(e);
+        }
+        std::fs::rename(&partial, &tool).map_err(|e| e.to_string())?;
     }
+    check_sha256(&tool)?;
+    set_mode(&tool, 0o755)?;
     Ok(tool)
+}
+
+/// Fails unless the file at `path` has the SHA-256 [`TOOL_SHA256`].
+fn check_sha256(path: &Path) -> Result<()> {
+    use sha2::{Digest, Sha256};
+    let bytes = std::fs::read(path).map_err(|e| format!("{}: {e}", path.display()))?;
+    let found: String = Sha256::digest(bytes).iter().map(|byte| format!("{byte:02x}")).collect();
+    if found == TOOL_SHA256 {
+        return Ok(());
+    }
+    Err(format!("{} has SHA-256 {found}, not the expected {TOOL_SHA256}: refusing to run it", path.display()))
 }
 
 #[cfg(unix)]
