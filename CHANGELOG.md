@@ -21,6 +21,7 @@ Every stable release of Cachemire; `Unreleased` is what the next one brings. Bet
 - **Connection**: a `rediss://` server reached through an SSH tunnel is now verified against its real host name
 - **Connection**: URLs accept `valkey://` and `valkeys://`; other schemes and negative database numbers are refused with a clear message
 - **Query**: the completion list is drawn over the results' buttons below the box, no longer mixed with them
+- **Security**: the AWS SSO sign-in ignores a refusal that doesn't come from your own sign-in attempt
 
 ## 3.2.1 - 2026-11-09
 

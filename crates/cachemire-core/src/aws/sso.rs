@@ -215,7 +215,8 @@ async fn browser_sign_in(client: &aws_sdk_ssooidc::Client, sso: &SsoSettings, pa
     })
 }
 
-/// Answers the browser until it comes back with the code for `state`, or with a refusal.
+/// Answers the browser until it comes back with the code for `state`, or with a refusal
+/// carrying it; any answer with another state is turned down.
 async fn wait_for_code(listener: &TcpListener, state: &str, page: &SignInPage) -> Result<String, Error> {
     loop {
         let (mut socket, _) = listener.accept().await.map_err(AwsError::Callback)?;
@@ -224,13 +225,14 @@ async fn wait_for_code(listener: &TcpListener, state: &str, page: &SignInPage) -
             respond(&mut socket, "404 Not Found", "").await;
             continue;
         };
-        if let Some(error) = params.get("error") {
+        let ours = params.get("state").map(String::as_str) == Some(state);
+        if let Some(error) = params.get("error").filter(|_| ours) {
             respond(&mut socket, "200 OK", &html(&page.title, &page.refused)).await;
             let reason = params.get("error_description").unwrap_or(error);
             return Err(AwsError::SignInRefused(reason.clone()).into());
         }
         match params.get("code") {
-            Some(code) if params.get("state").map(String::as_str) == Some(state) => {
+            Some(code) if ours => {
                 respond(&mut socket, "200 OK", &html(&page.title, &page.signed_in)).await;
                 return Ok(code.clone());
             }
@@ -383,7 +385,7 @@ mod tests {
             let listener = TcpListener::bind(("127.0.0.1", 0)).await.unwrap();
             let port = listener.local_addr().unwrap().port();
             let page = page();
-            let browser = browse(port, "GET /oauth/callback?error=access_denied&error_description=User%20said%20no HTTP/1.1");
+            let browser = browse(port, "GET /oauth/callback?error=access_denied&error_description=User%20said%20no&state=s1 HTTP/1.1");
             let (result, answer) = tokio::join!(wait_for_code(&listener, "s1", &page), browser);
             assert!(matches!(result, Err(Error::Cloud(AwsError::SignInRefused(ref reason))) if reason == "User said no"), "{result:?}");
             assert!(answer.contains("Sign-in refused."), "{answer}");
