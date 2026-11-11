@@ -18,7 +18,7 @@ use cachemire_core::key_name::KeyName;
 use cachemire_core::link::{Link, LinkError, Server};
 
 /// How often the running app looks for the links other launches hand it.
-const INBOX_INTERVAL: Duration = Duration::from_millis(400);
+const INBOX_INTERVAL: Duration = Duration::from_secs(2);
 /// A link handed over longer ago than this was for an app that has quit since: dropped.
 const INBOX_EXPIRY: Duration = Duration::from_secs(60);
 const INBOX_EXTENSION: &str = "link";
