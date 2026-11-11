@@ -70,6 +70,11 @@ pub(super) fn init(window: &MainWindow, ctx: &Ctx) {
         move |field, escaped| pretty_cache.lock().contains(&field, escaped)
     });
 
+    window.global::<KeyPanel>().on_is_binary({
+        let content = shared.content.clone();
+        move |field| content.lock().field(&field).is_some_and(|f| f.is_binary())
+    });
+
     window.global::<KeyPanel>().on_value_line_count({
         let with_lines = with_lines.clone();
         move |field, escaped, columns| with_lines(&field, escaped, columns).map_or(0, |(_, layout)| layout.len() as i32)

@@ -472,6 +472,8 @@ export global KeyPanel {
     // whether the shown key's values can be written (a hash, or a string read whole, on a
     // connection that isn't read-only), and opening the editor on one row's field
     in property <bool> editable: false;
+    // whether a row's value, or its field name, isn't UTF-8 text: it can't be edited
+    pure callback is-binary(field: string) -> bool;
     callback edit-value(field: string);
     // the header's + on a hash: the editor, open on a new field
     callback add-field();

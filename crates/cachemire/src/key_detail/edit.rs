@@ -254,8 +254,8 @@ impl Ctx {
         }
         let field = self.shared.content.lock().loaded.iter().find(|f| f.name == name && f.too_long.is_none()).cloned();
         let Some(field) = field else { return };
-        // what wasn't UTF-8 was read with replacement characters: saving would write those
-        if field.raw.contains(char::REPLACEMENT_CHARACTER) || name.contains(char::REPLACEMENT_CHARACTER) {
+        // what isn't UTF-8 is shown with its bytes written out: saving would write those
+        if field.is_binary() {
             crate::toast::show(&window, &t!("This value isn't UTF-8 text: it can't be edited here"));
             return;
         }

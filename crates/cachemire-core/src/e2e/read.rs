@@ -3,7 +3,7 @@
 use super::*;
 use crate::error::{Error, NotFound};
 use crate::explorer::{
-    HASH_NAMES_BATCH, MAX_FIELD_BYTES, MAX_STRING_BYTES, get_key_details, hash_field_page, hash_full_values, hash_more_names,
+    HASH_NAMES_BATCH, HashValues, MAX_FIELD_BYTES, MAX_STRING_BYTES, get_key_details, hash_field_page, hash_full_values, hash_more_names,
     read_for_export,
 };
 use crate::redis_value_type::RedisValueType;
@@ -139,7 +139,7 @@ fn a_hash_page_is_the_one_holding_the_field_asked_for_in_either_order() {
     assert_eq!(descending.value.as_object().unwrap().keys().next().map(String::as_str), Some("f30"));
 
     let names = ["f2".to_string(), "f29".to_string(), "nope".to_string()];
-    let (values, oversized) = block_on(hash_field_page(&state, None, &key("h"), &names)).unwrap();
+    let HashValues { values, oversized, .. } = block_on(hash_field_page(&state, None, &key("h"), &names)).unwrap();
     assert_eq!(serde_json::Value::Object(values), json!({"f2": "v2", "f29": "v29"}), "a field that is gone is left out");
     assert!(oversized.is_empty());
 }
@@ -156,7 +156,7 @@ fn a_field_too_big_for_the_page_is_given_by_its_size_and_read_on_demand() {
     assert_eq!(read.value, json!({"small": "s"}));
     assert_eq!(read.oversized.get("big"), Some(&(MAX_FIELD_BYTES + 1)));
     let full = block_on(hash_full_values(&state, None, &key("h"), &["big".into(), "gone".into()])).unwrap();
-    assert_eq!(full[0].as_ref().map(String::len), Some(MAX_FIELD_BYTES + 1));
+    assert_eq!(full[0].as_ref().map(|(text, _)| text.len()), Some(MAX_FIELD_BYTES + 1));
     assert_eq!(full[1], None);
 }
 

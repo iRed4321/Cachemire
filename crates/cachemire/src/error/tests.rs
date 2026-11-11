@@ -148,6 +148,7 @@ fn core_errors() -> Vec<CoreError> {
         CoreError::from(join_error()),
         CoreError::ClusterMode,
         CoreError::ReadOnly,
+        CoreError::BinaryData,
     ]);
     errors
 }

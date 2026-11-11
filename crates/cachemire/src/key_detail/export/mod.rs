@@ -165,7 +165,7 @@ async fn read_in_full(
         return Some(Vec::new());
     }
     match explorer::hash_full_values(state, Some(connection), &KeyName::from_id(key), &unread).await {
-        Ok(values) => Some(unread.into_iter().zip(values).collect()),
+        Ok(values) => Some(unread.into_iter().zip(values.into_iter().map(|value| value.map(|(text, _)| text))).collect()),
         Err(e) => {
             show_failure(weak, t!("Loading failed: %{error}", error = e.localized()).into_owned());
             None

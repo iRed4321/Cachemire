@@ -383,45 +383,49 @@ msgid "Next match"
 msgstr "Résultat suivant"
 
 #: crates/cachemire/ui/components/key-detail-row.slint:93
+msgid "Binary data: read-only"
+msgstr "Données binaires : lecture seule"
+
+#: crates/cachemire/ui/components/key-detail-row.slint:100
 msgid "Edit"
 msgstr "Modifier"
 
-#: crates/cachemire/ui/components/key-detail-row.slint:100
+#: crates/cachemire/ui/components/key-detail-row.slint:107
 msgid "Copy a link to this field"
 msgstr "Copier un lien vers ce champ"
 
-#: crates/cachemire/ui/components/key-detail-row.slint:109
+#: crates/cachemire/ui/components/key-detail-row.slint:116
 msgid "More actions"
 msgstr "Plus d'actions"
 
-#: crates/cachemire/ui/components/key-detail-row.slint:608
+#: crates/cachemire/ui/components/key-detail-row.slint:615
 msgid "Value too long ({})"
 msgstr "Valeur trop longue ({})"
 
-#: crates/cachemire/ui/components/key-detail-row.slint:618
-#: crates/cachemire/ui/components/key-detail-row.slint:618
-#: crates/cachemire/ui/components/key-detail-row.slint:618
+#: crates/cachemire/ui/components/key-detail-row.slint:625
+#: crates/cachemire/ui/components/key-detail-row.slint:625
+#: crates/cachemire/ui/components/key-detail-row.slint:625
 msgid "Open in a text editor"
 msgstr "Ouvrir dans un éditeur de texte"
 
-#: crates/cachemire/ui/components/key-detail-row.slint:624
-#: crates/cachemire/ui/components/key-detail-row.slint:624
-#: crates/cachemire/ui/components/key-detail-row.slint:624
+#: crates/cachemire/ui/components/key-detail-row.slint:631
+#: crates/cachemire/ui/components/key-detail-row.slint:631
+#: crates/cachemire/ui/components/key-detail-row.slint:631
 msgid "Download"
 msgstr "Télécharger"
 
-#: crates/cachemire/ui/components/key-detail-row.slint:630
-#: crates/cachemire/ui/components/key-detail-row.slint:630
-#: crates/cachemire/ui/components/key-detail-row.slint:630
-#: crates/cachemire/ui/components/key-detail-row.slint:630
+#: crates/cachemire/ui/components/key-detail-row.slint:637
+#: crates/cachemire/ui/components/key-detail-row.slint:637
+#: crates/cachemire/ui/components/key-detail-row.slint:637
+#: crates/cachemire/ui/components/key-detail-row.slint:637
 msgid "Copy"
 msgstr "Copier"
 
-#: crates/cachemire/ui/components/key-detail-row.slint:645
+#: crates/cachemire/ui/components/key-detail-row.slint:652
 msgid "Try to load"
 msgstr "Essayer de charger"
 
-#: crates/cachemire/ui/components/key-detail-row.slint:694
+#: crates/cachemire/ui/components/key-detail-row.slint:701
 msgid "Formatting..."
 msgstr "Mise en forme..."
 

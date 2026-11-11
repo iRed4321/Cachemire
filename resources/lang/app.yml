@@ -395,6 +395,8 @@ _version: 2
   fr: "Ce serveur fonctionne en mode cluster, que Cachemire ne prend pas encore en charge. Connectez-vous à un serveur ou un point de terminaison sans mode cluster."
 "This connection is read-only.":
   fr: "Cette connexion est en lecture seule."
+"This data isn't UTF-8 text: it is read-only.":
+  fr: "Ces données ne sont pas du texte UTF-8 : elles sont en lecture seule."
 "A background task failed: %{error}":
   fr: "Une tâche en arrière-plan a échoué : %{error}"
 "Pick a connection profile.":

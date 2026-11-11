@@ -7,7 +7,7 @@ use std::sync::atomic::Ordering;
 
 use crate::connection::pool::{ConnectionPool, RedisConnection};
 use crate::error::{Error, ErrorKind};
-use crate::key_name::KeyName;
+use crate::key_name::{KeyName, display_bytes, field_bytes, field_name};
 use crate::redis_value_type::RedisValueType;
 use crate::state::{AppState, resolve_connection};
 
@@ -83,11 +83,20 @@ pub enum Checked {
 }
 
 /// The outcome a checked script answered: its code, and the current value when it changed.
-fn checked_of(reply: (i64, Option<Vec<u8>>)) -> Checked {
+fn checked_of(reply: (i64, Option<Vec<u8>>)) -> Result<Checked, Error> {
     match reply {
-        (1, _) => Checked::Done,
-        (2, _) => Checked::Taken,
-        (_, current) => Checked::Changed(current.map(lossy)),
+        (1, _) => Ok(Checked::Done),
+        (2, _) => Ok(Checked::Taken),
+        (_, current) => changed(current),
+    }
+}
+
+/// [`Checked::Changed`] with the value found: refused when it isn't UTF-8 text, which
+/// the editor can't hold.
+fn changed(current: Option<Vec<u8>>) -> Result<Checked, Error> {
+    match current.map(String::from_utf8) {
+        Some(Err(_)) => Err(Error::BinaryData),
+        current => Ok(Checked::Changed(current.map(|text| text.unwrap_or_default()))),
     }
 }
 
@@ -103,8 +112,14 @@ pub(super) async fn ping(con: &mut RedisConnection) -> Result<(), Error> {
     Ok(())
 }
 
+/// `bytes` as text for the screen: each byte that isn't UTF-8 is written `\xNN`.
 pub(super) fn lossy(bytes: Vec<u8>) -> String {
-    String::from_utf8_lossy(&bytes).into_owned()
+    display_bytes(&bytes).0
+}
+
+/// [`lossy`], with whether the bytes weren't all UTF-8.
+pub(super) fn lossy_flagged(bytes: Vec<u8>) -> (String, bool) {
+    display_bytes(&bytes)
 }
 
 /// The smallest stream id after `id` (`ms-seq`), the start of the next page of a range.
@@ -119,7 +134,14 @@ pub(super) fn next_stream_id(id: &str) -> Option<String> {
 /// Pairs up a flat reply (`HSCAN`'s fields, `ZRANGE ... WITHSCORES`).
 pub(super) fn pairs(flat: Vec<Vec<u8>>) -> impl Iterator<Item = (String, String)> {
     let mut flat = flat.into_iter();
-    std::iter::from_fn(move || Some((lossy(flat.next()?), lossy(flat.next()?))))
+    std::iter::from_fn(move || Some((field_name(&flat.next()?), lossy(flat.next()?))))
+}
+
+/// A stream entry as the server sends it, before its bytes are made text.
+type RawStreamEntry = (Vec<u8>, Vec<(Vec<u8>, Vec<u8>)>);
+
+fn stream_entry(raw: RawStreamEntry) -> StreamEntry {
+    (lossy(raw.0), raw.1.into_iter().map(|(field, value)| (lossy(field), lossy(value))).collect())
 }
 
 /// A stream entry's fields as a JSON object, in their order.
@@ -146,8 +168,8 @@ fn entries_of_reply(key_type: &RedisValueType, reply: redis::Value) -> Vec<(Stri
         RedisValueType::Zset => redis::from_redis_value::<Vec<Vec<u8>>>(reply)
             .map(|flat| pairs(flat).map(|(member, score)| (score, member)).collect())
             .unwrap_or_default(),
-        RedisValueType::Stream => redis::from_redis_value::<Vec<StreamEntry>>(reply)
-            .map(|entries| entries.into_iter().map(|(id, fields)| (id, stream_fields(fields).to_string())).collect())
+        RedisValueType::Stream => redis::from_redis_value::<Vec<RawStreamEntry>>(reply)
+            .map(|entries| entries.into_iter().map(stream_entry).map(|(id, fields)| (id, stream_fields(fields).to_string())).collect())
             .unwrap_or_default(),
         _ => Vec::new(),
     }
@@ -318,7 +340,8 @@ impl Session {
     }
 
     pub async fn get(&mut self, key: &KeyName) -> Result<Option<String>, Error> {
-        Ok(redis::cmd("GET").arg(key).query_async(&mut self.con).await?)
+        let value: Option<Vec<u8>> = redis::cmd("GET").arg(key).query_async(&mut self.con).await?;
+        Ok(value.map(lossy))
     }
 
     /// The string's length in bytes (`STRLEN`), 0 for a missing key.
@@ -337,7 +360,7 @@ impl Session {
     }
 
     pub async fn hash_exists(&mut self, key: &KeyName, field: &str) -> Result<bool, Error> {
-        Ok(redis::cmd("HEXISTS").arg(key).arg(field).query_async(&mut self.con).await?)
+        Ok(redis::cmd("HEXISTS").arg(key).arg(&*field_bytes(field)).query_async(&mut self.con).await?)
     }
 
     /// One `HSCAN` step from `cursor` for the field names only: with `NOVALUES` where
@@ -347,7 +370,7 @@ impl Session {
             let reply: Result<(u64, Vec<Vec<u8>>), _> =
                 redis::cmd("HSCAN").arg(key).arg(cursor).arg("COUNT").arg(count).arg("NOVALUES").query_async(&mut self.con).await;
             match reply.map_err(Error::from) {
-                Ok((next, names)) => return Ok((next, names.into_iter().map(lossy).collect())),
+                Ok((next, names)) => return Ok((next, names.iter().map(|name| field_name(name)).collect())),
                 Err(e) if e.is_unknown_option() => self.pool.hscan_novalues.store(false, Ordering::Relaxed),
                 Err(e) => return Err(e),
             }
@@ -357,33 +380,40 @@ impl Session {
     }
 
     /// The values of `fields`, in that order (`None` for a field that is gone), an `HMGET`
-    /// per [`READ_CHUNK`] fields.
-    pub async fn hash_values(&mut self, key: &KeyName, fields: &[String]) -> Result<Vec<Option<String>>, Error> {
+    /// per [`READ_CHUNK`] fields. Each value comes with whether it isn't UTF-8 text; a field
+    /// name is read as the exact bytes it stands for.
+    pub async fn hash_values(&mut self, key: &KeyName, fields: &[String]) -> Result<Vec<Option<(String, bool)>>, Error> {
         let mut values = Vec::with_capacity(fields.len());
         for chunk in fields.chunks(READ_CHUNK) {
-            let read: Vec<Option<Vec<u8>>> = redis::cmd("HMGET").arg(key).arg(chunk).query_async(&mut self.con).await?;
-            values.extend(read.into_iter().map(|value| value.map(lossy)));
+            let mut cmd = redis::cmd("HMGET");
+            cmd.arg(key);
+            for field in chunk {
+                cmd.arg(&*field_bytes(field));
+            }
+            let read: Vec<Option<Vec<u8>>> = cmd.query_async(&mut self.con).await?;
+            values.extend(read.into_iter().map(|value| value.map(lossy_flagged)));
         }
         Ok(values)
     }
 
     /// Writes `value` into `field` of the hash (`HSET`).
     pub async fn hash_set(&mut self, key: &KeyName, field: &str, value: &str) -> Result<(), Error> {
-        redis::cmd("HSET").arg(key).arg(field).arg(value).query_async::<()>(&mut self.con).await?;
+        redis::cmd("HSET").arg(key).arg(&*field_bytes(field)).arg(value).query_async::<()>(&mut self.con).await?;
         Ok(())
     }
 
     /// Writes `value` into `field` of the hash unless it has that field already
     /// (`HSETNX`); whether it was written.
     pub async fn hash_set_new(&mut self, key: &KeyName, field: &str, value: &str) -> Result<bool, Error> {
-        Ok(redis::cmd("HSETNX").arg(key).arg(field).arg(value).query_async(&mut self.con).await?)
+        Ok(redis::cmd("HSETNX").arg(key).arg(&*field_bytes(field)).arg(value).query_async(&mut self.con).await?)
     }
 
     /// Moves field `from` of the hash to `to`, with `value` as its value, unless the hash
     /// has a field `to` already; whether it moved. One script, so it all happens or none
     /// of it does; a server that refuses scripts gets `HSETNX` then `HDEL`.
     pub async fn hash_rename(&mut self, key: &KeyName, from: &str, to: &str, value: &str) -> Result<bool, Error> {
-        let moved: Result<i64, _> = RENAME_FIELD_SCRIPT.key(key).arg(from).arg(to).arg(value).invoke_async(&mut self.con).await;
+        let moved: Result<i64, _> =
+            RENAME_FIELD_SCRIPT.key(key).arg(&*field_bytes(from)).arg(&*field_bytes(to)).arg(value).invoke_async(&mut self.con).await;
         match moved.map_err(Error::from) {
             Ok(moved) => Ok(moved == 1),
             Err(e) if e.is_script_refused() => {
@@ -402,14 +432,14 @@ impl Session {
     /// server that refuses scripts gets the check and the write as two commands.
     pub async fn hash_set_checked(&mut self, key: &KeyName, field: &str, expected: &str, value: &str) -> Result<Checked, Error> {
         let reply: Result<(i64, Option<Vec<u8>>), _> =
-            CHECKED_HASH_SET_SCRIPT.key(key).arg(field).arg(expected).arg(value).invoke_async(&mut self.con).await;
+            CHECKED_HASH_SET_SCRIPT.key(key).arg(&*field_bytes(field)).arg(expected).arg(value).invoke_async(&mut self.con).await;
         match reply.map_err(Error::from) {
-            Ok(reply) => Ok(checked_of(reply)),
-            Err(e) if matches!(e.kind(), ErrorKind::Redis | ErrorKind::Denied) => {
+            Ok(reply) => checked_of(reply),
+            Err(e) if e.is_script_refused() => {
                 tracing::info!("the checked write script was refused ({e}); checking then writing");
-                let current: Option<Vec<u8>> = redis::cmd("HGET").arg(key).arg(field).query_async(&mut self.con).await?;
+                let current: Option<Vec<u8>> = redis::cmd("HGET").arg(key).arg(&*field_bytes(field)).query_async(&mut self.con).await?;
                 if current.as_deref() != Some(expected.as_bytes()) {
-                    return Ok(Checked::Changed(current.map(lossy)));
+                    return changed(current);
                 }
                 self.hash_set(key, field, value).await?;
                 Ok(Checked::Done)
@@ -427,15 +457,21 @@ impl Session {
         expected: &str,
         value: &str,
     ) -> Result<Checked, Error> {
-        let reply: Result<(i64, Option<Vec<u8>>), _> =
-            CHECKED_RENAME_FIELD_SCRIPT.key(key).arg(from).arg(to).arg(value).arg(expected).invoke_async(&mut self.con).await;
+        let reply: Result<(i64, Option<Vec<u8>>), _> = CHECKED_RENAME_FIELD_SCRIPT
+            .key(key)
+            .arg(&*field_bytes(from))
+            .arg(&*field_bytes(to))
+            .arg(value)
+            .arg(expected)
+            .invoke_async(&mut self.con)
+            .await;
         match reply.map_err(Error::from) {
-            Ok(reply) => Ok(checked_of(reply)),
-            Err(e) if matches!(e.kind(), ErrorKind::Redis | ErrorKind::Denied) => {
+            Ok(reply) => checked_of(reply),
+            Err(e) if e.is_script_refused() => {
                 tracing::info!("the checked rename script was refused ({e}); checking then renaming");
-                let current: Option<Vec<u8>> = redis::cmd("HGET").arg(key).arg(from).query_async(&mut self.con).await?;
+                let current: Option<Vec<u8>> = redis::cmd("HGET").arg(key).arg(&*field_bytes(from)).query_async(&mut self.con).await?;
                 if current.as_deref() != Some(expected.as_bytes()) {
-                    return Ok(Checked::Changed(current.map(lossy)));
+                    return changed(current);
                 }
                 if !self.hash_set_new(key, to, value).await? {
                     return Ok(Checked::Taken);
@@ -453,12 +489,12 @@ impl Session {
         let reply: Result<(i64, Option<Vec<u8>>), _> =
             CHECKED_STRING_SET_SCRIPT.key(key).arg(expected).arg(value).invoke_async(&mut self.con).await;
         match reply.map_err(Error::from) {
-            Ok(reply) => Ok(checked_of(reply)),
-            Err(e) if matches!(e.kind(), ErrorKind::Redis | ErrorKind::Denied) => {
+            Ok(reply) => checked_of(reply),
+            Err(e) if e.is_script_refused() => {
                 tracing::info!("the checked write script was refused ({e}); checking then writing");
                 let current: Option<Vec<u8>> = redis::cmd("GET").arg(key).query_async(&mut self.con).await?;
                 if current.as_deref() != Some(expected.as_bytes()) {
-                    return Ok(Checked::Changed(current.map(lossy)));
+                    return changed(current);
                 }
                 self.string_set(key, value).await?;
                 Ok(Checked::Done)
@@ -469,7 +505,7 @@ impl Session {
 
     /// Removes `field` from the hash (`HDEL`).
     pub async fn hash_delete(&mut self, key: &KeyName, field: &str) -> Result<(), Error> {
-        redis::cmd("HDEL").arg(key).arg(field).query_async::<()>(&mut self.con).await?;
+        redis::cmd("HDEL").arg(key).arg(&*field_bytes(field)).query_async::<()>(&mut self.con).await?;
         Ok(())
     }
 
@@ -538,7 +574,7 @@ impl Session {
         for chunk in fields.chunks(READ_CHUNK) {
             let mut pipe = redis::pipe();
             for field in chunk {
-                pipe.cmd("HSTRLEN").arg(key).arg(field);
+                pipe.cmd("HSTRLEN").arg(key).arg(&*field_bytes(field));
             }
             sizes.extend(pipe.query_async::<Vec<usize>>(&mut self.con).await?);
         }
@@ -616,8 +652,9 @@ impl Session {
         let mut start = "-".to_string();
         while entries.len() < wanted {
             let chunk = (wanted - entries.len()).min(READ_CHUNK);
-            let page: Vec<StreamEntry> =
+            let page: Vec<RawStreamEntry> =
                 redis::cmd("XRANGE").arg(key).arg(&start).arg("+").arg("COUNT").arg(chunk).query_async(&mut self.con).await?;
+            let page: Vec<StreamEntry> = page.into_iter().map(stream_entry).collect();
             let next = page.last().and_then(|(id, _)| next_stream_id(id));
             let full = page.len() == chunk;
             entries.extend(page);

@@ -3,7 +3,7 @@
 //! `search_filter` (`SearchFilter`/`SearchTerm`).
 
 use parking_lot::Mutex;
-use rustc_hash::FxHashMap;
+use rustc_hash::{FxHashMap, FxHashSet};
 use std::sync::{Arc, OnceLock};
 
 use rayon::prelude::*;
@@ -40,6 +40,8 @@ pub(super) struct Field {
     // the value's size in bytes when it was too big to be read with the others
     // (`raw` is then empty, until it's read)
     pub(super) too_long: Option<usize>,
+    // the value isn't UTF-8 text: `raw` writes its other bytes as `\xNN`, and it is never edited
+    pub(super) binary: bool,
     // lowercased on first use by a case-insensitive search, then kept for
     // every later keystroke/badge — `raw` especially can be a large JSON
     // blob, not worth re-lowering on every pass over the fields
@@ -49,7 +51,7 @@ pub(super) struct Field {
 
 impl Field {
     pub(super) fn new(name: String, raw: String, json: Option<Value>) -> Field {
-        Field { name, raw, json, too_long: None, lower_name: OnceLock::new(), lower_raw: OnceLock::new() }
+        Field { name, raw, json, too_long: None, binary: false, lower_name: OnceLock::new(), lower_raw: OnceLock::new() }
     }
 
     /// A hash field whose value, `size` bytes long, was left out for its size.
@@ -58,9 +60,14 @@ impl Field {
     }
 
     /// A hash field read as `raw`, parsed when it is JSON.
-    pub(super) fn hash_value(name: String, raw: String) -> Field {
+    pub(super) fn hash_value(name: String, raw: String, binary: bool) -> Field {
         let json = serde_json::from_str::<Value>(&raw).ok();
-        Field::new(name, raw, json)
+        Field { binary, ..Field::new(name, raw, json) }
+    }
+
+    /// Whether the field can't be written: its value or its name isn't UTF-8 text.
+    pub(super) fn is_binary(&self) -> bool {
+        self.binary || !cachemire_core::key_name::is_text_field(&self.name)
     }
 
     /// A field holding `value`: a string stays plain text (shown as a JSON
@@ -99,7 +106,12 @@ pub(super) type Fields = Vec<Arc<Field>>;
 /// A page of hash fields in the order of `names`: each read value JSON-parsed when
 /// possible (spread across cores, names/strings moved rather than cloned), each one
 /// in `oversized` by its size; a name in neither is gone from the server.
-pub(super) fn build_fields(details_value: Value, mut oversized: FxHashMap<String, usize>, names: &[String]) -> Fields {
+pub(super) fn build_fields(
+    details_value: Value,
+    mut oversized: FxHashMap<String, usize>,
+    binary: &FxHashSet<String>,
+    names: &[String],
+) -> Fields {
     let Value::Object(map) = details_value else { return Vec::new() };
     let mut values: FxHashMap<String, Value> = map.into_iter().collect();
     names
@@ -116,7 +128,8 @@ pub(super) fn build_fields(details_value: Value, mut oversized: FxHashMap<String
                     Value::String(s) => s,
                     other => other.to_string(),
                 };
-                Arc::new(Field::hash_value(name, raw))
+                let binary = binary.contains(&name);
+                Arc::new(Field::hash_value(name, raw, binary))
             }
             Err(size) => Arc::new(Field::too_long(name, size)),
         })
@@ -124,8 +137,12 @@ pub(super) fn build_fields(details_value: Value, mut oversized: FxHashMap<String
 }
 
 /// The single "(value)" field standing for a non-hash key's whole value.
-pub(super) fn single_value_field(value: Value) -> Field {
+pub(super) fn single_value_field(value: Value, binary: bool) -> Field {
     let name = t!("(value)").into_owned();
+    Field { binary, ..single_field(name, value) }
+}
+
+fn single_field(name: String, value: Value) -> Field {
     match value {
         // a string key holding a JSON object or array is shown, and can be
         // filtered, as that JSON — like a hash field's value is

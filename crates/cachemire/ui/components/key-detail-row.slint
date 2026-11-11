@@ -88,7 +88,14 @@ export component RowHeader inherits Rectangle {
             IconChevron { size: Theme.icon-sm; down: true; tint: Theme.text-tertiary; }
         }
         Rectangle { horizontal-stretch: 1; }
-        if KeyPanel.editable: IconButton {
+        // a value or field name that isn't UTF-8 text is shown with its bytes, never edited
+        if KeyPanel.editable && KeyPanel.is-binary(root.field): Text {
+            text: @tr("Binary data: read-only");
+            font-size: Theme.pt(10.5px);
+            color: Theme.text-tertiary;
+            vertical-alignment: center;
+        }
+        if KeyPanel.editable && !KeyPanel.is-binary(root.field): IconButton {
             box-size: Theme.px(26px);
             hint: @tr("Edit");
             clicked => { KeyPanel.edit-value(root.field); }

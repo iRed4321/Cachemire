@@ -9,7 +9,7 @@ fn names(fields: &Fields) -> Vec<&str> {
 #[test]
 fn a_page_keeps_the_order_of_its_names_and_parses_what_is_json() {
     let values = json!({"b": "{\"x\":1}", "a": "plain text", "c": "[1,2]"});
-    let fields = build_fields(values, FxHashMap::default(), &["c".into(), "a".into(), "b".into()]);
+    let fields = build_fields(values, FxHashMap::default(), &Default::default(), &["c".into(), "a".into(), "b".into()]);
     assert_eq!(names(&fields), ["c", "a", "b"]);
     assert_eq!(fields[0].json, Some(json!([1, 2])));
     assert_eq!(fields[1].json, None);
@@ -20,7 +20,7 @@ fn a_page_keeps_the_order_of_its_names_and_parses_what_is_json() {
 #[test]
 fn an_oversized_field_is_kept_by_its_size_and_a_gone_one_is_dropped() {
     let oversized: FxHashMap<String, usize> = [("big".to_string(), 500_000)].into_iter().collect();
-    let fields = build_fields(json!({"small": "1"}), oversized, &["small".into(), "big".into(), "deleted".into()]);
+    let fields = build_fields(json!({"small": "1"}), oversized, &Default::default(), &["small".into(), "big".into(), "deleted".into()]);
     assert_eq!(names(&fields), ["small", "big"]);
     assert_eq!(fields[1].too_long, Some(500_000));
     assert_eq!(fields[1].raw, "");
@@ -28,19 +28,19 @@ fn an_oversized_field_is_kept_by_its_size_and_a_gone_one_is_dropped() {
 
 #[test]
 fn a_reply_that_isnt_an_object_gives_no_field() {
-    assert!(build_fields(json!(["a"]), FxHashMap::default(), &["a".into()]).is_empty());
+    assert!(build_fields(json!(["a"]), FxHashMap::default(), &Default::default(), &["a".into()]).is_empty());
 }
 
 #[test]
 fn a_string_key_shows_as_json_only_when_it_holds_an_object_or_array() {
-    assert_eq!(single_value_field(json!("{\"a\":1}")).json, Some(json!({"a": 1})));
-    assert_eq!(single_value_field(json!("[true]")).json, Some(json!([true])));
+    assert_eq!(single_value_field(json!("{\"a\":1}"), false).json, Some(json!({"a": 1})));
+    assert_eq!(single_value_field(json!("[true]"), false).json, Some(json!([true])));
     for scalar in ["42", "\"quoted\"", "true", "not json"] {
-        let field = single_value_field(json!(scalar));
+        let field = single_value_field(json!(scalar), false);
         assert_eq!(field.json, None, "{scalar}");
         assert_eq!(field.raw, scalar);
     }
-    let list = single_value_field(json!(["x", "y"]));
+    let list = single_value_field(json!(["x", "y"]), false);
     assert_eq!((list.raw.as_str(), list.json), (r#"["x","y"]"#, Some(json!(["x", "y"]))));
 }
 

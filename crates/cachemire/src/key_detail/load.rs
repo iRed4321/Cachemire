@@ -222,9 +222,9 @@ fn fetched_key(details: KeyDetails, descending: bool) -> FetchedKey {
     let fields: Fields = if details.key_type == RedisValueType::Hash {
         let names = details.all_field_names.as_deref().unwrap_or_default();
         let page = &names[details.page_start.min(names.len())..(details.page_start + HASH_PAGE_SIZE).min(names.len())];
-        build_fields(details.value, details.oversized, page)
+        build_fields(details.value, details.oversized, &details.binary_fields, page)
     } else {
-        vec![Arc::new(single_value_field(details.value))]
+        vec![Arc::new(single_value_field(details.value, details.binary_value))]
     };
     // a hash's true field count is known from the start (`HLEN`), so
     // it's never marked truncated: the rest just hasn't been paged in yet

@@ -46,6 +46,8 @@ pub enum Error {
     ClusterMode,
     #[error("This connection is read-only.")]
     ReadOnly,
+    #[error("This data isn't UTF-8 text: it is read-only.")]
+    BinaryData,
 }
 
 /// What the user gave can't be used.
@@ -181,6 +183,7 @@ impl Error {
             Error::System(_) => ErrorKind::System,
             Error::ClusterMode => ErrorKind::Unsupported,
             Error::ReadOnly => ErrorKind::Denied,
+            Error::BinaryData => ErrorKind::Invalid,
         }
     }
 }
