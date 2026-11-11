@@ -4,8 +4,8 @@
 
 use std::ops::Range;
 
+use crate::styled_text::StyledText;
 use slint::Color;
-use slint::private_unstable_api::re_exports::StyledText;
 
 use crate::theme_colors::{ACCENT_ORANGE, ACCENT_YELLOW, BG_APP_BASE, HIGHLIGHT_FIND};
 

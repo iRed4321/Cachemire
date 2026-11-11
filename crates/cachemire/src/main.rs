@@ -29,6 +29,7 @@ mod search;
 mod server_stats;
 mod settings;
 mod shortcuts;
+mod styled_text;
 mod table_text;
 mod tabs;
 mod theme_colors;

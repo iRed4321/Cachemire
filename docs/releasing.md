@@ -206,7 +206,7 @@ A try build counts as a beta for the app's updates.
 | minor and patch, in one pull request, and the refresh of `Cargo.lock` | Monday night | `main` | as a fix, Monday |
 | major, and minor of a `0.x` crate (`0.12` → `0.13`, breaking for Cargo) | Monday night | `next` | with the next beta |
 
-A new version is only taken 3 days after its release (Renovate opens no branch before), in case it gets yanked or is found to be hijacked; a security fix doesn't wait. The Slint fork is left alone: it's pinned to a commit on purpose. The config is [`.github/renovate.json`](../.github/renovate.json).
+A new version is only taken 3 days after its release (Renovate opens no branch before), in case it gets yanked or is found to be hijacked; a security fix doesn't wait. The Slint fork is left alone: it's pinned to a commit on purpose (see [the Slint fork](slint-fork.md)). The config is [`.github/renovate.json`](../.github/renovate.json).
 
 **What happens, each night** (scheduled at 01:00 UTC: 2am in Paris in winter, 3am in summer; GitHub often starts it a few hours later):
 

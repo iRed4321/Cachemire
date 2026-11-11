@@ -4,10 +4,10 @@
 
 use std::ops::Range;
 
+use crate::styled_text::StyledText;
 use crate::theme_colors;
 use cachemire_core::redisql::variable_ranges;
 use slint::Color;
-use slint::private_unstable_api::re_exports::StyledText;
 
 const KEYWORDS: &[&str] = &["from", "join", "where", "select", "limit", "as", "on", "and", "in", "key", "var"];
 const BOOLEANS: &[&str] = &["true", "false"];

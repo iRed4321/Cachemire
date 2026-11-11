@@ -8,9 +8,9 @@ use std::ops::Range;
 use std::rc::Rc;
 use std::sync::Arc;
 
+use crate::styled_text::StyledText;
 use rust_i18n::t;
 use serde_json::Value;
-use slint::private_unstable_api::re_exports::StyledText;
 use slint::{ComponentHandle, Model, ModelRc, SharedString, VecModel};
 
 use crate::error::Localize;

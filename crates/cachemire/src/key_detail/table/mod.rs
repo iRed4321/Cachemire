@@ -4,10 +4,10 @@
 use std::cmp::Ordering;
 use std::sync::Arc;
 
+use crate::styled_text::StyledText;
 use rayon::prelude::*;
 use rust_i18n::t;
 use serde_json::Value;
-use slint::private_unstable_api::re_exports::StyledText;
 use slint::{Model, ModelRc, SharedString, VecModel};
 
 use crate::table_text::{cell_chars, cell_text, column_width, push_csv_row, uncapped_column_width};

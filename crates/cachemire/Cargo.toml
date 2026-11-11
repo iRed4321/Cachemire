@@ -24,6 +24,7 @@ natord = "1"
 open.workspace = true
 semver.workspace = true
 # the fork's patched/1.18.1 branch at a fixed commit (also for slint-build): move both `rev`s to update
+# what the fork changes and how to move to a newer Slint: docs/slint-fork.md
 slint = { git = "https://github.com/iRed4321/SlintFork.git", rev = "8212a4db5a7d6acb8252f93955319e782cc4f733", default-features = false, features = ["std", "backend-winit", "renderer-software", "compat-1-2", "unstable-winit-030"] }
 rust-i18n = "4"
 thiserror.workspace = true

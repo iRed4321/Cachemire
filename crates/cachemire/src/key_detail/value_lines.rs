@@ -6,9 +6,9 @@ use std::ops::Range;
 use std::rc::Rc;
 use std::sync::{Arc, Weak};
 
+use crate::styled_text::StyledText;
 use rustc_hash::FxHashMap;
 use slint::Color;
-use slint::private_unstable_api::re_exports::StyledText;
 
 use super::highlight::{Match, find_matches, overlay_highlights};
 use super::pretty_text::ColoredParagraph;
