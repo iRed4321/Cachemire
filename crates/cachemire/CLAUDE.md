@@ -13,6 +13,11 @@ UI-thread glue between `ui/*.slint` and `cachemire-core`. No business logic here
 - `src/error/`: `Localize` trait turning core errors into translated text.
 - `src/styled_text.rs`: the only place allowed to name `slint::private_unstable_api`.
 
+## Wiki chapters (`wiki/`)
+
+`architecture`, `runtime` (threads, `App`), `state`, `errors`, `ui`, `keys_and_tabs`, `connections`, `redisql`, `settings`,
+`i18n`, `platform` (windows, links, updates), `testing`, `glossary`. Start at `wiki/index.md`.
+
 ## Rules
 
 - Flow: Slint callback -> handler -> `app::with` -> spawn on `app.rt` -> `app::later` -> set properties / `VecModel`.

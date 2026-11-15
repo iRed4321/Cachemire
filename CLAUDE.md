@@ -7,6 +7,10 @@ OS keyring, Redisql query language. UI text is English + French.
 
 - At session start, read `NOTES.md` if it exists (working memory between sessions).
 - Delegate broad exploration (sweeping many files) to subagents; keep the main context for edits.
+- The wiki (`crates/*/wiki/*.md`, index in `crates/cachemire/wiki/index.md`) walks through the architecture, states, errors,
+  UI and each subsystem: read the chapter of the area you touch before sweeping its code. It was written from the code and
+  can lag it: the code wins; fix the chapter when you find a mismatch or change what it describes. Links are intra-doc,
+  code fences are ```text, ```mermaid or ```dot only (doctests).
 - When you discover a convention or pitfall, update the matching skill or sub-folder CLAUDE.md
   (or this file if it is cross-cutting). Log in-progress work and decisions in `NOTES.md`.
 
@@ -26,6 +30,8 @@ OS keyring, Redisql query language. UI text is English + French.
 - Test: `cargo test` (headless Slint UI tests in `crates/cachemire/src/ui_tests/` included).
 - E2E: `cargo xtask e2e` (needs redis-server, valkey-server, Docker or WSL; forwards args to nextest).
 - Lint (CI): `cargo fmt --all --check`, `cargo clippy --all-targets -- -D warnings`, `cargo deny check`.
+- Wiki (rustdoc guide + code docs of both crates): `cargo wiki --open` (= `cargo xtask wiki`); check links with
+  `RUSTDOCFLAGS='-D warnings' cargo wiki`. Diagrams: ```` ```mermaid ```` (drawn in the browser) or ```` ```dot ```` (needs Graphviz).
 - i18n: `cargo xtask i18n`. Packaging: `cargo xtask build-linux|build-deb|build-appimage|build-windows`.
 - Releases: `cargo ship …` only when asked (see `docs/releasing.md`).
 

@@ -13,10 +13,15 @@ Must not depend on Slint or rust-i18n. Feature `test-support` exposes helpers to
 - `state.rs` (`AppState`, `InstanceLock`), `runtime.rs` (Tokio), `error.rs`, `i18n/` (`Language`, `LANGUAGES`).
 - `e2e/`: tests against a real Redis, run with `cargo xtask e2e`. `test_support.rs`: `temp_dir`, `block_on`, `TestRedis`.
 
+## Wiki chapters (`wiki/`)
+
+`errors`, `connection`, `secrets`, `aws`, `session`, `explorer`, `redisql`, `settings`, `utilities` (json_path, key_name, export_files).
+Start at `wiki/index.md`.
+
 ## Rules
 
 - Error text is English in `Display`; a new variant needs a `Localize` arm in `crates/cachemire/src/error/mod.rs`
-  AND an `app.yml` entry (checked by `error/tests.rs`).
+  AND an `app.yml` entry (`i18n/tests.rs` checks every `t!("…")` has one; `error/tests.rs`, English = `Display`).
 - Any password/passphrase/token is a `Secret`. Plain-text save asks the user first; SSH host keys are confirmed.
 - `unwrap` only in tests. Keep sibling `tests.rs` in step with the module.
 - Skills: `add-core-feature`, `redisql-feature`.
