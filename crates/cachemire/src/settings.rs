@@ -12,7 +12,7 @@ use slint::{ComponentHandle, ModelRc, VecModel};
 use tokio::runtime::Handle;
 
 use crate::app::App;
-use crate::{ExportPrefs, KeyView, LanguageSetting, MainWindow, OpeningView, Preferences, SshProfileForm, SshProfileRowData};
+use crate::{ExportPrefs, KeyView, LanguageSetting, MainWindow, OpeningView, Preferences, SshProfileForm, SshProfileRowData, Theme};
 use cachemire_core::i18n::Language;
 use cachemire_core::settings::OpeningView as StoredView;
 use cachemire_core::state::AppState;
@@ -132,6 +132,9 @@ pub fn init(window: &MainWindow, state: Arc<AppState>, rt: Handle) {
     refresh(window, &state);
     window.global::<Preferences>().on_search_matches(|query, text| found(&query, &text));
     window.global::<Preferences>().set_language(to_setting(state.settings.lock().language()));
+    let zoom = state.settings.lock().zoom();
+    window.global::<Preferences>().set_zoom(zoom as i32);
+    window.global::<Theme>().set_zoom(zoom as f32 / 100.0);
     window.global::<Preferences>().set_server_search(state.settings.lock().server_search());
     window.global::<Preferences>().set_check_updates_at_startup(state.settings.lock().check_updates_at_startup());
     window.global::<Preferences>().set_restore_session(state.settings.lock().restore_session());
@@ -246,6 +249,21 @@ pub fn init(window: &MainWindow, state: Arc<AppState>, rt: Handle) {
                 crate::last_session::forget(&state);
             }
             saved(&window, result, |window| window.global::<Preferences>().set_restore_session(enabled));
+        }
+    });
+
+    // the zoom slider: saved, and applied at once
+    window.global::<Preferences>().on_zoom_selected({
+        let weak = window.as_weak();
+        let state = state.clone();
+        move |percent| {
+            let Some(window) = weak.upgrade() else { return };
+            let result = state.settings.lock().set_zoom(percent.max(0) as u32);
+            saved(&window, result, |window| {
+                let zoom = state.settings.lock().zoom();
+                window.global::<Preferences>().set_zoom(zoom as i32);
+                window.global::<Theme>().set_zoom(zoom as f32 / 100.0);
+            });
         }
     });
 

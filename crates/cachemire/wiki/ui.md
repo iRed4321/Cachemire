@@ -130,7 +130,8 @@ to them.
   `chrome-border` mixes 50%. This is how a connection profile (Production = red...) colors the window.
 - **Fonts**: `font-ui` = Roboto, `font-mono` = JetBrains Mono, both bundled by `import "...ttf"` lines
   at the top of the file. Roboto has no 600 weight, so 600 renders as Bold.
-- **Zoom**: `Theme.zoom` (1.0 = 100%, bounds 0.6..2.0, step 0.1 in `main.slint`).
+- **Zoom**: `Theme.zoom` (1.0 = 100%, bounds 0.6..2.0, step 0.1 in `main.slint`). The Display setting
+  (`Preferences.zoom`, saved as `zoom` percent) sets it at start and on release of its slider; Ctrl+0 returns to it.
   `Theme.px(base)` and `Theme.pt(base)` both multiply by `zoom` (the two are identical; `pt` marks a
   font size). Every size in a component is written `Theme.px(12px)` or `Theme.pt(13px)` so the whole
   UI scales together. Derived metrics (`radius-*`, `gap`, `icon-*`, `btn-*`, scrollbars) already apply it.

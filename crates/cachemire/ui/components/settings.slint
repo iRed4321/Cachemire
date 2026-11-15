@@ -1,7 +1,7 @@
 import { Theme } from "theme.slint";
 import { LanguageSetting, OpeningView, SettingsCategory, ProfileTint, SshProfileRowData, SshProfileForm, ConnProfileForm } from "types.slint";
 import { VScrollBar, ModalButton, CheckRow, SegmentedToggle, IconButton, PastePopup } from "widgets.slint";
-import { IconPlus, IconPencil, IconSettings, IconKey, IconPalette, IconFlask, IconInfo, IconKeyboard, IconUndo, IconSearch, IconClose } from "icons.slint";
+import { IconPlus, IconPencil, IconSettings, IconKey, IconPalette, IconFlask, IconInfo, IconKeyboard, IconDisplay, IconUndo, IconSearch, IconClose } from "icons.slint";
 import { ConnectionModalField, ConnProfileRowData, TintDot } from "connection-picker.slint";
 import { Preferences, About, Shortcuts } from "../globals.slint";
 export { SshProfileRowData, SshProfileForm, ConnProfileForm }
@@ -236,6 +236,7 @@ component CategoryIcon inherits Rectangle {
     height: Theme.icon-md;
     if root.results: IconSearch { size: Theme.icon-md; tint: root.tint; }
     if !root.results && root.category == SettingsCategory.general: IconSettings { size: Theme.icon-md; tint: root.tint; }
+    if !root.results && root.category == SettingsCategory.display: IconDisplay { size: Theme.icon-md; tint: root.tint; }
     if !root.results && root.category == SettingsCategory.key-bindings: IconKeyboard { size: Theme.icon-md; tint: root.tint; }
     if !root.results && root.category == SettingsCategory.ssh-profiles: IconKey { size: Theme.icon-md; tint: root.tint; }
     if !root.results && root.category == SettingsCategory.conn-profiles: IconPalette { size: Theme.icon-md; tint: root.tint; }
@@ -280,17 +281,32 @@ component CategoryItem inherits Rectangle {
 
 // a setting's name, in bold above its control
 component SettingTitle inherits Text {
-    font-size: Theme.pt(12px);
+    font-size: Theme.pt(13.5px);
     font-weight: 600;
     color: Theme.text-primary;
 }
 
-// the gray explanation under a setting; wrapped text needs its height set (2 lines by default)
-component SettingHint inherits Text {
-    height: Theme.pt(28px);
-    font-size: Theme.pt(10.5px);
-    color: Theme.text-tertiary;
-    wrap: word-wrap;
+// the gray explanation under a setting; its height follows the lines the text needs at the width it gets
+component SettingHint inherits Rectangle {
+    in property <string> text;
+    // lines at the one-line width, plus a margin for the room word wrapping wastes
+    property <float> lines: max(1, ceil(measure.preferred-width * 1.08 / max(self.width, 1px)));
+    // the measure must not widen the page: it takes the room it is given
+    min-width: 0px;
+    preferred-width: 0px;
+    horizontal-stretch: 1;
+    height: self.lines * Theme.pt(16px) + Theme.pt(4px);
+    // the unwrapped text, only to know how wide it would be on one line
+    measure := Text { visible: false; text: root.text; font-size: Theme.pt(12px); }
+    Text {
+        width: 100%;
+        height: 100%;
+        text: root.text;
+        font-size: Theme.pt(12px);
+        color: Theme.text-tertiary;
+        wrap: word-wrap;
+        vertical-alignment: top;
+    }
 }
 
 // a key combination, drawn as a key cap
@@ -508,6 +524,7 @@ component SettingsPage inherits HorizontalLayout {
 
 // the explanations under the settings, which the search reads too
 global SettingTexts {
+    out property <string> zoom-hint: @tr("The zoom the app starts at, and Ctrl+0 returns to. Ctrl with + or -, or the mouse wheel, still zooms for the session.");
     out property <string> depth-hint: @tr("How many entries of each key (hash fields, list items, set members...) the global search reads. Fewer is faster, but a match deeper inside a big key is missed.");
     out property <string> opening-view-hint: @tr("The view a key shows when its tab opens. A query's result always opens as a table, and a search hit or a link to a field in the fields view.");
     out property <string> restore-hint: @tr("Cachemire reconnects to the connection it was closed on, with its tabs and open folders. An AWS connection signs in again first, in the browser if its session has expired.");
@@ -556,14 +573,99 @@ component ResultSection inherits VerticalLayout {
     @children
 }
 
-// the General page's settings, each hidden when its `show-` is false (not found by the search)
-component GeneralSettings inherits VerticalLayout {
+// a slider over the zoom range with a mark and a label at each of `marks`; the value is only
+// applied on release, as zooming under the pointer would move the slider itself
+component ZoomSlider inherits Rectangle {
+    in property <int> value: 100;
+    in property <int> low: 60;
+    in property <int> high: 200;
+    in property <[int]> marks: [60, 75, 100, 125, 150, 175, 200];
+    callback released(percent: int);
+
+    // the value shown: the one being dragged to, else the saved one
+    property <int> shown: area.pressed ? root.dragged : root.value;
+    property <int> dragged: 100;
+    property <length> pad: Theme.px(10px);
+    property <length> track-width: root.width - 2 * root.pad;
+    pure function x-of(percent: int) -> length {
+        return root.pad + root.track-width * (percent - root.low) / (root.high - root.low);
+    }
+    // the nearest 5% to `x`, within the range
+    pure function percent-at(x: length) -> int {
+        return max(root.low, min(root.high, 5 * Math.round((root.low + (x - root.pad) / root.track-width * (root.high - root.low)) / 5)));
+    }
+
+    height: Theme.px(52px);
+    area := TouchArea {
+        mouse-cursor: pointer;
+        pointer-event(event) => {
+            if event.kind == PointerEventKind.down && event.button == PointerEventButton.left {
+                root.dragged = root.percent-at(self.mouse-x);
+            }
+            if event.kind == PointerEventKind.up && event.button == PointerEventButton.left {
+                root.released(root.dragged);
+            }
+        }
+        moved => {
+            if self.pressed {
+                root.dragged = root.percent-at(self.mouse-x);
+            }
+        }
+    }
+    // the rail, filled up to the thumb
+    Rectangle {
+        x: root.pad;
+        y: Theme.px(10px);
+        width: root.track-width;
+        height: Theme.px(4px);
+        border-radius: self.height / 2;
+        background: Theme.border-soft;
+    }
+    Rectangle {
+        x: root.pad;
+        y: Theme.px(10px);
+        width: root.x-of(root.shown) - root.pad;
+        height: Theme.px(4px);
+        border-radius: self.height / 2;
+        background: Theme.accent-blue;
+    }
+    for mark in root.marks: Rectangle {
+        x: root.x-of(mark) - self.width / 2;
+        y: Theme.px(24px);
+        width: Theme.px(44px);
+        height: Theme.px(24px);
+        Rectangle {
+            x: (parent.width - self.width) / 2;
+            y: Theme.px(-14px);
+            width: 1px;
+            height: Theme.px(6px);
+            background: Theme.text-tertiary;
+        }
+        Text {
+            text: mark + "%";
+            font-size: Theme.pt(11px);
+            color: mark == root.shown ? Theme.text-primary : Theme.text-tertiary;
+            horizontal-alignment: center;
+            vertical-alignment: top;
+            width: 100%;
+        }
+    }
+    Rectangle {
+        x: root.x-of(root.shown) - self.width / 2;
+        y: Theme.px(12px) - self.height / 2;
+        width: Theme.px(16px);
+        height: Theme.px(16px);
+        border-radius: self.width / 2;
+        background: Theme.text-primary;
+        border-width: 2px;
+        border-color: Theme.accent-blue;
+    }
+}
+
+// the Display page's settings, each hidden when its `show-` is false (not found by the search)
+component DisplaySettings inherits VerticalLayout {
     in property <bool> show-language: true;
-    in property <bool> show-export: true;
-    in property <bool> show-opening-view: true;
-    in property <bool> show-depth: true;
-    in property <bool> show-restore: true;
-    in property <bool> show-check-updates: true;
+    in property <bool> show-zoom: true;
 
     spacing: Theme.px(20px);
     if root.show-language: VerticalLayout {
@@ -579,7 +681,26 @@ component GeneralSettings inherits VerticalLayout {
             SegmentButton { text: "Français"; selected: Preferences.language == LanguageSetting.french; clicked => { Preferences.language-selected(LanguageSetting.french); } }
         }
     }
+    if root.show-zoom: VerticalLayout {
+        spacing: Theme.px(6px);
+        SettingTitle { text: @tr("Zoom"); }
+        ZoomSlider {
+            value: Preferences.zoom;
+            released(percent) => { Preferences.zoom-selected(percent); }
+        }
+        SettingHint { text: SettingTexts.zoom-hint; }
+    }
+}
 
+// the General page's settings, each hidden when its `show-` is false (not found by the search)
+component GeneralSettings inherits VerticalLayout {
+    in property <bool> show-export: true;
+    in property <bool> show-opening-view: true;
+    in property <bool> show-depth: true;
+    in property <bool> show-restore: true;
+    in property <bool> show-check-updates: true;
+
+    spacing: Theme.px(20px);
     if root.show-export: VerticalLayout {
         spacing: Theme.px(6px);
         SettingTitle { text: @tr("Export format"); }
@@ -690,7 +811,6 @@ component KeyBindingSettings inherits VerticalLayout {
         spacing: Theme.px(2px);
         SettingTitle { text: @tr("Standard keys"); }
         SettingHint {
-            height: Theme.pt(18px);
             text: @tr("They work as in other apps, and can't be changed.");
         }
         for line in Shortcuts.standard: ShortcutLine {
@@ -711,7 +831,6 @@ component ExperimentalSettings inherits VerticalLayout {
     }
     SettingHint {
         text: SettingTexts.server-search-hint;
-        height: Theme.pt(42px);
     }
 }
 
@@ -979,7 +1098,8 @@ export component SettingsModal inherits Rectangle {
         return root.query == "" || Preferences.search-matches(root.query, text);
     }
     // each setting is found by its page's name and its own texts
-    property <bool> found-language: root.hit(@tr("General") + " " + @tr("Language") + " " + @tr("Automatic") + " English Français");
+    property <bool> found-language: root.hit(@tr("Display") + " " + @tr("Language") + " " + @tr("Automatic") + " English Français");
+    property <bool> found-zoom: root.hit(@tr("Display") + " " + @tr("Zoom") + " " + SettingTexts.zoom-hint);
     property <bool> found-export: root.hit(@tr("General") + " " + @tr("Export format") + " " + @tr("JSON") + " " + @tr("Escaped JSON"));
     property <bool> found-opening-view: root.hit(@tr("General") + " " + @tr("New tabs open in") + " " + @tr("Fields view") + " " + @tr("Table view") + " " + @tr("Last view picked") + " " + SettingTexts.opening-view-hint);
     property <bool> found-depth: root.hit(@tr("General") + " " + @tr("Search depth") + " 60 200 1000 " + SettingTexts.depth-hint);
@@ -990,11 +1110,12 @@ export component SettingsModal inherits Rectangle {
     property <bool> found-updates: root.hit(@tr("About") + " " + @tr("Updates") + " " + @tr("Stable") + " " + @tr("Beta") + " " + @tr("Check for updates"));
     property <bool> found-ssh: root.hit(@tr("SSH profiles") + " " + @tr("Add profile") + " " + SettingTexts.ssh-hint + " " + @tr("Accept new SSH host keys automatically") + " " + SettingTexts.host-keys-hint);
     property <bool> found-conn: root.hit(@tr("Connection profiles") + " " + @tr("Add profile") + " " + SettingTexts.conn-hint);
-    property <bool> found-any: root.found(SettingsCategory.general) || root.found(SettingsCategory.key-bindings) || root.found(SettingsCategory.ssh-profiles)
+    property <bool> found-any: root.found(SettingsCategory.general) || root.found(SettingsCategory.display) || root.found(SettingsCategory.key-bindings) || root.found(SettingsCategory.ssh-profiles)
         || root.found(SettingsCategory.conn-profiles) || root.found(SettingsCategory.experimental) || root.found(SettingsCategory.about);
 
     pure function found(category: SettingsCategory) -> bool {
-        return category == SettingsCategory.general ? root.found-language || root.found-export || root.found-opening-view || root.found-depth || root.found-restore || root.found-check-updates
+        return category == SettingsCategory.general ? root.found-export || root.found-opening-view || root.found-depth || root.found-restore || root.found-check-updates
+            : category == SettingsCategory.display ? root.found-language || root.found-zoom
             : category == SettingsCategory.key-bindings ? root.query == "" || Shortcuts.rows.length > 0 || Shortcuts.standard.length > 0
             : category == SettingsCategory.ssh-profiles ? root.found-ssh
             : category == SettingsCategory.conn-profiles ? root.found-conn
@@ -1112,6 +1233,12 @@ export component SettingsModal inherits Rectangle {
                             clicked => { root.select(self.category); }
                         }
                         if !root.searching: CategoryItem {
+                            category: SettingsCategory.display;
+                            text: @tr("Display");
+                            selected: root.category == self.category;
+                            clicked => { root.select(self.category); }
+                        }
+                        if !root.searching: CategoryItem {
                             category: SettingsCategory.key-bindings;
                             text: @tr("Key bindings");
                             selected: root.category == self.category;
@@ -1162,6 +1289,7 @@ export component SettingsModal inherits Rectangle {
                                 : root.on-conn-form ? (root.conn-field-id == "" ? @tr("New connection profile") : @tr("Edit connection profile"))
                                 : root.on-ssh-form ? (root.field-id == "" ? @tr("New SSH profile") : @tr("Edit SSH profile"))
                                 : root.searching ? @tr("Settings found")
+                                : root.category == SettingsCategory.display ? @tr("Display")
                                 : root.category == SettingsCategory.key-bindings ? @tr("Key bindings")
                                 : root.category == SettingsCategory.ssh-profiles ? @tr("SSH profiles")
                                 : root.category == SettingsCategory.conn-profiles ? @tr("Connection profiles")
@@ -1188,6 +1316,9 @@ export component SettingsModal inherits Rectangle {
                     if !root.searching && root.category == SettingsCategory.general: SettingsPage {
                         GeneralSettings { }
                     }
+                    if !root.searching && root.category == SettingsCategory.display: SettingsPage {
+                        DisplaySettings { }
+                    }
                     if !root.searching && root.category == SettingsCategory.key-bindings: SettingsPage {
                         KeyBindingSettings { }
                     }
@@ -1212,12 +1343,19 @@ export component SettingsModal inherits Rectangle {
                             category: SettingsCategory.general;
                             text: @tr("General");
                             GeneralSettings {
-                                show-language: root.found-language;
                                 show-export: root.found-export;
                                 show-opening-view: root.found-opening-view;
                                 show-depth: root.found-depth;
                                 show-restore: root.found-restore;
                                 show-check-updates: root.found-check-updates;
+                            }
+                        }
+                        if root.found(SettingsCategory.display): ResultSection {
+                            category: SettingsCategory.display;
+                            text: @tr("Display");
+                            DisplaySettings {
+                                show-language: root.found-language;
+                                show-zoom: root.found-zoom;
                             }
                         }
                         if root.found(SettingsCategory.key-bindings): ResultSection {

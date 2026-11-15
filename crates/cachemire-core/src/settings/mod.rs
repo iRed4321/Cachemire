@@ -33,6 +33,9 @@ use ssh_profiles::StoredProfile;
 pub const SEARCH_DEPTHS: [u32; 3] = [60, 200, 1000];
 
 pub const DEFAULT_SEARCH_DEPTH: u32 = 1000;
+/// The interface zoom bounds and default, in percent.
+pub const ZOOM_RANGE: std::ops::RangeInclusive<u32> = 60..=200;
+pub const DEFAULT_ZOOM: u32 = 100;
 
 /// The view a key's new tab starts on: the fields, the table, or the one last picked.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
@@ -84,6 +87,9 @@ struct StoredSettings {
     // how many entries of each key the global search reads (0: not chosen yet)
     #[serde(default)]
     search_depth: u32,
+    // the interface zoom the app starts at, in percent (0: not chosen yet)
+    #[serde(default)]
+    zoom: u32,
     // the keyboard shortcuts changed from their defaults: an action's name, and its keys
     #[serde(default)]
     shortcuts: BTreeMap<String, Vec<String>>,
@@ -187,6 +193,18 @@ impl SettingsStore {
         }
         let mut next = self.state.clone();
         next.search_depth = depth;
+        self.commit(next, false)
+    }
+
+    /// The interface zoom the app starts at, in percent within [`ZOOM_RANGE`].
+    pub fn zoom(&self) -> u32 {
+        Some(self.state.zoom).filter(|zoom| ZOOM_RANGE.contains(zoom)).unwrap_or(DEFAULT_ZOOM)
+    }
+
+    /// Saves the starting zoom, kept within [`ZOOM_RANGE`].
+    pub fn set_zoom(&mut self, percent: u32) -> Result<(), Error> {
+        let mut next = self.state.clone();
+        next.zoom = percent.clamp(*ZOOM_RANGE.start(), *ZOOM_RANGE.end());
         self.commit(next, false)
     }
 

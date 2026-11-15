@@ -326,7 +326,8 @@ The header has one text box that takes either words or a JSON path.
   `filter_fields` off the thread (a field with no match drops out, several matches become an array),
   replaces `current`, clears the pretty cache (it was for the old contents) and sets the status "N
   matches in M fields". `apply_path` also applies waiting badges.
-- **Suggestions.** `KeyPanel.suggest(text, cursor)` fills the list: for a path,
+- **Suggestions.** A path's list opens as it is typed; the one for words only on Tab (the box shows
+  a Tab key and "to refine" meanwhile; `KeyPanel.is-words` tells which). `KeyPanel.suggest(text, cursor)` fills the list: for a path,
   `Suggester` completes keys from all loaded values (`records.`
   lists keys, `..` any depth, caps on visited values); for words, the three "search in..." choices
   plus, for a single word, "Apply a filter `$.word`". `complete_suggestion` applies the picked one and

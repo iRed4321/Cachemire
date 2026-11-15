@@ -185,6 +185,9 @@ export global Preferences {
     // reopens the connection the app was closed on, with its tabs and open folders
     in-out property <bool> restore-session: false;
     callback restore-session-toggled(enabled: bool);
+    // the zoom the app starts at and Ctrl+0 returns to, in percent
+    in-out property <int> zoom: 100;
+    callback zoom-selected(percent: int);
     // how many entries of a key the global search reads
     in-out property <int> search-depth: 1000;
     callback search-depth-selected(depth: int);
@@ -437,6 +440,8 @@ export global KeyPanel {
     // box (a negative cursor: the box was acted on instead, its text already updated)
     callback suggest(text: string, cursor: int) -> bool;
     callback complete-suggestion(text: string, cursor: int, index: int) -> CompletionEdit;
+    // whether the box holds words to search (not empty, not a `$`/`.` path): their list opens on Tab
+    pure callback is-words(text: string) -> bool;
     callback json-filter-submitted();
     callback export-table-csv();
     callback table-clear-selection();

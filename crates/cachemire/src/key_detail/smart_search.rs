@@ -19,6 +19,11 @@ fn is_path(text: &str) -> bool {
     matches!(text.trim_start().chars().next(), Some('$' | '.'))
 }
 
+/// Whether `text` is words to search for: not empty and not a path.
+pub(super) fn is_words(text: &str) -> bool {
+    !text.trim().is_empty() && !is_path(text)
+}
+
 /// The scope a `field:` or `value:` before the words names (whatever its case), and the words.
 fn scoped(text: &str) -> (Option<SearchScope>, &str) {
     let text = text.trim_start();

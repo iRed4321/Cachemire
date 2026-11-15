@@ -66,10 +66,12 @@ export component KeyDetail inherits Rectangle {
     json-filter-submitted => { KeyPanel.json-filter-submitted(); }
 
     // The smart box's list: Rust answers `suggest` (its text and caret byte offset) and fills
-    // `suggestions`, a path's keys or where to search. Typing opens it, arrows choose, Enter/Tab
-    // take the choice (`complete-suggestion`; Tab alone takes the first), Esc closes.
+    // `suggestions`: a path's keys as it is typed, or for words (on Tab) where to search. Arrows
+    // choose, Enter/Tab take the choice (`complete-suggestion`), Esc closes.
     in property <[SuggestionRow]> suggestions: KeyPanel.suggestions;
     callback suggest(text: string, cursor: int) -> bool;
+    pure callback is-words(text: string) -> bool;
+    is-words(text) => { return KeyPanel.is-words(text); }
     suggest(text, cursor) => { return KeyPanel.suggest(text, cursor); }
     callback complete-suggestion(text: string, cursor: int, index: int) -> CompletionEdit;
     complete-suggestion(text, cursor, index) => { return KeyPanel.complete-suggestion(text, cursor, index); }
@@ -304,8 +306,7 @@ export component KeyDetail inherits Rectangle {
                             root.filter-cursor = end;
                             root.filter-place-at = end;
                             root.filter-place-tick += 1;
-                            suggest-popup.selected = -1;
-                            root.suggest-open = root.suggest(root.filter-query, end);
+                            root.close-suggestions();
                         }
                         filter-removed => {
                             root.json-filter = "";
@@ -328,7 +329,15 @@ export component KeyDetail inherits Rectangle {
                             root.filter-case-sensitive = !root.filter-case-sensitive;
                             root.filter-case-sensitivity-changed();
                         }
-                        key-intercept(event) => { return suggest-popup.handle-key(event); }
+                        tab-hint: !root.suggest-open && root.is-words(root.filter-query) ? @tr("to refine") : "";
+                        key-intercept(event) => {
+                            // Tab on words opens their list (where to search, or the filter)
+                            if event.text == Key.Tab && !root.suggest-open && root.is-words(root.filter-query) {
+                                root.suggest-open = root.suggest(root.filter-query, root.filter-cursor);
+                                return true;
+                            }
+                            return suggest-popup.handle-key(event);
+                        }
                         edited => {
                             root.filter-limit-message = "";
                             root.filter-cursor = self.cursor-byte;
@@ -338,7 +347,8 @@ export component KeyDetail inherits Rectangle {
                             if KeyPanel.filter-query-edited(root.filter-query, root.filter-cursor) {
                                 root.close-suggestions();
                             } else {
-                                root.suggest-open = root.filter-query != "" && root.suggest(root.filter-query, root.filter-cursor);
+                                // words list only on Tab; a path lists its keys as it is typed
+                                root.suggest-open = root.filter-query != "" && !root.is-words(root.filter-query) && root.suggest(root.filter-query, root.filter-cursor);
                             }
                         }
                         caret-moved => {

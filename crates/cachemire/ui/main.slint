@@ -152,7 +152,7 @@ export component MainWindow inherits Window {
         Theme.zoom = max(Theme.zoom-min, min(Theme.zoom-max, Theme.zoom - 0.1));
     }
     function zoom-reset() {
-        Theme.zoom = 1.0;
+        Theme.zoom = Preferences.zoom / 100.0;
     }
 
     root-scope := FocusScope {

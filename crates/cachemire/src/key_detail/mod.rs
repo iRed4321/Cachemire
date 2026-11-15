@@ -492,6 +492,7 @@ pub fn init(window: &MainWindow, state: Arc<AppState>, rt: Handle) -> KeyDetail 
         let ctx = ctx.clone();
         move |text, cursor| ctx.suggest(&text, cursor)
     });
+    panel.on_is_words(|text| smart_search::is_words(&text));
     panel.on_complete_suggestion({
         let ctx = ctx.clone();
         move |text, cursor, index| ctx.complete_suggestion(text, cursor, index)
