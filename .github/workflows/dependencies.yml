@@ -24,7 +24,7 @@ on:
 permissions:
   contents: read
 
-# the CARGO_* variables of the other workflows: they're part of the xtask cache's key
+# the CARGO_* variables of the other workflows
 env:
   CARGO_TERM_COLOR: always
   CARGO_TERM_PROGRESS_WHEN: never
@@ -74,13 +74,7 @@ jobs:
         with:
           fetch-depth: 0
           token: ${{ secrets.RENOVATE_TOKEN }}
-      # xtask's own build (target/xtask) as the CI saved it from main
-      - uses: Swatinem/rust-cache@v2
-        with:
-          cache-bin: false
-          shared-key: xtask
-          workspaces: ". -> target/xtask"
-          save-if: false
+      - uses: ./.github/actions/xtask
       # the advisories the updates fix, for the changelog
       - name: Install cargo-audit
         uses: taiki-e/install-action@v2
@@ -92,7 +86,7 @@ jobs:
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          cargo ship deps-release
+          xtask release deps-release
 
   # after a fix or a stable release is published: next takes in main (`cargo ship sync`). A conflict
   # other than the changelog's or the lock file's fails it: then `cargo ship sync` by hand
@@ -113,17 +107,11 @@ jobs:
           ref: next
           fetch-depth: 0
           token: ${{ secrets.RENOVATE_TOKEN }}
-      # xtask's own build (target/xtask) as the CI saved it from main
-      - uses: Swatinem/rust-cache@v2
-        with:
-          cache-bin: false
-          shared-key: xtask
-          workspaces: ". -> target/xtask"
-          save-if: false
+      - uses: ./.github/actions/xtask
       - name: Sync
         env:
           GH_TOKEN: ${{ secrets.RENOVATE_TOKEN }}
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          cargo ship sync
+          xtask release sync

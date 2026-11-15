@@ -63,13 +63,7 @@ jobs:
           persist-credentials: false
           fetch-depth: 0
           ref: ${{ github.event.pull_request.merge_commit_sha || github.sha }}
-      # xtask's own build (target/xtask) as the CI saved it from main
-      - uses: Swatinem/rust-cache@v2
-        with:
-          cache-bin: false
-          shared-key: xtask
-          workspaces: ". -> target/xtask"
-          save-if: false
+      - uses: ./.github/actions/xtask
       # a beta comes from next and a release from main (merged pull request); a try build from any branch
       - id: next
         name: Next version
@@ -102,10 +96,10 @@ jobs:
             git merge-base --is-ancestor "$SHA" origin/next || { echo "::error::$SHA is not on next: betas are released from next"; exit 1; }
           fi
           if [[ "$try" == true ]]; then
-            version=$(cargo xtask next-version "$request" --try "$GITHUB_RUN_NUMBER")
+            version=$(xtask next-version "$request" --try "$GITHUB_RUN_NUMBER")
             echo "Try build of $GITHUB_REF_NAME as $version, from $SHA" >> "$GITHUB_STEP_SUMMARY"
           else
-            version=$(cargo xtask next-version "$request")
+            version=$(xtask next-version "$request")
             echo "Releasing $version from $SHA" >> "$GITHUB_STEP_SUMMARY"
           fi
           { echo "sha=$SHA"; echo "version=$version"; echo "try=$try"; } >> "$GITHUB_OUTPUT"
@@ -125,13 +119,7 @@ jobs:
         with:
           persist-credentials: false
           ref: ${{ needs.plan.outputs.sha }}
-      # xtask's own build (target/xtask) as the CI saved it from main; the app's builds aren't cached
-      - uses: Swatinem/rust-cache@v2
-        with:
-          cache-bin: false
-          shared-key: xtask
-          workspaces: ". -> target/xtask"
-          save-if: false
+      - uses: ./.github/actions/xtask
       # quiet: the build log then lists what gets compiled, not each crate downloaded
       - name: Fetch crates
         run: cargo fetch --locked --quiet
@@ -146,11 +134,11 @@ jobs:
       - name: Clippy
         run: cargo clippy --all-targets --timings -- -D warnings
       - name: Save the report (clippy)
-        run: cargo xtask report-build Clippy
+        run: xtask report-build Clippy
       - name: Test
         run: cargo test --timings
       - name: Save the report
-        run: cargo xtask report-build Tests
+        run: xtask report-build Tests
       # the end-to-end tests' Redis server on Windows, whose Docker runs no Linux containers:
       # Debian's, in WSL (`cargo xtask e2e` starts it there; on Linux, it uses Docker)
       - name: Install Redis in WSL
@@ -160,7 +148,7 @@ jobs:
           distribution: Debian-13
           additional-packages: redis-server
       - name: End-to-end tests
-        run: cargo xtask e2e
+        run: xtask e2e
       - uses: actions/upload-artifact@v7
         with:
           name: report-tests-${{ matrix.os }}
@@ -177,13 +165,7 @@ jobs:
         with:
           persist-credentials: false
           ref: ${{ needs.plan.outputs.sha }}
-      # xtask's own build (target/xtask) as the CI saved it from main; the app's builds aren't cached
-      - uses: Swatinem/rust-cache@v2
-        with:
-          cache-bin: false
-          shared-key: xtask
-          workspaces: ". -> target/xtask"
-          save-if: false
+      - uses: ./.github/actions/xtask
       # quiet: the build log then lists what gets compiled, not each crate downloaded
       - name: Fetch crates
         run: cargo fetch --locked --quiet
@@ -194,9 +176,15 @@ jobs:
           "$env:USERPROFILE\.dotnet\tools" | Out-File -FilePath $env:GITHUB_PATH -Append
           & "$env:USERPROFILE\.dotnet\tools\wix.exe" eula accept wix7
       - name: Build
+      # a beta (a version with a suffix, a try build too) is built without LTO: much quicker, and
+      # stripped like a release so its packages stay the same size
         env:
           VERSION: ${{ needs.plan.outputs.version }}
-        run: cargo xtask build-windows --as-version "$VERSION" --report
+          FAST: ${{ contains(needs.plan.outputs.version, '-') && '--fast' || '' }}
+          CARGO_PROFILE_FAST_STRIP: "true"
+          CARGO_PROFILE_FAST_DEBUG: "false"
+          CARGO_PROFILE_FAST_INCREMENTAL: "false"
+        run: xtask build-windows --as-version "$VERSION" $FAST --report
       - uses: actions/upload-artifact@v7
         with:
           name: report-windows
@@ -206,8 +194,8 @@ jobs:
         with:
           name: package-windows
           path: |
-            target/windows/*.msi
-            target/windows/Cachemire-Portable-*.zip
+            target/windows*/*.msi
+            target/windows*/Cachemire-Portable-*.zip
 
   linux:
     name: Linux (deb and AppImage)
@@ -219,13 +207,7 @@ jobs:
         with:
           persist-credentials: false
           ref: ${{ needs.plan.outputs.sha }}
-      # xtask's own build (target/xtask) as the CI saved it from main; the app's builds aren't cached
-      - uses: Swatinem/rust-cache@v2
-        with:
-          cache-bin: false
-          shared-key: xtask
-          workspaces: ". -> target/xtask"
-          save-if: false
+      - uses: ./.github/actions/xtask
       # a stable release's notes: its section of CHANGELOG.md, checked before anything is built
       - name: Release notes
         if: ${{ !contains(needs.plan.outputs.version, '-') }}
@@ -233,7 +215,7 @@ jobs:
           VERSION: ${{ needs.plan.outputs.version }}
         run: |
           mkdir -p target/notes
-          cargo xtask release-notes "$VERSION" > target/notes/release-notes.md
+          xtask release-notes "$VERSION" > target/notes/release-notes.md
       - if: ${{ !contains(needs.plan.outputs.version, '-') }}
         uses: actions/upload-artifact@v7
         with:
@@ -252,9 +234,15 @@ jobs:
         with:
           tool: cargo-deb
       - name: Build
+      # a beta (a version with a suffix, a try build too) is built without LTO: much quicker, and
+      # stripped like a release so its packages stay the same size
         env:
           VERSION: ${{ needs.plan.outputs.version }}
-        run: cargo xtask build-linux --as-version "$VERSION" --report
+          FAST: ${{ contains(needs.plan.outputs.version, '-') && '--fast' || '' }}
+          CARGO_PROFILE_FAST_STRIP: "true"
+          CARGO_PROFILE_FAST_DEBUG: "false"
+          CARGO_PROFILE_FAST_INCREMENTAL: "false"
+        run: xtask build-linux --as-version "$VERSION" $FAST --report
       - uses: actions/upload-artifact@v7
         with:
           name: report-linux
@@ -265,7 +253,7 @@ jobs:
           name: package-linux
           path: |
             target/debian/*.deb
-            target/appimage/*.AppImage
+            target/appimage*/*.AppImage
 
   # the tag is made here, on the released commit: it only exists once everything passed
   publish:
@@ -355,13 +343,7 @@ jobs:
         with:
           persist-credentials: false
           ref: ${{ needs.plan.outputs.sha || github.sha }}
-      # xtask's own build (target/xtask) as the CI saved it from main; the app's builds aren't cached
-      - uses: Swatinem/rust-cache@v2
-        with:
-          cache-bin: false
-          shared-key: xtask
-          workspaces: ". -> target/xtask"
-          save-if: false
+      - uses: ./.github/actions/xtask
       - uses: actions/download-artifact@v8
         with:
           pattern: report-*
@@ -375,4 +357,4 @@ jobs:
           title="🚀 Release v$VERSION"
           [[ "$TRY" == true ]] && title="🧪 Try build v$VERSION"
           [[ -z "$VERSION" ]] && title="🚀 Release request $GITHUB_REF_NAME"
-          cargo xtask report "$title" --dir reports
+          xtask report "$title" --dir reports

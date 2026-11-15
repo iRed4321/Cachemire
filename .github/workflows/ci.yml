@@ -67,14 +67,9 @@ jobs:
         with:
           cache-bin: false
           save-if: ${{ github.ref == 'refs/heads/main' || github.ref == 'refs/heads/next' }}
-      # xtask's own build (target/xtask), shared by every job of the OS, in both workflows
-      - uses: Swatinem/rust-cache@v2
+      # the xtask binary, built once per version of its sources (every job of the OS, in all workflows)
+      - uses: ./.github/actions/xtask
         if: env.CODE
-        with:
-          cache-bin: false
-          shared-key: xtask
-          workspaces: ". -> target/xtask"
-          save-if: ${{ github.ref == 'refs/heads/main' }}
       # quiet: the build log then lists what gets compiled, not each crate downloaded
       - name: Fetch crates
         if: env.CODE
@@ -113,7 +108,7 @@ jobs:
         run: cargo clippy --all-targets --timings -- -D warnings
       - name: Save the report (clippy)
         if: env.CODE
-        run: cargo xtask report-build Clippy
+        run: xtask report-build Clippy
       # the test steps load cargo-llvm-cov's environment: it instruments the workspace's crates
       # alone, their dependencies are built as usual. cachemire and cachemire-core are always
       # built here: the cache never holds them, and clippy only checks them
@@ -142,15 +137,14 @@ jobs:
         with:
           distribution: Debian-13
           additional-packages: redis-server
-      # the tests the step above skips, against a Redis server started for them; xtask is built
-      # before cargo-llvm-cov's environment is loaded, so only the tests it runs are instrumented
+      # the tests the step above skips, against a Redis server started for them; xtask is already
+      # built, so only the tests it runs are instrumented by cargo-llvm-cov's environment
       - name: End-to-end tests
         if: ${{ !cancelled() && steps.build.outcome == 'success' }}
         run: |
-          cargo build --quiet --package xtask --target-dir target/xtask
           eval "$(cargo llvm-cov show-env --sh)"
           rm -f target/nextest/ci/junit.xml
-          target/xtask/debug/xtask e2e -- --profile ci || failed=1
+          xtask e2e -- --profile ci || failed=1
           if [[ -f target/nextest/ci/junit.xml ]]; then cp target/nextest/ci/junit.xml target/test-output/e2e.xml; fi
           exit ${failed:-0}
       # the tests' coverage (the end-to-end ones' included), the test-only files left out
@@ -162,7 +156,7 @@ jobs:
       - name: Save the report (tests)
         if: ${{ !cancelled() && steps.build.outcome == 'success' }}
         run: |
-          cargo xtask report-build Tests --coverage target/test-output/coverage.json --tests "Tests=target/test-output/tests.xml" --tests "End-to-end=target/test-output/e2e.xml"
+          xtask report-build Tests --coverage target/test-output/coverage.json --tests "Tests=target/test-output/tests.xml" --tests "End-to-end=target/test-output/e2e.xml"
       - uses: actions/upload-artifact@v7
         if: ${{ !cancelled() && env.CODE }}
         with:
@@ -181,13 +175,7 @@ jobs:
       - uses: actions/checkout@v7
         with:
           persist-credentials: false
-      # xtask's own build (target/xtask), shared by every job of the OS, in both workflows
-      - uses: Swatinem/rust-cache@v2
-        with:
-          cache-bin: false
-          shared-key: xtask
-          workspaces: ". -> target/xtask"
-          save-if: ${{ github.ref == 'refs/heads/main' }}
+      - uses: ./.github/actions/xtask
       - uses: actions/download-artifact@v8
         with:
           pattern: report-*
@@ -198,4 +186,4 @@ jobs:
           PR: ${{ github.event.pull_request.number }}
         run: |
           if [[ -n "$PR" ]]; then title="🔍 Pull request #$PR"; else title="🔍 ${GITHUB_REF_NAME} at ${GITHUB_SHA::7}"; fi
-          cargo xtask report "$title" --dir reports
+          xtask report "$title" --dir reports

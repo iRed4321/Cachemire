@@ -63,8 +63,8 @@ enum Task {
         /// Build the latest stable release instead of the latest one
         #[arg(long)]
         stable: bool,
-        /// Build the working tree in the release profile as this version, as the Release workflow does
-        #[arg(long, value_name = "VERSION", conflicts_with_all = ["fast", "stable"])]
+        /// Build the working tree as this version (in the release profile, or the `fast` one), as the Release workflow does
+        #[arg(long, value_name = "VERSION", conflicts_with = "stable")]
         as_version: Option<String>,
         /// Run `cargo clean` first
         #[arg(long)]
@@ -93,8 +93,8 @@ enum Task {
         /// Build the latest stable release instead of the latest one
         #[arg(long)]
         stable: bool,
-        /// Build the working tree in the release profile as this version, as the Release workflow does
-        #[arg(long, value_name = "VERSION", conflicts_with_all = ["fast", "stable"])]
+        /// Build the working tree as this version (in the release profile, or the `fast` one), as the Release workflow does
+        #[arg(long, value_name = "VERSION", conflicts_with = "stable")]
         as_version: Option<String>,
         /// Also zip the package (the installer, .deb or AppImage)
         #[arg(long)]
@@ -111,8 +111,8 @@ enum Task {
         /// Build the latest stable release instead of the latest one
         #[arg(long)]
         stable: bool,
-        /// Build the working tree in the release profile as this version, as the Release workflow does
-        #[arg(long, value_name = "VERSION", conflicts_with_all = ["fast", "stable"])]
+        /// Build the working tree as this version (in the release profile, or the `fast` one), as the Release workflow does
+        #[arg(long, value_name = "VERSION", conflicts_with = "stable")]
         as_version: Option<String>,
         /// Also zip the package (the installer, .deb or AppImage)
         #[arg(long)]
@@ -126,8 +126,8 @@ enum Task {
         /// Build the latest stable release instead of the latest one
         #[arg(long)]
         stable: bool,
-        /// Build the working tree in the release profile as this version, as the Release workflow does
-        #[arg(long, value_name = "VERSION", conflicts_with_all = ["fast", "stable"])]
+        /// Build the working tree as this version (in the release profile, or the `fast` one), as the Release workflow does
+        #[arg(long, value_name = "VERSION", conflicts_with = "stable")]
         as_version: Option<String>,
         /// Also zip the package (the installer, .deb or AppImage)
         #[arg(long)]
