@@ -20,6 +20,7 @@ use cachemire_core::state::AppState;
 use slint::ComponentHandle;
 
 use super::field::{Field, FieldValue, Fields};
+use super::formats::{ShowFormat, shown_text};
 use super::search_filter::SearchFilter;
 use super::table::{selected_rows_json, table_cell_copy_text, table_cell_left_out, table_csv, table_fields, table_sort};
 use super::{Ctx, PanelContent};
@@ -198,17 +199,18 @@ impl Exporter {
         (content.current.clone(), content.search.clone(), content.key.clone())
     }
 
-    /// Exports one row's own field, as pretty JSON or escaped. `action` gets the
+    /// Exports one row's own field as the text it shows in `format`. `action` gets the
     /// field's file-name-safe name to build a download name from.
-    fn field(&self, name: &str, escaped: bool, action: impl FnOnce(String) -> ExportAction) {
+    fn field(&self, name: &str, format: ShowFormat, action: impl FnOnce(String) -> ExportAction) {
         let (field, key) = {
             let content = self.content.lock();
             let Some(field) = content.field(name) else { return };
             (field, content.key.clone())
         };
         let action = action(sanitize_filename(&field.name));
-        let text = if escaped { escaped_json } else { pretty_json };
-        run_export(self, key, vec![field], None, action, move |_, fields| fields.first().map(|field| text(field)).unwrap_or_default());
+        run_export(self, key, vec![field], None, action, move |_, fields| {
+            fields.first().map(|field| shown_text(field, format)).unwrap_or_default()
+        });
     }
 
     /// The indices of the table's ticked rows, in table order.
@@ -314,17 +316,21 @@ pub(super) fn init(window: &MainWindow, ctx: &Ctx) {
 
     panel.on_open_value({
         let exporter = exporter.clone();
-        move |name, escaped| exporter.field(&name, escaped, |_| ExportAction::Open(if escaped { "txt" } else { "json" }))
+        move |name, format| {
+            let format = ShowFormat::from_index(format);
+            exporter.field(&name, format, |_| ExportAction::Open(format.extension()))
+        }
     });
     panel.on_copy_value({
         let exporter = exporter.clone();
-        move |name, escaped| exporter.field(&name, escaped, |_| ExportAction::Copy)
+        move |name, format| exporter.field(&name, ShowFormat::from_index(format), |_| ExportAction::Copy)
     });
     panel.on_download_value({
         let exporter = exporter.clone();
-        move |name, escaped| {
-            exporter
-                .field(&name, escaped, |stem| ExportAction::Download(format!("{stem}.{}", if escaped { "escaped.txt" } else { "json" })))
+        move |name, format| {
+            let format = ShowFormat::from_index(format);
+            let extension = if format == ShowFormat::Escaped { "escaped.txt" } else { format.extension() };
+            exporter.field(&name, format, |stem| ExportAction::Download(format!("{stem}.{extension}")))
         }
     });
     panel.on_export_selection({

@@ -127,7 +127,7 @@ component ExportCheck inherits Rectangle {
         viewbox-height: 24;
         commands: state == 1 ? "M6 12.5 L10.5 17 L18 8" : "M7 12 L17 12";
         fill: transparent;
-        stroke: #ffffff;
+        stroke: Theme.accent-text;
         stroke-width: 2.4px;
         stroke-line-cap: round;
         stroke-line-join: round;
@@ -166,7 +166,7 @@ component BarButton inherits Rectangle {
         text: root.text;
         font-size: Theme.pt(11.5px);
         font-weight: 600;
-        color: !enabled ? Theme.text-tertiary : (primary ? #ffffff : Theme.text-primary);
+        color: !enabled ? Theme.text-tertiary : (primary ? Theme.accent-text : Theme.text-primary);
     }
 }
 
@@ -802,10 +802,10 @@ export component KeyspacePanel inherits FloatingCard {
                     HorizontalLayout {
                         alignment: center;
                         spacing: Theme.px(6px);
-                        IconPlus { size: Theme.icon-sm; tint: #ffffff; y: (parent.height - self.height) / 2; }
+                        IconPlus { size: Theme.icon-sm; tint: Theme.accent-text; y: (parent.height - self.height) / 2; }
                         Text {
                             text: @tr("New query");
-                            color: #ffffff;
+                            color: Theme.accent-text;
                             font-size: Theme.pt(12px);
                             font-weight: 600;
                             vertical-alignment: center;

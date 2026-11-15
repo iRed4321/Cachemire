@@ -22,8 +22,8 @@ export component RowHeader inherits Rectangle {
     callback find-step(step: int);
     callback find-focus-changed(focused: bool);
 
-    // whether the row's text shows as escaped JSON, which copying and its menu use too
-    in-out property <bool> escaped: false;
+    // the format the row's text shows in (an index of `Formats.names`), which copying and its menu use too
+    in-out property <int> format: 0;
 
     height: Theme.px(32px);
     background: header-area.has-hover ? Theme.bg-hover : Theme.bg-sunken;
@@ -98,7 +98,7 @@ export component RowHeader inherits Rectangle {
         if KeyPanel.editable && !KeyPanel.is-binary(root.field): IconButton {
             box-size: Theme.px(26px);
             hint: @tr("Edit");
-            clicked => { KeyPanel.edit-value(root.field); }
+            clicked => { KeyPanel.edit-value(root.field, root.format); }
             IconPencil { size: Theme.icon-md; tint: Theme.text-secondary; }
         }
         // a query's rows have no key to link to
@@ -120,10 +120,10 @@ export component RowHeader inherits Rectangle {
             row-menu := RowMenu {
                 x: parent.width - self.width;
                 y: parent.height + Theme.px(4px);
-                escaped <=> root.escaped;
-                open-value => { KeyPanel.open-value(root.field, root.escaped); }
-                download-value => { KeyPanel.download-value(root.field, root.escaped); }
-                copy-value => { KeyPanel.copy-value(root.field, root.escaped); }
+                format <=> root.format;
+                open-value => { KeyPanel.open-value(root.field, root.format); }
+                download-value => { KeyPanel.download-value(root.field, root.format); }
+                copy-value => { KeyPanel.copy-value(root.field, root.format); }
             }
         }
     }
@@ -142,6 +142,9 @@ export component AllValuesRow inherits Rectangle {
     in property <string> field;
     in property <styled-text> value-compact;
     in property <styled-text> value-compact-escaped;
+    in property <styled-text> value-compact-yaml;
+    in property <styled-text> value-compact-xml;
+    in property <styled-text> value-compact-text;
     // see AllValuesRowData.too-long: such a row opens only once its value is read
     in property <string> too-long: "";
     in property <bool> loading: false;
@@ -157,12 +160,12 @@ export component AllValuesRow inherits Rectangle {
     // it is that row (`stuck-changed`) and hears back its find box text, the pressed
     // button (`command-*`) and whether its box has focus.
     in property <string> stuck-find-query;
-    in property <bool> stuck-escaped;
+    in property <int> stuck-format;
     in property <int> command-index;
     in property <int> command-kind;
     in property <int> command-tick;
     in property <bool> overlay-focused;
-    callback stuck-changed(active: bool, field: string, query: string, label: string, count: int, limit: length, escaped: bool);
+    callback stuck-changed(active: bool, field: string, query: string, label: string, count: int, limit: length, format: int);
     callback focus-overlay();
     in property <length> view-height;
     in property <length> paint-buffer;
@@ -206,11 +209,11 @@ export component AllValuesRow inherits Rectangle {
     // construction's first paint, and would flash collapsed-then-expanded.
     property <bool> expanded: initial-expanded;
     // this row's own format: it starts as the Value header's and follows it when that changes
-    property <bool> escaped: ExportPrefs.escaped;
+    property <int> format: ExportPrefs.format;
     property <int> prefs-tick: ExportPrefs.rows-tick;
-    changed prefs-tick => { root.escaped = ExportPrefs.escaped; }
+    changed prefs-tick => { root.format = ExportPrefs.format; }
     // the text shown changes with it: the open one is asked for again
-    changed escaped => {
+    changed format => {
         if is-stuck {
             push-stuck();
         }
@@ -290,7 +293,7 @@ export component AllValuesRow inherits Rectangle {
     property <bool> is-stuck: expanded && row-y + Theme.px(5px) < view-top && row-y + row-height - Theme.px(5px) > view-top;
     property <length> stuck-limit: row-y + row-height - header-h - Theme.px(5px);
     function push-stuck() {
-        root.stuck-changed(is-stuck, field, find-query, find-label, find-count, stuck-limit, escaped);
+        root.stuck-changed(is-stuck, field, find-query, find-label, find-count, stuck-limit, format);
     }
     changed is-stuck => {
         // read before the table hears of it: it clears the focus mirror with the header
@@ -305,9 +308,9 @@ export component AllValuesRow inherits Rectangle {
     changed find-label => { if is-stuck { push-stuck(); } }
     changed find-count => { if is-stuck { push-stuck(); } }
     changed stuck-limit => { if is-stuck { push-stuck(); } }
-    changed stuck-escaped => {
-        if is-stuck && escaped != stuck-escaped {
-            escaped = stuck-escaped;
+    changed stuck-format => {
+        if is-stuck && format != stuck-format {
+            format = stuck-format;
         }
     }
     changed stuck-find-query => {
@@ -358,11 +361,11 @@ export component AllValuesRow inherits Rectangle {
     }
 
     function measure-lines() {
-        line-count = KeyPanel.value-line-count(field, escaped, columns);
+        line-count = KeyPanel.value-line-count(field, format, columns);
     }
     function refresh-lines() {
         lines-first = window-first;
-        lines = KeyPanel.request-value-lines(field, find-query, find-current, escaped, columns, window-first, window-count);
+        lines = KeyPanel.request-value-lines(field, find-query, find-current, format, columns, window-first, window-count);
     }
     function clear-selection() {
         sel-anchor-line = -1;
@@ -375,7 +378,7 @@ export component AllValuesRow inherits Rectangle {
         if sel-start-line < 0 || (sel-start-line == sel-end-line && sel-start-offset == sel-end-offset) {
             return "";
         }
-        return KeyPanel.value-selected-text(field, escaped, columns, {
+        return KeyPanel.value-selected-text(field, format, columns, {
             start-line: sel-start-line,
             start-offset: sel-start-offset,
             end-line: sel-end-line,
@@ -389,7 +392,7 @@ export component AllValuesRow inherits Rectangle {
     }
     function offset-at(x: length, y: length) -> int {
         let column = y < 0px ? 0 : (y >= line-count * text-line-h ? 1000000 : max(0, round(x / char-w)));
-        return KeyPanel.value-offset-at(field, escaped, columns, line-at(y), column);
+        return KeyPanel.value-offset-at(field, format, columns, line-at(y), column);
     }
     function press-text(x: length, y: length) {
         clicks += 1;
@@ -397,7 +400,7 @@ export component AllValuesRow inherits Rectangle {
         let line = line-at(y);
         let offset = offset-at(x, y);
         if clicks >= 2 {
-            let range = KeyPanel.value-selection(field, escaped, columns, line, offset, clicks >= 3);
+            let range = KeyPanel.value-selection(field, format, columns, line, offset, clicks >= 3);
             if range.start-line >= 0 {
                 sel-anchor-line = range.start-line;
                 sel-anchor-offset = range.start-offset;
@@ -430,8 +433,8 @@ export component AllValuesRow inherits Rectangle {
     function load-pretty() {
         pretty-loaded = false;
         prefetch-requested = true;
-        KeyPanel.request-pretty-value-async(field, escaped);
-        if KeyPanel.pretty-is-ready(field, escaped) {
+        KeyPanel.request-pretty-value-async(field, format);
+        if KeyPanel.pretty-is-ready(field, format) {
             show-loaded();
         }
     }
@@ -449,7 +452,7 @@ export component AllValuesRow inherits Rectangle {
             refresh-lines();
             return;
         }
-        let res = KeyPanel.find-in-value(field, find-query, find-current + step, escaped, columns);
+        let res = KeyPanel.find-in-value(field, find-query, find-current + step, format, columns);
         find-count = res.count;
         find-current = res.index;
         find-label = res.label;
@@ -507,7 +510,7 @@ export component AllValuesRow inherits Rectangle {
         }
     }
     changed pretty-ready-tick => {
-        if !pretty-loaded && KeyPanel.pretty-is-ready(field, escaped) {
+        if !pretty-loaded && KeyPanel.pretty-is-ready(field, format) {
             show-loaded();
         }
     }
@@ -543,7 +546,7 @@ export component AllValuesRow inherits Rectangle {
         running: row-area.has-hover && !expanded && !pretty-loaded && !prefetch-requested && too-long == "";
         triggered => {
             prefetch-requested = true;
-            KeyPanel.request-pretty-value-async(field, escaped);
+            KeyPanel.request-pretty-value-async(field, format);
         }
     }
 
@@ -623,19 +626,19 @@ export component AllValuesRow inherits Rectangle {
                     IconButton {
                         box-size: collapsed-height;
                         hint: @tr("Open in a text editor");
-                        clicked => { KeyPanel.open-value(root.field, root.escaped); }
+                        clicked => { KeyPanel.open-value(root.field, root.format); }
                         IconExternalLink { size: Theme.icon-sm; tint: Theme.text-secondary; }
                     }
                     IconButton {
                         box-size: collapsed-height;
                         hint: @tr("Download");
-                        clicked => { KeyPanel.download-value(root.field, root.escaped); }
+                        clicked => { KeyPanel.download-value(root.field, root.format); }
                         IconDownload { size: Theme.icon-sm; tint: Theme.text-secondary; }
                     }
                     IconButton {
                         box-size: collapsed-height;
                         hint: @tr("Copy");
-                        clicked => { KeyPanel.copy-value(root.field, root.escaped); }
+                        clicked => { KeyPanel.copy-value(root.field, root.format); }
                         IconCopy { size: Theme.icon-sm; tint: Theme.text-secondary; }
                     }
                     if !root.loading: Rectangle {
@@ -665,12 +668,13 @@ export component AllValuesRow inherits Rectangle {
                     compact-text := StyledText {
                         x: 0;
                         y: 0;
-                        width: max(parent.width, self.preferred-width);
+                        // a little wider than its text, so the line never wraps on rounding
+                        width: max(parent.width, self.preferred-width + Theme.px(8px));
                         height: parent.height;
                         // the box is 1.4 line-heights tall, so centre the line
                         // rather than leaving it at the top
                         vertical-alignment: center;
-                        text: escaped ? value-compact-escaped : value-compact;
+                        text: format == 0 ? value-compact : (format == 1 ? value-compact-escaped : (format == 2 ? value-compact-yaml : (format == 3 ? value-compact-xml : value-compact-text)));
                         default-color: Theme.text-primary;
                         default-font-family: Theme.font-mono;
                         default-font-size: Theme.pt(12px);
@@ -775,7 +779,7 @@ export component AllValuesRow inherits Rectangle {
         visible: !is-stuck;
         field: root.field;
         find-query <=> root.find-query;
-        escaped <=> root.escaped;
+        format <=> root.format;
         find-label: root.find-label;
         find-count: root.find-count;
         focus-tick: root.header-focus-tick;

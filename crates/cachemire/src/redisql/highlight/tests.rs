@@ -5,14 +5,15 @@ fn kinds(line: &str) -> Vec<(&str, &str)> {
 }
 
 fn color_name(color: Color) -> &'static str {
+    let paint = paint();
     match color {
-        c if c == KEYWORD_COLOR => "keyword",
-        c if c == STRING_COLOR => "string",
-        c if c == NUMBER_COLOR => "number",
-        c if c == BOOL_COLOR => "bool",
-        c if c == PUNCT_COLOR => "punct",
-        c if c == COMMENT_COLOR => "comment",
-        c if c == VAR_COLOR => "variable",
+        c if c == paint.keyword => "keyword",
+        c if c == paint.string => "string",
+        c if c == paint.number => "number",
+        c if c == paint.bool => "bool",
+        c if c == paint.punct => "punct",
+        c if c == paint.comment => "comment",
+        c if c == paint.variable => "variable",
         _ => "?",
     }
 }

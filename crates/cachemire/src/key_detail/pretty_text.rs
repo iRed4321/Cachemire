@@ -363,12 +363,6 @@ pub(super) fn escaped_paragraphs(paragraphs: Vec<ColoredParagraph>) -> Vec<Color
     vec![(out, spans)]
 }
 
-/// A value's paragraphs as a row shows them open: indented, or (`escaped`) as the one
-/// line of its compact JSON escaped into a string.
-pub(super) fn paragraphs_for(value: &impl Serialize, escaped: bool) -> Vec<ColoredParagraph> {
-    if escaped { escaped_paragraphs(colored_paragraphs_for(value, false, usize::MAX)) } else { pretty_paragraphs_for(value) }
-}
-
 /// Pretty (indented) paragraphs for a value — the unit the pretty cache
 /// stores, from which the actual `StyledText` (with whatever highlights
 /// apply at the time) is derived on demand.

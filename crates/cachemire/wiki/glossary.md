@@ -192,7 +192,8 @@ The project's terms, in alphabetical order, each with the chapter or item that e
   [keys_and_tabs](crate::wiki::keys_and_tabs).
 
 **Theme**
-: `ui/components/theme.slint`: the only place colours are written; it feeds `theme_colors.rs`. See
+: `ui/components/theme.slint`: the `Theme` global Slint reads its colours from, filled by `src/theme/` from the
+  theme picked in the settings (four colours, the rest derived). See
   [ui](crate::wiki::ui).
 
 **Tint**

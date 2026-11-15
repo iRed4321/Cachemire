@@ -14,3 +14,5 @@ description: Use when adding or changing user-facing text, or a language (Slint 
   `to_setting`/`from_setting` in `crates/cachemire/src/settings.rs`, new `resources/lang/<code>/`.
 
 Avoid: forgetting the `app.yml` entry for new core error variants; changing an English key without updating `fr:`.
+- A `//` comment on the line just above an `@tr(...)` line is taken as its translator comment: one long enough to wrap
+  breaks the `.pot` (`cargo xtask i18n` then fails on it; `git checkout` the `.pot`, move the comment, rerun).

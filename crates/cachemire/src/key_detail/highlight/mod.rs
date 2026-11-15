@@ -7,18 +7,18 @@ use std::ops::Range;
 use crate::styled_text::StyledText;
 use slint::Color;
 
-use crate::theme_colors::{ACCENT_ORANGE, ACCENT_YELLOW, BG_APP_BASE, HIGHLIGHT_FIND};
+use crate::theme::paint;
 
 use super::field::FieldValue;
+use super::formats::{EditKind, colored_single_line};
 use super::pretty_text::{
     COMPACT_PREVIEW_CHAR_BUDGET, ColorSpans, ColoredParagraph, MAX_SHOWN_STRING_BYTES, colored_paragraphs_for,
     compact_paragraphs_with_whole_strings, escaped_paragraphs,
 };
 
-// Matches are marked with a background, like a marker pen; the text on it is dark
-const HIGHLIGHT_FILTER: Color = ACCENT_YELLOW; // the header value filter's matches
-const HIGHLIGHT_CURRENT: Color = ACCENT_ORANGE; // the current find match
-const HIGHLIGHT_TEXT: Color = BG_APP_BASE;
+// Matches are marked with a background, like a marker pen, in the theme's `paint()` colors:
+// `mark_filter` the header value filter's, `mark_current` the current find match's,
+// `mark_find` the other ones', `mark_text` the text on them.
 
 /// One match: paragraph index plus byte range within that paragraph.
 pub(super) type Match = (usize, Range<usize>);
@@ -110,7 +110,7 @@ pub(super) fn overlay_highlights(
     paragraphs: &[ColoredParagraph],
     highlights: &[(usize, Range<usize>, Color)],
 ) -> Vec<HighlightedParagraph> {
-    let text_color = HIGHLIGHT_TEXT;
+    let text_color = paint().mark_text;
     // highlights arrive in paragraph order, so one cursor walks them in step
     // with the paragraphs instead of rescanning the whole list for each
     let mut next = 0;
@@ -162,10 +162,12 @@ pub(super) fn window_highlights(
     current: i32,
 ) -> Vec<(usize, Range<usize>, Color)> {
     let shown = &paragraphs[range.clone()];
+    let paint = paint();
+    let filter_color = paint.mark_filter;
     let mut highlights: Vec<(usize, Range<usize>, Color)> = merge_overlapping(
         needles
             .iter()
-            .flat_map(|needle| find_matches(shown, needle, case_sensitive).into_iter().map(|(p, r)| (p, r, HIGHLIGHT_FILTER)))
+            .flat_map(|needle| find_matches(shown, needle, case_sensitive).into_iter().map(|(p, r)| (p, r, filter_color)))
             .collect(),
     );
     if finds.is_empty() {
@@ -181,7 +183,7 @@ pub(super) fn window_highlights(
         !mine.get(i).is_some_and(|(fp, fr)| fp == p && fr.start < r.end)
     });
     for (i, (p, r)) in mine.into_iter().enumerate() {
-        highlights.push((p, r, if first + i == current { HIGHLIGHT_CURRENT } else { HIGHLIGHT_FIND }));
+        highlights.push((p, r, if first + i == current { paint.mark_current } else { paint.mark_find }));
     }
     highlights.sort_by_key(|(p, r, _)| (*p, r.start));
     highlights
@@ -202,7 +204,7 @@ pub(super) fn highlight_needle_matches(paragraphs: Vec<ColoredParagraph>, needle
     if needles.is_empty() {
         return StyledText::from_colored_paragraphs(paragraphs);
     }
-    let color = HIGHLIGHT_FILTER;
+    let color = paint().mark_filter;
     let highlights = merge_overlapping(
         needles
             .iter()
@@ -225,6 +227,13 @@ pub(super) fn compact_styled_texts_for(value: FieldValue<'_>, needles: &[String]
     let paragraphs = colored_paragraphs_for(&value, false, COMPACT_PREVIEW_CHAR_BUDGET);
     let escaped = escaped_paragraphs(paragraphs.clone());
     (highlight_needle_matches(paragraphs, needles, case_sensitive), highlight_needle_matches(escaped, needles, case_sensitive))
+}
+
+/// Collapsed one-line preview of a value's own text (what YAML, XML and raw text rows show):
+/// the start of it colored as `kind`, its lines end to end, the badges' matches highlighted.
+pub(super) fn compact_raw_text_for(raw: &str, kind: EditKind, needles: &[String], case_sensitive: bool) -> StyledText {
+    let line = colored_single_line(head_chars(raw, COMPACT_PREVIEW_CHAR_BUDGET), kind);
+    highlight_needle_matches(vec![line], needles, case_sensitive)
 }
 
 /// How much of a hit's value is kept for its row, and how far before the first
@@ -263,7 +272,7 @@ fn hit_window(paragraph: &ColoredParagraph, needle: &str) -> ColoredParagraph {
 fn mark_hit(paragraph: ColoredParagraph, needle: &str) -> StyledText {
     let needle = needle.to_lowercase();
     let paragraphs = [hit_window(&paragraph, &needle)];
-    let color = HIGHLIGHT_FIND;
+    let color = paint().mark_find;
     let highlights: Vec<(usize, Range<usize>, Color)> =
         find_matches(&paragraphs, &needle, false).into_iter().map(|(p, r)| (p, r, color)).collect();
     StyledText::from_highlighted_paragraphs(overlay_highlights(&paragraphs, &highlights))

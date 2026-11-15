@@ -11,7 +11,7 @@ per-tab memory). They call the core's [`cachemire_core::explorer`] for every Red
 | Area | Files |
 |---|---|
 | Tabs | `src/tabs/mod.rs` |
-| Key panel | `src/key_detail/mod.rs` (state, `init`), `load.rs`, `paging/`, `filtering.rs`, `smart_search.rs`, `search_filter/`, `suggest/`, `value_list/`, `table/`, `field/`, `pretty.rs`, `pretty_text.rs`, `value_lines.rs`, `highlight/`, `scroll.rs`, `edit.rs`, `export/`, `full_value.rs` |
+| Key panel | `src/key_detail/mod.rs` (state, `init`), `load.rs`, `paging/`, `filtering.rs`, `smart_search.rs`, `search_filter/`, `suggest/`, `value_list/`, `table/`, `field/`, `formats.rs`, `pretty.rs`, `pretty_text.rs`, `value_lines.rs`, `highlight/`, `scroll.rs`, `edit.rs`, `export/`, `full_value.rs` |
 | Keyspace tree | `src/keyspace/mod.rs`, `walk.rs`, `index/`, `search/`, `selection/`, `edit.rs`, `rows.rs` |
 | Search tabs | `src/search/mod.rs` |
 | Slint side | `ui/components/key-detail*.slint`, `keyspace-panel.slint`, `content-header.slint`, `search-panel.slint`; globals `KeyPanel`, `KeyScroll`, `ExportPrefs`, `KeyTree`, `TabStrip`, `SearchTab` in `ui/globals.slint` and `key-detail-types.slint` |
@@ -78,7 +78,7 @@ Tabs
 | `scroll` | [`ScrollPos`](crate::key_detail::ScrollPos): list y, table x and y |
 | `expanded_fields` | open rows of the value list |
 | `descending` | a hash's field order |
-| `shown_escaped`, `escaped` | the two export format switches (`ExportPrefs.escaped`, `header-escaped`) |
+| `shown_format`, `escaped` | the rows' format, an index of `Formats.names` (`ExportPrefs.format`), and the export switch (`header-escaped`) |
 | `reveal` | a field to scroll to the next time the tab is shown (set by links and search hits) |
 
 A new tab always starts from `TabViewState::new`, never from the previous tab: the view comes from the
@@ -335,14 +335,20 @@ The header has one text box that takes either words or a JSON path.
 
 ## Pretty text, lines and highlight
 
-An open row shows the value as pretty JSON with syntax colors and match highlights.
+An open row shows the value in its format (`ShowFormat`, picked by "Show as" in the Value header or the
+row's ⋯ menu: JSON, escaped JSON, YAML, XML or raw text) with syntax colors and match highlights.
+
+- `formats.rs`: `paragraphs_for(field, format)` is what a row shows. YAML, XML and raw text show the
+  value's own text (`colored_lines`, small tokenizers that also color the editor), except that a JSON
+  object or array is converted to YAML and XML on a single line is indented (`indent_xml`).
+  `shown_text` is the same as plain text, for open/download/copy.
 
 - `pretty_text.rs`: a custom serde_json `Formatter` produces `ColoredParagraph`s (text plus
   color spans) in the single pass serde does, so escaping and numbers are exactly serde's. Strings over
   `MAX_SHOWN_STRING_BYTES` (10 000) become a placeholder; collapsed previews are capped by
-  `COMPACT_PREVIEW_CHAR_BUDGET`. Colors come from `color.rs` (the generated `theme_colors`).
+  `COMPACT_PREVIEW_CHAR_BUDGET`. Colors come from `color.rs` (the syntax theme's, `theme::paint()`).
 - Rendering is asynchronous: rows ask `request-pretty-value-async`; the result goes into
-  `pretty_cache` and `pretty-ready-tick` is bumped; each row then asks `pretty-is-ready(field, escaped)`
+  `pretty_cache` and `pretty-ready-tick` is bumped; each row then asks `pretty-is-ready(field, format)`
   about itself (no shared "which field" property, so two completions cannot race).
 - `value_lines.rs`: paragraphs are wrapped to the row's width in *characters* (`wrap`, `layout`) and
   served a few lines at a time (`request-value-lines(first, count)`), so a huge value only builds the
@@ -362,7 +368,8 @@ An open row shows the value as pretty JSON with syntax colors and match highligh
   builds only the rows in view; row open/fold calls `field-expanded-changed`, which
   `scroll::set_field_expanded` mirrors into `KeyScroll.all-values-expanded` (so a tab can save it).
 - **Table.** `table/` turns the fields into columns: "Field" plus one column per top-level key of the
-  values (`table_columns`). Cells are `StyledText`, nested values pretty-printed, capped by
+  values (`table_columns`). A value that isn't JSON is read as XML or YAML when it is one
+  (`Field::table_value`, `formats::structured_value`: attributes as `@name`, text as `#text`). Cells are `StyledText`, nested values pretty-printed, capped by
   `TABLE_CELL_BUDGET`; widths are first guesses (`column_sizes`; see `table_text`). Sorting
   (`TableSort`, `SortKey` ranking null < bool < number < string) only for columns whose cells are plain.
   Rows can be selected (click, Shift-click `select_table_range`) for export. The table is built by
@@ -377,10 +384,14 @@ exports agree on row indices).
 ## Editing (`edit.rs`)
 
 Writes are available when `KeyPanel.editable` (hash or whole string, connection not read-only).
-`edit_value(field)` opens `ValueEditor` on the pretty JSON (`editor_view`: JSON text is re-laid out; plain
-text is shown as a JSON string and written back as text). An `EditTarget` records connection, key, field,
+`edit_value(field, format)` opens `ValueEditor` as the `EditKind` the row's format gives (`edit_kind_for`).
+As JSON it shows the pretty JSON (`editor_view`: JSON text is re-laid out; plain text is shown as a JSON
+string and written back as text); as YAML, XML or raw text it shows the value's own text, checked as that
+kind and written as typed. Its Format button lays the text out again (`format`: JSON re-laid out, XML re-indented, YAML rewritten in
+block style unless it has comments, anchors or tags). The editor's "Edit as" menu changes the kind (`set_kind`), converting a JSON
+object or array to YAML and back. An `EditTarget` records connection, key, field,
 what was shown, the original raw value (`opened`) and a shared slot for a conflict. Saving
-(`save_value`, only valid JSON) calls core operations that **compare** with `opened`:
+(`save_value`, only text valid as its kind) calls core operations that **compare** with `opened`:
 [`write_value`](cachemire_core::explorer::write_value),
 [`rename_hash_field`](cachemire_core::explorer::rename_hash_field),
 [`write_new_hash_field`](cachemire_core::explorer::write_new_hash_field),
@@ -395,7 +406,7 @@ only if its name is free. Binary values are refused with a toast.
 
 ## Export, copy and full value
 
-`export/` builds JSON, escaped JSON or CSV off the UI thread and then *opens* it in an external editor,
+`export/` builds JSON, escaped JSON or CSV (and, for one row, the text of its format) off the UI thread and then *opens* it in an external editor,
 *downloads* it (file dialog) or *copies* it, through [`crate::value_actions`]: one row's field, the table's
 selected rows, one table cell, the table as CSV, or all fields. Values left out for size are read in full
 first (`with_full_values`, using `hash_full_values`). `ExportFormat` is `Json` or `Escaped`; the target is

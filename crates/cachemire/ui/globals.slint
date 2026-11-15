@@ -1,6 +1,6 @@
 // What Rust reads and writes, grouped by feature: each global is one feature's
 // state and the callbacks Rust answers. `main.slint` binds the components to them.
-import { ConnectionStatus, LanguageSetting, SettingsCategory, ShortcutAction, ShortcutRow, ProfileTint, KeyView, OpeningView, SearchScope, ExportFormat, ExportTarget } from "components/types.slint";
+import { ConnectionStatus, LanguageSetting, SettingsCategory, ShortcutAction, ShortcutRow, ProfileTint, KeyView, OpeningView, SearchScope, ExportFormat, ExportTarget, ThemeChoice } from "components/types.slint";
 import { ConnectionRowData, ConnProfileRowData, ConnectionForm, SshProfileRowData, SshProfileForm, ConnProfileForm, KeyspaceRowData, SavedQueryRowData, TabData, SearchRowData, HistoryRow } from "components/types.slint";
 import { AllValuesRowData, FindResult, LineSelection, ValueLine, TableRowData, SuggestionRow, CompletionEdit, BadgeData } from "components/key-detail-types.slint";
 
@@ -185,6 +185,13 @@ export global Preferences {
     // reopens the connection the app was closed on, with its tabs and open folders
     in-out property <bool> restore-session: false;
     callback restore-session-toggled(enabled: bool);
+    // the themes and the syntax themes (src/theme/mod.rs), and the `id` of the one in use
+    in property <[ThemeChoice]> themes;
+    in property <string> theme;
+    callback theme-selected(id: string);
+    in property <[ThemeChoice]> syntax-themes;
+    in property <string> syntax-theme;
+    callback syntax-theme-selected(id: string);
     // the zoom the app starts at and Ctrl+0 returns to, in percent
     in-out property <int> zoom: 100;
     callback zoom-selected(percent: int);
@@ -379,7 +386,7 @@ export global QueryTab {
     pure callback lines(text: string) -> [string];
     // colors the box's text, recomputed on every edit, and marks the error's spot
     // (see src/redisql/highlight/mod.rs)
-    pure callback highlight(text: string, error-start: int, error-end: int, error-text: string) -> styled-text;
+    pure callback highlight(text: string, error-start: int, error-end: int, error-text: string, paint-tick: int) -> styled-text;
     // strips a pasted `\r` out of the box's text
     pure callback sanitize(text: string) -> string;
 }
@@ -462,27 +469,27 @@ export global KeyPanel {
     callback filter-case-sensitivity-changed();
     // An open row's pretty text (valid once `request-pretty-value-async` answered), drawn a
     // line at a time wrapped to `columns`: its line count, and lines `first`.. with matches
-    // highlighted. Each takes whether it shows escaped; a position is a line and byte offset.
-    callback value-line-count(field: string, escaped: bool, columns: int) -> int;
-    callback request-value-lines(field: string, query: string, current: int, escaped: bool, columns: int, first: int, count: int) -> [ValueLine];
-    callback request-pretty-value-async(field: string, escaped: bool);
-    callback find-in-value(field: string, query: string, current: int, escaped: bool, columns: int) -> FindResult;
+    // highlighted. Each takes the format shown (an index of `Formats.names`); a position is a line and byte offset.
+    callback value-line-count(field: string, format: int, columns: int) -> int;
+    callback request-value-lines(field: string, query: string, current: int, format: int, columns: int, first: int, count: int) -> [ValueLine];
+    callback request-pretty-value-async(field: string, format: int);
+    callback find-in-value(field: string, query: string, current: int, format: int, columns: int) -> FindResult;
     // the byte offset in `line` of its `column`-th character (its end past the last one)
-    callback value-offset-at(field: string, escaped: bool, columns: int, line: int, column: int) -> int;
+    callback value-offset-at(field: string, format: int, columns: int, line: int, column: int) -> int;
     // what a double click (the word at the position) or a triple click (`whole`) selects
-    callback value-selection(field: string, escaped: bool, columns: int, line: int, offset: int, whole: bool) -> LineSelection;
-    callback value-selected-text(field: string, escaped: bool, columns: int, selection: LineSelection) -> string;
-    callback pretty-is-ready(field: string, escaped: bool) -> bool;
-    // one row's field as pretty JSON, or as an escaped JSON string
-    callback open-value(field: string, escaped: bool);
-    callback download-value(field: string, escaped: bool);
-    callback copy-value(field: string, escaped: bool);
+    callback value-selection(field: string, format: int, columns: int, line: int, offset: int, whole: bool) -> LineSelection;
+    callback value-selected-text(field: string, format: int, columns: int, selection: LineSelection) -> string;
+    callback pretty-is-ready(field: string, format: int) -> bool;
+    // one row's field as the text it shows in a format
+    callback open-value(field: string, format: int);
+    callback download-value(field: string, format: int);
+    callback copy-value(field: string, format: int);
     // whether the shown key's values can be written (a hash, or a string read whole, on a
     // connection that isn't read-only), and opening the editor on one row's field
     in property <bool> editable: false;
     // whether a row's value, or its field name, isn't UTF-8 text: it can't be edited
     pure callback is-binary(field: string) -> bool;
-    callback edit-value(field: string);
+    callback edit-value(field: string, format: int);
     // the header's + on a hash: the editor, open on a new field
     callback add-field();
     // the header's share button: copies a link to the key shown

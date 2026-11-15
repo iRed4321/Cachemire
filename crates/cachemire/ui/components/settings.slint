@@ -1,5 +1,5 @@
 import { Theme } from "theme.slint";
-import { LanguageSetting, OpeningView, SettingsCategory, ProfileTint, SshProfileRowData, SshProfileForm, ConnProfileForm } from "types.slint";
+import { LanguageSetting, OpeningView, SettingsCategory, ProfileTint, SshProfileRowData, SshProfileForm, ConnProfileForm, ThemeChoice } from "types.slint";
 import { VScrollBar, ModalButton, CheckRow, SegmentedToggle, IconButton, PastePopup } from "widgets.slint";
 import { IconPlus, IconPencil, IconSettings, IconKey, IconPalette, IconFlask, IconInfo, IconKeyboard, IconDisplay, IconUndo, IconSearch, IconClose } from "icons.slint";
 import { ConnectionModalField, ConnProfileRowData, TintDot } from "connection-picker.slint";
@@ -525,6 +525,8 @@ component SettingsPage inherits HorizontalLayout {
 // the explanations under the settings, which the search reads too
 global SettingTexts {
     out property <string> zoom-hint: @tr("The zoom the app starts at, and Ctrl+0 returns to. Ctrl with + or -, or the mouse wheel, still zooms for the session.");
+    out property <string> theme-hint: @tr("Each theme is four colors: background, text, accent and highlight. Every other color of the app is worked out from them, except those of the connection profiles.");
+    out property <string> syntax-hint: @tr("The colors of JSON, YAML, XML and Redisql text. One that would be hard to read on the theme's background is brought closer to its text color.");
     out property <string> depth-hint: @tr("How many entries of each key (hash fields, list items, set members...) the global search reads. Fewer is faster, but a match deeper inside a big key is missed.");
     out property <string> opening-view-hint: @tr("The view a key shows when its tab opens. A query's result always opens as a table, and a search hit or a link to a field in the fields view.");
     out property <string> restore-hint: @tr("Cachemire reconnects to the connection it was closed on, with its tabs and open folders. An AWS connection signs in again first, in the browser if its session has expired.");
@@ -662,10 +664,65 @@ component ZoomSlider inherits Rectangle {
     }
 }
 
+// The choices of a theme list, two to a row: each its swatches and its name, the one in
+// use outlined; a click picks it.
+component ThemeChoices inherits Rectangle {
+    in property <[ThemeChoice]> choices;
+    in property <string> current;
+    callback picked(id: string);
+
+    property <length> row-h: Theme.px(34px);
+    property <length> gap: Theme.px(8px);
+    property <length> cell-w: (self.width - gap) / 2;
+    height: ceil(choices.length / 2) * (row-h + gap) - gap;
+    for choice[i] in root.choices: Rectangle {
+        x: mod(i, 2) * (root.cell-w + root.gap);
+        y: floor(i / 2) * (root.row-h + root.gap);
+        width: root.cell-w;
+        height: root.row-h;
+        border-radius: Theme.radius-md;
+        border-width: choice.id == root.current ? 2px : 1px;
+        border-color: choice.id == root.current ? Theme.accent-blue : Theme.border-soft;
+        background: choice-area.has-hover ? Theme.bg-hover : Theme.bg-panel;
+        choice-area := TouchArea {
+            mouse-cursor: pointer;
+            clicked => { root.picked(choice.id); }
+        }
+        HorizontalLayout {
+            padding-left: Theme.px(10px);
+            padding-right: Theme.px(10px);
+            spacing: Theme.px(10px);
+            HorizontalLayout {
+                spacing: Theme.px(3px);
+                for swatch in choice.colors: Rectangle {
+                    y: (parent.height - self.height) / 2;
+                    width: Theme.px(14px);
+                    height: Theme.px(14px);
+                    border-radius: Theme.px(7px);
+                    border-width: 1px;
+                    border-color: Theme.border-soft;
+                    background: swatch;
+                }
+            }
+            Text {
+                horizontal-stretch: 1;
+                text: choice.name;
+                font-size: Theme.pt(12px);
+                font-weight: choice.id == root.current ? 700 : 500;
+                color: Theme.text-primary;
+                vertical-alignment: center;
+                overflow: elide;
+            }
+        }
+    }
+}
+
 // the Display page's settings, each hidden when its `show-` is false (not found by the search)
 component DisplaySettings inherits VerticalLayout {
     in property <bool> show-language: true;
     in property <bool> show-zoom: true;
+    in property <bool> show-theme: true;
+    in property <bool> show-syntax: true;
 
     spacing: Theme.px(20px);
     if root.show-language: VerticalLayout {
@@ -689,6 +746,26 @@ component DisplaySettings inherits VerticalLayout {
             released(percent) => { Preferences.zoom-selected(percent); }
         }
         SettingHint { text: SettingTexts.zoom-hint; }
+    }
+    if root.show-theme: VerticalLayout {
+        spacing: Theme.px(6px);
+        SettingTitle { text: @tr("Theme"); }
+        ThemeChoices {
+            choices: Preferences.themes;
+            current: Preferences.theme;
+            picked(id) => { Preferences.theme-selected(id); }
+        }
+        SettingHint { text: SettingTexts.theme-hint; }
+    }
+    if root.show-syntax: VerticalLayout {
+        spacing: Theme.px(6px);
+        SettingTitle { text: @tr("Syntax highlighting"); }
+        ThemeChoices {
+            choices: Preferences.syntax-themes;
+            current: Preferences.syntax-theme;
+            picked(id) => { Preferences.syntax-theme-selected(id); }
+        }
+        SettingHint { text: SettingTexts.syntax-hint; }
     }
 }
 
@@ -1100,6 +1177,8 @@ export component SettingsModal inherits Rectangle {
     // each setting is found by its page's name and its own texts
     property <bool> found-language: root.hit(@tr("Display") + " " + @tr("Language") + " " + @tr("Automatic") + " English Français");
     property <bool> found-zoom: root.hit(@tr("Display") + " " + @tr("Zoom") + " " + SettingTexts.zoom-hint);
+    property <bool> found-theme: root.hit(@tr("Display") + " " + @tr("Theme") + " " + SettingTexts.theme-hint);
+    property <bool> found-syntax: root.hit(@tr("Display") + " " + @tr("Syntax highlighting") + " " + SettingTexts.syntax-hint);
     property <bool> found-export: root.hit(@tr("General") + " " + @tr("Export format") + " " + @tr("JSON") + " " + @tr("Escaped JSON"));
     property <bool> found-opening-view: root.hit(@tr("General") + " " + @tr("New tabs open in") + " " + @tr("Fields view") + " " + @tr("Table view") + " " + @tr("Last view picked") + " " + SettingTexts.opening-view-hint);
     property <bool> found-depth: root.hit(@tr("General") + " " + @tr("Search depth") + " 60 200 1000 " + SettingTexts.depth-hint);
@@ -1115,7 +1194,7 @@ export component SettingsModal inherits Rectangle {
 
     pure function found(category: SettingsCategory) -> bool {
         return category == SettingsCategory.general ? root.found-export || root.found-opening-view || root.found-depth || root.found-restore || root.found-check-updates
-            : category == SettingsCategory.display ? root.found-language || root.found-zoom
+            : category == SettingsCategory.display ? root.found-language || root.found-zoom || root.found-theme || root.found-syntax
             : category == SettingsCategory.key-bindings ? root.query == "" || Shortcuts.rows.length > 0 || Shortcuts.standard.length > 0
             : category == SettingsCategory.ssh-profiles ? root.found-ssh
             : category == SettingsCategory.conn-profiles ? root.found-conn
@@ -1356,6 +1435,8 @@ export component SettingsModal inherits Rectangle {
                             DisplaySettings {
                                 show-language: root.found-language;
                                 show-zoom: root.found-zoom;
+                                show-theme: root.found-theme;
+                                show-syntax: root.found-syntax;
                             }
                         }
                         if root.found(SettingsCategory.key-bindings): ResultSection {

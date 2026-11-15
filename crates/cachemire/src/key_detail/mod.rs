@@ -23,6 +23,7 @@ mod edit;
 mod export;
 mod field;
 mod filtering;
+mod formats;
 mod full_value;
 mod highlight;
 mod load;

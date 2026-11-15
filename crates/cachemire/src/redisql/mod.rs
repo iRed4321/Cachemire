@@ -499,7 +499,7 @@ pub fn init(app: &Rc<App>, window: &MainWindow) {
 
     // recomputed on every edit — see highlight's own doc comment for
     // why that's cheap enough to need no caching
-    window.global::<QueryTab>().on_highlight(|text, start, end, error_text| {
+    window.global::<QueryTab>().on_highlight(|text, start, end, error_text, _paint_tick| {
         let error = (start >= 0 && end > start && text == error_text).then_some(start as usize..end as usize);
         crate::redisql::highlight::highlight_query(&text, error)
     });

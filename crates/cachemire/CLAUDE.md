@@ -5,7 +5,9 @@ UI-thread glue between `ui/*.slint` and `cachemire-core`. No business logic here
 ## Layout
 
 - `src/main.rs`: declares modules, `rust_i18n::i18n!`, `slint::include_modules!()` (re-exported as `ui::*`), backend choice.
-- `build.rs`: compiles `ui/main.slint` with bundled translations, generates `theme_colors.rs` from `ui/components/theme.slint`.
+- `build.rs`: compiles `ui/main.slint` with bundled translations.
+- `src/theme/`: the themes (four colors each, the rest derived) and syntax themes; fills the Slint `Theme` global and
+  `theme::paint()`, the colors of the text Rust paints.
 - `src/app.rs`: `App` (thread_local). `app::with(|app, _| ..)` reaches it; `app::later` returns Tokio results to the UI thread.
 - One module per feature (`connections/`, `cloud/`, `key_detail/`, `keyspace/`, `search/`, `redisql/`, `tabs/`…),
   each with an `init` that attaches the `on_*` callbacks; `init`s are called from `main.rs`.
@@ -22,6 +24,7 @@ UI-thread glue between `ui/*.slint` and `cachemire-core`. No business logic here
 
 - Flow: Slint callback -> handler -> `app::with` -> spawn on `app.rt` -> `app::later` -> set properties / `VecModel`.
 - Slint enums mirrored in core use exhaustive matches (`to_setting`/`from_setting` in `src/settings.rs`).
-- Colors come from `theme.slint`; never hard-code `#rrggbb` elsewhere (it feeds `theme_colors.rs`).
+- Colors: Slint reads the `Theme` global, Rust `theme::paint()`; never hard-code `#rrggbb` elsewhere. A new interface
+  color is a `Theme` `in property` (default = the default theme's value) derived in `theme::derive` and set in `theme::apply`.
 - UI tests: `src/ui_tests/` (`Harness` in `mod.rs`, headless, software renderer). Add only when asked.
 - After editing `@tr(...)`: `cargo xtask i18n`. Skills: `add-setting`, `add-ui-dialog`, `translations`.

@@ -12,7 +12,8 @@ this crate; see [architecture](crate::wiki::architecture) for the layers and
 - `ui/globals.slint`: one global per feature (state + callbacks Rust answers).
 - `ui/components/*.slint`: the widgets and dialogs; `types.slint` holds the shared enums and structs,
   `theme.slint` the `Theme` global.
-- `build.rs`: compiles the UI and generates `theme_colors.rs`.
+- `build.rs`: compiles the UI.
+- `src/theme/mod.rs`: the themes and syntax themes; sets the `Theme` colors and keeps `paint()`.
 - `src/main.rs`: includes the generated code (`mod ui`), calls every `init`.
 - [`crate::app`]: the `App` struct, [`app::with`](crate::app::with) / [`app::later`](crate::app::later).
 - [`crate::styled_text`], [`crate::toast`], [`crate::shortcuts`], [`crate::table_text`],
@@ -21,23 +22,18 @@ this crate; see [architecture](crate::wiki::architecture) for the layers and
 
 ## 1. Compilation: `build.rs` and `mod ui`
 
-`build.rs` does two things.
+`build.rs` does one thing (and, on Windows, embeds the icon and version info).
 
 1. `slint_build::compile_with_config("ui/main.slint", ..)` with
    - `EmbedResourcesKind::EmbedFiles`: fonts and images are embedded in the executable;
    - `with_bundled_translations("../../resources/lang")`: the `.po` files are compiled in, so
      `@tr(...)` strings switch language at run time (see [i18n](crate::wiki::i18n));
    - `DefaultTranslationContext::None`: no context is added to `@tr`.
-2. `theme_colors()`: reads `ui/components/theme.slint` line by line and, for every line of the form
-   `out property <color> name: #rrggbb;`, writes `pub const NAME: slint::Color = ...` (dashes become
-   underscores, upper-cased) into `$OUT_DIR/theme_colors.rs`. Colors given as an expression
-   (`profile-color(..)`, `mix(..)`) or with an alpha channel are skipped. On Windows it also embeds the
-   icon and version info.
 
-The generated colors are included by [`crate::theme_colors`] (`include!`) and used by Rust code that
-paints text itself (JSON syntax colors in `key_detail/color.rs`, highlight colors in
-`key_detail/highlight`). Rule from the crate's `CLAUDE.md`: never hard-code `#rrggbb` outside
-`theme.slint`, since this file feeds both sides.
+Rust code that paints text itself (syntax colors in `key_detail/color.rs`, highlight colors in
+`key_detail/highlight`, the query box in `redisql/highlight`) reads its colors from
+[`theme::paint`](crate::theme::paint). Rule from the crate's `CLAUDE.md`: never hard-code `#rrggbb`
+outside `theme.slint` and `src/theme/`.
 
 In `main.rs`, the Slint output lives in a private `mod ui { slint::include_modules!(); }` re-exported
 with `pub(crate) use ui::*`, so every module writes `crate::MainWindow`, `crate::KeyPanel`,
@@ -125,7 +121,16 @@ to them.
 
 `Theme` (in `theme.slint`) is the single source of design tokens.
 
-- **Colors**: backgrounds (`bg-*`), borders, text levels, accents, JSON syntax colors, query colors.
+- **Colors**: backgrounds (`bg-*`), borders, text levels, accents. They are `in` properties that
+  [`theme::apply`](crate::theme::apply) sets (the values in the file are the default theme's): a theme
+  (`theme::COMBOS`) is four colors, background, text, accent and highlight, and `derive` works out the
+  rest: surfaces and borders are the background with some text mixed in, dimmer texts the reverse,
+  selections the accent over the background, status colors (red, green...) fixed hues made readable.
+  A syntax theme (`theme::SYNTAXES`) gives the token colors of [`Paint`](crate::theme::Paint), each
+  brought closer to the text color when it would not read on the background. Both are picked in the
+  Display settings (`Preferences.theme`, `syntax-theme`); picking one applies it, bumps
+  `Theme.paint-tick` (the query box is colored again) and shows the tab again (`tabs::repaint`).
+  Profile colors (`profile-color`) are fixed.
   `bg-app` is `bg-app-base` mixed with the profile tint when `env-tinted` is true (25%), and
   `chrome-border` mixes 50%. This is how a connection profile (Production = red...) colors the window.
 - **Fonts**: `font-ui` = Roboto, `font-mono` = JetBrains Mono, both bundled by `import "...ttf"` lines

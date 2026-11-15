@@ -18,14 +18,14 @@ import { TableRowData } from "components/key-detail-types.slint";
 import { FloatingCard, Hint, HResizeHandle, SquareIconButton } from "components/widgets.slint";
 import { IconSidebar } from "components/icons.slint";
 import { SettingsModal, SshProfileRowData, SshProfileForm, ConnProfileForm } from "components/settings.slint";
-import { ConnectionStatus, TreeRowKind, ExportFormat, ExportTarget, LanguageSetting, SettingsCategory, ProfileTint, KeyView, OpeningView, SidebarView, SearchScope, ShortcutAction, ShortcutRow } from "components/types.slint";
+import { ConnectionStatus, TreeRowKind, ExportFormat, ExportTarget, LanguageSetting, SettingsCategory, ProfileTint, KeyView, OpeningView, SidebarView, SearchScope, ShortcutAction, ShortcutRow, ThemeChoice } from "components/types.slint";
 import { ConnectionView, ConnectionState, ConnectionEditor, AwsAccount, About, Preferences, Shortcuts, KeyTree, SavedQueries, TabStrip, SearchTab, QueryTab, KeyPanel } from "globals.slint";
 
 // read and written by Rust: where each tab left the key panel scrolled to
 // (Rust tints the background: see Theme.env-tint)
 export { KeyScroll, ExportPrefs, Theme, About, CloudSettings, ConnectionTransfer, LineSelection, ValueLine, ValueEditor, KeyNameDialog, KeyNameAction, FolderDeleteDialog, KeyringDialog, SecretsPrompt, HostKeyDialog }
 // the enumerations Rust shares with the UI
-export { ConnectionStatus, TreeRowKind, ExportFormat, ExportTarget, LanguageSetting, SettingsCategory, ProfileTint, KeyView, OpeningView, SidebarView, SearchScope, ShortcutAction }
+export { ConnectionStatus, TreeRowKind, ExportFormat, ExportTarget, LanguageSetting, SettingsCategory, ProfileTint, KeyView, OpeningView, SidebarView, SearchScope, ShortcutAction, ThemeChoice }
 // a row of the settings' Key bindings page
 export { ShortcutRow }
 // a badge of the key panel's field/value search bar

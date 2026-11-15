@@ -16,6 +16,12 @@ _version: 2
 # the value editor
 "Not valid JSON: line %{line}, column %{column}":
   fr: "JSON invalide : ligne %{line}, colonne %{column}"
+"Not valid YAML: line %{line}, column %{column}":
+  fr: "YAML invalide : ligne %{line}, colonne %{column}"
+"Not valid YAML":
+  fr: "YAML invalide"
+"Not valid XML: line %{line}, column %{column}":
+  fr: "XML invalide : ligne %{line}, colonne %{column}"
 "Saving failed: %{error}":
   fr: "Échec de l'enregistrement : %{error}"
 "Saved":

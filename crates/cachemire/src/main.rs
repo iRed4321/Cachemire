@@ -34,7 +34,7 @@ mod shortcuts;
 mod styled_text;
 mod table_text;
 mod tabs;
-mod theme_colors;
+mod theme;
 mod toast;
 #[cfg(test)]
 mod ui_tests;

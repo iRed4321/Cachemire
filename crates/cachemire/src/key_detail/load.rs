@@ -15,8 +15,8 @@ use cachemire_core::key_name::KeyName;
 use cachemire_core::redis_value_type::RedisValueType;
 
 use super::field::{Fields, PrettyRenderings, build_fields, single_value_field};
+use super::formats::{ShowFormat, paragraphs_for};
 use super::paging::holds_field;
-use super::pretty_text::paragraphs_for;
 use super::scroll::{ScrollPos, arm_all_scroll, current_expanded_fields, disarm_scroll};
 use super::table::clear_table;
 use super::value_list::{build_all_values_table, filter_fields, filter_status, meta_text, parse_filter};
@@ -60,7 +60,7 @@ impl Ctx {
         // read on the UI thread, before spawning: on a tab switch `tabs/mod.rs`
         // writes the target tab's saved filter/expanded fields into these
         // properties just before calling us, so this is that tab's own state.
-        let (filter, path, expanded) = weak
+        let (filter, path, expanded, format) = weak
             .upgrade()
             .map(|window| {
                 // flags this key as in flight so the keyspace tree can spin its
@@ -82,7 +82,8 @@ impl Ctx {
                         None
                     }
                 };
-                (current_search_filter(&window), path, current_expanded_fields(&window))
+                let format = ShowFormat::from_index(window.global::<crate::ExportPrefs>().get_format());
+                (current_search_filter(&window), path, current_expanded_fields(&window), format)
             })
             .unwrap_or_default();
         content.lock().search = filter.clone();
@@ -129,7 +130,7 @@ impl Ctx {
                     // restored row doesn't flash "Formatting..." then grow
                     let mut renderings = PrettyRenderings::default();
                     for f in shown.iter().filter(|f| expanded.contains(&f.name)) {
-                        renderings.plain_or_insert_with(&f.name, || paragraphs_for(&f.value(), false));
+                        renderings.get_or_insert_with(&f.name, format, || paragraphs_for(f, format));
                     }
                     let (av_field_chars, av_rows) = build_all_values_table(&shown, &filter, &expanded);
 

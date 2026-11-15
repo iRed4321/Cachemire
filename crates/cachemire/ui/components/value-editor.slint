@@ -2,9 +2,10 @@ import { Theme } from "theme.slint";
 import { ModalButton, TextMenuPopup } from "widgets.slint";
 import { ConnectionModalField } from "connection-picker.slint";
 import { Shortcuts } from "../globals.slint";
+import { FormatPicker } from "key-detail-widgets.slint";
 
-// The value editor: a field's value as pretty JSON to change, written back to its key once
-// it is valid JSON. Rust fills it in and answers its callbacks (see src/key_detail/edit.rs).
+// The value editor: a field's value to change as JSON, YAML, XML or raw text, written back to its
+// key once it is valid. Rust fills it in and answers its callbacks (see src/key_detail/edit.rs).
 export global ValueEditor {
     in-out property <bool> open: false;
     // what is edited: the key's name as shown, and the field's ("" for a string key's value)
@@ -26,15 +27,19 @@ export global ValueEditor {
     in-out property <string> conflict: "";
     callback reload();
     callback overwrite(text: string, name: string);
-    // `text` colored as JSON, and why it isn't valid JSON ("" when it is)
-    pure callback highlight(text: string) -> styled-text;
-    pure callback check(text: string) -> string;
+    // what the text is taken as (an index of `kinds`); picking another has Rust turn the text into it
+    in property <int> kind: 0;
+    callback kind-picked(kind: int, text: string);
+    out property <[string]> kinds: [@tr("JSON"), @tr("YAML"), @tr("XML"), @tr("Raw text")];
+    // `text` colored as a kind, and why it isn't valid as that kind ("" when it is)
+    pure callback highlight(text: string, kind: int) -> styled-text;
+    pure callback check(text: string, kind: int) -> string;
     // whether `text` wrapped to `columns` characters takes at most `max-lines` lines
     pure callback fits(text: string, columns: int, max-lines: int) -> bool;
     // `text` without the `\r` a paste brings, which would shift the colored copy's lines
     pure callback sanitize(text: string) -> string;
-    // `text` pretty-printed (as it is when it isn't valid JSON)
-    pure callback format(text: string) -> string;
+    // `text` laid out again as a kind (as it is when it isn't valid as that kind)
+    pure callback format(text: string, kind: int) -> string;
     // the lines of `text`, to number them: Rust keeps them in step through `text-changed`
     in property <[string]> lines;
     callback text-changed(text: string);
@@ -48,7 +53,7 @@ export component ValueEditorModal inherits Rectangle {
     in property <float> device-scale: 1.0;
     callback clipboard-has-text() -> bool;
 
-    property <string> json-problem: ValueEditor.check(ValueEditor.text);
+    property <string> json-problem: ValueEditor.check(ValueEditor.text, ValueEditor.kind);
     property <string> name-problem: ValueEditor.is-field ? ValueEditor.check-name(ValueEditor.name) : "";
     property <string> problem: name-problem != "" ? name-problem : json-problem;
     function save() {
@@ -159,13 +164,21 @@ export component ValueEditorModal inherits Rectangle {
                 VerticalLayout {
                     vertical-stretch: 1;
                     spacing: Theme.px(4px);
-                    Text {
-                        text: @tr("Value");
-                        height: Theme.pt(15px);
-                        font-size: Theme.pt(10.5px);
-                        font-weight: 600;
-                        color: Theme.text-secondary;
-                        vertical-alignment: center;
+                    HorizontalLayout {
+                        Text {
+                            horizontal-stretch: 1;
+                            text: @tr("Value");
+                            font-size: Theme.pt(10.5px);
+                            font-weight: 600;
+                            color: Theme.text-secondary;
+                            vertical-alignment: center;
+                        }
+                        FormatPicker {
+                            label: @tr("Edit as");
+                            names: ValueEditor.kinds;
+                            format: ValueEditor.kind;
+                            picked(kind) => { ValueEditor.kind-picked(kind, ValueEditor.text); }
+                        }
                     }
                     box := Rectangle {
                         vertical-stretch: 1;
@@ -204,7 +217,7 @@ export component ValueEditorModal inherits Rectangle {
                             x: 0px;
                             y: 0px;
                             width: Theme.px(40px);
-                            text: ValueEditor.highlight(ten-rows + "\n" + ten-rows + "\n" + ten-rows + "\n" + ten-rows + "\n" + ten-rows + "\n" + ten-rows + "\n" + ten-rows + "\n" + ten-rows + "\n" + ten-rows + "\n" + ten-rows);
+                            text: ValueEditor.highlight(ten-rows + "\n" + ten-rows + "\n" + ten-rows + "\n" + ten-rows + "\n" + ten-rows + "\n" + ten-rows + "\n" + ten-rows + "\n" + ten-rows + "\n" + ten-rows + "\n" + ten-rows, 0);
                             default-font-family: Theme.font-mono;
                             default-font-size: Theme.pt(12px);
                             opacity: 0;
@@ -243,7 +256,7 @@ export component ValueEditorModal inherits Rectangle {
                                         x: 0px;
                                         y: 0px;
                                         width: box.text-w;
-                                        text: ValueEditor.highlight(line);
+                                        text: ValueEditor.highlight(line, ValueEditor.kind);
                                         default-font-family: Theme.font-mono;
                                         default-font-size: Theme.pt(12px);
                                         opacity: 0;
@@ -267,7 +280,7 @@ export component ValueEditorModal inherits Rectangle {
                                 x: flick.text-dx;
                                 y: 0px;
                                 width: box.text-w;
-                                text: ValueEditor.highlight(ValueEditor.text);
+                                text: ValueEditor.highlight(ValueEditor.text, ValueEditor.kind);
                                 default-color: Theme.text-primary;
                                 default-font-family: Theme.font-mono;
                                 default-font-size: Theme.pt(12px);
@@ -399,10 +412,10 @@ export component ValueEditorModal inherits Rectangle {
                         text: @tr("Cancel");
                         clicked => { ValueEditor.open = false; }
                     }
-                    if ValueEditor.conflict == "": ModalButton {
-                        text: @tr("Format JSON");
+                    if ValueEditor.conflict == "" && ValueEditor.kind != 3: ModalButton {
+                        text: ValueEditor.kind == 0 ? @tr("Format JSON") : (ValueEditor.kind == 1 ? @tr("Format YAML") : @tr("Format XML"));
                         enabled: root.json-problem == "" && !ValueEditor.saving;
-                        clicked => { ValueEditor.text = ValueEditor.format(ValueEditor.text); }
+                        clicked => { ValueEditor.text = ValueEditor.format(ValueEditor.text, ValueEditor.kind); }
                     }
                     if ValueEditor.conflict == "": ModalButton {
                         text: ValueEditor.saving ? @tr("Saving...") : @tr("Save");

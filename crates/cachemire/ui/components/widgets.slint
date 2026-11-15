@@ -569,7 +569,7 @@ export component ModalButton inherits Rectangle {
     }
     label := Text {
         text: root.text;
-        color: primary ? #ffffff : (danger ? (armed ? #ffffff : Theme.accent-red) : Theme.text-secondary);
+        color: primary ? Theme.accent-text : (danger ? (armed ? #ffffff : Theme.accent-red) : Theme.text-secondary);
         font-weight: (primary || armed) ? 600 : 400;
         font-size: Theme.pt(12px);
         horizontal-alignment: center;

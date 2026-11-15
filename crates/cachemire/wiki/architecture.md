@@ -90,7 +90,7 @@ session" is on, in which case [`last_session`](crate::last_session) reconnects. 
 | [`links`](crate::links), [`updates`](crate::updates), [`window_state`](crate::window_state), [`last_session`](crate::last_session), [`logging`](crate::logging) | platform-ish services | [platform](crate::wiki::platform) |
 | [`server_stats`](crate::server_stats) | polls memory use of the connected server every 3 s | [state](crate::wiki::state) |
 | [`shortcuts`](crate::shortcuts) | configurable keyboard shortcuts | [ui](crate::wiki::ui) |
-| [`styled_text`](crate::styled_text), [`table_text`](crate::table_text), [`theme_colors`](crate::theme_colors) | text/colour helpers for Slint | [ui](crate::wiki::ui) |
+| [`styled_text`](crate::styled_text), [`table_text`](crate::table_text), [`theme`](crate::theme) | text/colour helpers for Slint, themes | [ui](crate::wiki::ui) |
 | [`toast`](crate::toast) | transient toasts placed at the pointer | [errors](crate::wiki::errors) |
 | [`value_actions`](crate::value_actions) | clipboard and value actions | [keys_and_tabs](crate::wiki::keys_and_tabs) |
 | `drag_latch` (Windows only) | window drag workaround | [platform](crate::wiki::platform) |
@@ -149,4 +149,4 @@ the callback: callback, core `set_*` (which persists), then on success the globa
 | Does it decide what is allowed (read-only, valid URL)? | The core ([`ensure_writable`](cachemire_core::state::ensure_writable), `Invalid`). |
 | Does it set a Slint property, a model or a toast? | The app. |
 | Does it need a translated sentence? | The app (`t!` and [`Localize`](crate::error::Localize)); the core's `Display` stays English. |
-| Is it a colour or a size? | `theme.slint`, never hard-coded elsewhere. See [ui](crate::wiki::ui). |
+| Is it a colour or a size? | `theme.slint` (colours derived in `src/theme/`), never hard-coded elsewhere. See [ui](crate::wiki::ui). |

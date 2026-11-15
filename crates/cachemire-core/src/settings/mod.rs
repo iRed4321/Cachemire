@@ -90,6 +90,11 @@ struct StoredSettings {
     // the interface zoom the app starts at, in percent (0: not chosen yet)
     #[serde(default)]
     zoom: u32,
+    // the theme and the syntax theme, by the names the app gives them ("": its default ones)
+    #[serde(default)]
+    theme: String,
+    #[serde(default)]
+    syntax_theme: String,
     // the keyboard shortcuts changed from their defaults: an action's name, and its keys
     #[serde(default)]
     shortcuts: BTreeMap<String, Vec<String>>,
@@ -205,6 +210,28 @@ impl SettingsStore {
     pub fn set_zoom(&mut self, percent: u32) -> Result<(), Error> {
         let mut next = self.state.clone();
         next.zoom = percent.clamp(*ZOOM_RANGE.start(), *ZOOM_RANGE.end());
+        self.commit(next, false)
+    }
+
+    /// The theme picked, by the name the app gives it ("" until one is).
+    pub fn theme(&self) -> &str {
+        &self.state.theme
+    }
+
+    pub fn set_theme(&mut self, theme: &str) -> Result<(), Error> {
+        let mut next = self.state.clone();
+        next.theme = theme.to_string();
+        self.commit(next, false)
+    }
+
+    /// The syntax theme picked, by the name the app gives it ("" until one is).
+    pub fn syntax_theme(&self) -> &str {
+        &self.state.syntax_theme
+    }
+
+    pub fn set_syntax_theme(&mut self, theme: &str) -> Result<(), Error> {
+        let mut next = self.state.clone();
+        next.syntax_theme = theme.to_string();
         self.commit(next, false)
     }
 

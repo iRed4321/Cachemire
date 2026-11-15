@@ -193,15 +193,15 @@ was run; any edit removes it. The mark is a translucent red background behind th
 [`StyledText`](crate::styled_text::StyledText), one paragraph per line (the highlighter is line-oriented: a quote
 not closed on a line runs to the line's end). Per line it colours:
 
-| Token | Colour (from `theme_colors`) |
+| Token | Colour (of `theme::paint()`) |
 |-------|------------------------------|
-| keywords `from join where select limit as on and in key var` | `ACCENT_BLUE` |
-| `true` / `false` | `JSON_BOOL` |
-| numbers | `JSON_NUMBER` |
-| quoted strings | `JSON_STRING` |
-| `&name` variables inside strings (via core's [`variable_ranges`](cachemire_core::redisql::variable_ranges)) | `QUERY_VARIABLE` |
-| `-- comment` | `TEXT_TERTIARY` |
-| `. , ; = [ ] ( ) *` | `JSON_PUNCT` |
+| keywords `from join where select limit as on and in key var` | `keyword` |
+| `true` / `false` | `bool` |
+| numbers | `number` |
+| quoted strings | `string` |
+| `&name` variables inside strings (via core's [`variable_ranges`](cachemire_core::redisql::variable_ranges)) | `variable` |
+| `-- comment` | `comment` |
+| `. , ; = [ ] ( ) *` | `punct` |
 
 The error range is cut to each line's own byte offsets. It is a pure Slint callback bound
 directly in the editor, so it is recomputed on every edit (cheap enough that no cache exists).

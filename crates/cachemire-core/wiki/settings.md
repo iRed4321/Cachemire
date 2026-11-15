@@ -85,7 +85,7 @@ comment):
 
 - preferences: `language`, `export_escaped`, `opening_view`, `last_view_table`, `restore_session`,
   `check_updates_at_startup`, `update_channel`, `accept_new_ssh_host_keys`, `server_search`,
-  `search_depth`, `shortcuts`;
+  `search_depth`, `shortcuts`, `theme`, `syntax_theme` (names the app gives its themes);
 - lists: `ssh_profiles` (+ `active_ssh_profile`), `connection_profiles`, `saved_queries`;
 - `cloud`: per AWS account / endpoint overrides, plus which local AWS profile last listed what.
 

@@ -58,7 +58,7 @@ fn the_settings_window_starts_on_what_is_saved() {
     assert_eq!(preferences.get_search_depth(), 200);
     assert!(preferences.get_server_search());
     assert!(preferences.get_export_escaped());
-    assert!(h.window.global::<crate::ExportPrefs>().get_escaped(), "new tabs start on escaped JSON");
+    assert_eq!(h.window.global::<crate::ExportPrefs>().get_format(), 1, "new tabs start on escaped JSON");
 }
 
 #[test]

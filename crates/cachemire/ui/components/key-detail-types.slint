@@ -1,10 +1,10 @@
 import { SearchScope } from "types.slint";
 
-// The shown tab's formats (tabs/mod.rs keeps them per tab): `escaped` is the Value header's,
-// what every row shows (bumping `rows-tick` sets it on the open ones too), `header-escaped`
-// what the key header's ⋯ menu exports in.
+// The shown tab's formats (tabs/mod.rs keeps them per tab): `format` is the Value header's (an
+// index of `Formats.names`), what every row shows (bumping `rows-tick` sets it on the open
+// ones too), `header-escaped` what the key header's ⋯ menu exports in.
 export global ExportPrefs {
-    in-out property <bool> escaped: false;
+    in-out property <int> format: 0;
     in-out property <bool> header-escaped: false;
     in-out property <int> rows-tick: 0;
 }
@@ -47,6 +47,10 @@ export struct AllValuesRowData {
     field: string,
     value-compact: styled-text, // single line, colored, no indentation
     value-compact-escaped: styled-text, // the same, escaped into a JSON string
+    // the start of the value's own text on one line, colored as YAML, as XML, and plain
+    value-compact-yaml: styled-text,
+    value-compact-xml: styled-text,
+    value-compact-text: styled-text,
     // the value's size when it was too big to be read with the page ("" otherwise):
     // the row then shows that instead, with buttons that read it to open, save or copy,
     // or to show it (`loading` while it is read)

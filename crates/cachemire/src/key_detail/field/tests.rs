@@ -61,20 +61,20 @@ fn searches_compare_against_the_lowercased_name_and_value() {
 #[test]
 fn plain_and_escaped_renderings_are_kept_apart() {
     let mut renderings = PrettyRenderings::default();
-    renderings.insert("f".into(), true, Arc::new(vec![("escaped".into(), Default::default())]));
-    assert!(!renderings.contains("f", false));
+    renderings.insert("f".into(), ShowFormat::Escaped, Arc::new(vec![("escaped".into(), Default::default())]));
+    assert!(!renderings.contains("f", ShowFormat::Json));
     let mut rendered = 0;
-    renderings.plain_or_insert_with("f", || {
+    renderings.get_or_insert_with("f", ShowFormat::Json, || {
         rendered += 1;
         vec![("plain".into(), Default::default())]
     });
-    renderings.plain_or_insert_with("f", || {
+    renderings.get_or_insert_with("f", ShowFormat::Json, || {
         rendered += 1;
         Vec::new()
     });
     assert_eq!(rendered, 1, "a rendering that exists is not made again");
-    assert_eq!(renderings.get("f", false).unwrap()[0].0, "plain");
-    assert_eq!(renderings.get("f", true).unwrap()[0].0, "escaped");
+    assert_eq!(renderings.get("f", ShowFormat::Json).unwrap()[0].0, "plain");
+    assert_eq!(renderings.get("f", ShowFormat::Escaped).unwrap()[0].0, "escaped");
     renderings.clear();
-    assert!(!renderings.contains("f", true));
+    assert!(!renderings.contains("f", ShowFormat::Escaped));
 }

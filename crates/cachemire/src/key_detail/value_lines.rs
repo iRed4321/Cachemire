@@ -10,6 +10,7 @@ use crate::styled_text::StyledText;
 use rustc_hash::FxHashMap;
 use slint::Color;
 
+use super::formats::ShowFormat;
 use super::highlight::{Match, find_matches, overlay_highlights};
 use super::pretty_text::ColoredParagraph;
 use super::word::word_range;
@@ -159,16 +160,16 @@ struct Memo {
     finds: Option<(String, Rc<Vec<Match>>)>,
 }
 
-/// The [`Memo`]s of open rows' renderings, by field name and escaped or not.
+/// The [`Memo`]s of open rows' renderings, by field name and format.
 #[derive(Default)]
-pub(super) struct LineMemos(FxHashMap<(String, bool), Memo>);
+pub(super) struct LineMemos(FxHashMap<(String, ShowFormat), Memo>);
 
 impl LineMemos {
     /// The memo of `paragraphs`, a new one if it was of another rendering.
-    fn memo(&mut self, name: &str, escaped: bool, paragraphs: &Arc<Vec<ColoredParagraph>>) -> &mut Memo {
+    fn memo(&mut self, name: &str, format: ShowFormat, paragraphs: &Arc<Vec<ColoredParagraph>>) -> &mut Memo {
         self.0.retain(|_, memo| memo.paragraphs.strong_count() > 0);
         let weak = Arc::downgrade(paragraphs);
-        let memo = self.0.entry((name.to_string(), escaped)).or_insert_with(|| Memo { paragraphs: Weak::new(), layout: None, finds: None });
+        let memo = self.0.entry((name.to_string(), format)).or_insert_with(|| Memo { paragraphs: Weak::new(), layout: None, finds: None });
         if !memo.paragraphs.ptr_eq(&weak) {
             *memo = Memo { paragraphs: weak, layout: None, finds: None };
         }
@@ -179,11 +180,11 @@ impl LineMemos {
     pub(super) fn layout(
         &mut self,
         name: &str,
-        escaped: bool,
+        format: ShowFormat,
         paragraphs: &Arc<Vec<ColoredParagraph>>,
         columns: usize,
     ) -> Rc<Vec<VisualLine>> {
-        let memo = self.memo(name, escaped, paragraphs);
+        let memo = self.memo(name, format, paragraphs);
         match &memo.layout {
             Some((built_for, layout)) if *built_for == columns => layout.clone(),
             _ => {
@@ -195,8 +196,8 @@ impl LineMemos {
     }
 
     /// The matches of `query` (already lowercased) in `paragraphs`, any case.
-    pub(super) fn finds(&mut self, name: &str, escaped: bool, paragraphs: &Arc<Vec<ColoredParagraph>>, query: &str) -> Rc<Vec<Match>> {
-        let memo = self.memo(name, escaped, paragraphs);
+    pub(super) fn finds(&mut self, name: &str, format: ShowFormat, paragraphs: &Arc<Vec<ColoredParagraph>>, query: &str) -> Rc<Vec<Match>> {
+        let memo = self.memo(name, format, paragraphs);
         match &memo.finds {
             Some((found_for, finds)) if found_for == query => finds.clone(),
             _ => {

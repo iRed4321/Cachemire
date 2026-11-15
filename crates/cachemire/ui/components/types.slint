@@ -20,6 +20,14 @@ export enum TreeRowKind {
     other,
 }
 
+// a theme or a syntax theme the settings list: its name in the settings file, the one
+// shown, and the colors of its swatches
+export struct ThemeChoice {
+    id: string,
+    name: string,
+    colors: [color],
+}
+
 // how a value or the ticked rows are exported
 export enum ExportFormat {
     // the JSON, pretty-printed

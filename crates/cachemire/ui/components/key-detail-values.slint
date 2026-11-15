@@ -86,7 +86,7 @@ export component AllValuesTable inherits Rectangle {
     property <int> stuck-index: -1;
     property <string> stuck-field: "";
     property <string> stuck-find-query: "";
-    property <bool> stuck-escaped: false;
+    property <int> stuck-format: 0;
     property <string> stuck-find-label: "";
     property <int> stuck-find-count: 0;
     property <length> stuck-limit: 0px;
@@ -314,11 +314,11 @@ export component AllValuesTable inherits Rectangle {
                                     vertical-alignment: center;
                                     overflow: elide;
                                 }
-                                // picking one sets every row's, open or not (see AllValuesRow.escaped)
+                                // picking one sets every row's, open or not (see AllValuesRow.format)
                                 FormatPicker {
-                                    escaped: ExportPrefs.escaped;
-                                    picked(escaped) => {
-                                        ExportPrefs.escaped = escaped;
+                                    format: ExportPrefs.format;
+                                    picked(format) => {
+                                        ExportPrefs.format = format;
                                         ExportPrefs.rows-tick += 1;
                                     }
                                 }
@@ -333,6 +333,9 @@ export component AllValuesTable inherits Rectangle {
                                 field: row.field;
                                 value-compact: row.value-compact;
                                 value-compact-escaped: row.value-compact-escaped;
+                                value-compact-yaml: row.value-compact-yaml;
+                                value-compact-xml: row.value-compact-xml;
+                                value-compact-text: row.value-compact-text;
                                 too-long: row.too-long;
                                 loading: row.loading;
                                 initial-expanded: row.initial-expanded;
@@ -343,17 +346,17 @@ export component AllValuesTable inherits Rectangle {
                                 visible: self.in-paint-window;
                                 view-top: root.view-top;
                                 stuck-find-query: root.stuck-find-query;
-                                stuck-escaped: root.stuck-escaped;
+                                stuck-format: root.stuck-format;
                                 command-index: root.stuck-index;
                                 command-kind: root.command-kind;
                                 command-tick: root.command-tick;
                                 overlay-focused: root.overlay-focused;
-                                stuck-changed(active, field, query, label, count, limit, escaped) => {
+                                stuck-changed(active, field, query, label, count, limit, format) => {
                                     if active {
                                         root.stuck-index = i;
                                         root.stuck-field = field;
                                         root.stuck-find-query = query;
-                                        root.stuck-escaped = escaped;
+                                        root.stuck-format = format;
                                         root.stuck-find-label = label;
                                         root.stuck-find-count = count;
                                         root.stuck-limit = limit;
@@ -408,7 +411,7 @@ export component AllValuesTable inherits Rectangle {
                     hairline: true;
                     field: root.stuck-field;
                     find-query <=> root.stuck-find-query;
-                    escaped <=> root.stuck-escaped;
+                    format <=> root.stuck-format;
                     find-label: root.stuck-find-label;
                     find-count: root.stuck-find-count;
                     focus-tick: root.overlay-focus-tick;

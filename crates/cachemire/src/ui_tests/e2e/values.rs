@@ -10,7 +10,7 @@ fn profile(redis: &mut TestRedis) {
 
 /// Opens the editor on field `name` of the key shown, as its row's edit button does.
 fn edit(r: &mut Running, name: &str) -> String {
-    r.h.window.global::<KeyPanel>().invoke_edit_value(name.into());
+    r.h.window.global::<KeyPanel>().invoke_edit_value(name.into(), 0);
     let editor = r.h.window.global::<ValueEditor>();
     assert!(editor.get_open(), "the editor opens on {name}");
     editor.get_text().to_string()

@@ -128,6 +128,18 @@ fn fold(text: &str) -> String {
         .collect()
 }
 
+/// Gives the window the colors of the theme and syntax theme the settings hold.
+fn apply_theme(window: &MainWindow, state: &AppState) {
+    let settings = state.settings.lock();
+    crate::theme::apply(window, settings.theme(), settings.syntax_theme());
+}
+
+/// [`apply_theme`], then the shown tab again so the text Rust colored takes the new colors.
+fn repaint(window: &MainWindow, state: &AppState) {
+    apply_theme(window, state);
+    crate::app::with(|app, window| crate::tabs::repaint(app, window));
+}
+
 pub fn init(window: &MainWindow, state: Arc<AppState>, rt: Handle) {
     refresh(window, &state);
     window.global::<Preferences>().on_search_matches(|query, text| found(&query, &text));
@@ -135,12 +147,14 @@ pub fn init(window: &MainWindow, state: Arc<AppState>, rt: Handle) {
     let zoom = state.settings.lock().zoom();
     window.global::<Preferences>().set_zoom(zoom as i32);
     window.global::<Theme>().set_zoom(zoom as f32 / 100.0);
+    crate::theme::init(window);
+    apply_theme(window, &state);
     window.global::<Preferences>().set_server_search(state.settings.lock().server_search());
     window.global::<Preferences>().set_check_updates_at_startup(state.settings.lock().check_updates_at_startup());
     window.global::<Preferences>().set_restore_session(state.settings.lock().restore_session());
     let export_escaped = state.settings.lock().export_escaped();
     window.global::<Preferences>().set_export_escaped(export_escaped);
-    window.global::<ExportPrefs>().set_escaped(export_escaped);
+    window.global::<ExportPrefs>().set_format(i32::from(export_escaped));
     window.global::<ExportPrefs>().set_header_escaped(export_escaped);
 
     // the export format buttons: saved as what new tabs start with; open tabs keep their own
@@ -249,6 +263,26 @@ pub fn init(window: &MainWindow, state: Arc<AppState>, rt: Handle) {
                 crate::last_session::forget(&state);
             }
             saved(&window, result, |window| window.global::<Preferences>().set_restore_session(enabled));
+        }
+    });
+
+    // the theme and syntax theme lists: saved, and applied at once to all that is shown
+    window.global::<Preferences>().on_theme_selected({
+        let weak = window.as_weak();
+        let state = state.clone();
+        move |id| {
+            let Some(window) = weak.upgrade() else { return };
+            let result = state.settings.lock().set_theme(&id);
+            saved(&window, result, |window| repaint(window, &state));
+        }
+    });
+    window.global::<Preferences>().on_syntax_theme_selected({
+        let weak = window.as_weak();
+        let state = state.clone();
+        move |id| {
+            let Some(window) = weak.upgrade() else { return };
+            let result = state.settings.lock().set_syntax_theme(&id);
+            saved(&window, result, |window| repaint(window, &state));
         }
     });
 

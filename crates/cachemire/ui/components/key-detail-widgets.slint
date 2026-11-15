@@ -676,23 +676,27 @@ component MenuItem inherits Rectangle {
     }
 }
 
-// The formats a value can be shown or exported in, in the order the menus list them: the
-// second is escaped JSON (a choice is kept as `escaped`). A new one goes at the end.
+// The formats a value is shown in, in the order the menus list them: a choice is kept as its
+// index here (ShowFormat in formats.rs follows it). Exports take one of the first two,
+// `export-names` (kept as `escaped` for the second).
 export global Formats {
-    out property <[string]> names: [@tr("JSON"), @tr("JSON (escaped)")];
+    out property <[string]> names: [@tr("JSON"), @tr("JSON (escaped)"), @tr("YAML"), @tr("XML"), @tr("Raw text")];
+    out property <[string]> export-names: [@tr("JSON"), @tr("JSON (escaped)")];
 }
 
-// "Show as [JSON ▾]" in the field view's Value header: the format every row's value is
-// shown in. A click lists the formats, the one in use ticked; picking one says it.
+// "Show as [JSON ▾]": a label, then the one of `names` in use (`format`, an index). A
+// click lists them, the one in use ticked; picking one says it.
 export component FormatPicker inherits HorizontalLayout {
-    in property <bool> escaped: false;
-    callback picked(escaped: bool);
+    in property <string> label: @tr("Show as");
+    in property <[string]> names: Formats.names;
+    in property <int> format: 0;
+    callback picked(format: int);
 
     horizontal-stretch: 0;
     spacing: Theme.px(6px);
     cross-axis-alignment: center;
     Text {
-        text: @tr("Show as");
+        text: root.label;
         font-size: Theme.pt(12px);
         color: Theme.text-tertiary;
         vertical-alignment: center;
@@ -714,7 +718,7 @@ export component FormatPicker inherits HorizontalLayout {
             spacing: Theme.px(4px);
             cross-axis-alignment: center;
             Text {
-                text: Formats.names[root.escaped ? 1 : 0];
+                text: root.names[root.format];
                 font-size: Theme.pt(12px);
                 font-weight: 600;
                 color: Theme.text-primary;
@@ -726,7 +730,7 @@ export component FormatPicker inherits HorizontalLayout {
             x: parent.width - self.width;
             y: parent.height + Theme.px(4px);
             width: Theme.px(170px);
-            height: Formats.names.length * Theme.px(28px) + Theme.px(10px);
+            height: root.names.length * Theme.px(28px) + Theme.px(10px);
             Rectangle {
                 background: Theme.bg-elevated;
                 border-radius: Theme.radius-md;
@@ -737,10 +741,10 @@ export component FormatPicker inherits HorizontalLayout {
                 drop-shadow-offset-y: Theme.shadow-offset-y;
                 VerticalLayout {
                     padding: Theme.px(5px);
-                    for name[index] in Formats.names: MenuItem {
+                    for name[index] in root.names: MenuItem {
                         text: name;
-                        checked: (root.escaped ? 1 : 0) == index;
-                        clicked => { root.picked(index == 1); }
+                        checked: root.format == index;
+                        clicked => { root.picked(index); }
                     }
                 }
             }
@@ -751,7 +755,7 @@ export component FormatPicker inherits HorizontalLayout {
 // An open row's ⋯ menu: its value opened, downloaded or copied, and the format this row
 // shows it in (the Value header's until picked here).
 export component RowMenu inherits PopupWindow {
-    in-out property <bool> escaped: false;
+    in-out property <int> format: 0;
     callback open-value();
     callback download-value();
     callback copy-value();
@@ -814,8 +818,8 @@ export component RowMenu inherits PopupWindow {
             }
             for name[index] in Formats.names: MenuItem {
                 text: name;
-                checked: (root.escaped ? 1 : 0) == index;
-                clicked => { root.escaped = index == 1; }
+                checked: root.format == index;
+                clicked => { root.format = index; }
             }
         }
     }
@@ -835,7 +839,7 @@ export component KeyMenu inherits PopupWindow {
     property <length> divider-h: Theme.px(9px);
     close-policy: close-on-click-outside;
     width: Theme.px(250px);
-    height: 2 * pad + Theme.px(26px) + (Formats.names.length + 4) * row-h + divider-h;
+    height: 2 * pad + Theme.px(26px) + (Formats.export-names.length + 4) * row-h + divider-h;
 
     Rectangle {
         background: Theme.bg-elevated;
@@ -859,7 +863,7 @@ export component KeyMenu inherits PopupWindow {
                     vertical-alignment: center;
                 }
             }
-            for format[index] in Formats.names: MenuItem {
+            for format[index] in Formats.export-names: MenuItem {
                 text: format;
                 checked: (root.escaped ? 1 : 0) == index;
                 clicked => { root.escaped = index == 1; }

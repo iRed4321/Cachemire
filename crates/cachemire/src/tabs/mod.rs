@@ -35,7 +35,7 @@ struct TabViewState {
     // whether a hash's fields are listed in descending order (see KeyPanel.sort-descending)
     descending: bool,
     // the formats: the rows' (the Value header's) and the key header's exports' (see ExportPrefs)
-    shown_escaped: bool,
+    shown_format: i32,
     escaped: bool,
     // a field to scroll to the next time the tab is shown (a link's)
     reveal: Option<String>,
@@ -60,7 +60,7 @@ impl TabViewState {
             OpeningView::Last => prefs.get_last_view(),
         };
         let escaped = window.global::<Preferences>().get_export_escaped();
-        Self { view, shown_escaped: escaped, escaped, ..Self::default() }
+        Self { view, shown_format: i32::from(escaped), escaped, ..Self::default() }
     }
 
     /// Shows what `target` leads to: its filter alone, and its field open in the list view.
@@ -317,7 +317,7 @@ fn save_view_state(app: &App, window: &MainWindow, tabs: &mut Tabs, key: &str) {
             scroll: current_scroll(window),
             expanded_fields: current_expanded_fields(window),
             descending: window.global::<KeyPanel>().get_sort_descending(),
-            shown_escaped: window.global::<ExportPrefs>().get_escaped(),
+            shown_format: window.global::<ExportPrefs>().get_format(),
             escaped: window.global::<ExportPrefs>().get_header_escaped(),
             reveal: None,
         },
@@ -341,7 +341,7 @@ fn restore_view_state(window: &MainWindow, tabs: &Tabs, key: &str) -> ScrollPos 
     restore_expanded_fields(window, &state.expanded_fields);
     window.global::<KeyPanel>().set_sort_descending(state.descending);
     window.global::<ExportPrefs>().set_header_escaped(state.escaped);
-    window.global::<ExportPrefs>().set_escaped(state.shown_escaped);
+    window.global::<ExportPrefs>().set_format(state.shown_format);
     state.scroll
 }
 
@@ -452,6 +452,19 @@ pub fn select_key(app: &App, key: String) {
         (scroll, reuse)
     };
     show_tab(app, &window, key, scroll, reuse);
+}
+
+/// Shows the active tab again as it was fetched, where it was: the text Rust colored
+/// is made again, in the colors of the theme now in use.
+pub fn repaint(app: &App, window: &MainWindow) {
+    let (key, scroll) = {
+        let mut tabs = app.tabs.borrow_mut();
+        let Some(key) = tabs.active.clone() else { return };
+        save_view_state(app, window, &mut tabs, &key);
+        let scroll = restore_view_state(window, &tabs, &key);
+        (key, scroll)
+    };
+    show_tab(app, window, key, scroll, true);
 }
 
 /// The tabs of the connection shown, in order, and the active one; the box of a

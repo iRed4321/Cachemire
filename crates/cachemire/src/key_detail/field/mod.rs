@@ -11,6 +11,7 @@ use rust_i18n::t;
 use serde::Serialize;
 use serde_json::Value;
 
+use super::formats::{ShowFormat, structured_value};
 use super::pretty_text::ColoredParagraph;
 
 /// A field's value as shown and exported: the parsed JSON when its raw text
@@ -47,11 +48,22 @@ pub(super) struct Field {
     // blob, not worth re-lowering on every pass over the fields
     lower_name: OnceLock<String>,
     lower_raw: OnceLock<String>,
+    // the object or array a YAML or XML value stands for, read on first use by the table
+    structured: OnceLock<Option<Value>>,
 }
 
 impl Field {
     pub(super) fn new(name: String, raw: String, json: Option<Value>) -> Field {
-        Field { name, raw, json, too_long: None, binary: false, lower_name: OnceLock::new(), lower_raw: OnceLock::new() }
+        Field {
+            name,
+            raw,
+            json,
+            too_long: None,
+            binary: false,
+            lower_name: OnceLock::new(),
+            lower_raw: OnceLock::new(),
+            structured: OnceLock::new(),
+        }
     }
 
     /// A hash field whose value, `size` bytes long, was left out for its size.
@@ -87,6 +99,12 @@ impl Field {
             Some(json) => FieldValue::Json(json),
             None => FieldValue::Text(&self.raw),
         }
+    }
+
+    /// What the table reads the field's columns from: its JSON, else the object or array
+    /// its YAML or XML text stands for.
+    pub(super) fn table_value(&self) -> Option<&Value> {
+        self.json.as_ref().or_else(|| self.structured.get_or_init(|| structured_value(&self.raw)).as_ref())
     }
 
     pub(super) fn lower_name(&self) -> &str {
@@ -154,28 +172,28 @@ fn single_field(name: String, value: Value) -> Field {
     }
 }
 
-/// Open-row renderings by field name, plain and escaped apart, so a lookup by `&str`
+/// Open-row renderings by field name, each format's apart, so a lookup by `&str`
 /// allocates nothing. `Arc` per entry so serving one is a cheap clone.
 #[derive(Default)]
-pub(super) struct PrettyRenderings([FxHashMap<String, Arc<Vec<ColoredParagraph>>>; 2]);
+pub(super) struct PrettyRenderings([FxHashMap<String, Arc<Vec<ColoredParagraph>>>; ShowFormat::COUNT]);
 
 impl PrettyRenderings {
-    pub(super) fn get(&self, name: &str, escaped: bool) -> Option<&Arc<Vec<ColoredParagraph>>> {
-        self.0[usize::from(escaped)].get(name)
+    pub(super) fn get(&self, name: &str, format: ShowFormat) -> Option<&Arc<Vec<ColoredParagraph>>> {
+        self.0[format.index()].get(name)
     }
 
-    pub(super) fn contains(&self, name: &str, escaped: bool) -> bool {
-        self.0[usize::from(escaped)].contains_key(name)
+    pub(super) fn contains(&self, name: &str, format: ShowFormat) -> bool {
+        self.0[format.index()].contains_key(name)
     }
 
-    pub(super) fn insert(&mut self, name: String, escaped: bool, paragraphs: Arc<Vec<ColoredParagraph>>) {
-        self.0[usize::from(escaped)].insert(name, paragraphs);
+    pub(super) fn insert(&mut self, name: String, format: ShowFormat, paragraphs: Arc<Vec<ColoredParagraph>>) {
+        self.0[format.index()].insert(name, paragraphs);
     }
 
-    /// Makes the plain rendering of `name` with `render`, unless there is one already.
-    pub(super) fn plain_or_insert_with(&mut self, name: &str, render: impl FnOnce() -> Vec<ColoredParagraph>) {
-        if !self.contains(name, false) {
-            self.insert(name.to_string(), false, Arc::new(render()));
+    /// Makes the rendering of `name` in `format` with `render`, unless there is one already.
+    pub(super) fn get_or_insert_with(&mut self, name: &str, format: ShowFormat, render: impl FnOnce() -> Vec<ColoredParagraph>) {
+        if !self.contains(name, format) {
+            self.insert(name.to_string(), format, Arc::new(render()));
         }
     }
 
