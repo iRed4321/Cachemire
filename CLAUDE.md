@@ -46,6 +46,9 @@ OS keyring, Redisql query language. UI text is English + French.
 - russh and rustls use `ring`, not aws-lc-rs (no cmake/nasm on Windows).
 - `deny.toml` lists accepted advisories with reasons; any other finding is new. Add new ones with a reason.
 - `cargo xtask`/`cargo ship` build into `target/xtask`, not the app's target dir.
+- CI: workflows run `xtask …` (a cached or downloaded binary), not `cargo xtask`. A branch only reads its own caches
+  and `main`'s (`release/*` never sees `next`'s): share between jobs with artifacts. Betas build with `--fast --as-version`.
+  Details in `docs/releasing.md` ("xtask in the workflows").
 - Worktree agents start from `main`, not `next`: `git reset --hard` to the right commit first.
   Never build under `/tmp`; max 3 builds at once (`CARGO_BUILD_JOBS=3`); delete each worktree `target/`.
 - Secret vault and AWS SSO are not testable against a real keyring/AWS here: the user checks by hand.

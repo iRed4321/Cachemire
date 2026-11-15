@@ -320,9 +320,10 @@ A pull request closed without being merged, or without the label, releases nothi
 | Job | Runs on | Does |
 |---|---|---|
 | Version | Ubuntu | works out what's released and its version from the tags, once for all the jobs; checks a beta is on `next` |
+| xtask (Windows) | Windows | builds `xtask` for the Windows jobs, next to Version, which does it for the Linux ones; both upload it as an artifact (see [xtask in the workflows](#xtask-in-the-workflows)) |
 | Tests | Ubuntu, Windows | Clippy, `cargo test` and the end-to-end tests (skipped by a try build: its pull request's checks run them) |
-| Windows | Windows | builds the MSI and the portable zip as that version |
-| Linux | Ubuntu | takes a stable release's notes from `CHANGELOG.md` (failing early if they're missing), builds the .deb and the AppImage |
+| Windows | Windows | builds the MSI and the portable zip as that version (a beta or a try build without LTO: `--fast`, stripped) |
+| Linux | Ubuntu | takes a stable release's notes from `CHANGELOG.md` (failing early if they're missing), builds the .deb and the AppImage (a beta or a try build without LTO, like Windows) |
 | GitHub release | Ubuntu | tags the commit, creates the release with the 4 files: a pre-release for a beta, the changelog notes for a stable release or a fix (not for a try build) |
 | Remove the release request | Ubuntu | for a beta: deletes the `release/*` branch, whatever happened, so the same request can be pushed again |
 | Summary | Ubuntu | a report of what was built and how long it took, on the run's page |
@@ -337,6 +338,15 @@ Cachemire-Portable-3.1.1-x64.zip   Windows portable exe
 cachemire_3.1.1-1_amd64.deb        Debian / Ubuntu package
 Cachemire-3.1.1-x86_64.AppImage    Linux, any distribution
 ```
+
+### xtask in the workflows
+
+The workflows run `xtask <task>` (what `cargo xtask <task>` is locally), the executable built once rather than compiled by each job:
+
+- **CI, Dependencies, Installer test**: the [`xtask` action](../.github/actions/xtask/action.yml) caches the executable alone, under the hash of its sources and `Cargo.lock`, and builds it on a miss.
+- **Release**: a branch can only read its own caches and `main`'s, never those of `next`, so `release/*` would miss the CI's. Version (Linux) and xtask (Windows) build it and upload it as an artifact; the other jobs download it ([`xtask-download`](../.github/actions/xtask-download/action.yml)).
+- **Betas and try builds** (a version with a suffix) pass `--fast` with `--as-version`: the `fast` profile, without LTO, stripped like a release. Stable releases and fixes build the full `release` profile.
+- The release build keeps no cache of the app's dependencies: only `main`'s would be readable, and it would be stale.
 
 ## Command reference
 
