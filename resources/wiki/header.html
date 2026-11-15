@@ -1,0 +1,88 @@
+<style>
+  .mermaid-diagram, .dot-diagram { margin: 1em 0; overflow-x: auto; }
+  .mermaid-diagram svg, .dot-diagram svg { max-width: 100%; height: auto; }
+  .dot-diagram { color: var(--main-color); }
+  .width-limiter { max-width: min(100%, 1280px); }
+</style>
+<script>
+(function () {
+  var script;
+  function dark() { var t = document.documentElement.getAttribute("data-theme"); return t === "dark" || t === "ayu"; }
+  function rgb(color) {
+    var probe = document.createElement("span");
+    probe.style.color = color;
+    document.body.appendChild(probe);
+    var m = getComputedStyle(probe).color.match(/[\d.]+/g).map(Number);
+    probe.remove();
+    return m;
+  }
+  function mix(a, b, t) {
+    var x = rgb(a), y = rgb(b);
+    return "rgb(" + [0, 1, 2].map(function (i) { return Math.round(x[i] * t + y[i] * (1 - t)); }).join(",") + ")";
+  }
+  function themeVariables() {
+    var css = getComputedStyle(document.documentElement);
+    function v(name) { return css.getPropertyValue("--" + name).trim(); }
+    var fg = v("main-color"), bg = v("main-background-color"), code = v("code-block-background-color"), side = v("sidebar-background-color");
+    var line = mix(fg, bg, 0.6), border = mix(fg, bg, 0.45);
+    return {
+      darkMode: dark(), fontSize: "13px", fontFamily: getComputedStyle(document.body).fontFamily,
+      background: bg, textColor: fg, titleColor: fg, lineColor: line,
+      primaryColor: code, primaryTextColor: fg, primaryBorderColor: border,
+      secondaryColor: side, secondaryTextColor: fg, secondaryBorderColor: border,
+      tertiaryColor: bg, tertiaryTextColor: fg, tertiaryBorderColor: border,
+      mainBkg: code, nodeBorder: border, nodeTextColor: fg,
+      clusterBkg: bg, clusterBorder: border, edgeLabelBackground: bg,
+      noteBkgColor: side, noteTextColor: fg, noteBorderColor: border,
+      actorBkg: code, actorBorder: border, actorTextColor: fg, actorLineColor: line,
+      signalColor: line, signalTextColor: fg, labelBoxBkgColor: code, labelBoxBorderColor: border, labelTextColor: fg,
+      loopTextColor: fg, activationBkgColor: side, activationBorderColor: border, sequenceNumberColor: bg,
+      stateBkg: code, labelColor: fg, transitionColor: line, transitionLabelColor: fg, stateLabelColor: fg,
+      specialStateColor: line, altBackground: side, compositeBackground: bg, compositeTitleBackground: code, compositeBorder: border
+    };
+  }
+  function load(then) {
+    if (window.mermaid) return then();
+    if (!script) {
+      var root = document.querySelector('meta[name="rustdoc-vars"]').getAttribute("data-root-path");
+      script = document.createElement("script");
+      script.src = root + "mermaid.min.js";
+      document.head.appendChild(script);
+    }
+    script.addEventListener("load", then);
+  }
+  async function draw() {
+    var blocks = document.querySelectorAll("pre.language-mermaid code");
+    if (!window.mermaid) return;
+    var font = getComputedStyle(document.body).fontFamily;
+    window.mermaid.initialize({
+      startOnLoad: false, securityLevel: "strict", theme: "base", themeVariables: themeVariables(), fontFamily: font,
+      flowchart: { nodeSpacing: 20, rankSpacing: 28, padding: 6, wrappingWidth: 150 },
+      state: { nodeSpacing: 80, rankSpacing: 80 },
+      sequence: { wrap: false, width: 130, actorMargin: 24, messageMargin: 28, boxMargin: 6, diagramMarginX: 10, messageFontSize: 13, actorFontSize: 13, noteFontSize: 13, messageFontFamily: font, actorFontFamily: font, noteFontFamily: font }
+    });
+    for (var i = 0; i < blocks.length; i++) {
+      var wrap = blocks[i].closest(".example-wrap");
+      var source = wrap.dataset.source || (wrap.dataset.source = blocks[i].textContent);
+      try {
+        var out = await window.mermaid.render("mermaid-" + i + "-" + Date.now(), source);
+        var shown = wrap.nextElementSibling;
+        if (!shown || !shown.classList.contains("mermaid-diagram")) {
+          shown = document.createElement("div");
+          shown.className = "mermaid-diagram";
+          wrap.after(shown);
+        }
+        shown.innerHTML = out.svg;
+        wrap.style.display = "none";
+      } catch (e) {
+        console.error("mermaid:", e);
+      }
+    }
+  }
+  document.addEventListener("DOMContentLoaded", function () {
+    if (!document.querySelector("pre.language-mermaid")) return;
+    load(draw);
+    new MutationObserver(draw).observe(document.documentElement, { attributes: true, attributeFilter: ["data-theme"] });
+  });
+})();
+</script>

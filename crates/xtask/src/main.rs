@@ -14,6 +14,7 @@ mod report;
 mod ship;
 mod tools;
 mod version;
+mod wiki;
 mod windows;
 
 use clap::{Parser, Subcommand};
@@ -155,6 +156,12 @@ enum Task {
         #[arg(long)]
         dir: Option<std::path::PathBuf>,
     },
+    /// The docs of both crates and the wiki chapters (`target/doc`), their Mermaid and Graphviz diagrams included
+    Wiki {
+        /// Open the home page in the browser
+        #[arg(long)]
+        open: bool,
+    },
     /// Cargo install plus the desktop entry and icons (Linux) or the Start menu shortcut (Windows)
     Install {
         /// Linux only: install just the desktop entry and icons
@@ -187,6 +194,7 @@ fn main() {
             report::save(&step, &[], &tests, coverage.as_deref())
         }
         Task::Report { title, dir } => report::run_task(&title, dir),
+        Task::Wiki { open } => wiki::run_task(open),
         Task::Install { skip_binary } => install::run_task(skip_binary),
     };
     if let Err(e) = result {
