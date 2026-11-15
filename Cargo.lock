@@ -1122,7 +1122,6 @@ dependencies = [
  "open",
  "parking_lot 0.13.0",
  "percent-encoding",
- "rayon",
  "redis",
  "russh",
  "rustc-hash 2.1.3",

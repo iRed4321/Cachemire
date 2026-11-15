@@ -32,7 +32,6 @@ parking_lot.workspace = true
 # the OS credential store (see src/secret_vault): keyring-core, and each platform's store below
 keyring-core = "1"
 russh.workspace = true
-rayon.workspace = true
 natord = "1"
 # AWS (ElastiCache listing, SSO login). The TLS stack is rustls on `ring`, set on
 # each client by hand (see src/aws/mod.rs), like russh (see the workspace manifest)
