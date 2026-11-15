@@ -64,6 +64,8 @@ jobs:
           fetch-depth: 0
           ref: ${{ github.event.pull_request.merge_commit_sha || github.sha }}
       - uses: ./.github/actions/xtask
+        with:
+          upload: true
       # a beta comes from next and a release from main (merged pull request); a try build from any branch
       - id: next
         name: Next version
@@ -104,10 +106,28 @@ jobs:
           fi
           { echo "sha=$SHA"; echo "version=$version"; echo "try=$try"; } >> "$GITHUB_OUTPUT"
 
+  # xtask's Windows executable, for the Windows jobs: a branch's cache isn't readable from the others, an artifact is
+  xtask-windows:
+    name: xtask (Windows)
+    if: >-
+      github.event_name != 'pull_request'
+      || github.event.pull_request.merged && contains(github.event.pull_request.labels.*.name, 'release')
+      && github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: windows-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+          ref: ${{ github.event.pull_request.merge_commit_sha || github.sha }}
+      - uses: ./.github/actions/xtask
+        with:
+          upload: true
+
   # a try build skips them: the pull request's checks run them
   test:
     name: Tests (${{ matrix.os }})
-    needs: plan
+    needs: [plan, xtask-windows]
     if: needs.plan.outputs.try != 'true'
     runs-on: ${{ matrix.os }}
     timeout-minutes: 90
@@ -119,7 +139,7 @@ jobs:
         with:
           persist-credentials: false
           ref: ${{ needs.plan.outputs.sha }}
-      - uses: ./.github/actions/xtask
+      - uses: ./.github/actions/xtask-download
       # quiet: the build log then lists what gets compiled, not each crate downloaded
       - name: Fetch crates
         run: cargo fetch --locked --quiet
@@ -157,7 +177,7 @@ jobs:
 
   windows:
     name: Windows (MSI and portable zip)
-    needs: plan
+    needs: [plan, xtask-windows]
     runs-on: windows-latest
     timeout-minutes: 90
     steps:
@@ -165,7 +185,7 @@ jobs:
         with:
           persist-credentials: false
           ref: ${{ needs.plan.outputs.sha }}
-      - uses: ./.github/actions/xtask
+      - uses: ./.github/actions/xtask-download
       # quiet: the build log then lists what gets compiled, not each crate downloaded
       - name: Fetch crates
         run: cargo fetch --locked --quiet
@@ -207,7 +227,7 @@ jobs:
         with:
           persist-credentials: false
           ref: ${{ needs.plan.outputs.sha }}
-      - uses: ./.github/actions/xtask
+      - uses: ./.github/actions/xtask-download
       # a stable release's notes: its section of CHANGELOG.md, checked before anything is built
       - name: Release notes
         if: ${{ !contains(needs.plan.outputs.version, '-') }}
@@ -343,7 +363,10 @@ jobs:
         with:
           persist-credentials: false
           ref: ${{ needs.plan.outputs.sha || github.sha }}
-      - uses: ./.github/actions/xtask
+      - if: needs.plan.result == 'success'
+        uses: ./.github/actions/xtask-download
+      - if: needs.plan.result != 'success'
+        uses: ./.github/actions/xtask
       - uses: actions/download-artifact@v8
         with:
           pattern: report-*

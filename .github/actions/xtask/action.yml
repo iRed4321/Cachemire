@@ -1,6 +1,11 @@
 name: xtask
 description: Puts the xtask binary on the PATH, built once per version of its sources and kept in the cache.
 
+inputs:
+  upload:
+    description: Also upload the executable as the artifact xtask-<OS>, for the jobs of the same run (what a branch's cache can't give them).
+    default: "false"
+
 runs:
   using: composite
   steps:
@@ -16,3 +21,9 @@ runs:
       run: cargo build --quiet --locked --package xtask --target-dir target/xtask
     - shell: bash
       run: echo "$GITHUB_WORKSPACE/target/xtask/debug" >> "$GITHUB_PATH"
+    - if: inputs.upload == 'true'
+      uses: actions/upload-artifact@v7
+      with:
+        name: xtask-${{ runner.os }}
+        path: target/xtask/debug/xtask${{ runner.os == 'Windows' && '.exe' || '' }}
+        retention-days: 1

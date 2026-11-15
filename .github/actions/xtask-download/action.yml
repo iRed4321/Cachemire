@@ -1,0 +1,14 @@
+name: xtask from the run
+description: Puts the xtask binary another job of this run uploaded (xtask action, `upload`) on the PATH.
+
+runs:
+  using: composite
+  steps:
+    - uses: actions/download-artifact@v8
+      with:
+        name: xtask-${{ runner.os }}
+        path: target/xtask/debug
+    - shell: bash
+      run: |
+        chmod +x target/xtask/debug/xtask* || true
+        echo "$GITHUB_WORKSPACE/target/xtask/debug" >> "$GITHUB_PATH"
