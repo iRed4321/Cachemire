@@ -1,6 +1,6 @@
 //! Redisql: a small query language that pulls rows out of keys holding JSON (a hash
 //! of JSON objects, or a string holding an object/array) and joins them on matching
-//! field values. Example and clause rules are in the README.
+//! field values. The README has an example; the clause rules are in `parser` and the wiki's Redisql chapter.
 
 mod ast;
 pub mod complete;

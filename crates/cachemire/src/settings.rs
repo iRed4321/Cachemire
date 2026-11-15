@@ -1,6 +1,6 @@
-//! Wires the settings window (SSH profiles) to `cachemire_core::settings`,
-//! which handles persistence and the credential store. This is UI glue:
-//! keep the list in sync, switch/save/remove a profile.
+//! Wires the Settings window to `cachemire_core::settings`: the preferences (language, views, search,
+//! startup, updates, host keys, session restore) and the SSH profiles. UI glue only:
+//! persistence and the credential store stay in core.
 
 use crate::error::Localize;
 use cachemire_core::error::Error;
