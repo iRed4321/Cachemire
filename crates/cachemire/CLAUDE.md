@@ -1,0 +1,22 @@
+# cachemire (Slint app)
+
+UI-thread glue between `ui/*.slint` and `cachemire-core`. No business logic here.
+
+## Layout
+
+- `src/main.rs`: declares modules, `rust_i18n::i18n!`, `slint::include_modules!()` (re-exported as `ui::*`), backend choice.
+- `build.rs`: compiles `ui/main.slint` with bundled translations, generates `theme_colors.rs` from `ui/components/theme.slint`.
+- `src/app.rs`: `App` (thread_local). `app::with(|app, _| ..)` reaches it; `app::later` returns Tokio results to the UI thread.
+- One module per feature (`connections/`, `cloud/`, `key_detail/`, `keyspace/`, `search/`, `redisql/`, `tabs/`…),
+  each with an `init` that attaches the `on_*` callbacks; `init`s are called from `main.rs`.
+- `ui/main.slint` root window; `ui/globals.slint` globals (callbacks Rust answers); `ui/components/*.slint` widgets.
+- `src/error/`: `Localize` trait turning core errors into translated text.
+- `src/styled_text.rs`: the only place allowed to name `slint::private_unstable_api`.
+
+## Rules
+
+- Flow: Slint callback -> handler -> `app::with` -> spawn on `app.rt` -> `app::later` -> set properties / `VecModel`.
+- Slint enums mirrored in core use exhaustive matches (`to_setting`/`from_setting` in `src/settings.rs`).
+- Colors come from `theme.slint`; never hard-code `#rrggbb` elsewhere (it feeds `theme_colors.rs`).
+- UI tests: `src/ui_tests/` (`Harness` in `mod.rs`, headless, software renderer). Add only when asked.
+- After editing `@tr(...)`: `cargo xtask i18n`. Skills: `add-setting`, `add-ui-dialog`, `translations`.
