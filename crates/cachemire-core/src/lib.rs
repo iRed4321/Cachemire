@@ -1,5 +1,5 @@
-//! Cachemire's UI-independent core: Redis connections and their stores, the key
-//! explorer, Redisql, exports, SSH tunnels, AWS and the update check.
+#![doc = include_str!("../wiki/index.md")]
+#![cfg_attr(doc, allow(rustdoc::private_intra_doc_links))]
 
 use std::time::{SystemTime, UNIX_EPOCH};
 
@@ -25,6 +25,7 @@ pub mod state;
 #[cfg(any(test, feature = "test-support"))]
 pub mod test_support;
 pub mod updates;
+pub mod wiki;
 
 // against a real Redis server: ignored unless run by `cargo xtask e2e`
 #[cfg(test)]

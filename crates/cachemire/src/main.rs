@@ -1,6 +1,8 @@
 // Release builds on Windows shouldn't drag a console window along with the
 // GUI; debug builds keep it so the log on stderr stays visible.
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
+#![cfg_attr(doc, doc = include_str!("../wiki/index.md"))]
+#![cfg_attr(doc, allow(rustdoc::private_intra_doc_links))]
 
 use rust_i18n::t;
 use std::sync::Arc;
@@ -38,6 +40,8 @@ mod toast;
 mod ui_tests;
 mod updates;
 mod value_actions;
+#[cfg(doc)]
+pub mod wiki;
 mod window_state;
 
 use cachemire_core::state::{AppState, InstanceLock};
