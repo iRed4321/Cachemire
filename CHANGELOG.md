@@ -41,6 +41,12 @@ Every stable release of Cachemire; `Unreleased` is what the next one brings. Bet
 - **Security**: passwords, passphrases and sign-in tokens are wiped from memory once no longer needed, and kept out of logs
 - **Values**: binary values and field names show their bytes as `\xNN` and can no longer be damaged by an edit
 
+## 3.2.2 - 2026-11-16
+
+### Fixes
+
+- **Dependencies**: the libraries it's built on are updated (aws-config, aws-runtime, aws-sdk-elasticache and 34 more)
+
 ## 3.2.1 - 2026-11-09
 
 ### Fixes
