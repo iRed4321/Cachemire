@@ -87,6 +87,9 @@ pub(super) struct StoredCloud {
     // the `account/region` each local AWS profile last listed, by profile name
     #[serde(default)]
     pub(super) profiles: BTreeMap<String, String>,
+    // when each local AWS profile last listed its endpoints (Unix ms), by profile name
+    #[serde(default)]
+    pub(super) used: BTreeMap<String, i64>,
 }
 
 /// Which cloud settings are meant: an account's, or one endpoint's.
@@ -318,15 +321,24 @@ impl SettingsStore {
         Ok(cleanups)
     }
 
-    /// Notes that `profile` lists the endpoints of `account` and `region`, for the links to them.
+    /// Notes that `profile` lists the endpoints of `account` and `region` (for the links to
+    /// them), and that it was used now.
     pub fn remember_cloud_profile(&mut self, profile: &str, account: &str, region: &str) -> Result<(), Error> {
-        let place = format!("{account}/{region}");
-        if self.state.cloud.profiles.get(profile) == Some(&place) {
-            return Ok(());
-        }
         let mut next = self.state.clone();
-        next.cloud.profiles.insert(profile.to_string(), place);
+        next.cloud.profiles.insert(profile.to_string(), format!("{account}/{region}"));
+        next.cloud.used.insert(profile.to_string(), crate::now_ms());
         self.commit(next, false)
+    }
+
+    /// The account `profile` last listed the endpoints of, if it ever did.
+    pub fn cloud_profile_account(&self, profile: &str) -> Option<String> {
+        let place = self.state.cloud.profiles.get(profile)?;
+        place.split_once('/').map(|(account, _)| account.to_string())
+    }
+
+    /// When `profile` last listed its endpoints (Unix ms), if it ever did.
+    pub fn cloud_profile_used(&self, profile: &str) -> Option<i64> {
+        self.state.cloud.used.get(profile).copied()
     }
 
     /// The profiles last seen listing the endpoints of `account` and `region`, by name.

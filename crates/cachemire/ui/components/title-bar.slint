@@ -180,11 +180,9 @@ export component TitleBar inherits Rectangle {
     in property <bool> aws-connected: AwsAccount.connected;
     in property <bool> aws-busy: AwsAccount.busy;
     in property <string> aws-profile: AwsAccount.profile;
-    // the selected profile's account was reached: its settings can be edited
-    in property <bool> aws-account-known: AwsAccount.account-known;
-    callback aws-settings-clicked();
+    // the pill while signed out: signs in
     callback aws-clicked();
-    // the profile button; `x` is where its dropdown should start
+    // the pill while signed in; `x` is where its dropdown should start
     callback aws-profile-clicked(x: length);
     callback bar-clicked();
     // the × shown in the pill while a connection is active
@@ -339,87 +337,47 @@ export component TitleBar inherits Rectangle {
         }
     }
 
-    // the cloud button at the far left: outlined while signed out, an orange
-    // cloud once signed in; then, signed in, the AWS profile button
-    if root.aws-available: HorizontalLayout {
+    // the cloud account at the far left, flat (a button look on hover only): "Sign in to AWS"
+    // while signed out; signed in, the profile, whose list opens on a click
+    if root.aws-available: aws-pill := Rectangle {
         x: snap(Theme.px(10px));
-        y: snap((parent.height - Theme.px(30px)) / 2);
-        height: snap(Theme.px(30px));
-        spacing: Theme.px(6px);
-        alignment: start;
-
-        Rectangle {
-            width: snap(cloud-row.preferred-width + Theme.px(20px));
-            border-radius: Theme.radius-md;
-            background: cloud-area.has-hover ? Theme.bg-hover : transparent;
-            cloud-area := TouchArea {
-                mouse-cursor: pointer;
-                clicked => { root.aws-clicked(); }
-            }
-            cloud-row := HorizontalLayout {
-                x: Theme.px(10px);
-                width: parent.width - Theme.px(20px);
-                spacing: Theme.px(6px);
-                cross-axis-alignment: center;
-                if root.aws-busy: IconSpinner { size: Theme.icon-sm; tint: Theme.accent-orange; }
-                if !root.aws-busy: IconCloud {
-                    size: Theme.icon-sm;
-                    filled: root.aws-connected;
-                    tint: root.aws-connected ? Theme.accent-orange : Theme.text-secondary;
-                }
-                Text {
-                    text: @tr("Cloud");
-                    color: Theme.text-primary;
-                    font-size: Theme.pt(12.5px);
-                    font-weight: 600;
-                    vertical-alignment: center;
+        y: pill.y;
+        height: pill.height;
+        width: snap(min(Theme.px(240px), main-row.preferred-width + Theme.px(22px)));
+        border-radius: Theme.radius-md;
+        background: main-area.has-hover ? Theme.bg-hover : transparent;
+        main-area := TouchArea {
+            mouse-cursor: pointer;
+            clicked => {
+                if root.aws-connected {
+                    root.aws-profile-clicked(aws-pill.absolute-position.x);
+                } else {
+                    root.aws-clicked();
                 }
             }
         }
-
-        if root.aws-connected: profile-pill := Rectangle {
-            width: snap(min(Theme.px(220px), profile-row.preferred-width + Theme.px(20px)));
-            border-radius: Theme.radius-md;
-            background: profile-area.has-hover || gear-area.has-hover ? Theme.bg-hover : transparent;
-            // the gear (account settings) shows while the pill is hovered, once the account is known
-            property <bool> gear-shown: root.aws-profile != "" && root.aws-account-known;
-            profile-area := TouchArea {
-                mouse-cursor: pointer;
-                clicked => { root.aws-profile-clicked(self.absolute-position.x); }
+        main-row := HorizontalLayout {
+            x: Theme.px(11px);
+            width: parent.width - Theme.px(22px);
+            spacing: Theme.px(7px);
+            cross-axis-alignment: center;
+            if root.aws-busy: IconSpinner { size: Theme.icon-sm; tint: Theme.accent-orange; }
+            if !root.aws-busy: IconCloud {
+                size: Theme.icon-sm;
+                filled: root.aws-connected;
+                tint: root.aws-connected ? Theme.accent-orange : Theme.text-secondary;
             }
-            profile-row := HorizontalLayout {
-                x: Theme.px(10px);
-                width: parent.width - Theme.px(20px);
-                spacing: Theme.px(6px);
-                cross-axis-alignment: center;
-                Rectangle {
-                    width: profile-pill.gear-shown ? Theme.icon-sm + Theme.px(4px) : 0px;
-                    height: parent.height;
-                    gear-area := TouchArea {
-                        enabled: profile-pill.gear-shown;
-                        mouse-cursor: pointer;
-                        clicked => { root.aws-settings-clicked(); }
-                    }
-                    IconSettings {
-                        size: Theme.icon-sm;
-                        x: (parent.width - self.width) / 2;
-                        y: (parent.height - self.height) / 2;
-                        visible: profile-pill.gear-shown && (profile-area.has-hover || gear-area.has-hover);
-                        tint: gear-area.has-hover ? Theme.text-primary : Theme.text-secondary;
-                    }
-                }
-                Text {
-                    text: root.aws-profile == "" ? @tr("Select Profile") : root.aws-profile;
-                    color: root.aws-profile == "" ? Theme.text-secondary : Theme.text-primary;
-                    font-size: Theme.pt(12.5px);
-                    font-weight: 600;
-                    vertical-alignment: center;
-                    overflow: elide;
-                    horizontal-stretch: 1;
-                    min-width: 0px;
-                }
-                IconChevron { size: Theme.icon-xs; down: true; tint: Theme.text-tertiary; }
+            Text {
+                text: !root.aws-connected ? @tr("Sign in to AWS") : (root.aws-profile == "" ? @tr("Select Profile") : root.aws-profile);
+                color: root.aws-connected && root.aws-profile == "" ? Theme.text-secondary : Theme.text-primary;
+                font-size: Theme.pt(12.5px);
+                font-weight: 600;
+                vertical-alignment: center;
+                overflow: elide;
+                horizontal-stretch: 1;
+                min-width: 0px;
             }
+            if root.aws-connected: IconChevron { size: Theme.icon-xs; down: true; tint: Theme.text-tertiary; }
         }
     }
 

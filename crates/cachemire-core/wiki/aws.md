@@ -22,14 +22,15 @@ one run, and the settings attached to them live in [settings](crate::wiki::setti
 or in the `[sso-session]` it names: start URL, SSO region, `sso_registration_scopes`,
 account id and role name. A profile that lacks any of the four needed values has no SSO settings
 (`sso: None`). [`aws_dir`](crate::aws::aws_dir) says whether `~/.aws` exists; the app
-only offers the cloud button when it does.
+only offers the AWS pill when it does. [`Profile::account_id`](crate::aws::Profile::account_id)
+gives an SSO profile's account before any listing, so its settings can be shown and edited.
 
 ## Signing in
 
 Two entry points, both taking a [`SignInPage`](crate::aws::SignInPage) (the three texts the
 browser tab shows afterwards, in the interface language, since the core has no translation):
 
-- [`login`](crate::aws::login) is "like `aws sso login`" and runs for the Cloud button. Profiles
+- [`login`](crate::aws::login) is "like `aws sso login`" and runs for the title bar's "Sign in to AWS" pill. Profiles
   are tried in turn: the one named by `AWS_PROFILE`, then `default`, then the rest. For each,
   if the SDK's own chain already yields credentials, it returns `Ok`. Otherwise, a profile with SSO
   settings gets an SSO token (cache, refresh or browser) and that ends the loop; a profile without

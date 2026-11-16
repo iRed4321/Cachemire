@@ -1,7 +1,7 @@
 // What Rust reads and writes, grouped by feature: each global is one feature's
 // state and the callbacks Rust answers. `main.slint` binds the components to them.
 import { ConnectionStatus, LanguageSetting, SettingsCategory, ShortcutAction, ShortcutRow, ProfileTint, KeyView, OpeningView, SearchScope, ExportFormat, ExportTarget, ThemeChoice } from "components/types.slint";
-import { ConnectionRowData, ConnProfileRowData, ConnectionForm, SshProfileRowData, SshProfileForm, ConnProfileForm, KeyspaceRowData, SavedQueryRowData, TabData, SearchRowData, HistoryRow } from "components/types.slint";
+import { AwsProfileRow, ConnectionRowData, ConnProfileRowData, ConnectionForm, SshProfileRowData, SshProfileForm, ConnProfileForm, KeyspaceRowData, SavedQueryRowData, TabData, SearchRowData, HistoryRow } from "components/types.slint";
 import { AllValuesRowData, FindResult, LineSelection, ValueLine, TableRowData, SuggestionRow, CompletionEdit, BadgeData } from "components/key-detail-types.slint";
 
 // The connection in use, as the title bar shows it; Rust sets it whole.
@@ -123,7 +123,11 @@ export global AwsAccount {
     in-out property <bool> available: false;
     in-out property <bool> connected: false;
     in-out property <bool> busy: false;
-    in-out property <[string]> profiles: [];
+    // the profiles the list shows (those matching its filter), the one the keyboard is on,
+    // and how many there are ("2 of 10")
+    in-out property <[AwsProfileRow]> profiles: [];
+    in-out property <int> highlighted: 0;
+    in-out property <string> count-label: "";
     in-out property <string> profile: "";
     // the selected profile's account was reached (its connections are listed)
     in-out property <bool> account-known: false;
@@ -131,6 +135,8 @@ export global AwsAccount {
     in-out property <string> error: "";
     callback clicked();
     callback profile-selected(name: string);
+    // fills `profiles` with the profiles whose name holds `filter`
+    callback list-requested(filter: string);
 }
 
 // The About page of the settings window: which version this is and whether a newer one

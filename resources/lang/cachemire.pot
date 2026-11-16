@@ -2,7 +2,7 @@
 msgid ""
 msgstr ""
 "Project-Id-Version: cachemire VERSION\n"
-"POT-Creation-Date: 2026-11-16 22:15+0000\n"
+"POT-Creation-Date: 2026-11-16 23:17+0000\n"
 "PO-Revision-Date: YEAR-MO-DA HO:MI+ZONE\n"
 "Last-Translator: FULL NAME <EMAIL@ADDRESS>\n"
 "Language-Team: LANGUAGE <LL@li.org>\n"
@@ -12,47 +12,59 @@ msgstr ""
 "Content-Transfer-Encoding: 8bit\n"
 "Plural-Forms: nplurals=1; plural=0;\n"
 
-#: crates/cachemire/ui/main.slint:292
-#: crates/cachemire/ui/main.slint:292
+#: crates/cachemire/ui/main.slint:294
+#: crates/cachemire/ui/main.slint:294
 msgid "Show sidebar"
 msgstr ""
 
-#: crates/cachemire/ui/main.slint:311
+#: crates/cachemire/ui/main.slint:313
 msgid "Couldn't use the AWS account"
 msgstr ""
 
-#: crates/cachemire/ui/main.slint:312
+#: crates/cachemire/ui/main.slint:314
 msgid "Select a key to open it"
 msgstr ""
 
-#: crates/cachemire/ui/main.slint:313
+#: crates/cachemire/ui/main.slint:315
 msgid "Couldn't connect"
 msgstr ""
 
-#: crates/cachemire/ui/main.slint:314
+#: crates/cachemire/ui/main.slint:316
 msgid "Pick a connection to get started"
 msgstr ""
 
-#: crates/cachemire/ui/main.slint:322
+#: crates/cachemire/ui/main.slint:324
 msgid "Browse the keyspace on the left and click a key."
 msgstr ""
 
-#: crates/cachemire/ui/main.slint:323
+#: crates/cachemire/ui/main.slint:325
 msgid ""
 "Hover the connection status in the top bar to see why, or pick another "
 "connection."
 msgstr ""
 
-#: crates/cachemire/ui/main.slint:324
+#: crates/cachemire/ui/main.slint:326
 msgid "Use the connection selector in the top bar."
 msgstr ""
 
-#: crates/cachemire/ui/main.slint:369
+#: crates/cachemire/ui/main.slint:371
 msgid "Write a Redisql query above (FROM/JOIN/WHERE/SELECT/LIMIT), then Run."
 msgstr ""
 
-#: crates/cachemire/ui/components/cloud-picker.slint:36
-msgid "No AWS profiles found"
+#: crates/cachemire/ui/components/cloud-picker.slint:30
+msgid "Account settings"
+msgstr ""
+
+#: crates/cachemire/ui/components/cloud-picker.slint:112
+msgid "Filter profiles..."
+msgstr ""
+
+#: crates/cachemire/ui/components/cloud-picker.slint:147
+msgid "No profile matches"
+msgstr ""
+
+#: crates/cachemire/ui/components/cloud-picker.slint:283
+msgid "Sign out of AWS"
 msgstr ""
 
 #. inherit (an endpoint only), none, or a value of its own
@@ -1125,27 +1137,27 @@ msgstr ""
 msgid "No setting matches “{}”"
 msgstr ""
 
-#: crates/cachemire/ui/components/title-bar.slint:218
+#: crates/cachemire/ui/components/title-bar.slint:219
 msgid "Connected through an SSH tunnel via {}"
 msgstr ""
 
-#: crates/cachemire/ui/components/title-bar.slint:273
+#: crates/cachemire/ui/components/title-bar.slint:274
 msgid "Copy connection string"
 msgstr ""
 
-#: crates/cachemire/ui/components/title-bar.slint:371
-msgid "Cloud"
+#: crates/cachemire/ui/components/title-bar.slint:391
+msgid "Sign in to AWS"
 msgstr ""
 
-#: crates/cachemire/ui/components/title-bar.slint:412
+#: crates/cachemire/ui/components/title-bar.slint:391
 msgid "Select Profile"
 msgstr ""
 
-#: crates/cachemire/ui/components/title-bar.slint:475
+#: crates/cachemire/ui/components/title-bar.slint:465
 msgid "Connecting..."
 msgstr ""
 
-#: crates/cachemire/ui/components/title-bar.slint:475
+#: crates/cachemire/ui/components/title-bar.slint:465
 msgid "No connection"
 msgstr ""
 

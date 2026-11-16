@@ -235,17 +235,23 @@ exhaustive matches, so a colour added on one side fails to compile.
 ## Cloud (AWS) in the UI
 
 [`cloud`](crate::cloud) holds a [`Cloud`](crate::cloud::Cloud) in `app.cloud`: connected flag,
-selected profile, a `generation` counter and a pending [`resume`](crate::cloud::resume).
+local profiles, selected profile, a `generation` counter and a pending [`resume`](crate::cloud::resume).
 
-- **Cloud button** (`AwsAccount.clicked`): signed in, it signs out (bumping `generation`, clearing the
-  cloud connections and disconnecting if one was in use). Otherwise `aws::login` runs on the runtime,
-  then the profile names are listed. The browser sign-in page texts come from `t!` through `sign_in_page`.
+- **AWS pill** (title bar): signed out, it reads "Sign in to AWS" and calls `AwsAccount.clicked`; signed in,
+  it shows the profile, and a click opens the profile list (where each profile's gear opens its account's settings).
+  `AwsAccount.clicked` signed in signs out (bumping `generation`, clearing the cloud connections and
+  disconnecting if one was in use); otherwise `aws::login` runs on the runtime, then the profiles are read. The browser sign-in page texts come from `t!` through `sign_in_page`.
   The window is raised afterwards ([`bring_to_front`](crate::cloud::bring_to_front)).
 - **Profile pick** (`profile_selected`): clears the old listing, bumps `generation`, then
   [`aws::redis_connections`](cachemire_core::aws::redis_connections) lists the endpoints. The result is
   ignored if `generation` moved on meanwhile (stale listing). On success the settings prune what the account no longer
   has (`observe_cloud_listing`; the cleanups run on a blocking thread), `apply_cloud` gives each item its
   profile and tunnel, and `set_cloud_connections` makes them known for the run.
+- **Profile list** (`AwsProfileDropdown`): a filter (`list_requested`, which fills `AwsAccount.profiles`),
+  the three profiles used last (`remember_cloud_profile` dates each listing) then the others, each with
+  its account's connection profile and tunnel, a gear, and "Sign out of AWS" at the bottom. A profile's
+  account is the one listed now, the one it last listed, or its SSO `account_id` ([`account_of`](crate::cloud::account_of));
+  with none known, it has no gear.
 - **Resume**: [`resume`](crate::cloud::resume) is how the last session reaches a cloud
   connection: it signs in if needed, lists the profile, then calls `connect_to`, unless the user made another
   attempt in between (the stored `attempt` no longer equals the counter).

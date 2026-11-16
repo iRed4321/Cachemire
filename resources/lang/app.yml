@@ -558,3 +558,23 @@ _version: 2
   fr: "Ces touches gardent leur rôle habituel (copier, coller, annuler, Échap, Tab...)."
 "Another shortcut already uses these keys.":
   fr: "Un autre raccourci utilise déjà ces touches."
+"now":
+  fr: "maintenant"
+"Recent":
+  fr: "Récents"
+"All profiles":
+  fr: "Tous les profils"
+"1 profile":
+  fr: "1 profil"
+"%{n} profiles":
+  fr: "%{n} profils"
+"%{shown} of %{total}":
+  fr: "%{shown} sur %{total}"
+"Account not known yet":
+  fr: "Compte pas encore connu"
+"No connection profile":
+  fr: "Aucun profil de connexion"
+"SSH %{host}":
+  fr: "SSH %{host}"
+"No SSH tunnel":
+  fr: "Aucun tunnel SSH"

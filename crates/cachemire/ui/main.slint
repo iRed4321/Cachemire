@@ -18,7 +18,7 @@ import { TableRowData } from "components/key-detail-types.slint";
 import { FloatingCard, Hint, HResizeHandle, SquareIconButton } from "components/widgets.slint";
 import { IconSidebar } from "components/icons.slint";
 import { SettingsModal, SshProfileRowData, SshProfileForm, ConnProfileForm } from "components/settings.slint";
-import { ConnectionStatus, TreeRowKind, ExportFormat, ExportTarget, LanguageSetting, SettingsCategory, ProfileTint, KeyView, OpeningView, SidebarView, SearchScope, ShortcutAction, ShortcutRow, ThemeChoice } from "components/types.slint";
+import { ConnectionStatus, TreeRowKind, ExportFormat, ExportTarget, LanguageSetting, SettingsCategory, ProfileTint, KeyView, OpeningView, SidebarView, SearchScope, ShortcutAction, ShortcutRow, ThemeChoice, AwsProfileRow } from "components/types.slint";
 import { ConnectionView, ConnectionState, ConnectionEditor, AwsAccount, About, Preferences, Shortcuts, KeyTree, SavedQueries, TabStrip, SearchTab, QueryTab, KeyPanel } from "globals.slint";
 
 // read and written by Rust: where each tab left the key panel scrolled to
@@ -28,6 +28,8 @@ export { KeyScroll, ExportPrefs, Theme, About, CloudSettings, ConnectionTransfer
 export { ConnectionStatus, TreeRowKind, ExportFormat, ExportTarget, LanguageSetting, SettingsCategory, ProfileTint, KeyView, OpeningView, SidebarView, SearchScope, ShortcutAction, ThemeChoice }
 // a row of the settings' Key bindings page
 export { ShortcutRow }
+// a profile of the title bar's AWS list
+export { AwsProfileRow }
 // a badge of the key panel's field/value search bar
 export { BadgeData, HistoryRow }
 // a saved query of the left panel's Search/Query view
@@ -210,10 +212,6 @@ export component MainWindow inherits Window {
                 TitleBar {
                     device-scale: root.device-scale;
                     is-maximized: root.maximized;
-                    aws-settings-clicked => {
-                        root.aws-profiles-open = false;
-                        CloudSettings.open-requested(0, "");
-                    }
                     aws-clicked => {
                         root.aws-profiles-open = false;
                         AwsAccount.clicked();
@@ -464,10 +462,20 @@ export component MainWindow inherits Window {
         if aws-profiles-open: AwsProfileDropdown {
             x: root.aws-profiles-x;
             y: Theme.px(40px);
+            clipboard-has-text() => { return root.clipboard-has-text(); }
             picked(name) => {
                 root.aws-profiles-open = false;
                 AwsAccount.profile-selected(name);
             }
+            settings-clicked(name) => {
+                root.aws-profiles-open = false;
+                CloudSettings.open-requested(0, name);
+            }
+            sign-out-clicked => {
+                root.aws-profiles-open = false;
+                AwsAccount.clicked();
+            }
+            closed => { root.aws-profiles-open = false; }
         }
 
         // tab context menu: catcher first (any click outside dismisses),

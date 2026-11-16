@@ -46,6 +46,13 @@ pub struct Profile {
     sso: Option<SsoSettings>,
 }
 
+impl Profile {
+    /// The account an SSO profile signs in to, as its settings say.
+    pub fn account_id(&self) -> Option<&str> {
+        self.sso.as_ref().map(|sso| sso.account_id.as_str())
+    }
+}
+
 /// The `.aws` folder of the user, if there is one.
 pub fn aws_dir() -> Option<PathBuf> {
     let dir = dirs::home_dir()?.join(".aws");

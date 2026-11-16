@@ -323,7 +323,7 @@ struct Navigation {
 }
 
 /// How long ago `then` was, as the history shows it.
-fn ago(now: i64, then: i64) -> String {
+pub(crate) fn ago(now: i64, then: i64) -> String {
     let minutes = ((now - then).max(0) / 60_000) as u64;
     match minutes {
         0 => t!("just now").into_owned(),

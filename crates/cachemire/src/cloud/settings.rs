@@ -54,7 +54,7 @@ pub fn init(window: &MainWindow) {
         let open = open.clone();
         move |kind, id| {
             crate::app::with(|app, window| {
-                if let Some(opened) = open_form(&app.state, window, kind, &id) {
+                if let Some(opened) = open_form(app, window, kind, &id) {
                     *open.borrow_mut() = Some(opened);
                     window.global::<CloudSettings>().set_open(true);
                 }
@@ -75,25 +75,24 @@ pub fn init(window: &MainWindow) {
     });
 }
 
-/// What the form opens on for `kind` (0: the signed-in account; else the endpoint
-/// `id`), with the name and detail it shows; `None` when there is no such thing.
-fn scope_of(state: &AppState, window: &MainWindow, kind: i32, id: &str) -> Option<(CloudScope, String, String)> {
+/// What the form opens on for `kind` (0: the account of profile `id`, "" for the selected
+/// one; else the endpoint `id`), with the name and detail it shows; `None` when not known.
+fn scope_of(app: &App, window: &MainWindow, kind: i32, id: &str) -> Option<(CloudScope, String, String)> {
     if kind == 0 {
-        let account = state.connections.lock().cloud_account().0.to_string();
-        if account.is_empty() {
-            return None;
-        }
-        Some((CloudScope::Account(account.clone()), window.global::<AwsAccount>().get_profile().to_string(), account))
+        let profile = if id.is_empty() { window.global::<AwsAccount>().get_profile().to_string() } else { id.to_string() };
+        let account = crate::cloud::account_of(app, window, &profile).filter(|account| !account.is_empty())?;
+        Some((CloudScope::Account(account.clone()), profile, account))
     } else {
-        let key = state.connections.lock().cloud_key(id)?;
+        let key = app.state.connections.lock().cloud_key(id)?;
         let (name, detail) = (key.name.clone(), key.region.clone());
         Some((CloudScope::Endpoint(key), name, detail))
     }
 }
 
 /// Fills the form with what is stored for `kind`/`id` (see [`scope_of`]); what it is open on.
-fn open_form(state: &AppState, window: &MainWindow, kind: i32, id: &str) -> Option<Open> {
-    let (scope, name, detail) = scope_of(state, window, kind, id)?;
+fn open_form(app: &App, window: &MainWindow, kind: i32, id: &str) -> Option<Open> {
+    let state = &app.state;
+    let (scope, name, detail) = scope_of(app, window, kind, id)?;
     let endpoint = matches!(scope, CloudScope::Endpoint(_));
     let (entry, account_entry, profiles) = {
         let settings = state.settings.lock();

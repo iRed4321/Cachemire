@@ -138,6 +138,20 @@ export struct ShortcutRow {
 // The rows and forms Rust and the UI exchange, shared by the components and
 // globals.slint (which the components import, so these can live in neither).
 
+// one local AWS profile in the title bar's list: `section` names the group it starts ("" for
+// none), `sections-above` counts those up to it; `known`: its account (and settings) is known
+export struct AwsProfileRow {
+    name: string,
+    section: string,
+    sections-above: int,
+    when: string,
+    known: bool,
+    has-tint: bool,
+    tint: ProfileTint,
+    profile-label: string,
+    ssh-label: string,
+}
+
 // one connection profile, as the settings window and the connection form list it
 export struct ConnProfileRowData {
     id: string,

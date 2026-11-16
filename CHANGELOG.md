@@ -26,6 +26,7 @@ Every stable release of Cachemire; `Unreleased` is what the next one brings. Bet
 ### Changed
 
 - **Text selection**: in a value, a table cell or the key's name, a double click selects a word, a triple click the whole paragraph, and Shift+click extends the selection (a double click in a table cell still selects the whole cell). The interface toolkit moves to Slint 1.19
+- **AWS**: the title bar has one button for the account: **Sign in to AWS** while signed out, then the profile in use. Its list has a filter (arrows and Enter pick, Esc closes), the three profiles used last first with when, each profile's connection profile and SSH tunnel under its name with a gear to change them (once its account is known), and **Sign out of AWS** at the bottom
 - **AWS**: ElastiCache endpoints with cluster mode enabled are no longer listed, since Cachemire can't connect to them
 - **TLS**: `rediss://` connections now also trust the certificate authorities installed on your computer, such as a company's own
 

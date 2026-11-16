@@ -1,15 +1,65 @@
 import { Theme } from "theme.slint";
-import { VScrollBar } from "widgets.slint";
+import { VScrollBar, Hint } from "widgets.slint";
+import { SearchField } from "key-detail-widgets.slint";
+import { TintDot } from "connection-picker.slint";
+import { IconCheck, IconDot, IconSettings } from "icons.slint";
 import { AwsAccount } from "../globals.slint";
+import { AwsProfileRow } from "types.slint";
 
-// Floating list under the title bar's profile button: the AWS profiles found
-// locally, the selected one marked. Positioned and dismissed by main.slint.
+// An icon-only gear opening an AWS account's settings, with its hover hint.
+export component AwsGearButton inherits Rectangle {
+    in property <color> hover-background: Theme.bg-hover;
+    callback clicked <=> area.clicked;
+
+    background: area.has-hover ? hover-background : transparent;
+
+    property <bool> hovered: area.has-hover;
+    property <bool> tooltip-shown: false;
+    function hide-tooltip() {
+        if tooltip-shown {
+            tooltip-shown = false;
+            Hint.hide();
+        }
+    }
+    changed hovered => { if !hovered { hide-tooltip(); } }
+    Timer {
+        interval: 500ms;
+        running: root.hovered && !root.tooltip-shown && !area.pressed;
+        triggered => {
+            root.tooltip-shown = true;
+            Hint.show-below(@tr("Account settings"), area.absolute-position.x, area.absolute-position.y + area.height + Theme.px(6px));
+        }
+    }
+
+    area := TouchArea {
+        mouse-cursor: pointer;
+        clicked => { root.hide-tooltip(); }
+    }
+
+    IconSettings {
+        x: (parent.width - self.width) / 2;
+        y: (parent.height - self.height) / 2;
+        size: Theme.icon-sm;
+        tint: area.has-hover ? Theme.text-primary : Theme.text-secondary;
+    }
+}
+
+// Floating list under the title bar's AWS pill: a filter, the recent profiles then the
+// others, each with its account's settings and a gear to edit them, and the sign-out.
+// Positioned and dismissed by main.slint.
 export component AwsProfileDropdown inherits Rectangle {
-    in property <[string]> profiles: AwsAccount.profiles;
+    in property <[AwsProfileRow]> profiles: AwsAccount.profiles;
     in property <string> selected: AwsAccount.profile;
+    // whether the clipboard holds text, for the filter's right-click "Paste"
+    callback clipboard-has-text() -> bool;
     callback picked(name: string);
+    callback settings-clicked(name: string);
+    callback sign-out-clicked();
+    callback closed();
 
-    width: Theme.px(240px);
+    init => { AwsAccount.list-requested(""); }
+
+    width: Theme.px(360px);
     background: Theme.bg-elevated;
     border-radius: Theme.radius-md;
     border-width: 1px;
@@ -17,60 +67,226 @@ export component AwsProfileDropdown inherits Rectangle {
     drop-shadow-color: Theme.shadow-color;
     drop-shadow-blur: Theme.shadow-blur;
     drop-shadow-offset-y: Theme.shadow-offset-y;
-    property <length> row-stride: Theme.px(30px);
-    property <length> list-max-height: Theme.px(280px);
-    property <length> pad: Theme.px(4px);
-    property <bool> needs-scrollbar: profiles.length * row-stride > list-max-height;
-    // sized to its rows (an unset height would stretch to the window's)
-    height: 2 * pad + (profiles.length == 0 ? Theme.px(40px) : min(list-max-height, profiles.length * row-stride));
+    property <length> row-height: Theme.px(44px);
+    property <length> section-height: Theme.px(24px);
+    property <length> list-max-height: Theme.px(360px);
+    property <length> filter-height: Theme.px(40px);
+    property <length> footer-height: Theme.px(36px);
+    property <length> content-height: profiles.length == 0 ? Theme.px(48px)
+        : profiles.length * row-height + profiles[profiles.length - 1].sections-above * section-height + Theme.px(4px);
+    property <length> list-height: min(list-max-height, content-height);
+    // sized to its parts (an unset height would stretch to the window's)
+    height: filter-height + list-height + footer-height;
+
+    // the top of row `i` in the list, its section's title above it
+    pure function row-top(i: int) -> length {
+        return i * row-height + profiles[i].sections-above * section-height;
+    }
+    function move-highlight(to: int) {
+        if profiles.length == 0 {
+            return;
+        }
+        AwsAccount.highlighted = max(0, min(profiles.length - 1, to));
+        let top = row-top(AwsAccount.highlighted) - (profiles[AwsAccount.highlighted].section == "" ? 0px : section-height);
+        let bottom = row-top(AwsAccount.highlighted) + row-height;
+        if top < -list-flick.content-y {
+            list-flick.content-y = -top;
+        } else if bottom > -list-flick.content-y + list-flick.height {
+            list-flick.content-y = -(bottom - list-flick.height);
+        }
+    }
 
     // absorbs clicks on blank space so they don't close the dropdown
     TouchArea { }
 
     VerticalLayout {
-        padding-top: pad;
-        padding-bottom: pad;
-        alignment: start;
+        HorizontalLayout {
+            height: filter-height;
+            padding-left: Theme.px(8px);
+            padding-right: Theme.px(10px);
+            padding-top: Theme.px(8px);
+            padding-bottom: Theme.px(6px);
+            spacing: Theme.px(8px);
+            SearchField {
+                auto-focus: true;
+                placeholder: @tr("Filter profiles...");
+                font-size: Theme.pt(12px);
+                height: Theme.px(26px);
+                horizontal-stretch: 1;
+                clipboard-has-text() => { return root.clipboard-has-text(); }
+                edited => { AwsAccount.list-requested(self.text); }
+                accepted => {
+                    if profiles.length > 0 {
+                        root.picked(profiles[AwsAccount.highlighted].name);
+                    }
+                }
+                key-intercept(event) => {
+                    if event.text == Key.UpArrow {
+                        root.move-highlight(AwsAccount.highlighted - 1);
+                        return true;
+                    } else if event.text == Key.DownArrow {
+                        root.move-highlight(AwsAccount.highlighted + 1);
+                        return true;
+                    } else if event.text == Key.Escape {
+                        root.closed();
+                        return true;
+                    }
+                    return false;
+                }
+            }
+            Text {
+                text: AwsAccount.count-label;
+                font-size: Theme.pt(11px);
+                color: Theme.text-tertiary;
+                vertical-alignment: center;
+            }
+        }
 
         if profiles.length == 0: Text {
-            text: @tr("No AWS profiles found");
+            height: list-height;
+            text: @tr("No profile matches");
             color: Theme.text-tertiary;
             font-size: Theme.pt(12px);
             horizontal-alignment: center;
-            height: Theme.px(40px);
             vertical-alignment: center;
         }
-        if profiles.length > 0: HorizontalLayout {
-            height: min(list-max-height, profiles.length * row-stride);
+        HorizontalLayout {
+            height: profiles.length == 0 ? 0px : list-height;
             list-flick := Flickable {
                 horizontal-stretch: 1;
-                content := VerticalLayout {
-                    width: root.width;
+                VerticalLayout {
+                    width: list-flick.width;
                     alignment: start;
-                    for name in profiles: Rectangle {
-                        height: row-stride;
-                        // opaque at rest: a hover change only redraws the row, which then covers its own area
-                        background: name == root.selected ? Theme.bg-selected-soft : (row-area.has-hover ? Theme.bg-hover-elevated : Theme.bg-elevated);
-                        row-area := TouchArea {
-                            mouse-cursor: pointer;
-                            clicked => { root.picked(name); }
+                    padding-bottom: Theme.px(4px);
+                    for p[i] in profiles: VerticalLayout {
+                        if p.section != "": HorizontalLayout {
+                            height: section-height;
+                            padding-left: Theme.px(12px);
+                            Text {
+                                text: p.section;
+                                font-size: Theme.pt(10.5px);
+                                font-weight: 600;
+                                color: Theme.text-tertiary;
+                                vertical-alignment: center;
+                            }
                         }
-                        Text {
-                            x: Theme.px(10px);
-                            width: parent.width - Theme.px(20px);
-                            text: name;
-                            font-size: Theme.pt(12px);
-                            font-weight: name == root.selected ? 700 : 500;
-                            color: Theme.text-primary;
-                            vertical-alignment: center;
-                            overflow: elide;
+                        Rectangle {
+                            height: row-height;
+                            row := Rectangle {
+                                x: Theme.px(4px);
+                                width: parent.width - Theme.px(8px);
+                                border-radius: Theme.radius-sm;
+                                background: p.name == root.selected ? Theme.bg-selected-soft
+                                    : (i == AwsAccount.highlighted || row-area.has-hover ? Theme.bg-hover-elevated : Theme.bg-elevated);
+                                row-area := TouchArea {
+                                    mouse-cursor: pointer;
+                                    clicked => { root.picked(p.name); }
+                                }
+                                HorizontalLayout {
+                                    padding-left: Theme.px(8px);
+                                    padding-right: Theme.px(6px);
+                                    spacing: Theme.px(8px);
+                                    Rectangle {
+                                        width: Theme.px(14px);
+                                        if p.name == root.selected: IconCheck {
+                                            x: (parent.width - self.width) / 2;
+                                            y: (parent.height - self.height) / 2;
+                                            size: Theme.px(13px);
+                                            tint: Theme.accent-blue;
+                                        }
+                                    }
+                                    VerticalLayout {
+                                        horizontal-stretch: 1;
+                                        alignment: center;
+                                        spacing: Theme.px(3px);
+                                        HorizontalLayout {
+                                            spacing: Theme.px(8px);
+                                            Text {
+                                                text: p.name;
+                                                font-size: Theme.pt(12.5px);
+                                                font-weight: p.name == root.selected ? 700 : 500;
+                                                color: Theme.text-primary;
+                                                overflow: elide;
+                                                horizontal-stretch: 1;
+                                                min-width: 0px;
+                                            }
+                                            Text {
+                                                text: p.when;
+                                                font-size: Theme.pt(11px);
+                                                color: Theme.text-tertiary;
+                                            }
+                                        }
+                                        HorizontalLayout {
+                                            spacing: Theme.px(6px);
+                                            if p.has-tint: TintDot { tint: p.tint; size: Theme.px(7px); y: (parent.height - self.height) / 2; }
+                                            if !p.has-tint: IconDot { size: Theme.px(7px); tint: Theme.text-tertiary; y: (parent.height - self.height) / 2; }
+                                            Text {
+                                                text: p.profile-label;
+                                                font-size: Theme.pt(11px);
+                                                color: p.known ? Theme.text-secondary : Theme.text-tertiary;
+                                                overflow: elide;
+                                                horizontal-stretch: p.ssh-label == "" ? 1 : 0;
+                                                min-width: 0px;
+                                            }
+                                            // drawn separator: a "·" glyph may be missing from the UI font
+                                            if p.ssh-label != "": IconDot { size: Theme.px(3px); tint: Theme.text-tertiary; y: (parent.height - self.height) / 2; }
+                                            if p.ssh-label != "": Text {
+                                                text: p.ssh-label;
+                                                font-size: Theme.pt(11px);
+                                                color: Theme.text-secondary;
+                                                overflow: elide;
+                                                horizontal-stretch: 1;
+                                                min-width: 0px;
+                                            }
+                                        }
+                                    }
+                                    // the gear's room, kept so the times line up
+                                    if !p.known: Rectangle { width: Theme.px(28px); }
+                                    if p.known: AwsGearButton {
+                                        y: (parent.height - self.height) / 2;
+                                        width: Theme.px(28px);
+                                        height: Theme.px(26px);
+                                        border-radius: Theme.radius-sm;
+                                        hover-background: Theme.bg-hover;
+                                        clicked => { root.settings-clicked(p.name); }
+                                    }
+                                }
+                            }
                         }
                     }
                 }
             }
-            if needs-scrollbar: VScrollBar {
+            if list-flick.content-height > list-flick.height: VScrollBar {
                 content-height: list-flick.content-height;
                 content-y <=> list-flick.content-y;
+            }
+        }
+
+        Rectangle {
+            height: footer-height;
+            Rectangle {
+                y: 0;
+                height: 1px;
+                background: Theme.border-soft;
+            }
+            sign-out := Rectangle {
+                x: Theme.px(4px);
+                y: (parent.height - self.height) / 2;
+                width: sign-out-label.preferred-width + Theme.px(16px);
+                height: Theme.px(26px);
+                border-radius: Theme.radius-sm;
+                background: sign-out-area.has-hover ? Theme.bg-hover-elevated : transparent;
+                sign-out-area := TouchArea {
+                    mouse-cursor: pointer;
+                    clicked => { root.sign-out-clicked(); }
+                }
+                sign-out-label := Text {
+                    x: Theme.px(8px);
+                    text: @tr("Sign out of AWS");
+                    font-size: Theme.pt(12px);
+                    color: sign-out-area.has-hover ? Theme.text-primary : Theme.text-secondary;
+                    vertical-alignment: center;
+                }
             }
         }
     }
