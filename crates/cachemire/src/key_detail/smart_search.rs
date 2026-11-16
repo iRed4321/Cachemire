@@ -24,7 +24,8 @@ pub(super) fn is_words(text: &str) -> bool {
     !text.trim().is_empty() && !is_path(text)
 }
 
-/// The scope a `field:` or `value:` before the words names (whatever its case), and the words.
+/// The scope a `field:` or `value:` (or `f:`, `v:`) before the words names, whatever its
+/// case, and the words.
 fn scoped(text: &str) -> (Option<SearchScope>, &str) {
     let text = text.trim_start();
     let prefixes = [
@@ -32,6 +33,8 @@ fn scoped(text: &str) -> (Option<SearchScope>, &str) {
         ("field:", SearchScope::Fields),
         ("values:", SearchScope::Value),
         ("value:", SearchScope::Value),
+        ("f:", SearchScope::Fields),
+        ("v:", SearchScope::Value),
     ];
     for (prefix, scope) in prefixes {
         if text.get(..prefix.len()).is_some_and(|head| head.eq_ignore_ascii_case(prefix)) {
@@ -41,13 +44,29 @@ fn scoped(text: &str) -> (Option<SearchScope>, &str) {
     (None, text)
 }
 
+/// What is typed before words to search for them in `scope` alone ("" for everywhere).
+fn short_prefix(scope: SearchScope) -> &'static str {
+    match scope {
+        SearchScope::Fields => "f:",
+        SearchScope::Value => "v:",
+        _ => "",
+    }
+}
+
 /// The list for words: where to search for them (only the scope a prefix named), then, for
-/// a single word, filtering the JSON at it.
+/// a single word, filtering the JSON at it. With no word yet, what can be typed first.
 fn choices(text: &str) -> Vec<Choice> {
     let (named, words) = scoped(text);
     let words = words.trim();
     if words.is_empty() {
-        return Vec::new();
+        return match named {
+            Some(_) => Vec::new(),
+            None => vec![
+                Choice::Search(SearchScope::Fields, String::new()),
+                Choice::Search(SearchScope::Value, String::new()),
+                Choice::Filter("$.".to_string()),
+            ],
+        };
     }
     let scopes = match named {
         Some(scope) => vec![scope],
@@ -68,8 +87,8 @@ fn row(choice: &Choice, first: bool) -> SuggestionRow {
     match choice {
         Choice::Search(scope, words) => {
             let (tag, prefix) = match scope {
-                SearchScope::Fields => (t!("Fields"), "field:"),
-                SearchScope::Value => (t!("Value"), "value:"),
+                SearchScope::Fields => (t!("Fields"), "f: / field:"),
+                SearchScope::Value => (t!("Value"), "v: / value:"),
                 _ => (t!("All"), ""),
             };
             SuggestionRow {
@@ -101,7 +120,9 @@ impl Ctx {
             return self.suggest_path(text, cursor);
         }
         let Some(window) = self.weak.upgrade() else { return false };
-        let rows: Vec<SuggestionRow> = choices(text).iter().enumerate().map(|(i, choice)| row(choice, i == 0)).collect();
+        // with no word yet there is nothing for Enter to take: every row says what to type
+        let typed = !scoped(text).1.trim().is_empty();
+        let rows: Vec<SuggestionRow> = choices(text).iter().enumerate().map(|(i, choice)| row(choice, typed && i == 0)).collect();
         let any = !rows.is_empty();
         window.global::<KeyPanel>().set_suggestions(ModelRc::new(VecModel::from(rows)));
         let footer = t!("Space adds a search, Enter applies them; all must match. Click one to edit it, Backspace removes the last one.");
@@ -109,13 +130,21 @@ impl Ctx {
         any
     }
 
-    /// Item `index` of the list taken: a key of the path goes into the box (its text, and
-    /// where the caret goes), or the search or filter offered is applied (cursor -1).
+    /// Item `index` of the list taken: a key of the path, or with no word yet a prefix, goes into
+    /// the box (its text, and where the caret goes); else the search or filter offered is
+    /// applied (cursor -1).
     pub(super) fn complete_suggestion(&self, text: slint::SharedString, cursor: i32, index: i32) -> CompletionEdit {
         if is_path(&text) {
             return self.shared.complete_path(text, cursor, index);
         }
         match choices(&text).into_iter().nth(index.max(0) as usize) {
+            Some(Choice::Search(scope, words)) if words.is_empty() => {
+                let prefix = short_prefix(scope);
+                return CompletionEdit { text: prefix.into(), cursor: prefix.len() as i32 };
+            }
+            Some(Choice::Filter(path)) if scoped(&text).1.trim().is_empty() => {
+                return CompletionEdit { cursor: path.len() as i32, text: path.into() };
+            }
             Some(Choice::Search(scope, words)) => self.add_badges(scope, &words, true),
             Some(Choice::Filter(path)) => self.apply_path(&path),
             None => {}
@@ -124,7 +153,7 @@ impl Ctx {
     }
 
     /// Enter in the smart box: its path becomes the JSON filter, or its words become
-    /// badges, searched everywhere unless a `field:` or `value:` prefix says otherwise;
+    /// badges, searched everywhere unless a `field:` or `value:` prefix (or `f:`, `v:`) says otherwise;
     /// either way the badges waiting are applied.
     pub(super) fn on_filter_query_submitted(&self) {
         let Some(window) = self.weak.upgrade() else { return };

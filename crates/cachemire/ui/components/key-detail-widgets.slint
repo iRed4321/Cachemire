@@ -193,7 +193,13 @@ export component SearchField inherits Rectangle {
                     vertical-alignment: center;
                     accepted => { root.accepted(); }
                     edited => { root.edited(); }
-                    changed has-focus => { root.focus-changed(self.has-focus); }
+                    changed has-focus => {
+                        // no caret has moved yet in an empty box: it is at the box's start
+                        if self.has-focus && root.text == "" {
+                            root.caret-x = input-clip.absolute-position.x;
+                        }
+                        root.focus-changed(self.has-focus);
+                    }
                     key-pressed(event) => {
                         if root.key-intercept(event) {
                             return accept;
@@ -456,7 +462,7 @@ export component SmartBox inherits Rectangle {
     in-out property <string> text: "";
     in property <bool> case-sensitive: false;
     in property <string> placeholder: "";
-    // what the Tab key does, shown after a Tab keycap at the box's end while focused ("" for nothing)
+    // what the Tab key does, shown after a Tab keycap right of the text while focused ("" for nothing)
     in property <string> tab-hint: "";
     callback accepted();
     callback badge-removed(text: string, scope: SearchScope);
@@ -595,36 +601,39 @@ export component SmartBox inherits Rectangle {
                     paste => { input.paste(); }
                 }
             }
-        }
-        // a Tab keycap (outlined, no fill) then what it does
-        if root.tab-hint != "" && input.has-focus: HorizontalLayout {
-            horizontal-stretch: 0;
-            spacing: Theme.px(5px);
-            VerticalLayout {
-                alignment: center;
-                Rectangle {
-                    height: Theme.px(18px);
-                    width: tab-key.preferred-width + Theme.px(12px);
-                    border-radius: Theme.radius-sm;
-                    border-width: 1px;
-                    border-color: Theme.border-soft;
-                    tab-key := Text {
-                        text: "Tab";
-                        font-size: Theme.pt(10.5px);
-                        font-family: Theme.font-mono;
-                        color: Theme.text-tertiary;
-                        horizontal-alignment: center;
-                        vertical-alignment: center;
-                        width: 100%;
-                        height: 100%;
+            // a Tab keycap (outlined, no fill) then what it does, just past the text: it
+            // follows the caret as the text is typed
+            if root.tab-hint != "" && input.has-focus: HorizontalLayout {
+                x: input.x + (root.text == "" ? 0px : input.preferred-width) + Theme.px(10px);
+                width: self.preferred-width;
+                height: 100%;
+                spacing: Theme.px(5px);
+                VerticalLayout {
+                    alignment: center;
+                    Rectangle {
+                        height: Theme.px(18px);
+                        width: tab-key.preferred-width + Theme.px(12px);
+                        border-radius: Theme.radius-sm;
+                        border-width: 1px;
+                        border-color: Theme.border-soft;
+                        tab-key := Text {
+                            text: "Tab";
+                            font-size: Theme.pt(10.5px);
+                            font-family: Theme.font-mono;
+                            color: Theme.text-tertiary;
+                            horizontal-alignment: center;
+                            vertical-alignment: center;
+                            width: 100%;
+                            height: 100%;
+                        }
                     }
                 }
-            }
-            Text {
-                text: root.tab-hint;
-                font-size: Theme.pt(11px);
-                color: Theme.text-tertiary;
-                vertical-alignment: center;
+                Text {
+                    text: root.tab-hint;
+                    font-size: Theme.pt(11px);
+                    color: Theme.text-tertiary;
+                    vertical-alignment: center;
+                }
             }
         }
         IconButton {

@@ -312,7 +312,7 @@ The header has one text box that takes either words or a JSON path.
 
 - **Badges.** Words typed then followed by a space become *pending* badges (`on_filter_query_edited`);
   Enter applies all of them (`on_filter_query_submitted` -> `add_badges(.., apply = true)`). A badge has
-  text and a `SearchScope`: `Everywhere`, `Fields` or `Value` (prefix `field:` or `value:`, case
+  text and a `SearchScope`: `Everywhere`, `Fields` or `Value` (prefix `field:` or `value:`, or `f:` / `v:`, case
   insensitive). Quoted runs are one term, duplicates are dropped, at most `MAX_BADGES = 5`
   ("Remove a badge first (5 max)"). Clicking a badge's text moves it back into the box
   (`on_filter_badge_edited`); its x removes it.

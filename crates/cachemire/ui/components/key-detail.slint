@@ -75,6 +75,10 @@ export component KeyDetail inherits Rectangle {
     suggest(text, cursor) => { return KeyPanel.suggest(text, cursor); }
     callback complete-suggestion(text: string, cursor: int, index: int) -> CompletionEdit;
     complete-suggestion(text, cursor, index) => { return KeyPanel.complete-suggestion(text, cursor, index); }
+    // the most the key's name and its buttons take of the header: half of the panel, set when
+    // the panel's width changes (bound to it, the layout's size would depend on itself)
+    property <length> name-max: Theme.px(380px);
+    changed width => { name-max = max(Theme.px(380px), self.width / 2); }
     property <bool> suggest-open: false;
     property <length> suggest-x: 0px;
     property <length> suggest-y: 0px;
@@ -180,12 +184,11 @@ export component KeyDetail inherits Rectangle {
                     cross-axis-alignment: center;
                     // as tall with or without a key, so the header doesn't grow when one loads
                     min-height: Theme.px(36px);
-                    // No max-width bound to the layout's width (that loops): the key name
-                    // elides inside a fixed most, and the smart box takes the rest.
+                    // The key name elides past `name-max` (half of the panel), and the smart box takes the rest.
                     HorizontalLayout {
                         horizontal-stretch: 0;
                         min-width: 0px;
-                        max-width: Theme.px(380px);
+                        max-width: root.name-max;
                         spacing: Theme.px(4px);
                         cross-axis-alignment: center;
                         // the query's buttons, in a query tab
@@ -329,10 +332,12 @@ export component KeyDetail inherits Rectangle {
                             root.filter-case-sensitive = !root.filter-case-sensitive;
                             root.filter-case-sensitivity-changed();
                         }
-                        tab-hint: !root.suggest-open && root.is-words(root.filter-query) ? @tr("to refine") : "";
+                        tab-hint: !root.suggest-open && (root.filter-query == "" || root.is-words(root.filter-query)) ? @tr("to refine") : "";
                         key-intercept(event) => {
-                            // Tab on words opens their list (where to search, or the filter)
-                            if event.text == Key.Tab && !root.suggest-open && root.is-words(root.filter-query) {
+                            // Tab opens the list: where to search for the words (or the filter), or what to type first
+                            if event.text == Key.Tab && !root.suggest-open && (root.filter-query == "" || root.is-words(root.filter-query)) {
+                                root.suggest-x = self.caret-x;
+                                root.suggest-y = self.caret-bottom;
                                 root.suggest-open = root.suggest(root.filter-query, root.filter-cursor);
                                 return true;
                             }
