@@ -283,3 +283,28 @@ fn every_color_has_its_own_code_and_an_unknown_one_reads_as_red() {
     assert_eq!(all.iter().map(|c| c.code()).collect::<FxHashSet<_>>().len(), 8);
     assert_eq!(ProfileColor::from_code("chartreuse"), ProfileColor::Red);
 }
+
+#[test]
+fn the_theme_and_syntax_theme_are_kept_by_name_across_a_reopen() {
+    let file = temp_file("themes");
+    let mut store = SettingsStore::with_vault(file.clone(), Arc::new(MemoryVault::default()));
+    assert_eq!((store.theme(), store.syntax_theme()), ("", ""), "none picked yet");
+    store.set_theme("nord").unwrap();
+    store.set_syntax_theme("monokai").unwrap();
+    assert_eq!((store.theme(), store.syntax_theme()), ("nord", "monokai"));
+
+    let reopened = SettingsStore::with_vault(file.clone(), Arc::new(MemoryVault::default()));
+    assert_eq!((reopened.theme(), reopened.syntax_theme()), ("nord", "monokai"));
+    let written = std::fs::read_to_string(&file).unwrap();
+    assert!(written.contains(r#""theme": "nord""#) && written.contains(r#""syntaxTheme": "monokai""#), "{written}");
+}
+
+#[test]
+fn a_settings_file_from_before_the_themes_still_loads() {
+    let file = temp_file("no-themes");
+    std::fs::create_dir_all(file.parent().unwrap()).unwrap();
+    std::fs::write(&file, r#"{"language": "fr", "zoom": 120}"#).unwrap();
+    let store = SettingsStore::with_vault(file, Arc::new(MemoryVault::default()));
+    assert_eq!(store.zoom(), 120);
+    assert_eq!((store.theme(), store.syntax_theme()), ("", ""));
+}

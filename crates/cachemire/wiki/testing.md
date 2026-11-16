@@ -8,7 +8,7 @@ test is fixed. After any change `cargo test` is run, and `cargo fmt --all` for R
 
 - `src/**/tests.rs`: unit tests, one sibling file per module (`#[cfg(test)] mod tests;`).
 - `src/ui_tests/`: headless UI tests with the `Harness` (`mod.rs`), by area (`app.rs`, `cloud.rs`,
-  `connections.rs`, `dialogs.rs`, `links.rs`, `tabs.rs`) and `e2e/` against a real Redis.
+  `connections.rs`, `dialogs.rs`, `formats.rs`, `links.rs`, `tabs.rs`, `themes.rs`) and `e2e/` against a real Redis.
 - `crates/cachemire-core/src/e2e/`: core end-to-end tests; `src/test_support.rs`: shared helpers.
 - `crates/xtask/src/e2e.rs`: `cargo xtask e2e`. `.config/nextest.toml`: the `ci` profile.
 - `.github/workflows/ci.yml`: what CI runs.

@@ -677,7 +677,7 @@ component MenuItem inherits Rectangle {
 }
 
 // The formats a value is shown in, in the order the menus list them: a choice is kept as its
-// index here (ShowFormat in formats.rs follows it). Exports take one of the first two,
+// index here (ShowFormat in key_detail/formats follows it). Exports take one of the first two,
 // `export-names` (kept as `escaped` for the second).
 export global Formats {
     out property <[string]> names: [@tr("JSON"), @tr("JSON (escaped)"), @tr("YAML"), @tr("XML"), @tr("Raw text")];

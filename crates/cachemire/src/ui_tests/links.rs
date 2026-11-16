@@ -9,10 +9,10 @@ use cachemire_core::state::AppState;
 use serde_json::json;
 use std::sync::Arc;
 
-type Ready = (Harness, Rc<crate::app::App>, tokio::runtime::Runtime, EventLoopTurn, Arc<AppState>);
+pub(super) type Ready = (Harness, Rc<crate::app::App>, tokio::runtime::Runtime, EventLoopTurn, Arc<AppState>);
 
 /// The app over a state holding `connections` (id, URL), with no tab open.
-fn links_ready(connections: &[(&str, &str)]) -> Ready {
+pub(super) fn links_ready(connections: &[(&str, &str)]) -> Ready {
     let state = test_state();
     {
         let mut store = state.connections.lock();
@@ -36,7 +36,7 @@ fn links_ready(connections: &[(&str, &str)]) -> Ready {
 }
 
 /// Makes `id` the connection shown, as a connect does.
-fn show_connection(h: &Harness, id: &str) {
+pub(super) fn show_connection(h: &Harness, id: &str) {
     h.window.global::<ConnectionState>().set_view(ConnectionView { connected: true, connection_id: id.into(), ..Default::default() });
     crate::app::with(|app, window| crate::tabs::follow_connection(app, window));
 }
@@ -52,7 +52,7 @@ fn strip(h: &Harness) -> (Vec<String>, Option<String>) {
 }
 
 /// Runs the background work and the window until the key panel has finished loading.
-fn loaded(h: &mut Harness, rt: &tokio::runtime::Runtime) -> bool {
+pub(super) fn loaded(h: &mut Harness, rt: &tokio::runtime::Runtime) -> bool {
     for _ in 0..500 {
         rt.block_on(async { tokio::time::sleep(std::time::Duration::from_millis(2)).await });
         h.frame();

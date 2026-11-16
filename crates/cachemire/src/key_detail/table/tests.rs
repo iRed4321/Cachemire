@@ -187,3 +187,45 @@ fn a_table_has_a_field_column_then_one_per_key_and_a_cell_per_column() {
     assert_eq!(table.rows[2].0, "odd");
     assert!(build_table(&[field("only-text", None)], &[], false, None).columns.is_empty());
 }
+
+#[test]
+fn yaml_and_xml_values_get_columns_like_json_ones() {
+    let text = |name: &str, raw: &str| Arc::new(Field::new(name.into(), raw.into(), None));
+    let yaml = vec![text("a", "id: 1\nname: api\ntags:\n  - x\n"), text("b", "id: 2\nname: db\n"), text("note", "just text")];
+    assert_eq!(column_titles(&yaml), vec!["id", "name"]);
+    let table = build_table(&yaml, &[], false, None);
+    assert_eq!(table.columns, vec!["Field", "id", "name"]);
+    assert_eq!(table.rows.iter().map(|(field, _)| field.as_str()).collect::<Vec<_>>(), ["a", "b", "note"]);
+
+    let xml = vec![
+        text("u1", r#"<user id="1"><name>Ada</name><role>admin</role></user>"#),
+        text("u2", "<user id=\"2\">\n  <name>Grace</name>\n  <role>editor</role>\n</user>"),
+    ];
+    assert_eq!(column_titles(&xml), vec!["@id", "name", "role"]);
+
+    // JSON, YAML and XML fields of one hash share the columns they all have
+    let mixed = vec![
+        field_with_raw("j", json!({"id": 1, "name": "j"})),
+        text("y", "id: 2\nname: y\n"),
+        text("x", "<i><id>3</id><name>x</name></i>"),
+    ];
+    assert_eq!(column_titles(&mixed), vec!["id", "name"]);
+}
+
+#[test]
+fn a_list_in_yaml_or_xml_gives_a_row_per_item() {
+    let text = |name: &str, raw: &str| Arc::new(Field::new(name.into(), raw.into(), None));
+    let catalog = vec![text("books", "<catalog><book id=\"1\"><t>A</t></book><book id=\"2\"><t>B</t></book></catalog>")];
+    let table = build_table(&catalog, &[], false, None);
+    assert_eq!(table.columns, vec!["Field", "@id", "t"]);
+    assert_eq!(table.rows.len(), 2, "one row per book, under the field's name");
+    assert!(table.rows.iter().all(|(field, _)| field == "books"));
+
+    let list = vec![text("steps", "- name: build\n  ok: true\n- name: test\n  ok: false\n")];
+    assert_eq!(build_table(&list, &[], false, None).rows.len(), 2);
+    assert_eq!(table_csv(&list, &list, None, None), "Field,name,ok\r\nsteps,build,true\r\nsteps,test,false\r\n");
+}
+
+fn field_with_raw(name: &str, value: serde_json::Value) -> Arc<Field> {
+    Arc::new(Field::from_value(name.into(), value))
+}

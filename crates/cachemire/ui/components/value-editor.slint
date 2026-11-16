@@ -5,7 +5,7 @@ import { Shortcuts } from "../globals.slint";
 import { FormatPicker } from "key-detail-widgets.slint";
 
 // The value editor: a field's value to change as JSON, YAML, XML or raw text, written back to its
-// key once it is valid. Rust fills it in and answers its callbacks (see src/key_detail/edit.rs).
+// key once it is valid. Rust fills it in and answers its callbacks (see src/key_detail/edit/mod.rs).
 export global ValueEditor {
     in-out property <bool> open: false;
     // what is edited: the key's name as shown, and the field's ("" for a string key's value)

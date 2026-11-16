@@ -78,3 +78,31 @@ fn plain_and_escaped_renderings_are_kept_apart() {
     renderings.clear();
     assert!(!renderings.contains("f", ShowFormat::Escaped));
 }
+
+#[test]
+fn every_format_keeps_its_own_rendering() {
+    let mut renderings = PrettyRenderings::default();
+    let formats = [ShowFormat::Json, ShowFormat::Escaped, ShowFormat::Yaml, ShowFormat::Xml, ShowFormat::Text];
+    for format in formats {
+        assert!(!renderings.contains("f", format));
+        renderings.insert("f".into(), format, Arc::new(vec![(format!("{format:?}"), Default::default())]));
+    }
+    for format in formats {
+        assert_eq!(renderings.get("f", format).unwrap()[0].0, format!("{format:?}"));
+        assert!(!renderings.contains("other", format));
+    }
+    renderings.clear();
+    assert!(formats.iter().all(|format| !renderings.contains("f", *format)));
+}
+
+#[test]
+fn the_table_reads_json_first_then_what_yaml_or_xml_text_stands_for() {
+    let document = Field::hash_value("f".into(), r#"{"a":1}"#.into(), false);
+    assert_eq!(document.table_value(), Some(&json!({"a": 1})));
+    assert_eq!(Field::new("f".into(), "a: 1\nb: [x]".into(), None).table_value(), Some(&json!({"a": 1, "b": ["x"]})));
+    assert_eq!(Field::new("f".into(), "<a><b>1</b></a>".into(), None).table_value(), Some(&json!({"b": "1"})));
+    assert_eq!(Field::new("f".into(), "plain text".into(), None).table_value(), None);
+    assert_eq!(Field::too_long("f".into(), 9_000_000).table_value(), None, "a value not read has nothing to show");
+    // a number in a hash field is JSON, and stays the number it is
+    assert_eq!(Field::hash_value("f".into(), "42".into(), false).table_value(), Some(&json!(42)));
+}

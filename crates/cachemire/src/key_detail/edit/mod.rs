@@ -531,3 +531,6 @@ pub(super) fn init(window: &MainWindow, ctx: &Ctx) {
         move |field, format| ctx.edit_value(&field, ShowFormat::from_index(format), &target)
     });
 }
+
+#[cfg(test)]
+mod tests;

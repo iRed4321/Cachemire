@@ -15,8 +15,10 @@ mod cloud;
 mod connections;
 mod dialogs;
 mod e2e;
+mod formats;
 mod links;
 mod tabs;
+mod themes;
 
 /// What other threads hand to the UI thread (`invoke_from_event_loop`). Slint keeps one proxy
 /// for the whole process, so this queue is shared by every test; see [`EventLoopTurn`].

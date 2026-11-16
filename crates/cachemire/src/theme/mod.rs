@@ -305,9 +305,29 @@ fn paint_for(combo: &Combo, syntax: &Syntax) -> Paint {
 
 static PAINT: LazyLock<RwLock<Paint>> = LazyLock::new(|| RwLock::new(paint_for(&COMBOS[0], &SYNTAXES[0])));
 
+// in the tests, each one's thread has its own applied paint, so none changes another's colors
+#[cfg(test)]
+thread_local! {
+    static THREAD_PAINT: std::cell::Cell<Option<Paint>> = const { std::cell::Cell::new(None) };
+}
+
 /// The colors text is painted in now: those of the theme and syntax theme last applied.
 pub fn paint() -> Paint {
+    #[cfg(test)]
+    if let Some(paint) = THREAD_PAINT.get() {
+        return paint;
+    }
     *PAINT.read()
+}
+
+/// Makes `paint` what [`paint`] gives from now on.
+fn set_paint(paint: Paint) {
+    #[cfg(test)]
+    THREAD_PAINT.set(Some(paint));
+    #[cfg(not(test))]
+    {
+        *PAINT.write() = paint;
+    }
 }
 
 /// Makes the window take the theme `combo` and the syntax theme `syntax` (names as in the
@@ -315,7 +335,7 @@ pub fn paint() -> Paint {
 pub fn apply(window: &MainWindow, combo_id: &str, syntax_id: &str) {
     let (combo, syntax) = (combo(combo_id), syntax(syntax_id));
     let palette = derive(combo);
-    *PAINT.write() = paint_for(combo, syntax);
+    set_paint(paint_for(combo, syntax));
     let theme = window.global::<Theme>();
     theme.set_bg_app_base(palette.bg_app_base);
     theme.set_bg_panel(palette.bg_panel);
@@ -361,3 +381,6 @@ pub fn init(window: &MainWindow) {
     preferences.set_themes(ModelRc::new(VecModel::from(combos)));
     preferences.set_syntax_themes(ModelRc::new(VecModel::from(syntaxes)));
 }
+
+#[cfg(test)]
+mod tests;

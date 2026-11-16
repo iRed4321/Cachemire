@@ -11,7 +11,7 @@ per-tab memory). They call the core's [`cachemire_core::explorer`] for every Red
 | Area | Files |
 |---|---|
 | Tabs | `src/tabs/mod.rs` |
-| Key panel | `src/key_detail/mod.rs` (state, `init`), `load.rs`, `paging/`, `filtering.rs`, `smart_search.rs`, `search_filter/`, `suggest/`, `value_list/`, `table/`, `field/`, `formats.rs`, `pretty.rs`, `pretty_text.rs`, `value_lines.rs`, `highlight/`, `scroll.rs`, `edit.rs`, `export/`, `full_value.rs` |
+| Key panel | `src/key_detail/mod.rs` (state, `init`), `load.rs`, `paging/`, `filtering.rs`, `smart_search.rs`, `search_filter/`, `suggest/`, `value_list/`, `table/`, `field/`, `formats/`, `pretty.rs`, `pretty_text.rs`, `value_lines.rs`, `highlight/`, `scroll.rs`, `edit/`, `export/`, `full_value.rs` |
 | Keyspace tree | `src/keyspace/mod.rs`, `walk.rs`, `index/`, `search/`, `selection/`, `edit.rs`, `rows.rs` |
 | Search tabs | `src/search/mod.rs` |
 | Slint side | `ui/components/key-detail*.slint`, `keyspace-panel.slint`, `content-header.slint`, `search-panel.slint`; globals `KeyPanel`, `KeyScroll`, `ExportPrefs`, `KeyTree`, `TabStrip`, `SearchTab` in `ui/globals.slint` and `key-detail-types.slint` |
@@ -338,7 +338,7 @@ The header has one text box that takes either words or a JSON path.
 An open row shows the value in its format (`ShowFormat`, picked by "Show as" in the Value header or the
 row's ⋯ menu: JSON, escaped JSON, YAML, XML or raw text) with syntax colors and match highlights.
 
-- `formats.rs`: `paragraphs_for(field, format)` is what a row shows. YAML, XML and raw text show the
+- `formats/`: `paragraphs_for(field, format)` is what a row shows. YAML, XML and raw text show the
   value's own text (`colored_lines`, small tokenizers that also color the editor), except that a JSON
   object or array is converted to YAML and XML on a single line is indented (`indent_xml`).
   `shown_text` is the same as plain text, for open/download/copy.
@@ -381,7 +381,7 @@ row's ⋯ menu: JSON, escaped JSON, YAML, XML or raw text) with syntax colors an
 Both views share `near-end`/`near-start`, the scroll restore, and `table_fields` (so the table and its
 exports agree on row indices).
 
-## Editing (`edit.rs`)
+## Editing (`edit/`)
 
 Writes are available when `KeyPanel.editable` (hash or whole string, connection not read-only).
 `edit_value(field, format)` opens `ValueEditor` as the `EditKind` the row's format gives (`edit_kind_for`).

@@ -620,3 +620,6 @@ pub(super) fn check(text: &str, kind: EditKind) -> String {
         EditKind::Text => String::new(),
     }
 }
+
+#[cfg(test)]
+mod tests;
