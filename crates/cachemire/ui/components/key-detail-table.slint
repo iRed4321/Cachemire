@@ -152,18 +152,24 @@ component TableRow inherits Rectangle {
                         default-color: Theme.text-primary;
                         default-font-family: Theme.font-mono;
                         default-font-size: Theme.pt(12px);
+                        selectable: true;
+                        keep-mouse-cursor: true;
+                        // transparent: the selected text keeps its own colors
+                        selection-foreground-color: transparent;
                         selection-background-color: Theme.accent-blue.with-alpha(0.35);
                         changed selected-text => { root.selection-changed(self.selected-text); }
-                        // a click focuses the cell; double click: the whole cell (the cursor is
-                        // clamped to the text's end)
+                        // a click focuses the cell and opens the time a second one makes a double click
                         clicked => {
                             root.cell-clicked(j + 1);
+                            click-pending = true;
+                        }
+                        // double click: the whole cell, where the text alone would select a word
+                        // (a press ends here before `clicked`, so the first click isn't pending yet)
+                        selection-drag-ended => {
                             if click-pending {
                                 click-pending = false;
-                                self.anchor-position-byte-offset = 0;
-                                self.cursor-position-byte-offset = 2147483647;
-                            } else {
-                                click-pending = true;
+                                root.cell-clicked(j + 1);
+                                self.select-all();
                             }
                         }
                     }

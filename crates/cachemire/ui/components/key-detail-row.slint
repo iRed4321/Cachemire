@@ -678,6 +678,10 @@ export component AllValuesRow inherits Rectangle {
                         default-color: Theme.text-primary;
                         default-font-family: Theme.font-mono;
                         default-font-size: Theme.pt(12px);
+                        selectable: true;
+                        keep-mouse-cursor: true;
+                        // transparent: the selected text keeps its own colors
+                        selection-foreground-color: transparent;
                         selection-background-color: selection-bg;
                         property <string> owner: root.selection-owner;
                         changed owner => {
@@ -728,6 +732,8 @@ export component AllValuesRow inherits Rectangle {
                         default-color: Theme.text-primary;
                         default-font-family: Theme.font-mono;
                         default-font-size: Theme.pt(12px);
+                        // transparent: the selected text keeps its own colors
+                        selection-foreground-color: transparent;
                         selection-background-color: root.selection-bg;
                         anchor-position-byte-offset: self.in-selection && self.at == root.sel-start-line ? root.sel-start-offset : 0;
                         cursor-position-byte-offset: !self.in-selection ? 0 : (self.at == root.sel-end-line ? root.sel-end-offset : line.len);

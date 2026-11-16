@@ -862,22 +862,21 @@ dependencies = [
 
 [[package]]
 name = "bindgen"
-version = "0.72.1"
+version = "0.73.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "993776b509cfb49c750f11b8f07a46fa23e0a1386ffc01fb1e7d343efc387895"
+checksum = "787ef8ef523575546b106a58213d6e6b06198a05c2f757258c68a74273670cfa"
 dependencies = [
  "bitflags 2.13.2",
  "cexpr",
  "clang-sys",
- "itertools 0.13.0",
  "log",
  "prettyplease",
  "proc-macro2",
  "quote",
  "regex",
  "rustc-hash 2.1.3",
- "shlex 1.3.0",
- "syn 2.0.119",
+ "shlex",
+ "syn 3.0.10",
 ]
 
 [[package]]
@@ -906,9 +905,6 @@ name = "bitflags"
 version = "2.13.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "3ded4057c258ba199e2d26386d3af3780957ecaee6c4ef4041c6b4b8b97c0b06"
-dependencies = [
- "serde_core",
-]
 
 [[package]]
 name = "blake2"
@@ -1187,6 +1183,18 @@ dependencies = [
 ]
 
 [[package]]
+name = "calloop-wayland-source"
+version = "0.4.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "138efcf0940a02ebf0cc8d1eff41a1682a46b431630f4c52450d6265876021fa"
+dependencies = [
+ "calloop 0.14.5",
+ "rustix 1.1.6",
+ "wayland-backend",
+ "wayland-client",
+]
+
+[[package]]
 name = "cbc"
 version = "0.2.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1204,7 +1212,7 @@ dependencies = [
  "find-msvc-tools",
  "jobserver",
  "libc",
- "shlex 2.0.1",
+ "shlex",
 ]
 
 [[package]]
@@ -1397,7 +1405,7 @@ dependencies = [
 [[package]]
 name = "const-field-offset"
 version = "0.2.1"
-source = "git+https://github.com/iRed4321/SlintFork.git?rev=8212a4db5a7d6acb8252f93955319e782cc4f733#8212a4db5a7d6acb8252f93955319e782cc4f733"
+source = "git+https://github.com/iRed4321/SlintFork.git?rev=47cda3504961d71a0348debc73e8d77485c5460e#47cda3504961d71a0348debc73e8d77485c5460e"
 dependencies = [
  "const-field-offset-macro",
  "field-offset",
@@ -1406,7 +1414,7 @@ dependencies = [
 [[package]]
 name = "const-field-offset-macro"
 version = "0.2.1"
-source = "git+https://github.com/iRed4321/SlintFork.git?rev=8212a4db5a7d6acb8252f93955319e782cc4f733#8212a4db5a7d6acb8252f93955319e782cc4f733"
+source = "git+https://github.com/iRed4321/SlintFork.git?rev=47cda3504961d71a0348debc73e8d77485c5460e#47cda3504961d71a0348debc73e8d77485c5460e"
 dependencies = [
  "proc-macro2",
  "quote",
@@ -2221,9 +2229,9 @@ dependencies = [
 
 [[package]]
 name = "fontique"
-version = "0.11.1"
+version = "0.12.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "6688bc1294fe7117d788937b6c53480169b29c566954af490830d4c09da9516a"
+checksum = "bbf1df16263783918b7da396077521f92b729ef7c429444dfcf03581f1448b77"
 dependencies = [
  "hashbrown 0.17.1",
  "linebender_resource_handle",
@@ -2609,12 +2617,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "grid"
-version = "1.0.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "b40ca9252762c466af32d0b1002e91e4e1bc5398f77455e55474deb466355ff5"
-
-[[package]]
 name = "group"
 version = "0.14.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2871,8 +2873,8 @@ dependencies = [
 
 [[package]]
 name = "i-slint-backend-linuxkms"
-version = "1.18.1"
-source = "git+https://github.com/iRed4321/SlintFork.git?rev=8212a4db5a7d6acb8252f93955319e782cc4f733#8212a4db5a7d6acb8252f93955319e782cc4f733"
+version = "1.19.0"
+source = "git+https://github.com/iRed4321/SlintFork.git?rev=47cda3504961d71a0348debc73e8d77485c5460e#47cda3504961d71a0348debc73e8d77485c5460e"
 dependencies = [
  "bytemuck",
  "calloop 0.14.5",
@@ -2883,17 +2885,18 @@ dependencies = [
  "i-slint-renderer-software",
  "input",
  "libseat",
+ "libudev-sys",
  "memmap2",
  "nix",
+ "pkg-config",
  "xkbcommon",
 ]
 
 [[package]]
 name = "i-slint-backend-selector"
-version = "1.18.1"
-source = "git+https://github.com/iRed4321/SlintFork.git?rev=8212a4db5a7d6acb8252f93955319e782cc4f733#8212a4db5a7d6acb8252f93955319e782cc4f733"
+version = "1.19.0"
+source = "git+https://github.com/iRed4321/SlintFork.git?rev=47cda3504961d71a0348debc73e8d77485c5460e#47cda3504961d71a0348debc73e8d77485c5460e"
 dependencies = [
- "cfg-if",
  "cfg_aliases",
  "i-slint-backend-linuxkms",
  "i-slint-backend-testing",
@@ -2905,8 +2908,8 @@ dependencies = [
 
 [[package]]
 name = "i-slint-backend-testing"
-version = "1.18.1"
-source = "git+https://github.com/iRed4321/SlintFork.git?rev=8212a4db5a7d6acb8252f93955319e782cc4f733#8212a4db5a7d6acb8252f93955319e782cc4f733"
+version = "1.19.0"
+source = "git+https://github.com/iRed4321/SlintFork.git?rev=47cda3504961d71a0348debc73e8d77485c5460e#47cda3504961d71a0348debc73e8d77485c5460e"
 dependencies = [
  "cfg_aliases",
  "i-slint-common",
@@ -2917,13 +2920,12 @@ dependencies = [
 
 [[package]]
 name = "i-slint-backend-winit"
-version = "1.18.1"
-source = "git+https://github.com/iRed4321/SlintFork.git?rev=8212a4db5a7d6acb8252f93955319e782cc4f733#8212a4db5a7d6acb8252f93955319e782cc4f733"
+version = "1.19.0"
+source = "git+https://github.com/iRed4321/SlintFork.git?rev=47cda3504961d71a0348debc73e8d77485c5460e#47cda3504961d71a0348debc73e8d77485c5460e"
 dependencies = [
  "arboard",
  "block2 0.6.2",
  "bytemuck",
- "cfg-if",
  "cfg_aliases",
  "futures",
  "glutin",
@@ -2934,6 +2936,7 @@ dependencies = [
  "i-slint-renderer-skia",
  "i-slint-renderer-software",
  "imgref",
+ "itertools 0.15.0",
  "lyon_path",
  "muda",
  "objc2 0.6.5",
@@ -2946,6 +2949,7 @@ dependencies = [
  "rgb",
  "scoped-tls-hkt",
  "scopeguard",
+ "smithay-clipboard",
  "softbuffer",
  "strum",
  "vtable",
@@ -2959,15 +2963,17 @@ dependencies = [
 
 [[package]]
 name = "i-slint-common"
-version = "1.18.1"
-source = "git+https://github.com/iRed4321/SlintFork.git?rev=8212a4db5a7d6acb8252f93955319e782cc4f733#8212a4db5a7d6acb8252f93955319e782cc4f733"
+version = "1.19.0"
+source = "git+https://github.com/iRed4321/SlintFork.git?rev=47cda3504961d71a0348debc73e8d77485c5460e#47cda3504961d71a0348debc73e8d77485c5460e"
 dependencies = [
  "derive_more",
+ "euclid",
  "fontique",
  "htmlparser",
  "icu_decimal",
  "icu_locale_core",
  "icu_provider",
+ "objc2 0.6.5",
  "pulldown-cmark",
  "resvg",
  "skrifa",
@@ -2975,13 +2981,14 @@ dependencies = [
 
 [[package]]
 name = "i-slint-compiler"
-version = "1.18.1"
-source = "git+https://github.com/iRed4321/SlintFork.git?rev=8212a4db5a7d6acb8252f93955319e782cc4f733#8212a4db5a7d6acb8252f93955319e782cc4f733"
+version = "1.19.0"
+source = "git+https://github.com/iRed4321/SlintFork.git?rev=47cda3504961d71a0348debc73e8d77485c5460e#47cda3504961d71a0348debc73e8d77485c5460e"
 dependencies = [
  "annotate-snippets",
  "by_address",
  "data-url",
  "derive_more",
+ "either",
  "i-slint-common",
  "icu_normalizer",
  "icu_properties",
@@ -2991,16 +2998,20 @@ dependencies = [
  "lyon_extra",
  "lyon_path",
  "num_enum",
+ "once_cell",
  "proc-macro2",
  "quote",
  "rayon",
  "resvg",
  "rowan",
  "rspolib",
+ "serde",
+ "serde_json",
  "skrifa",
  "smol_str 0.3.7",
  "strum",
  "swash",
+ "syn 3.0.10",
  "typed-index-collections",
  "unicode-segmentation",
  "url",
@@ -3008,11 +3019,11 @@ dependencies = [
 
 [[package]]
 name = "i-slint-core"
-version = "1.18.1"
-source = "git+https://github.com/iRed4321/SlintFork.git?rev=8212a4db5a7d6acb8252f93955319e782cc4f733#8212a4db5a7d6acb8252f93955319e782cc4f733"
+version = "1.19.0"
+source = "git+https://github.com/iRed4321/SlintFork.git?rev=47cda3504961d71a0348debc73e8d77485c5460e#47cda3504961d71a0348debc73e8d77485c5460e"
 dependencies = [
  "bitflags 2.13.2",
- "cfg-if",
+ "bytemuck",
  "chrono",
  "clru",
  "const-field-offset",
@@ -3059,8 +3070,8 @@ dependencies = [
 
 [[package]]
 name = "i-slint-core-macros"
-version = "1.18.1"
-source = "git+https://github.com/iRed4321/SlintFork.git?rev=8212a4db5a7d6acb8252f93955319e782cc4f733#8212a4db5a7d6acb8252f93955319e782cc4f733"
+version = "1.19.0"
+source = "git+https://github.com/iRed4321/SlintFork.git?rev=47cda3504961d71a0348debc73e8d77485c5460e#47cda3504961d71a0348debc73e8d77485c5460e"
 dependencies = [
  "quote",
  "serde_json",
@@ -3069,11 +3080,10 @@ dependencies = [
 
 [[package]]
 name = "i-slint-renderer-skia"
-version = "1.18.1"
-source = "git+https://github.com/iRed4321/SlintFork.git?rev=8212a4db5a7d6acb8252f93955319e782cc4f733#8212a4db5a7d6acb8252f93955319e782cc4f733"
+version = "1.19.0"
+source = "git+https://github.com/iRed4321/SlintFork.git?rev=47cda3504961d71a0348debc73e8d77485c5460e#47cda3504961d71a0348debc73e8d77485c5460e"
 dependencies = [
  "bytemuck",
- "cfg-if",
  "cfg_aliases",
  "clru",
  "const-field-offset",
@@ -3107,8 +3117,8 @@ dependencies = [
 
 [[package]]
 name = "i-slint-renderer-software"
-version = "1.18.1"
-source = "git+https://github.com/iRed4321/SlintFork.git?rev=8212a4db5a7d6acb8252f93955319e782cc4f733#8212a4db5a7d6acb8252f93955319e782cc4f733"
+version = "1.19.0"
+source = "git+https://github.com/iRed4321/SlintFork.git?rev=47cda3504961d71a0348debc73e8d77485c5460e#47cda3504961d71a0348debc73e8d77485c5460e"
 dependencies = [
  "bytemuck",
  "clru",
@@ -3491,15 +3501,6 @@ dependencies = [
 
 [[package]]
 name = "itertools"
-version = "0.13.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "413ee7dfc52ee1a4949ceeb7dbc8a33f2d6c088194d9f922fb8318faf1f01186"
-dependencies = [
- "either",
-]
-
-[[package]]
-name = "itertools"
 version = "0.15.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "8b4baf93f58d4425749ca49a51c50ebab072c5df6994d08fed93541c331481dc"
@@ -3614,13 +3615,12 @@ dependencies = [
 
 [[package]]
 name = "keyboard-types"
-version = "0.7.0"
+version = "0.8.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "b750dcadc39a09dbadd74e118f6dd6598df77fa01df0cfcdc52c28dece74528a"
+checksum = "0fbe853b403ae61a04233030ae8a79d94975281ed9770a1f9e246732b534b28d"
 dependencies = [
  "bitflags 2.13.2",
  "serde",
- "unicode-segmentation",
 ]
 
 [[package]]
@@ -3926,9 +3926,9 @@ dependencies = [
 
 [[package]]
 name = "muda"
-version = "0.19.3"
+version = "0.21.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "1dd04e60bc0b07438a6771710ee1698f98f6ebbc7f89b61264af1563b8aeb878"
+checksum = "4340e89c178916e62879c5c36b7f699019369be413e496178a6983ce91b8bc03"
 dependencies = [
  "crossbeam-channel",
  "dpi",
@@ -3937,7 +3937,6 @@ dependencies = [
  "objc2-app-kit 0.3.2",
  "objc2-core-foundation",
  "objc2-foundation 0.3.2",
- "once_cell",
  "png",
  "thiserror 2.0.21",
  "windows-sys 0.61.2",
@@ -4735,32 +4734,58 @@ name = "parlance"
 version = "0.1.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "73072a9470554c8e794778acece2312661218aaabb635600957d952cf01c716e"
+dependencies = [
+ "bytemuck",
+]
 
 [[package]]
 name = "parley"
-version = "0.11.1"
+version = "0.12.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "22d2ff88bd3f7d68d1d9b09c7e6209f9a8e8c05088295140a2bcf2e9b17038c5"
+checksum = "61bd0c0c1737f0b3d3726dc06b225083af213b61913e4fbae1670613a106c6ce"
+dependencies = [
+ "fontique",
+ "hashbrown 0.17.1",
+ "linebender_resource_handle",
+ "parlance",
+ "parley_engine",
+ "smallvec",
+]
+
+[[package]]
+name = "parley_data"
+version = "0.12.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "c43b63f808f6cc8f4a3b07de0d62a977bddd2e0bb5c232bd9e93ba8ef92e5e4b"
+dependencies = [
+ "icu_collections",
+ "icu_properties",
+]
+
+[[package]]
+name = "parley_emoji"
+version = "0.12.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "9c4482d912d7671a7cd2089794f90ef3bb5f5f8c738230fb0fcd50fa020f0ed3"
+
+[[package]]
+name = "parley_engine"
+version = "0.12.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "b74c0d373e462e504ad4436710a39f099e18e848e1ee711f70cd2dcd5a69b290"
 dependencies = [
  "fontique",
  "harfrust",
  "hashbrown 0.17.1",
+ "icu_locale_core",
  "icu_normalizer",
  "icu_properties",
  "icu_segmenter",
  "linebender_resource_handle",
  "parlance",
  "parley_data",
+ "parley_emoji",
  "skrifa",
-]
-
-[[package]]
-name = "parley_data"
-version = "0.11.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "1567535334d6ba2d3cde19221ba9a7bd0fabb3cbd99046ddfb10ae061cfcc889"
-dependencies = [
- "icu_properties",
 ]
 
 [[package]]
@@ -5327,9 +5352,9 @@ checksum = "19b30a45b0cd0bcca8037f3d0dc3421eaf95327a17cad11964fb8179b4fc4832"
 
 [[package]]
 name = "resvg"
-version = "0.48.1"
+version = "0.49.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "67e3803f97b999e80cbf7c6ecdd07a8102204d92e1633cf48783720c521196bd"
+checksum = "1572844b6727a1bf842190e9947641a68ac44bed83f50afb4bd1407a2564bee8"
 dependencies = [
  "bytemuck",
  "gif",
@@ -5771,7 +5796,7 @@ dependencies = [
  "ab_glyph",
  "log",
  "memmap2",
- "smithay-client-toolkit",
+ "smithay-client-toolkit 0.19.2",
  "tiny-skia 0.11.4",
 ]
 
@@ -6023,12 +6048,6 @@ dependencies = [
 
 [[package]]
 name = "shlex"
-version = "1.3.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "0fda2ff0d084019ba4d7c6f371c95d8fd75ce3524c3cb8fb653a3023f6323e64"
-
-[[package]]
-name = "shlex"
 version = "2.0.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "f8fadd59c855ef2080decdef8ff161eb6661b86933c9d82e5ba29dc602a55aba"
@@ -6092,9 +6111,9 @@ checksum = "33f4fe9184a62d842c9ef383018f3306d8ba224fd9d836f56d7288308847c256"
 
 [[package]]
 name = "skia-bindings"
-version = "0.153.3"
+version = "0.157.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "eb325787c91b3f6c34a7c6f2b8a2297b20292d733ca53a08c233e5028aec49af"
+checksum = "3930c7f5e8d813364d74c3b17b227f3bb3a84504f93bb1f8c222d8fd5a7d9c6f"
 dependencies = [
  "bindgen",
  "cc",
@@ -6109,9 +6128,9 @@ dependencies = [
 
 [[package]]
 name = "skia-safe"
-version = "0.153.3"
+version = "0.157.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "c61cb643dac43067f3eb76c866635a74377ac0abca0ff2590674e1e295514c3d"
+checksum = "dc1c946dbc1a10b6b1ace7e368ea71f96c81448bbf55effcad0a9a3a392358eb"
 dependencies = [
  "bitflags 2.13.2",
  "skia-bindings",
@@ -6136,8 +6155,8 @@ checksum = "0c790de23124f9ab44544d7ac05d60440adc586479ce501c1d6d7da3cd8c9cf5"
 
 [[package]]
 name = "slint"
-version = "1.18.1"
-source = "git+https://github.com/iRed4321/SlintFork.git?rev=8212a4db5a7d6acb8252f93955319e782cc4f733#8212a4db5a7d6acb8252f93955319e782cc4f733"
+version = "1.19.0"
+source = "git+https://github.com/iRed4321/SlintFork.git?rev=47cda3504961d71a0348debc73e8d77485c5460e#47cda3504961d71a0348debc73e8d77485c5460e"
 dependencies = [
  "const-field-offset",
  "i-slint-backend-linuxkms",
@@ -6147,18 +6166,16 @@ dependencies = [
  "i-slint-core",
  "i-slint-core-macros",
  "i-slint-renderer-software",
- "num-traits",
  "once_cell",
  "pin-weak",
  "slint-macros",
- "unicode-segmentation",
  "vtable",
 ]
 
 [[package]]
 name = "slint-build"
-version = "1.18.1"
-source = "git+https://github.com/iRed4321/SlintFork.git?rev=8212a4db5a7d6acb8252f93955319e782cc4f733#8212a4db5a7d6acb8252f93955319e782cc4f733"
+version = "1.19.0"
+source = "git+https://github.com/iRed4321/SlintFork.git?rev=47cda3504961d71a0348debc73e8d77485c5460e#47cda3504961d71a0348debc73e8d77485c5460e"
 dependencies = [
  "derive_more",
  "fontique",
@@ -6169,8 +6186,8 @@ dependencies = [
 
 [[package]]
 name = "slint-macros"
-version = "1.18.1"
-source = "git+https://github.com/iRed4321/SlintFork.git?rev=8212a4db5a7d6acb8252f93955319e782cc4f733#8212a4db5a7d6acb8252f93955319e782cc4f733"
+version = "1.19.0"
+source = "git+https://github.com/iRed4321/SlintFork.git?rev=47cda3504961d71a0348debc73e8d77485c5460e#47cda3504961d71a0348debc73e8d77485c5460e"
 dependencies = [
  "i-slint-compiler",
  "proc-macro2",
@@ -6201,7 +6218,7 @@ checksum = "3457dea1f0eb631b4034d61d4d8c32074caa6cd1ab2d59f2327bd8461e2c0016"
 dependencies = [
  "bitflags 2.13.2",
  "calloop 0.13.0",
- "calloop-wayland-source",
+ "calloop-wayland-source 0.3.0",
  "cursor-icon",
  "libc",
  "log",
@@ -6216,6 +6233,44 @@ dependencies = [
  "wayland-protocols-wlr",
  "wayland-scanner",
  "xkeysym",
+]
+
+[[package]]
+name = "smithay-client-toolkit"
+version = "0.20.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "0512da38f5e2b31201a93524adb8d3136276fa4fe4aafab4e1f727a82b534cc0"
+dependencies = [
+ "bitflags 2.13.2",
+ "calloop 0.14.5",
+ "calloop-wayland-source 0.4.1",
+ "cursor-icon",
+ "libc",
+ "log",
+ "memmap2",
+ "rustix 1.1.6",
+ "thiserror 2.0.21",
+ "wayland-backend",
+ "wayland-client",
+ "wayland-csd-frame",
+ "wayland-cursor",
+ "wayland-protocols",
+ "wayland-protocols-experimental",
+ "wayland-protocols-misc",
+ "wayland-protocols-wlr",
+ "wayland-scanner",
+ "xkeysym",
+]
+
+[[package]]
+name = "smithay-clipboard"
+version = "0.7.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "71704c03f739f7745053bde45fa203a46c58d25bc5c4efba1d9a60e9dba81226"
+dependencies = [
+ "libc",
+ "smithay-client-toolkit 0.20.0",
+ "wayland-backend",
 ]
 
 [[package]]
@@ -6520,12 +6575,10 @@ dependencies = [
 
 [[package]]
 name = "taffy"
-version = "0.10.1"
+version = "0.15.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "aea22054047c16c3f34d3ac473a2170be1424b1115b2a3adcf28cfb067c88859"
+checksum = "31f7bd2d97198df05186f93a3a3c306845f40e8b3c22bf9279cdd7e5cf5fea7d"
 dependencies = [
- "arrayvec",
- "grid",
  "serde",
  "slotmap",
 ]
@@ -7151,9 +7204,9 @@ checksum = "daf8dba3b7eb870caf1ddeed7bc9d2a049f3cfdfae7cb521b087cc33ae4c49da"
 
 [[package]]
 name = "usvg"
-version = "0.48.1"
+version = "0.49.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "977d0a4abdef933f424a99fe09f95576e089b90aebc6f016a3bc813762493e91"
+checksum = "d09b73ee83641d390ad7ffd9000f347b16eb128e437675b6ff277ea5c7fcf22c"
 dependencies = [
  "base64",
  "data-url",
@@ -7230,8 +7283,8 @@ checksum = "5c3082ca00d5a5ef149bb8b555a72ae84c9c59f7250f013ac822ac2e49b19c64"
 
 [[package]]
 name = "vtable"
-version = "0.5.0"
-source = "git+https://github.com/iRed4321/SlintFork.git?rev=8212a4db5a7d6acb8252f93955319e782cc4f733#8212a4db5a7d6acb8252f93955319e782cc4f733"
+version = "0.5.1"
+source = "git+https://github.com/iRed4321/SlintFork.git?rev=47cda3504961d71a0348debc73e8d77485c5460e#47cda3504961d71a0348debc73e8d77485c5460e"
 dependencies = [
  "const-field-offset",
  "portable-atomic",
@@ -7241,8 +7294,8 @@ dependencies = [
 
 [[package]]
 name = "vtable-macro"
-version = "0.5.0"
-source = "git+https://github.com/iRed4321/SlintFork.git?rev=8212a4db5a7d6acb8252f93955319e782cc4f733#8212a4db5a7d6acb8252f93955319e782cc4f733"
+version = "0.5.1"
+source = "git+https://github.com/iRed4321/SlintFork.git?rev=47cda3504961d71a0348debc73e8d77485c5460e#47cda3504961d71a0348debc73e8d77485c5460e"
 dependencies = [
  "proc-macro2",
  "quote",
@@ -7395,6 +7448,32 @@ dependencies = [
  "bitflags 2.13.2",
  "wayland-backend",
  "wayland-client",
+ "wayland-scanner",
+]
+
+[[package]]
+name = "wayland-protocols-experimental"
+version = "20250721.0.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "40a1f863128dcaaec790d7b4b396cc9b9a7a079e878e18c47e6c2d2c5a8dcbb1"
+dependencies = [
+ "bitflags 2.13.2",
+ "wayland-backend",
+ "wayland-client",
+ "wayland-protocols",
+ "wayland-scanner",
+]
+
+[[package]]
+name = "wayland-protocols-misc"
+version = "0.3.12"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "6e9567599ef23e09b8dad6e429e5738d4509dfc46b3b21f32841a304d16b29c8"
+dependencies = [
+ "bitflags 2.13.2",
+ "wayland-backend",
+ "wayland-client",
+ "wayland-protocols",
  "wayland-scanner",
 ]
 
@@ -7976,7 +8055,7 @@ dependencies = [
  "redox_syscall 0.4.1",
  "rustix 0.38.44",
  "sctk-adwaita",
- "smithay-client-toolkit",
+ "smithay-client-toolkit 0.19.2",
  "smol_str 0.2.2",
  "tracing",
  "unicode-segmentation",

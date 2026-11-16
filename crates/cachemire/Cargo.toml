@@ -26,9 +26,9 @@ rayon.workspace = true
 natord = "1"
 open.workspace = true
 semver.workspace = true
-# the fork's patched/1.18.1 branch at a fixed commit (also for slint-build): move both `rev`s to update
+# the fork's patched/1.19.0 branch at a fixed commit (also for slint-build): move both `rev`s to update
 # what the fork changes and how to move to a newer Slint: docs/slint-fork.md
-slint = { git = "https://github.com/iRed4321/SlintFork.git", rev = "8212a4db5a7d6acb8252f93955319e782cc4f733", default-features = false, features = ["std", "backend-winit", "renderer-software", "compat-1-2", "unstable-winit-030"] }
+slint = { git = "https://github.com/iRed4321/SlintFork.git", rev = "47cda3504961d71a0348debc73e8d77485c5460e", default-features = false, features = ["std", "backend-winit", "renderer-software", "compat-1-2", "unstable-winit-030"] }
 rust-i18n = "4"
 thiserror.workspace = true
 # the log: a daily file in the data directory (see logging.rs), and stderr in debug builds
@@ -42,7 +42,7 @@ cachemire-core = { path = "../cachemire-core", features = ["test-support"] }
 russh.workspace = true
 
 [build-dependencies]
-slint-build = { git = "https://github.com/iRed4321/SlintFork.git", rev = "8212a4db5a7d6acb8252f93955319e782cc4f733" }
+slint-build = { git = "https://github.com/iRed4321/SlintFork.git", rev = "47cda3504961d71a0348debc73e8d77485c5460e" }
 
 # a message to the window that clears winit's drag latch (see drag_latch.rs)
 [target.'cfg(windows)'.dependencies]

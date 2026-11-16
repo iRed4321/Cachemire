@@ -248,6 +248,10 @@ export component KeyDetail inherits Rectangle {
                                                 default-color: Theme.text-primary;
                                                 default-font-family: Theme.font-mono;
                                                 default-font-size: Theme.pt(12.5px);
+                                                selectable: true;
+                                                keep-mouse-cursor: true;
+                                                // transparent: the selected text keeps its own colors
+                                                selection-foreground-color: transparent;
                                                 selection-background-color: Theme.accent-blue.with-alpha(0.35);
                                                 vertical-alignment: center;
                                                 min-width: 0px;
