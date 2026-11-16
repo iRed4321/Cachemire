@@ -437,8 +437,7 @@ export component TableView inherits Rectangle {
                                 running: KeyScroll.restore-table-pending;
                                 triggered => {
                                     KeyScroll.restore-table-pending = false;
-                                    table-flick.content-x = max(-max(0px, table-flick.content-width - table-flick.width), KeyScroll.restore-table-x);
-                                    table-flick.content-y = max(-max(0px, table-flick.content-height - table-flick.height), KeyScroll.restore-table-y);
+                                    table-flick.scroll-to({ x: -KeyScroll.restore-table-x, y: -KeyScroll.restore-table-y }, ScrollBehavior.instant);
                                 }
                             }
                             property <[TableRowData]> watched-rows: root.rows;
@@ -483,12 +482,10 @@ export component TableView inherits Rectangle {
                                 width: root.flick-width-snapshot;
                                 height: root.flick-height-snapshot;
                                 scroll-by(delta) => {
-                                    let scroll-range = max(0px, table-flick.content-height - table-flick.height);
-                                    table-flick.content-y = max(-scroll-range, min(0px, table-flick.content-y + delta));
+                                    table-flick.scroll-to({ x: -table-flick.content-x, y: -table-flick.content-y - delta }, ScrollBehavior.instant);
                                 }
                                 scroll-by-x(delta) => {
-                                    let scroll-range = max(0px, table-flick.content-width - table-flick.width);
-                                    table-flick.content-x = max(-scroll-range, min(0px, table-flick.content-x + delta));
+                                    table-flick.scroll-to({ x: -table-flick.content-x - delta, y: -table-flick.content-y }, ScrollBehavior.instant);
                                 }
                                 // the cells' text leaves right-clicks to what is behind it,
                                 // which is this

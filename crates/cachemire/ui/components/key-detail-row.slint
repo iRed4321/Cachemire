@@ -43,16 +43,45 @@ export component RowHeader inherits Rectangle {
         cross-axis-alignment: center;
 
         IconChevron { size: Theme.icon-xs; down: true; tint: Theme.text-tertiary; }
-        Text {
-            text: root.field;
+        // the field's name: a click copies it (and leaves the row open), which a hint says
+        // once the pointer rests on it
+        name-area := TouchArea {
             min-width: Theme.px(24px);
             max-width: Theme.px(320px);
-            font-size: Theme.pt(12px);
-            font-family: Theme.font-mono;
-            font-weight: 600;
-            color: Theme.text-primary;
-            vertical-alignment: center;
-            overflow: elide;
+            horizontal-stretch: 0;
+            enabled: root.field != "";
+            mouse-cursor: pointer;
+            property <bool> hint-shown: false;
+            function hide-hint() {
+                if self.hint-shown {
+                    self.hint-shown = false;
+                    Hint.hide();
+                }
+            }
+            changed has-hover => { if !self.has-hover { self.hide-hint(); } }
+            clicked => {
+                self.hide-hint();
+                KeyPanel.copy-selection(root.field);
+            }
+            Timer {
+                interval: 300ms;
+                running: name-area.has-hover && !name-area.hint-shown && !name-area.pressed;
+                triggered => {
+                    name-area.hint-shown = true;
+                    Hint.show-below(@tr("Click to copy"), name-area.absolute-position.x, name-area.absolute-position.y + name-area.height + Theme.px(6px));
+                }
+            }
+            HorizontalLayout {
+                Text {
+                    text: root.field;
+                    font-size: Theme.pt(12px);
+                    font-family: Theme.font-mono;
+                    font-weight: 600;
+                    color: Theme.text-primary;
+                    vertical-alignment: center;
+                    overflow: elide;
+                }
+            }
         }
         Rectangle { width: Theme.px(4px); }
         SearchField {
@@ -277,10 +306,6 @@ export component AllValuesRow inherits Rectangle {
         triggered => { root.clicks = 0; }
     }
     changed selection-owner => { if selection-owner != field { clear-selection(); } }
-    // the part of the row near the view: its open background and accent bar are drawn only
-    // there, as the renderer can't draw a rectangle past 32767 physical pixels
-    property <length> slice-top: max(0px, view-top - row-y - view-height);
-    property <length> slice-bottom: min(root.height, view-top - row-y + 2 * view-height);
     // An open row is one column: a header (name, find, actions, fold) above
     // the text, which is only for reading and selecting. The header floats, so
     // the row's top padding leaves room for it.
@@ -532,9 +557,8 @@ export component AllValuesRow inherits Rectangle {
         font-family: Theme.font-mono;
     }
     if expanded: Rectangle {
-        y: root.slice-top;
         width: 100%;
-        height: max(0px, root.slice-bottom - root.slice-top);
+        height: 100%;
         background: Theme.bg-sunken;
         border-radius: Theme.radius-sm;
     }
@@ -686,8 +710,7 @@ export component AllValuesRow inherits Rectangle {
                         property <string> owner: root.selection-owner;
                         changed owner => {
                             if owner != field {
-                                self.anchor-position-byte-offset = 0;
-                                self.cursor-position-byte-offset = 0;
+                                self.clear-selection();
                             }
                         }
                         clicked => { expanded = !expanded; }
@@ -799,9 +822,9 @@ export component AllValuesRow inherits Rectangle {
     // a colour wash over its text; drawn last, over the row, and takes no input
     if expanded: Rectangle {
         x: 0;
-        y: max(Theme.px(4px), root.slice-top);
+        y: Theme.px(4px);
         width: Theme.px(2px);
-        height: max(0px, min(parent.height - Theme.px(4px), root.slice-bottom) - self.y);
+        height: max(0px, parent.height - Theme.px(8px));
         border-radius: Theme.px(1px);
         background: Theme.accent-blue;
     }

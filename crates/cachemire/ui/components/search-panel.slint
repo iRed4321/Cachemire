@@ -296,8 +296,7 @@ export component SearchPanel inherits Rectangle {
                         width: root.content-w;
                         height: root.flick-height-snapshot;
                         scroll-by(delta) => {
-                            let scroll-range = max(0px, results-flick.content-height - results-flick.height);
-                            results-flick.content-y = max(-scroll-range, min(0px, results-flick.content-y + delta));
+                            results-flick.scroll-to({ x: 0px, y: -results-flick.content-y - delta }, ScrollBehavior.instant);
                         }
                     }
 

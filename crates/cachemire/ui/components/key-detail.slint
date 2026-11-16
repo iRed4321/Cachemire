@@ -267,10 +267,7 @@ export component KeyDetail inherits Rectangle {
                                                 }
                                                 // another key: nothing of the old text is selected
                                                 property <string> watched: root.key-name;
-                                                changed watched => {
-                                                    self.anchor-position-byte-offset = 0;
-                                                    self.cursor-position-byte-offset = 0;
-                                                }
+                                                changed watched => { self.clear-selection(); }
                                             }
                                         }
                                     }

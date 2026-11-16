@@ -432,7 +432,7 @@ export component QueryEditor inherits Rectangle {
                                 if event.button == PointerEventButton.right && event.kind == PointerEventKind.down {
                                     self.click-x = self.mouse-x;
                                     self.click-y = self.mouse-y;
-                                    self.menu-has-selection = input.anchor-position-byte-offset != input.cursor-position-byte-offset;
+                                    self.menu-has-selection = input.has-selection;
                                     self.menu-can-paste = root.clipboard-has-text();
                                     input.focus();
                                     edit-menu.show();
@@ -488,13 +488,8 @@ export component QueryEditor inherits Rectangle {
                                     caret.x = query-flick.text-dx + position.x;
                                     caret.y = position.y;
                                     caret-blink-on = true;
-                                    // keeps the caret in view, and the list under it
+                                    // (the input scrolls its Flickable itself to keep the caret in view)
                                     let line-h = self.font-size * 1.3;
-                                    if position.y + query-flick.content-y < 0px {
-                                        query-flick.content-y = -position.y;
-                                    } else if position.y + line-h + query-flick.content-y > query-flick.height {
-                                        query-flick.content-y = -(position.y + line-h - query-flick.height);
-                                    }
                                     root.caret-x = self.absolute-position.x + position.x;
                                     root.caret-bottom = self.absolute-position.y + position.y + line-h;
                                     if root.suggest-open {
@@ -532,7 +527,7 @@ export component QueryEditor inherits Rectangle {
                             background: Theme.text-primary;
                             visible: input.has-focus
                                 && caret-blink-on
-                                && input.anchor-position-byte-offset == input.cursor-position-byte-offset;
+                                && !input.has-selection;
                         }
                     }
                     // the grip in the corner: drag it up or down to resize the box, like a text area

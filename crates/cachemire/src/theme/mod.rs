@@ -188,6 +188,27 @@ fn readable(color: Color, background: Color, text: Color) -> Color {
     (0..=4).map(|step| mix(color, text, step as f32 * 0.2)).find(|c| contrast(*c, background) >= 3.0).unwrap_or(text)
 }
 
+/// How different two colors look: their distance in CIE L*a*b* (about 2 is barely seen, 100 is opposite).
+fn distance(a: Color, b: Color) -> f32 {
+    let lab = |color: Color| {
+        let linear = |channel: u8| {
+            let c = f32::from(channel) / 255.0;
+            if c <= 0.04045 { c / 12.92 } else { ((c + 0.055) / 1.055).powf(2.4) }
+        };
+        let (r, g, b) = (linear(color.red()), linear(color.green()), linear(color.blue()));
+        let curve = |t: f32| if t > 0.008856 { t.cbrt() } else { 7.787 * t + 16.0 / 116.0 };
+        let x = curve((0.4124 * r + 0.3576 * g + 0.1805 * b) / 0.95047);
+        let y = curve(0.2126 * r + 0.7152 * g + 0.0722 * b);
+        let z = curve((0.0193 * r + 0.1192 * g + 0.9505 * b) / 1.08883);
+        [116.0 * y - 16.0, 500.0 * (x - y), 200.0 * (y - z)]
+    };
+    let (a, b) = (lab(a), lab(b));
+    a.iter().zip(b).map(|(a, b)| (a - b) * (a - b)).sum::<f32>().sqrt()
+}
+
+/// Two colors closer than this are taken for one another.
+const TOLD_APART: f32 = 16.0;
+
 /// The interface colors, each named as its `Theme` property.
 struct Palette {
     bg_app_base: Color,
@@ -223,7 +244,17 @@ fn derive(combo: &Combo) -> Palette {
     let dark = luminance(background) < 0.4;
     let (black, white) = (Color::from_rgb_u8(0, 0, 0), Color::from_rgb_u8(255, 255, 255));
     let raised = |share: f32| mix(background, text, share);
-    let signal = |hex: u32| readable(rgb(hex), background, text);
+    // a status color: the first of `choices` that reads here and isn't taken for one of `taken`
+    let signal = |choices: &[u32], taken: &[Color]| {
+        let reads = |hex: &u32| readable(rgb(*hex), background, text);
+        let apart = |color: &Color| taken.iter().all(|other| distance(*color, *other) >= TOLD_APART);
+        choices.iter().map(reads).find(apart).unwrap_or_else(|| reads(&choices[0]))
+    };
+    let red = signal(&[0xff5f56], &[]);
+    let green = signal(&[0x29c46f, 0xa6d94a], &[accent, highlight, red]);
+    let orange = signal(&[0xff9f45, 0xff79c6], &[accent, highlight, red, green]);
+    let purple = signal(&[0xb389f9, 0xff79c6, 0xf06ad8], &[accent, highlight, red, green, orange]);
+    let cyan = signal(&[0x6fd1e0, 0x5b9dff, 0x3fd6a8], &[accent, highlight, red, green, orange, purple]);
     Palette {
         bg_app_base: background,
         bg_panel: raised(0.02),
@@ -242,12 +273,12 @@ fn derive(combo: &Combo) -> Palette {
         accent_blue: accent,
         accent_blue_dim: mix(accent, background, 0.3),
         accent_text: if contrast(white, accent) >= 2.5 { white } else { rgb(0x151517) },
-        accent_red: signal(0xff5f56),
+        accent_red: red,
         accent_yellow: highlight,
-        accent_green: signal(0x29c46f),
-        accent_orange: signal(0xff9f45),
-        accent_purple: signal(0xb389f9),
-        accent_cyan: signal(0x6fd1e0),
+        accent_green: green,
+        accent_orange: orange,
+        accent_purple: purple,
+        accent_cyan: cyan,
     }
 }
 

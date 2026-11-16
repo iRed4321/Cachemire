@@ -36,12 +36,9 @@ component ProfileRow inherits Rectangle {
     in property <string> name;
     in property <string> username;
     in property <bool> active;
-    // set by the list to its own width, like ConnectionRow's `row-width`
-    in property <length> row-width;
     callback activate();
     callback edit();
 
-    width: row-width;
     height: Theme.px(46px);
     // opaque at rest (the list box's color): a hover change only redraws the row, which then covers its own area
     background: row-area.has-hover ? Theme.bg-hover-elevated : Theme.bg-sunken;
@@ -158,10 +155,8 @@ component ConnProfileRow inherits Rectangle {
     in property <string> name;
     in property <ProfileTint> tint;
     in property <bool> read-only: false;
-    in property <length> row-width;
     callback edit();
 
-    width: row-width;
     height: Theme.px(34px);
     // opaque at rest (the list box's color), like ProfileRow
     background: row-area.has-hover ? Theme.bg-hover-elevated : Theme.bg-sunken;
@@ -1039,7 +1034,6 @@ component SshProfileList inherits VerticalLayout {
                     width: list-box.width - Theme.px(2px);
                     alignment: start;
                     for p in root.profiles: ProfileRow {
-                        row-width: list-content.width;
                         name: p.name;
                         username: p.username;
                         active: p.active;
@@ -1056,7 +1050,6 @@ component SshProfileList inherits VerticalLayout {
         if root.profiles.length > 0 && !root.scrolls: VerticalLayout {
             padding: Theme.px(1px);
             for p in root.profiles: ProfileRow {
-                row-width: list-box.width - Theme.px(2px);
                 name: p.name;
                 username: p.username;
                 active: p.active;
@@ -1104,7 +1097,6 @@ component ConnProfileList inherits VerticalLayout {
                     width: conn-list-box.width - Theme.px(2px);
                     alignment: start;
                     for p in root.profiles: ConnProfileRow {
-                        row-width: conn-content.width;
                         name: p.name;
                         tint: p.tint;
                         read-only: p.read-only;
@@ -1120,7 +1112,6 @@ component ConnProfileList inherits VerticalLayout {
         if root.profiles.length > 0 && !root.scrolls: VerticalLayout {
             padding: Theme.px(1px);
             for p in root.profiles: ConnProfileRow {
-                row-width: conn-list-box.width - Theme.px(2px);
                 name: p.name;
                 tint: p.tint;
                 read-only: p.read-only;

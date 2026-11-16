@@ -581,8 +581,7 @@ export component ModalButton inherits Rectangle {
 
 
 // A small joined choice between a few labels, the segments from `first` on: `current` is marked
-// and `picked` says which was clicked. Each segment rounds its own outer corners, as a clip
-// would render the text through an offscreen layer and blur it.
+// and `picked` says which was clicked. The segments are cut to the rounded corners.
 export component SegmentedToggle inherits Rectangle {
     in property <[string]> options;
     in property <int> current;
@@ -595,6 +594,7 @@ export component SegmentedToggle inherits Rectangle {
     border-radius: Theme.radius-sm;
     border-width: 1px;
     border-color: Theme.border-soft;
+    clip: true;
 
     HorizontalLayout {
         padding: 1px;
@@ -603,10 +603,6 @@ export component SegmentedToggle inherits Rectangle {
             property <bool> selected: i == root.current;
             visible: shown;
             width: shown ? root.segment-width : 0px;
-            border-top-left-radius: i == root.first ? Theme.radius-sm - 1px : 0px;
-            border-bottom-left-radius: i == root.first ? Theme.radius-sm - 1px : 0px;
-            border-top-right-radius: i == root.options.length - 1 ? Theme.radius-sm - 1px : 0px;
-            border-bottom-right-radius: i == root.options.length - 1 ? Theme.radius-sm - 1px : 0px;
             background: selected ? Theme.bg-selected-soft : (area.has-hover ? Theme.bg-hover : transparent);
             area := TouchArea {
                 mouse-cursor: pointer;

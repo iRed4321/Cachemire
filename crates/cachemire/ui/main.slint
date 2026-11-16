@@ -337,9 +337,7 @@ export component MainWindow inherits Window {
                         max-height: 100000px;
                         background: Theme.bg-panel;
 
-                        // Rectangular clip, never rounded: a border-radius clip
-                        // renders offscreen, which at fractional HiDPI scales
-                        // resamples every glyph. The card above gives the rounding.
+                        // a rectangular clip: the card above gives the rounding
                         Rectangle {
                             clip: true;
 
@@ -641,46 +639,69 @@ export component MainWindow inherits Window {
             }
         }
 
+        // the dialogs are placed by hand (`x`, `y`): an overlay doesn't count toward the size
+        // of what it covers
         if Preferences.open: SettingsModal {
+            x: 0px;
+            y: 0px;
             width: 100%;
             height: 100%;
             clipboard-has-text() => { return root.clipboard-has-text(); }
         }
 
         if ValueEditor.open: ValueEditorModal {
+            x: 0px;
+            y: 0px;
             width: 100%;
             height: 100%;
             device-scale: root.device-scale;
             clipboard-has-text() => { return root.clipboard-has-text(); }
         }
         if KeyNameDialog.open: KeyNameModal {
+            x: 0px;
+            y: 0px;
             width: 100%;
             height: 100%;
             clipboard-has-text() => { return root.clipboard-has-text(); }
         }
         if FolderDeleteDialog.open: FolderDeleteModal {
+            x: 0px;
+            y: 0px;
             width: 100%;
             height: 100%;
         }
-        if ConnectionTransfer.open: ConnectionTransferModal { }
+        if ConnectionTransfer.open: ConnectionTransferModal {
+            x: 0px;
+            y: 0px;
+        }
         if CloudSettings.open: CloudSettingsModal {
+            x: 0px;
+            y: 0px;
             clipboard-has-text() => { return root.clipboard-has-text(); }
         }
         if ConnectionEditor.open: ConnectionModal {
+            x: 0px;
+            y: 0px;
             width: 100%;
             height: 100%;
             clipboard-has-text() => { return root.clipboard-has-text(); }
             is-edit: ConnectionEditor.is-edit;
         }
         if KeyringDialog.open: KeyringModal {
+            x: 0px;
+            y: 0px;
             width: 100%;
             height: 100%;
         }
         if HostKeyDialog.open: HostKeyModal {
+            x: 0px;
+            y: 0px;
             width: 100%;
             height: 100%;
         }
         if SecretsPrompt.open: SecretsPromptModal {
+            x: 0px;
+            y: 0px;
             width: 100%;
             height: 100%;
             clipboard-has-text() => { return root.clipboard-has-text(); }

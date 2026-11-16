@@ -280,8 +280,7 @@ export component TabBar inherits Rectangle {
             if event.modifiers.control || event.delta-y == 0 || tabs-flick.content-width <= tabs-flick.width {
                 return reject;
             }
-            tabs-flick.content-x = max(tabs-flick.width - tabs-flick.content-width,
-                min(0px, tabs-flick.content-x + event.delta-y));
+            tabs-flick.scroll-to({ x: -tabs-flick.content-x - event.delta-y, y: 0px }, ScrollBehavior.instant);
             accept
         }
 

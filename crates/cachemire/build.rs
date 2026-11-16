@@ -3,6 +3,7 @@ fn main() {
     // (`resources/lang/<code>/LC_MESSAGES/cachemire.po`) into the executable.
     println!("cargo:rerun-if-changed=../../resources/lang");
     let config = slint_build::CompilerConfiguration::new()
+        .with_edition((1, 19))
         .embed_resources(slint_build::EmbedResourcesKind::EmbedFiles)
         .with_bundled_translations("../../resources/lang")
         .with_default_translation_context(slint_build::DefaultTranslationContext::None);

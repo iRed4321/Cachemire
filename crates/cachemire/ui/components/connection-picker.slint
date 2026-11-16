@@ -153,9 +153,8 @@ export component ConnectionDropdown inherits Rectangle {
     drop-shadow-color: Theme.shadow-color;
     drop-shadow-blur: Theme.shadow-blur;
     drop-shadow-offset-y: Theme.shadow-offset-y;
-    // No `clip: true` on purpose: with the border-radius it'd render this
-    // whole panel offscreen and blit it at a fractional position, blurring
-    // every row's text. Corners stay round via matching radii + padding instead.
+    // the rows' square backgrounds are cut to the panel's rounded corners
+    clip: true;
     property <length> row-stride: Theme.px(30px);
     property <length> list-max-height: Theme.px(280px);
     // scrolling only kicks in once the list is actually taller than the
@@ -179,7 +178,6 @@ export component ConnectionDropdown inherits Rectangle {
             // the new-connection button, then the one for importing and exporting
             Rectangle {
                 width: (root.width - Theme.px(1px)) / 2;
-                border-top-left-radius: root.border-radius;
                 // opaque at rest, like ConnectionRow's background
                 background: new-area.has-hover ? Theme.bg-hover-elevated : Theme.bg-elevated;
                 new-area := TouchArea {
@@ -203,7 +201,6 @@ export component ConnectionDropdown inherits Rectangle {
             Rectangle { width: Theme.px(1px); background: Theme.border-soft; }
             Rectangle {
                 width: (root.width - Theme.px(1px)) / 2;
-                border-top-right-radius: root.border-radius;
                 background: transfer-area.has-hover ? Theme.bg-hover-elevated : Theme.bg-elevated;
                 transfer-area := TouchArea {
                     mouse-cursor: pointer;
@@ -292,9 +289,6 @@ export component ConnectionDropdown inherits Rectangle {
                 content-y <=> list-flick.content-y;
             }
         }
-        // keeps the last row's square hover background clear of the panel's
-        // rounded bottom corners (see the clip note above)
-        Rectangle { height: root.border-radius; }
     }
 }
 

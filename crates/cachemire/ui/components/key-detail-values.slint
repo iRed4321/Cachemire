@@ -135,9 +135,7 @@ export component AllValuesTable inherits Rectangle {
         let local = abs-y - all-values-flick.absolute-position.y;
         let margin = Theme.px(40px);
         if local < margin || local > all-values-flick.height - margin {
-            let scroll-range = max(0px, all-values-flick.content-height - all-values-flick.height);
-            all-values-flick.content-y = max(-scroll-range, min(0px,
-                all-values-flick.content-y - (local - all-values-flick.height / 3)));
+            all-values-flick.scroll-to({ x: 0px, y: -all-values-flick.content-y + local - all-values-flick.height / 3 }, ScrollBehavior.instant);
         }
     }
 
@@ -166,8 +164,7 @@ export component AllValuesTable inherits Rectangle {
         running: KeyScroll.restore-all-pending;
         triggered => {
             KeyScroll.restore-all-pending = false;
-            let range = max(0px, all-values-flick.content-height - all-values-flick.height);
-            all-values-flick.content-y = max(-range, KeyScroll.restore-all-y);
+            all-values-flick.scroll-to({ x: 0px, y: -KeyScroll.restore-all-y }, ScrollBehavior.instant);
         }
     }
 
@@ -247,8 +244,7 @@ export component AllValuesTable inherits Rectangle {
                             if delta > 0px {
                                 root.check-near-start();
                             }
-                            let scroll-range = max(0px, all-values-flick.content-height - all-values-flick.height);
-                            all-values-flick.content-y = max(-scroll-range, min(0px, all-values-flick.content-y + delta));
+                            all-values-flick.scroll-to({ x: 0px, y: -all-values-flick.content-y - delta }, ScrollBehavior.instant);
                         }
                     }
                     VerticalLayout {
@@ -325,8 +321,7 @@ export component AllValuesTable inherits Rectangle {
                             }
                         }
                         HDivider { }
-                        // a VerticalLayout wrapper because a Rectangle wouldn't
-                        // auto-size to a conditional child
+                        // a wrapper as tall as its conditional child, or empty
                         for row[i] in rows: VerticalLayout {
                             if i < rendered-count: AllValuesRow {
                                 index: i;
@@ -438,9 +433,7 @@ export component AllValuesTable inherits Rectangle {
                 interval: 16ms;
                 running: selection-dragging && selection-scroll-dir != 0;
                 triggered => {
-                    let scroll-range = max(0px, all-values-flick.content-height - all-values-flick.height);
-                    all-values-flick.content-y = max(-scroll-range, min(0px,
-                        all-values-flick.content-y - selection-scroll-dir * selection-scroll-step));
+                    all-values-flick.scroll-to({ x: 0px, y: -all-values-flick.content-y + selection-scroll-dir * selection-scroll-step }, ScrollBehavior.instant);
                 }
             }
         }

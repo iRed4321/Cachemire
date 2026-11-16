@@ -298,7 +298,7 @@ export component ValueEditorModal inherits Rectangle {
                                     if event.button == PointerEventButton.right && event.kind == PointerEventKind.down {
                                         input.focus();
                                         root.show-menu(self.absolute-position.x + self.mouse-x, self.absolute-position.y + self.mouse-y,
-                                            input.anchor-position-byte-offset != input.cursor-position-byte-offset);
+                                            input.has-selection);
                                     }
                                 }
                                 property <int> menu-tick: root.menu-tick;
@@ -342,12 +342,7 @@ export component ValueEditorModal inherits Rectangle {
                                         caret.x = flick.text-dx + position.x;
                                         caret.y = position.y;
                                         caret-blink-on = true;
-                                        // keeps the caret in view
-                                        if position.y + flick.content-y < 0px {
-                                            flick.content-y = -position.y;
-                                        } else if position.y + box.line-h + flick.content-y > flick.height {
-                                            flick.content-y = -(position.y + box.line-h - flick.height);
-                                        }
+                                        // (the input scrolls its Flickable itself to keep the caret in view)
                                     }
                                 }
                             }
@@ -365,7 +360,7 @@ export component ValueEditorModal inherits Rectangle {
                                 width: input.text-cursor-width;
                                 height: box.line-h;
                                 background: Theme.text-primary;
-                                visible: input.has-focus && caret-blink-on && input.anchor-position-byte-offset == input.cursor-position-byte-offset;
+                                visible: input.has-focus && caret-blink-on && !input.has-selection;
                             }
                         }
                     }

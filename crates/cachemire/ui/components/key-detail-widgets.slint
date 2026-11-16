@@ -984,16 +984,6 @@ export component SuggestionPopup inherits Rectangle {
     drop-shadow-blur: Theme.shadow-blur;
     drop-shadow-offset-y: Theme.shadow-offset-y;
 
-    // keeps the chosen row in the list's view
-    function reveal(index: int) {
-        let top = index * root.row-h;
-        if top < -list.content-y {
-            list.content-y = -top;
-        } else if top + root.row-h > -list.content-y + list.height {
-            list.content-y = -(top + root.row-h - list.height);
-        }
-    }
-
     // a key the list takes (arrows, Esc, Tab, Enter on a chosen row); true keeps the box from acting on it
     public function handle-key(event: KeyEvent) -> bool {
         if !root.open || root.rows.length == 0 {
@@ -1001,12 +991,10 @@ export component SuggestionPopup inherits Rectangle {
         }
         if event.text == Key.DownArrow {
             root.selected = root.selected + 1 >= root.rows.length ? 0 : root.selected + 1;
-            root.reveal(root.selected);
             return true;
         }
         if event.text == Key.UpArrow {
             root.selected = root.selected <= 0 ? root.rows.length - 1 : root.selected - 1;
-            root.reveal(root.selected);
             return true;
         }
         if event.text == Key.Escape {
@@ -1040,6 +1028,9 @@ export component SuggestionPopup inherits Rectangle {
                 border-radius: Theme.radius-sm;
                 // opaque at rest: a hover change only redraws the row, which then covers its own area
                 background: i == root.selected ? Theme.bg-selected : (row-area.has-hover ? Theme.bg-hover-elevated : Theme.bg-elevated);
+                // the chosen row is kept in the list's view
+                property <bool> chosen: i == root.selected;
+                changed chosen => { if self.chosen { self.ensure-visible(ScrollBehavior.instant); } }
                 HorizontalLayout {
                     padding-left: Theme.px(8px);
                     padding-right: Theme.px(6px);

@@ -125,7 +125,8 @@ to them.
   [`theme::apply`](crate::theme::apply) sets (the values in the file are the default theme's): a theme
   (`theme::COMBOS`) is four colors, background, text, accent and highlight, and `derive` works out the
   rest: surfaces and borders are the background with some text mixed in, dimmer texts the reverse,
-  selections the accent over the background, status colors (red, green...) fixed hues made readable.
+  selections the accent over the background, status colors (red, green...) fixed hues made readable, each
+  swapped for a spare hue when it would be taken for the accent, the highlight or another one.
   A syntax theme (`theme::SYNTAXES`) gives the token colors of [`Paint`](crate::theme::Paint), each
   brought closer to the text color when it would not read on the background. Both are picked in the
   Display settings (`Preferences.theme`, `syntax-theme`); picking one applies it, bumps
