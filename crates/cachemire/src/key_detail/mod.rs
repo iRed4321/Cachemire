@@ -44,7 +44,7 @@ mod value_lines;
 mod value_list;
 mod word;
 
-pub(crate) use highlight::{search_plain_text, search_value_text};
+pub(crate) use highlight::{display_sample, search_plain_text, search_value_text};
 pub use scroll::{ScrollPos, current_expanded_fields, current_scroll, restore_expanded_fields};
 pub use table::clear_table;
 

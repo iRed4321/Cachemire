@@ -18,6 +18,7 @@ mod connections;
 #[cfg(windows)]
 mod drag_latch;
 mod error;
+mod fonts;
 mod host_key_dialog;
 mod i18n;
 mod key_detail;

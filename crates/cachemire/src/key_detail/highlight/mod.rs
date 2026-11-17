@@ -255,6 +255,23 @@ fn mark_hit(paragraph: ColoredParagraph, needle: &str) -> StyledText {
     StyledText::from_highlighted_paragraphs(overlay_highlights(&paragraphs, &highlights))
 }
 
+/// The Display settings' sample: a field holding text and one holding JSON, colored as the
+/// rows show them, `billing` marked as a search match; and the JSON's line count.
+pub(crate) fn display_sample() -> (StyledText, StyledText, i32) {
+    let text = colored_paragraphs_for(&FieldValue::Text("camille@example.com"), false, COMPACT_PREVIEW_CHAR_BUDGET);
+    let json = serde_json::json!({
+        "user_id": 48213,
+        "active": true,
+        "plan": null,
+        "team": "billing",
+        "total": 129.9,
+        "last_seen": "2026-11-17T09:42:00Z"
+    });
+    let paragraphs = colored_paragraphs_for(&FieldValue::Json(&json), true, COMPACT_PREVIEW_CHAR_BUDGET);
+    let lines = paragraphs.len() as i32;
+    (StyledText::from_colored_paragraphs(text), highlight_needle_matches(paragraphs, &["billing".to_string()], false), lines)
+}
+
 /// A hit's key or field name: one line, its matches marked.
 pub(crate) fn search_plain_text(text: &str, needle: &str) -> StyledText {
     mark_hit((text.to_string(), Vec::new()), needle)

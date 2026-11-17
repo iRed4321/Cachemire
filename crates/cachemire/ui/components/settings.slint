@@ -4,6 +4,8 @@ import { VScrollBar, ModalButton, CheckRow, SegmentedToggle, IconButton, PastePo
 import { IconPlus, IconPencil, IconSettings, IconKey, IconPalette, IconFlask, IconInfo, IconKeyboard, IconDisplay, IconUndo, IconSearch, IconClose } from "icons.slint";
 import { ConnectionModalField, ConnProfileRowData, TintDot } from "connection-picker.slint";
 import { Preferences, About, Shortcuts } from "../globals.slint";
+import { SearchField } from "key-detail-widgets.slint";
+import { IconChevron, IconCheck } from "icons.slint";
 export { SshProfileRowData, SshProfileForm, ConnProfileForm }
 
 // one choice of a row of exclusive options (the language)
@@ -521,11 +523,12 @@ component SettingsPage inherits HorizontalLayout {
 global SettingTexts {
     out property <string> zoom-hint: @tr("The zoom the app starts at, and Ctrl+0 returns to. Ctrl with + or -, or the mouse wheel, still zooms for the session.");
     out property <string> theme-hint: @tr("Each theme is four colors: background, text, accent and highlight. Every other color of the app is worked out from them, except those of the connection profiles.");
+    out property <string> fonts-hint: @tr("The fonts installed on this computer; values and queries take monospaced ones only. A character a font lacks is drawn in another one.");
     out property <string> syntax-hint: @tr("The colors of JSON, YAML, XML and Redisql text. One that would be hard to read on the theme's background is brought closer to its text color.");
     out property <string> depth-hint: @tr("How many entries of each key (hash fields, list items, set members...) the global search reads. Fewer is faster, but a match deeper inside a big key is missed.");
     out property <string> opening-view-hint: @tr("The view a key shows when its tab opens. A query's result always opens as a table, and a search hit or a link to a field in the fields view.");
     out property <string> restore-hint: @tr("Cachemire reconnects to the connection it was closed on, with its tabs and open folders. An AWS connection signs in again first, in the browser if its session has expired.");
-    out property <string> updates-hint: @tr("Each time Cachemire starts, it looks for a newer version on the channel picked in About (the i button of the title bar), and opens it when there is one.");
+    out property <string> updates-hint: @tr("Each time Cachemire starts, it looks for a newer version on the channel picked above, and opens it when there is one.");
     out property <string> server-search-hint: @tr("The global search lets Redis filter the data itself, so far less of it travels. It uses the server's CPU while it runs, needs permission to run scripts, and goes back to the normal search if the server refuses.");
     out property <string> ssh-hint: @tr("The active profile logs in to the SSH tunnels that have no username of their own. A connection that fills in its own username and password uses those instead.");
     out property <string> host-keys-hint: @tr("An SSH server whose host key isn't in the app's list or in ~/.ssh/known_hosts is normally shown with its fingerprint for you to trust. Turn this on to trust and remember it without asking; a key that changes is always refused.");
@@ -659,20 +662,20 @@ component ZoomSlider inherits Rectangle {
     }
 }
 
-// The choices of a theme list, two to a row: each its swatches and its name, the one in
+// The choices of a theme list, three to a row: each its swatches and its name, the one in
 // use outlined; a click picks it.
 component ThemeChoices inherits Rectangle {
     in property <[ThemeChoice]> choices;
     in property <string> current;
     callback picked(id: string);
 
-    property <length> row-h: Theme.px(34px);
-    property <length> gap: Theme.px(8px);
-    property <length> cell-w: (self.width - gap) / 2;
-    height: ceil(choices.length / 2) * (row-h + gap) - gap;
+    property <length> row-h: Theme.px(28px);
+    property <length> gap: Theme.px(5px);
+    property <length> cell-w: (self.width - 2 * gap) / 3;
+    height: ceil(choices.length / 3) * (row-h + gap) - gap;
     for choice[i] in root.choices: Rectangle {
-        x: mod(i, 2) * (root.cell-w + root.gap);
-        y: floor(i / 2) * (root.row-h + root.gap);
+        x: mod(i, 3) * (root.cell-w + root.gap);
+        y: floor(i / 3) * (root.row-h + root.gap);
         width: root.cell-w;
         height: root.row-h;
         border-radius: Theme.radius-md;
@@ -684,16 +687,16 @@ component ThemeChoices inherits Rectangle {
             clicked => { root.picked(choice.id); }
         }
         HorizontalLayout {
-            padding-left: Theme.px(10px);
-            padding-right: Theme.px(10px);
-            spacing: Theme.px(10px);
+            padding-left: Theme.px(8px);
+            padding-right: Theme.px(8px);
+            spacing: Theme.px(8px);
             HorizontalLayout {
-                spacing: Theme.px(3px);
+                spacing: Theme.px(2px);
                 for swatch in choice.colors: Rectangle {
                     y: (parent.height - self.height) / 2;
-                    width: Theme.px(14px);
-                    height: Theme.px(14px);
-                    border-radius: Theme.px(7px);
+                    width: Theme.px(12px);
+                    height: Theme.px(12px);
+                    border-radius: Theme.px(6px);
                     border-width: 1px;
                     border-color: Theme.border-soft;
                     background: swatch;
@@ -712,12 +715,248 @@ component ThemeChoices inherits Rectangle {
     }
 }
 
+// The floating font list: which one is open (0 none, 1 the interface's, 2 the values'), and
+// where its button is, in window coordinates (SettingsModal draws it over the page).
+global FontMenu {
+    in-out property <int> open: 0;
+    in-out property <length> x;
+    in-out property <length> top;
+    in-out property <length> bottom;
+    in-out property <length> width;
+}
+
+// A font picked for the interface or the values (`which`: 1 or 2, see FontMenu): its name drawn
+// in it, a click opens or closes its list.
+component FontButton inherits VerticalLayout {
+    in property <int> which;
+    in property <string> title;
+    in property <string> family;
+    in property <string> default-family;
+    property <bool> open: FontMenu.open == root.which;
+
+    spacing: Theme.px(4px);
+    Text {
+        text: root.title;
+        font-size: Theme.pt(12px);
+        color: Theme.text-secondary;
+    }
+    Rectangle {
+        height: Theme.px(32px);
+        border-radius: Theme.radius-sm;
+        border-width: 1px;
+        border-color: root.open ? Theme.accent-blue-dim : Theme.border-soft;
+        background: area.has-hover ? Theme.bg-hover : Theme.bg-sunken;
+        area := TouchArea {
+            mouse-cursor: pointer;
+            clicked => {
+                FontMenu.x = self.absolute-position.x;
+                FontMenu.top = self.absolute-position.y;
+                FontMenu.bottom = self.absolute-position.y + self.height;
+                FontMenu.width = self.width;
+                FontMenu.open = root.open ? 0 : root.which;
+            }
+        }
+        HorizontalLayout {
+            padding-left: Theme.px(10px);
+            padding-right: Theme.px(10px);
+            spacing: Theme.px(8px);
+            Text {
+                text: root.family == "" ? @tr("{} (default)", root.default-family) : root.family;
+                font-family: root.family == "" ? root.default-family : root.family;
+                font-size: Theme.pt(13px);
+                color: Theme.text-primary;
+                vertical-alignment: center;
+                overflow: elide;
+                horizontal-stretch: 1;
+            }
+            VerticalLayout {
+                alignment: center;
+                IconChevron { size: Theme.icon-xs; down: !root.open; tint: Theme.text-tertiary; }
+            }
+        }
+    }
+}
+
+// The list of a font button, floating under it: a search, then the default and the installed
+// fonts, each drawn in itself; a click picks one, Esc closes it.
+component FontList inherits Rectangle {
+    in property <bool> mono;
+    in property <string> family;
+    in property <string> default-family;
+    callback picked(family: string);
+
+    property <length> row-h: Theme.px(30px);
+    init => { Preferences.fonts-requested(root.mono, ""); }
+    height: layout.preferred-height;
+    border-radius: Theme.radius-md;
+    border-width: 1px;
+    border-color: Theme.border-soft;
+    background: Theme.bg-elevated;
+    drop-shadow-color: Theme.shadow-color;
+    drop-shadow-blur: Theme.shadow-blur;
+    drop-shadow-offset-y: Theme.shadow-offset-y;
+    // absorbs clicks between the rows, so they don't reach what is under the list
+    TouchArea { }
+    layout := VerticalLayout {
+        padding: Theme.px(6px);
+        spacing: Theme.px(4px);
+        SearchField {
+            auto-focus: true;
+            placeholder: @tr("Search installed fonts");
+            font-size: Theme.pt(12px);
+            height: Theme.px(26px);
+            edited => { Preferences.fonts-requested(root.mono, self.text); }
+            key-intercept(event) => {
+                if event.text == Key.Escape {
+                    FontMenu.open = 0;
+                    return true;
+                }
+                return false;
+            }
+        }
+        if Preferences.fonts-loading: Text {
+            height: root.row-h;
+            text: @tr("Reading the installed fonts...");
+            font-size: Theme.pt(12px);
+            color: Theme.text-tertiary;
+            vertical-alignment: center;
+        }
+        if !Preferences.fonts-loading && Preferences.font-options.length == 0: Text {
+            height: root.row-h;
+            text: @tr("No font matches");
+            font-size: Theme.pt(12px);
+            color: Theme.text-tertiary;
+            vertical-alignment: center;
+        }
+        if !Preferences.fonts-loading && Preferences.font-options.length > 0: HorizontalLayout {
+            height: min(6.5 * root.row-h, Preferences.font-options.length * root.row-h);
+            list-flick := Flickable {
+                horizontal-stretch: 1;
+                interactive: true;
+                VerticalLayout {
+                    width: list-flick.width;
+                    alignment: start;
+                    for option in Preferences.font-options: Rectangle {
+                        height: root.row-h;
+                        border-radius: Theme.radius-sm;
+                        background: option == root.family ? Theme.bg-selected-soft : (option-area.has-hover ? Theme.bg-hover-elevated : transparent);
+                        option-area := TouchArea {
+                            mouse-cursor: pointer;
+                            clicked => { root.picked(option); }
+                        }
+                        HorizontalLayout {
+                            padding-left: Theme.px(8px);
+                            padding-right: Theme.px(8px);
+                            spacing: Theme.px(8px);
+                            Rectangle {
+                                width: Theme.px(14px);
+                                if option == root.family: IconCheck {
+                                    x: (parent.width - self.width) / 2;
+                                    y: (parent.height - self.height) / 2;
+                                    size: Theme.px(12px);
+                                    tint: Theme.accent-blue;
+                                }
+                            }
+                            Text {
+                                text: option == "" ? @tr("{} (default)", root.default-family) : option;
+                                font-family: option == "" ? root.default-family : option;
+                                font-size: Theme.pt(13px);
+                                color: Theme.text-primary;
+                                vertical-alignment: center;
+                                overflow: elide;
+                                horizontal-stretch: 1;
+                            }
+                        }
+                    }
+                }
+            }
+            if list-flick.content-height > list-flick.height: VScrollBar {
+                content-height: list-flick.content-height;
+                content-y <=> list-flick.content-y;
+            }
+        }
+    }
+}
+
+// The Display page's preview: a bit of a key as the key panel shows it, in the theme, the
+// syntax colors and the fonts picked (its colored text comes from Rust: `sample-*`).
+component DisplayPreview inherits Rectangle {
+    property <length> line-h: measure.preferred-height;
+    height: layout.preferred-height;
+    border-radius: Theme.radius-md;
+    border-width: 1px;
+    border-color: Theme.border-soft;
+    background: Theme.bg-app;
+    clip: true;
+    measure := Text {
+        visible: false;
+        text: "M";
+        font-family: Theme.font-mono;
+        font-size: Theme.pt(12px);
+    }
+    layout := VerticalLayout {
+        // a row as selected, then an open one
+        Rectangle {
+            height: Theme.px(26px);
+            background: Theme.bg-selected-soft;
+            HorizontalLayout {
+                padding-left: Theme.px(10px);
+                padding-right: Theme.px(10px);
+                spacing: Theme.px(14px);
+                Text {
+                    width: Theme.px(72px);
+                    text: "email";
+                    font-family: Theme.font-mono;
+                    font-size: Theme.pt(12px);
+                    color: Theme.text-secondary;
+                    vertical-alignment: center;
+                }
+                VerticalLayout {
+                    alignment: center;
+                    horizontal-stretch: 1;
+                    StyledText {
+                        height: root.line-h;
+                        text: Preferences.sample-field;
+                        default-color: Theme.text-primary;
+                        default-font-family: Theme.font-mono;
+                        default-font-size: Theme.pt(12px);
+                    }
+                }
+            }
+        }
+        HorizontalLayout {
+            padding-left: Theme.px(10px);
+            padding-right: Theme.px(10px);
+            padding-top: Theme.px(6px);
+            padding-bottom: Theme.px(8px);
+            spacing: Theme.px(14px);
+            Text {
+                width: Theme.px(72px);
+                text: "profile";
+                font-family: Theme.font-mono;
+                font-size: Theme.pt(12px);
+                color: Theme.text-secondary;
+                vertical-alignment: top;
+            }
+            StyledText {
+                horizontal-stretch: 1;
+                height: Preferences.sample-lines * root.line-h;
+                text: Preferences.sample-value;
+                default-color: Theme.text-primary;
+                default-font-family: Theme.font-mono;
+                default-font-size: Theme.pt(12px);
+            }
+        }
+    }
+}
+
 // the Display page's settings, each hidden when its `show-` is false (not found by the search)
 component DisplaySettings inherits VerticalLayout {
     in property <bool> show-language: true;
     in property <bool> show-zoom: true;
     in property <bool> show-theme: true;
     in property <bool> show-syntax: true;
+    in property <bool> show-fonts: true;
 
     spacing: Theme.px(20px);
     if root.show-language: VerticalLayout {
@@ -741,6 +980,29 @@ component DisplaySettings inherits VerticalLayout {
             released(percent) => { Preferences.zoom-selected(percent); }
         }
         SettingHint { text: SettingTexts.zoom-hint; }
+    }
+    if root.show-fonts: VerticalLayout {
+        init => { Preferences.fonts-shown(); }
+        spacing: Theme.px(6px);
+        SettingTitle { text: @tr("Fonts"); }
+        HorizontalLayout {
+            spacing: Theme.px(12px);
+            FontButton {
+                horizontal-stretch: 1;
+                which: 1;
+                title: @tr("Interface font");
+                family: Preferences.ui-font;
+                default-family: "Roboto";
+            }
+            FontButton {
+                horizontal-stretch: 1;
+                which: 2;
+                title: @tr("Font of values and queries");
+                family: Preferences.mono-font;
+                default-family: "JetBrains Mono";
+            }
+        }
+        SettingHint { text: SettingTexts.fonts-hint; }
     }
     if root.show-theme: VerticalLayout {
         spacing: Theme.px(6px);
@@ -770,7 +1032,6 @@ component GeneralSettings inherits VerticalLayout {
     in property <bool> show-opening-view: true;
     in property <bool> show-depth: true;
     in property <bool> show-restore: true;
-    in property <bool> show-check-updates: true;
 
     spacing: Theme.px(20px);
     if root.show-export: VerticalLayout {
@@ -811,27 +1072,15 @@ component GeneralSettings inherits VerticalLayout {
         SettingHint { text: SettingTexts.depth-hint; }
     }
 
-    if root.show-restore || root.show-check-updates: VerticalLayout {
+    if root.show-restore: VerticalLayout {
         spacing: Theme.px(4px);
         SettingTitle { text: @tr("Startup"); }
-        if root.show-restore: VerticalLayout {
-            spacing: Theme.px(4px);
-            CheckRow {
-                text: @tr("Restore the last connection");
-                checked: Preferences.restore-session;
-                toggled => { Preferences.restore-session-toggled(!Preferences.restore-session); }
-            }
-            SettingHint { text: SettingTexts.restore-hint; }
+        CheckRow {
+            text: @tr("Restore the last connection");
+            checked: Preferences.restore-session;
+            toggled => { Preferences.restore-session-toggled(!Preferences.restore-session); }
         }
-        if root.show-check-updates: VerticalLayout {
-            spacing: Theme.px(4px);
-            CheckRow {
-                text: @tr("Check for Updates at startup");
-                checked: Preferences.check-updates-at-startup;
-                toggled => { Preferences.check-updates-at-startup-toggled(!Preferences.check-updates-at-startup); }
-            }
-            SettingHint { text: SettingTexts.updates-hint; }
-        }
+        SettingHint { text: SettingTexts.restore-hint; }
     }
 }
 
@@ -974,7 +1223,17 @@ component AboutSettings inherits VerticalLayout {
                 primary: true;
                 clicked => { if (!About.busy) { About.download(); } }
             }
+            VerticalLayout {
+                alignment: center;
+                padding-left: Theme.px(8px);
+                CheckRow {
+                    text: @tr("Check for Updates at startup");
+                    checked: Preferences.check-updates-at-startup;
+                    toggled => { Preferences.check-updates-at-startup-toggled(!Preferences.check-updates-at-startup); }
+                }
+            }
         }
+        SettingHint { text: SettingTexts.updates-hint; }
         if About.status != "": Text {
             // a layout can't tell how far wrapped text grows: about 60 characters a line
             height: Theme.pt(16px) * max(1, ceil(self.text.character-count / 60));
@@ -1143,6 +1402,7 @@ export component SettingsModal inherits Rectangle {
     callback close();
     close => {
         Shortcuts.recording = false;
+        FontMenu.open = 0;
         Preferences.open = false;
     }
     // the connection profile form is showing instead of the list
@@ -1170,22 +1430,25 @@ export component SettingsModal inherits Rectangle {
     property <bool> found-zoom: root.hit(@tr("Display") + " " + @tr("Zoom") + " " + SettingTexts.zoom-hint);
     property <bool> found-theme: root.hit(@tr("Display") + " " + @tr("Theme") + " " + SettingTexts.theme-hint);
     property <bool> found-syntax: root.hit(@tr("Display") + " " + @tr("Syntax highlighting") + " " + SettingTexts.syntax-hint);
+    property <bool> found-fonts: root.hit(@tr("Display") + " " + @tr("Fonts") + " " + @tr("Interface font") + " " + @tr("Font of values and queries") + " " + SettingTexts.fonts-hint);
+    // the preview: on the Display page, and over the search's results when they hold a setting it shows
+    property <bool> preview-shown: !root.on-ssh-form && !root.on-conn-form
+        && (root.searching ? root.found-theme || root.found-syntax || root.found-fonts : root.category == SettingsCategory.display);
     property <bool> found-export: root.hit(@tr("General") + " " + @tr("Export format") + " " + @tr("JSON") + " " + @tr("Escaped JSON"));
     property <bool> found-opening-view: root.hit(@tr("General") + " " + @tr("New tabs open in") + " " + @tr("Fields view") + " " + @tr("Table view") + " " + @tr("Last view picked") + " " + SettingTexts.opening-view-hint);
     property <bool> found-depth: root.hit(@tr("General") + " " + @tr("Search depth") + " 60 200 1000 " + SettingTexts.depth-hint);
     property <bool> found-restore: root.hit(@tr("General") + " " + @tr("Startup") + " " + @tr("Restore the last connection") + " " + SettingTexts.restore-hint);
-    property <bool> found-check-updates: root.hit(@tr("General") + " " + @tr("Startup") + " " + @tr("Check for Updates at startup") + " " + SettingTexts.updates-hint);
     property <bool> found-server-search: root.hit(@tr("Experimental") + " " + @tr("Search on the server (Lua script)") + " " + SettingTexts.server-search-hint);
     property <bool> found-version: root.hit(@tr("About") + " Cachemire Léo Parent " + About.version + " " + @tr("GitHub repository"));
-    property <bool> found-updates: root.hit(@tr("About") + " " + @tr("Updates") + " " + @tr("Stable") + " " + @tr("Beta") + " " + @tr("Check for updates"));
+    property <bool> found-updates: root.hit(@tr("About") + " " + @tr("Updates") + " " + @tr("Stable") + " " + @tr("Beta") + " " + @tr("Check for updates") + " " + @tr("Check for Updates at startup") + " " + SettingTexts.updates-hint);
     property <bool> found-ssh: root.hit(@tr("SSH profiles") + " " + @tr("Add profile") + " " + SettingTexts.ssh-hint + " " + @tr("Accept new SSH host keys automatically") + " " + SettingTexts.host-keys-hint);
     property <bool> found-conn: root.hit(@tr("Connection profiles") + " " + @tr("Add profile") + " " + SettingTexts.conn-hint);
     property <bool> found-any: root.found(SettingsCategory.general) || root.found(SettingsCategory.display) || root.found(SettingsCategory.key-bindings) || root.found(SettingsCategory.ssh-profiles)
         || root.found(SettingsCategory.conn-profiles) || root.found(SettingsCategory.experimental) || root.found(SettingsCategory.about);
 
     pure function found(category: SettingsCategory) -> bool {
-        return category == SettingsCategory.general ? root.found-export || root.found-opening-view || root.found-depth || root.found-restore || root.found-check-updates
-            : category == SettingsCategory.display ? root.found-language || root.found-zoom || root.found-theme || root.found-syntax
+        return category == SettingsCategory.general ? root.found-export || root.found-opening-view || root.found-depth || root.found-restore
+            : category == SettingsCategory.display ? root.found-language || root.found-zoom || root.found-theme || root.found-syntax || root.found-fonts
             : category == SettingsCategory.key-bindings ? root.query == "" || Shortcuts.rows.length > 0 || Shortcuts.standard.length > 0
             : category == SettingsCategory.ssh-profiles ? root.found-ssh
             : category == SettingsCategory.conn-profiles ? root.found-conn
@@ -1194,7 +1457,10 @@ export component SettingsModal inherits Rectangle {
     }
 
     init => { Shortcuts.filter-changed("", "", ""); }
-    changed query => { Shortcuts.filter-changed(root.query, @tr("Key bindings"), @tr("Standard keys")); }
+    changed query => {
+        FontMenu.open = 0;
+        Shortcuts.filter-changed(root.query, @tr("Key bindings"), @tr("Standard keys"));
+    }
     // starting or ending a search closes an open form, as picking a category does
     changed searching => { root.select(root.category); }
 
@@ -1203,9 +1469,11 @@ export component SettingsModal inherits Rectangle {
     property <bool> on-conn-form: root.editing-conn-profile && (root.searching || root.category == SettingsCategory.conn-profiles);
 
     // Esc not taken inside (the search box empties first, a key being recorded stops): an open
-    // form goes back to its list, as Cancel does, else the window closes
+    // font list closes, an open form goes back to its list as Cancel does, else the window closes
     public function escape() {
-        if root.on-ssh-form || root.on-conn-form {
+        if FontMenu.open != 0 {
+            FontMenu.open = 0;
+        } else if root.on-ssh-form || root.on-conn-form {
             root.editing = false;
             root.editing-conn-profile = false;
         } else {
@@ -1215,6 +1483,7 @@ export component SettingsModal inherits Rectangle {
 
     function select(category: SettingsCategory) {
         Shortcuts.recording = false;
+        FontMenu.open = 0;
         root.editing = false;
         root.editing-conn-profile = false;
         root.confirming-delete = false;
@@ -1252,7 +1521,7 @@ export component SettingsModal inherits Rectangle {
         cross-axis-alignment: center;
 
         card := Rectangle {
-            width: min(Theme.px(780px), root.width - Theme.px(32px));
+            width: min(Theme.px(860px), root.width - Theme.px(32px));
             height: min(Theme.px(810px), root.height - Theme.px(48px));
             background: Theme.bg-elevated;
             border-radius: Theme.radius-lg;
@@ -1394,6 +1663,7 @@ export component SettingsModal inherits Rectangle {
                         }
                     }
 
+                    if root.preview-shown: DisplayPreview { }
                     if !root.searching && root.category == SettingsCategory.general: SettingsPage {
                         GeneralSettings { }
                     }
@@ -1428,7 +1698,6 @@ export component SettingsModal inherits Rectangle {
                                 show-opening-view: root.found-opening-view;
                                 show-depth: root.found-depth;
                                 show-restore: root.found-restore;
-                                show-check-updates: root.found-check-updates;
                             }
                         }
                         if root.found(SettingsCategory.display): ResultSection {
@@ -1439,6 +1708,7 @@ export component SettingsModal inherits Rectangle {
                                 show-zoom: root.found-zoom;
                                 show-theme: root.found-theme;
                                 show-syntax: root.found-syntax;
+                                show-fonts: root.found-fonts;
                             }
                         }
                         if root.found(SettingsCategory.key-bindings): ResultSection {
@@ -1581,6 +1851,29 @@ export component SettingsModal inherits Rectangle {
                     }
                 }
             }
+        }
+    }
+
+    // the open font list, over everything: a click elsewhere closes it, and nothing scrolls behind
+    if FontMenu.open != 0: BackdropArea {
+        clicked => { FontMenu.open = 0; }
+    }
+    if FontMenu.open != 0: FontList {
+        property <length> below: FontMenu.bottom - root.absolute-position.y + Theme.px(4px);
+        x: FontMenu.x - root.absolute-position.x;
+        y: self.below + self.height <= root.height - Theme.px(12px) ? self.below
+            : FontMenu.top - root.absolute-position.y - self.height - Theme.px(4px);
+        width: max(FontMenu.width, Theme.px(280px));
+        mono: FontMenu.open == 2;
+        family: FontMenu.open == 2 ? Preferences.mono-font : Preferences.ui-font;
+        default-family: FontMenu.open == 2 ? "JetBrains Mono" : "Roboto";
+        picked(family) => {
+            if FontMenu.open == 2 {
+                Preferences.mono-font-selected(family);
+            } else {
+                Preferences.ui-font-selected(family);
+            }
+            FontMenu.open = 0;
         }
     }
 }

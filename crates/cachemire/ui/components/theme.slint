@@ -76,11 +76,10 @@ export global Theme {
     // bumped when the theme changes: what Rust colors (a query's text) is asked for again
     in property <int> paint-tick: 0;
 
-    // fonts — both families are bundled with the app (see the imports at the
-    // top of this file), so the interface looks the same on every machine
-    // whatever happens to be installed
-    out property <string> font-ui: "Roboto";
-    out property <string> font-mono: "JetBrains Mono";
+    // fonts: the ones bundled with the app (see the imports at the top of this file)
+    // unless the Display settings picked installed ones (set from Rust)
+    in property <string> font-ui: "Roboto";
+    in property <string> font-mono: "JetBrains Mono";
 
     // UI zoom: 1.0 = 100%. Multiply any base pixel value through `Theme.px()`
     // (or `Theme.pt()` for font sizes) so it scales with Ctrl+/Ctrl-/Ctrl+scroll.

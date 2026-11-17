@@ -208,6 +208,22 @@ export global Preferences {
     in property <[ThemeChoice]> syntax-themes;
     in property <string> syntax-theme;
     callback syntax-theme-selected(id: string);
+    // the fonts picked for the interface and for values and queries ("" for the app's own)
+    in-out property <string> ui-font: "";
+    in-out property <string> mono-font: "";
+    callback ui-font-selected(family: string);
+    callback mono-font-selected(family: string);
+    // what the open font menu lists ("" for the app's own font): the installed fonts holding
+    // `filter`, monospaced ones only for `mono`; `fonts-loading` while they're being read
+    in-out property <[string]> font-options: [];
+    in-out property <bool> fonts-loading: false;
+    callback fonts-requested(mono: bool, filter: string);
+    // the font menus are on screen: their fonts start being read, ahead of a menu opening
+    callback fonts-shown();
+    // the Display preview's sample, colored as the rows are: a text field, a JSON one and its lines
+    in-out property <styled-text> sample-field;
+    in-out property <styled-text> sample-value;
+    in-out property <int> sample-lines: 0;
     // the zoom the app starts at and Ctrl+0 returns to, in percent
     in-out property <int> zoom: 100;
     callback zoom-selected(percent: int);

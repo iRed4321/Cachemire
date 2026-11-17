@@ -23,11 +23,13 @@ pub const COMBOS: &[Combo] = &[
     Combo { id: "nord", name: "Nord", colors: [0x2e3440, 0xe5e9f0, 0x88c0d0, 0xebcb8b] },
     Combo { id: "dracula", name: "Dracula", colors: [0x282a36, 0xf8f8f2, 0xbd93f9, 0xf1fa8c] },
     Combo { id: "tokyo-night", name: "Tokyo Night", colors: [0x1a1b26, 0xc0caf5, 0x7aa2f7, 0xe0af68] },
+    Combo { id: "one-dark", name: "One Dark", colors: [0x282c34, 0xdcdfe4, 0x61afef, 0xe5c07b] },
     Combo { id: "catppuccin-mocha", name: "Catppuccin Mocha", colors: [0x1e1e2e, 0xcdd6f4, 0x89b4fa, 0xf9e2af] },
     Combo { id: "gruvbox-dark", name: "Gruvbox Dark", colors: [0x282828, 0xebdbb2, 0x83a598, 0xfabd2f] },
     Combo { id: "solarized-dark", name: "Solarized Dark", colors: [0x002b36, 0xeee8d5, 0x268bd2, 0xb58900] },
     Combo { id: "cachemire-light", name: "Cachemire Light", colors: [0xf4f4f6, 0x1c1c1e, 0x2f6fde, 0xb97a00] },
     Combo { id: "github-light", name: "GitHub Light", colors: [0xffffff, 0x1f2328, 0x0969da, 0x9a6700] },
+    Combo { id: "catppuccin-latte", name: "Catppuccin Latte", colors: [0xeff1f5, 0x2a2c3e, 0x1e66f5, 0xdf8e1d] },
     Combo { id: "solarized-light", name: "Solarized Light", colors: [0xfdf6e3, 0x073642, 0x268bd2, 0xb58900] },
 ];
 
@@ -104,6 +106,26 @@ pub const SYNTAXES: &[Syntax] = &[
         bool: 0xbb9af7,
         punct: 0x737aa2,
         variable: 0xf7768e,
+    },
+    Syntax {
+        id: "catppuccin",
+        name: "Catppuccin",
+        key: 0x89b4fa,
+        string: 0xa6e3a1,
+        number: 0xfab387,
+        bool: 0xcba6f7,
+        punct: 0x9399b2,
+        variable: 0xf5c2e7,
+    },
+    Syntax {
+        id: "rose-pine",
+        name: "Rosé Pine",
+        key: 0x9ccfd8,
+        string: 0xf6c177,
+        number: 0xc4a7e7,
+        bool: 0xeb6f92,
+        punct: 0x908caa,
+        variable: 0xebbcba,
     },
     Syntax {
         id: "gruvbox",
@@ -395,6 +417,11 @@ pub fn apply(window: &MainWindow, combo_id: &str, syntax_id: &str) {
     let preferences = window.global::<Preferences>();
     preferences.set_theme(combo.id.into());
     preferences.set_syntax_theme(syntax.id.into());
+    // the Display settings' sample, in these colors
+    let (field, value, lines) = crate::key_detail::display_sample();
+    preferences.set_sample_field(field);
+    preferences.set_sample_value(value);
+    preferences.set_sample_lines(lines);
 }
 
 /// One choice of a list in the settings: its name and the colors of its swatches.

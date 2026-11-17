@@ -134,6 +134,12 @@ fn apply_theme(window: &MainWindow, state: &AppState) {
     crate::theme::apply(window, settings.theme(), settings.syntax_theme());
 }
 
+/// Gives the interface and the values the fonts the settings hold.
+fn apply_fonts(window: &MainWindow, state: &AppState) {
+    let settings = state.settings.lock();
+    crate::fonts::apply(window, settings.ui_font(), settings.mono_font());
+}
+
 /// [`apply_theme`], then the shown tab again so the text Rust colored takes the new colors.
 fn repaint(window: &MainWindow, state: &AppState) {
     apply_theme(window, state);
@@ -149,6 +155,7 @@ pub fn init(window: &MainWindow, state: Arc<AppState>, rt: Handle) {
     window.global::<Theme>().set_zoom(zoom as f32 / 100.0);
     crate::theme::init(window);
     apply_theme(window, &state);
+    apply_fonts(window, &state);
     window.global::<Preferences>().set_server_search(state.settings.lock().server_search());
     window.global::<Preferences>().set_check_updates_at_startup(state.settings.lock().check_updates_at_startup());
     window.global::<Preferences>().set_restore_session(state.settings.lock().restore_session());
@@ -283,6 +290,34 @@ pub fn init(window: &MainWindow, state: Arc<AppState>, rt: Handle) {
             let Some(window) = weak.upgrade() else { return };
             let result = state.settings.lock().set_syntax_theme(&id);
             saved(&window, result, |window| repaint(window, &state));
+        }
+    });
+
+    // the two font menus: their lists, and the font picked, saved and applied at once
+    window.global::<Preferences>().on_fonts_requested({
+        let weak = window.as_weak();
+        move |mono, filter| {
+            let Some(window) = weak.upgrade() else { return };
+            crate::fonts::request(&window, mono, filter.to_string());
+        }
+    });
+    window.global::<Preferences>().on_fonts_shown(crate::fonts::prepare);
+    window.global::<Preferences>().on_ui_font_selected({
+        let weak = window.as_weak();
+        let state = state.clone();
+        move |family| {
+            let Some(window) = weak.upgrade() else { return };
+            let result = state.settings.lock().set_ui_font(&family);
+            saved(&window, result, |window| apply_fonts(window, &state));
+        }
+    });
+    window.global::<Preferences>().on_mono_font_selected({
+        let weak = window.as_weak();
+        let state = state.clone();
+        move |family| {
+            let Some(window) = weak.upgrade() else { return };
+            let result = state.settings.lock().set_mono_font(&family);
+            saved(&window, result, |window| apply_fonts(window, &state));
         }
     });
 

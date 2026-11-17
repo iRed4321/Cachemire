@@ -33,8 +33,14 @@ fn the_startup_update_check_box_saves_the_setting_both_ways() {
     let (mut h, _rt) = settings_open(&state);
     assert!(!h.window.global::<Preferences>().get_check_updates_at_startup(), "off by default");
 
+    let to_about = |h: &Harness| {
+        back_to_settings(h);
+        h.window.global::<Preferences>().set_category(crate::SettingsCategory::About);
+    };
+    to_about(&h);
+    h.frame();
     let on = |h: &Harness| h.window.global::<Preferences>().get_check_updates_at_startup();
-    let at = sweep(&mut h, 300..1000, 100..780, 6, back_to_settings, on).expect("the box was found and ticked");
+    let at = sweep(&mut h, 300..1000, 100..780, 6, to_about, on).expect("the box was found and ticked");
     assert!(state.settings.lock().check_updates_at_startup(), "ticking it saves it");
 
     h.click(at.0, at.1);

@@ -16,6 +16,8 @@ serde_json = { workspace = true, features = ["preserve_order"] }
 serde_norway = "0.9"
 roxmltree = "0.21"
 icu_normalizer = { version = "2", default-features = false, features = ["compiled_data"] }
+fontique = "0.12"
+skrifa = "0.44"
 uuid.workspace = true
 arboard = { version = "3", default-features = false, features = ["wayland-data-control"] }
 # only the portal: dialogs are never attached to a parent window, so no Wayland support is needed

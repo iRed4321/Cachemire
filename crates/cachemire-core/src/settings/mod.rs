@@ -95,6 +95,11 @@ struct StoredSettings {
     theme: String,
     #[serde(default)]
     syntax_theme: String,
+    // the fonts of the interface and of values and queries, by family name ("": the app's own)
+    #[serde(default)]
+    ui_font: String,
+    #[serde(default)]
+    mono_font: String,
     // the keyboard shortcuts changed from their defaults: an action's name, and its keys
     #[serde(default)]
     shortcuts: BTreeMap<String, Vec<String>>,
@@ -232,6 +237,28 @@ impl SettingsStore {
     pub fn set_syntax_theme(&mut self, theme: &str) -> Result<(), Error> {
         let mut next = self.state.clone();
         next.syntax_theme = theme.to_string();
+        self.commit(next, false)
+    }
+
+    /// The interface's font family, as picked ("" for the app's own).
+    pub fn ui_font(&self) -> &str {
+        &self.state.ui_font
+    }
+
+    pub fn set_ui_font(&mut self, family: &str) -> Result<(), Error> {
+        let mut next = self.state.clone();
+        next.ui_font = family.to_string();
+        self.commit(next, false)
+    }
+
+    /// The font family of values and queries, as picked ("" for the app's own).
+    pub fn mono_font(&self) -> &str {
+        &self.state.mono_font
+    }
+
+    pub fn set_mono_font(&mut self, family: &str) -> Result<(), Error> {
+        let mut next = self.state.clone();
+        next.mono_font = family.to_string();
         self.commit(next, false)
     }
 

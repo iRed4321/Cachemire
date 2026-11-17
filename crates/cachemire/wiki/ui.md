@@ -131,11 +131,19 @@ to them.
   brought closer to the text color when it would not read on the background. Both are picked in the
   Display settings (`Preferences.theme`, `syntax-theme`); picking one applies it, bumps
   `Theme.paint-tick` (the query box is colored again) and shows the tab again (`tabs::repaint`).
-  Profile colors (`profile-color`) are fixed.
+  It also refills the Display page's preview (`Preferences.sample-*`, from
+  [`key_detail::display_sample`](crate::key_detail::display_sample)), colored as the rows are. The
+  preview (`DisplayPreview`) shows on the Display page, and above the search's results when they hold
+  the theme, syntax or font settings. Profile colors (`profile-color`) are fixed.
   `bg-app` is `bg-app-base` mixed with the profile tint when `env-tinted` is true (25%), and
   `chrome-border` mixes 50%. This is how a connection profile (Production = red...) colors the window.
 - **Fonts**: `font-ui` = Roboto, `font-mono` = JetBrains Mono, both bundled by `import "...ttf"` lines
-  at the top of the file. Roboto has no 600 weight, so 600 renders as Bold.
+  at the top of the file, unless the Display settings picked installed ones (`ui_font`, `mono_font`,
+  "" for these; [`fonts::apply`](crate::fonts::apply) sets them). The menus' lists come from
+  [`fonts::request`](crate::fonts::request): the families fontique finds (as Slint does), read once on a
+  thread of their own, started when the Fonts section shows (`fonts-shown`, [`fonts::prepare`](crate::fonts::prepare)); a family is monospaced when its `i`, `M`, `W` and `a` take one width, one lacking
+  them is left out. The list floats over the Settings window: its button writes where it is in the
+  `FontMenu` global (`settings.slint`), and `SettingsModal` draws it under the button, or above it. Roboto has no 600 weight, so 600 renders as Bold.
 - **Zoom**: `Theme.zoom` (1.0 = 100%, bounds 0.6..2.0, step 0.1 in `main.slint`). The Display setting
   (`Preferences.zoom`, saved as `zoom` percent) sets it at start and on release of its slider; Ctrl+0 returns to it.
   `Theme.px(base)` and `Theme.pt(base)` both multiply by `zoom` (the two are identical; `pt` marks a
