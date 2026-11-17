@@ -128,9 +128,9 @@ export component KeyDetail inherits Rectangle {
     callback sort-toggled();
     sort-toggled => { KeyPanel.sort-toggled(); }
 
-    // The smart box's search: Enter turns its text into badges (a quoted run is one, else
-    // each word), its list picks where they look; all must match (AND) in their own scope,
-    // with one case setting for all. A text starting with `$` or `.` is a path instead.
+    // The smart box's search: Enter turns its text into one badge (spaces included), its list
+    // picks where it looks; all must match (AND) in their own scope, with one case setting
+    // for all. A text starting with `$` or `.` is a path instead.
     in-out property <[BadgeData]> filter-badges: KeyPanel.filter-badges;
     in-out property <bool> filter-case-sensitive <=> KeyPanel.filter-case-sensitive;
     in-out property <string> filter-query <=> KeyPanel.filter-query;
@@ -304,9 +304,12 @@ export component KeyDetail inherits Rectangle {
                             root.filter-query-submitted();
                         }
                         badge-removed(text, scope) => { root.filter-badge-removed(text, scope); }
-                        // as if typed again: its list offers where to search for it
+                        // as if typed again, with its scope's prefix
                         badge-clicked(text, scope) => {
                             let end = KeyPanel.filter-badge-edited(text, scope);
+                            if end < 0 {
+                                return;
+                            }
                             root.filter-cursor = end;
                             root.filter-place-at = end;
                             root.filter-place-tick += 1;
@@ -316,9 +319,15 @@ export component KeyDetail inherits Rectangle {
                             root.json-filter = "";
                             root.json-filter-submitted();
                         }
-                        // as for a badge: the filter dropped, its path in the box to be edited, the caret at
-                        // its end (an offset past it lands there) and the path's keys listed again
+                        // as for a badge: words typed become a badge, the filter is dropped, its path goes in the
+                        // box, the caret at its end (an offset past it lands there), the path's keys listed again
                         filter-clicked => {
+                            if root.is-words(root.filter-query) {
+                                root.filter-query-submitted();
+                                if root.filter-query != "" {
+                                    return;
+                                }
+                            }
                             let path = root.json-filter;
                             root.json-filter = "";
                             root.json-filter-submitted();
@@ -350,12 +359,8 @@ export component KeyDetail inherits Rectangle {
                             root.suggest-x = self.caret-x;
                             root.suggest-y = self.caret-bottom;
                             suggest-popup.selected = -1;
-                            if KeyPanel.filter-query-edited(root.filter-query, root.filter-cursor) {
-                                root.close-suggestions();
-                            } else {
-                                // words list only on Tab; a path lists its keys as it is typed
-                                root.suggest-open = root.filter-query != "" && !root.is-words(root.filter-query) && root.suggest(root.filter-query, root.filter-cursor);
-                            }
+                            // words list only on Tab; a path lists its keys as it is typed
+                            root.suggest-open = root.filter-query != "" && !root.is-words(root.filter-query) && root.suggest(root.filter-query, root.filter-cursor);
                         }
                         caret-moved => {
                             root.filter-cursor = self.cursor-byte;

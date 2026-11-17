@@ -23,6 +23,7 @@ mod edit;
 mod export;
 mod field;
 mod filtering;
+mod fold;
 mod formats;
 mod full_value;
 mod highlight;
@@ -64,16 +65,11 @@ const MAX_BADGES: usize = 5;
 /// search/filter looking further in) barely has to wait for the next page.
 const HASH_PAGE_SIZE: usize = 200;
 
-/// The smart box's search, read from the window: its applied badges (the model Rust itself
+/// The smart box's search, read from the window: its badges (the model Rust itself
 /// just wrote, so this never disagrees with what's shown) and the case-sensitivity toggle.
 fn current_search_filter(window: &MainWindow) -> SearchFilter {
-    let terms = window
-        .global::<KeyPanel>()
-        .get_filter_badges()
-        .iter()
-        .filter(|b| !b.pending)
-        .map(|b| SearchTerm { text: b.text.to_string(), scope: b.scope })
-        .collect();
+    let terms =
+        window.global::<KeyPanel>().get_filter_badges().iter().map(|b| SearchTerm { text: b.text.to_string(), scope: b.scope }).collect();
     SearchFilter::new(terms, window.global::<KeyPanel>().get_filter_case_sensitive())
 }
 
@@ -116,7 +112,7 @@ type FetchedCache = Arc<Mutex<FxHashMap<(String, String), FetchedKey>>>;
 /// A search badge is applied or the JSON path filter holds something: the signal to
 /// keep paging through the rest of a hash without waiting for a scroll.
 fn search_or_filter_active(window: &MainWindow) -> bool {
-    window.global::<KeyPanel>().get_filter_badges().iter().any(|b| !b.pending) || !window.global::<KeyPanel>().get_json_filter().is_empty()
+    window.global::<KeyPanel>().get_filter_badges().row_count() > 0 || !window.global::<KeyPanel>().get_json_filter().is_empty()
 }
 
 /// State shared across `init`'s callback closures and `load_key`, bundled
@@ -474,10 +470,6 @@ pub fn init(window: &MainWindow, state: Arc<AppState>, rt: Handle) -> KeyDetail 
     panel.on_filter_badge_removed({
         let ctx = ctx.clone();
         move |text, scope| ctx.on_filter_badge_removed(&text, scope)
-    });
-    panel.on_filter_query_edited({
-        let ctx = ctx.clone();
-        move |text, cursor| ctx.on_filter_query_edited(&text, cursor)
     });
     panel.on_filter_badge_edited({
         let ctx = ctx.clone();

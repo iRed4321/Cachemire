@@ -1069,6 +1069,7 @@ dependencies = [
  "arboard",
  "cachemire-core",
  "dirs",
+ "icu_normalizer",
  "natord",
  "open",
  "parking_lot 0.13.0",

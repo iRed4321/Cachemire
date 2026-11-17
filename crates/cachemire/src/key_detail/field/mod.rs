@@ -4,6 +4,7 @@
 
 use parking_lot::Mutex;
 use rustc_hash::{FxHashMap, FxHashSet};
+use std::borrow::Cow;
 use std::sync::{Arc, OnceLock};
 
 use rayon::prelude::*;
@@ -11,6 +12,7 @@ use rust_i18n::t;
 use serde::Serialize;
 use serde_json::Value;
 
+use super::fold::fold;
 use super::formats::{ShowFormat, structured_value};
 use super::pretty_text::ColoredParagraph;
 
@@ -43,27 +45,16 @@ pub(super) struct Field {
     pub(super) too_long: Option<usize>,
     // the value isn't UTF-8 text: `raw` writes its other bytes as `\xNN`, and it is never edited
     pub(super) binary: bool,
-    // lowercased on first use by a case-insensitive search, then kept for
-    // every later keystroke/badge — `raw` especially can be a large JSON
-    // blob, not worth re-lowering on every pass over the fields
-    lower_name: OnceLock<String>,
-    lower_raw: OnceLock<String>,
+    // `name` and `raw` as the search reads them (`fold`), case kept then not, made on first
+    // use and kept for every later badge (`None`: the text itself); `raw` can be a large blob
+    folded: [[OnceLock<Option<String>>; 2]; 2],
     // the object or array a YAML or XML value stands for, read on first use by the table
     structured: OnceLock<Option<Value>>,
 }
 
 impl Field {
     pub(super) fn new(name: String, raw: String, json: Option<Value>) -> Field {
-        Field {
-            name,
-            raw,
-            json,
-            too_long: None,
-            binary: false,
-            lower_name: OnceLock::new(),
-            lower_raw: OnceLock::new(),
-            structured: OnceLock::new(),
-        }
+        Field { name, raw, json, too_long: None, binary: false, folded: Default::default(), structured: OnceLock::new() }
     }
 
     /// A hash field whose value, `size` bytes long, was left out for its size.
@@ -107,13 +98,25 @@ impl Field {
         self.json.as_ref().or_else(|| self.structured.get_or_init(|| structured_value(&self.raw)).as_ref())
     }
 
-    pub(super) fn lower_name(&self) -> &str {
-        self.lower_name.get_or_init(|| self.name.to_lowercase())
+    /// The field's name as a search matching case or not reads it.
+    pub(super) fn searched_name(&self, case_sensitive: bool) -> &str {
+        folded_once(&self.folded[0][usize::from(case_sensitive)], &self.name, case_sensitive)
     }
 
-    pub(super) fn lower_raw(&self) -> &str {
-        self.lower_raw.get_or_init(|| self.raw.to_lowercase())
+    /// The field's raw value as a search matching case or not reads it.
+    pub(super) fn searched_raw(&self, case_sensitive: bool) -> &str {
+        folded_once(&self.folded[1][usize::from(case_sensitive)], &self.raw, case_sensitive)
     }
+}
+
+/// `text` folded, kept in `cell` the first time when that differs from `text`.
+fn folded_once<'a>(cell: &'a OnceLock<Option<String>>, text: &'a str, case_sensitive: bool) -> &'a str {
+    cell.get_or_init(|| match fold(text, case_sensitive) {
+        Cow::Borrowed(_) => None,
+        Cow::Owned(folded) => Some(folded),
+    })
+    .as_deref()
+    .unwrap_or(text)
 }
 
 /// The loaded key's fields in display order. Each sits behind an `Arc` so a

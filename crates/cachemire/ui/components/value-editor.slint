@@ -1,5 +1,5 @@
 import { Theme } from "theme.slint";
-import { ModalButton, TextMenuPopup } from "widgets.slint";
+import { ModalButton, TextMenuPopup, BackdropArea } from "widgets.slint";
 import { ConnectionModalField } from "connection-picker.slint";
 import { Shortcuts } from "../globals.slint";
 import { FormatPicker } from "key-detail-widgets.slint";
@@ -94,7 +94,7 @@ export component ValueEditorModal inherits Rectangle {
     }
 
     background: #000000aa;
-    TouchArea {
+    BackdropArea {
         clicked => { ValueEditor.open = false; }
     }
 

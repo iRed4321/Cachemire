@@ -1,12 +1,12 @@
-//! The key header's smart box: its words become badges (see `filtering`), a space leaving
-//! them waiting until Enter applies them all; a text starting with `$` or `.` is a JSON path
-//! filtering the values. Its list offers the path's keys, or for words where to look.
+//! The key header's smart box: Enter makes its text one badge, spaces included (see
+//! `filtering`); a text starting with `$` or `.` is a JSON path filtering the values.
+//! Its list offers the path's keys, or for words where to look.
 
 use rust_i18n::t;
-use slint::{ComponentHandle, ModelRc, VecModel};
+use slint::{ComponentHandle, Model, ModelRc, VecModel};
 
 use super::Ctx;
-use crate::{CompletionEdit, KeyPanel, SearchScope, SuggestionRow};
+use crate::{BadgeData, CompletionEdit, KeyPanel, SearchScope, SuggestionRow};
 
 /// What one item of the list does with the words typed.
 enum Choice {
@@ -125,7 +125,7 @@ impl Ctx {
         let rows: Vec<SuggestionRow> = choices(text).iter().enumerate().map(|(i, choice)| row(choice, typed && i == 0)).collect();
         let any = !rows.is_empty();
         window.global::<KeyPanel>().set_suggestions(ModelRc::new(VecModel::from(rows)));
-        let footer = t!("Space adds a search, Enter applies them; all must match. Click one to edit it, Backspace removes the last one.");
+        let footer = t!("Enter adds the search; all must match. Click one or press ← to edit it, Backspace removes the last one.");
         window.global::<KeyPanel>().set_suggestion_footer(footer.as_ref().into());
         any
     }
@@ -145,16 +145,15 @@ impl Ctx {
             Some(Choice::Filter(path)) if scoped(&text).1.trim().is_empty() => {
                 return CompletionEdit { cursor: path.len() as i32, text: path.into() };
             }
-            Some(Choice::Search(scope, words)) => self.add_badges(scope, &words, true),
+            Some(Choice::Search(scope, words)) => self.add_badge(scope, &words),
             Some(Choice::Filter(path)) => self.apply_path(&path),
             None => {}
         }
         CompletionEdit { text, cursor: -1 }
     }
 
-    /// Enter in the smart box: its path becomes the JSON filter, or its words become
-    /// badges, searched everywhere unless a `field:` or `value:` prefix (or `f:`, `v:`) says otherwise;
-    /// either way the badges waiting are applied.
+    /// Enter in the smart box: its path becomes the JSON filter, or its words one badge,
+    /// searched everywhere unless a `field:` or `value:` prefix (or `f:`, `v:`) says otherwise.
     pub(super) fn on_filter_query_submitted(&self) {
         let Some(window) = self.weak.upgrade() else { return };
         let text = window.global::<KeyPanel>().get_filter_query();
@@ -162,47 +161,45 @@ impl Ctx {
             self.apply_path(text.trim());
         } else {
             let (named, words) = scoped(&text);
-            self.add_badges(named.unwrap_or(SearchScope::Everywhere), words, true);
+            self.add_badge(named.unwrap_or(SearchScope::Everywhere), words);
         }
     }
 
-    /// The box's text edited: a space typed at its end, past words and outside an open
-    /// quote, makes them badges, waiting for Enter to apply them; whether it did.
-    pub(super) fn on_filter_query_edited(&self, text: &str, cursor: i32) -> bool {
-        let Some(window) = self.weak.upgrade() else { return false };
-        let at_end = usize::try_from(cursor).is_ok_and(|cursor| cursor == text.len());
-        if is_path(text) || !at_end || !text.ends_with(' ') || text.matches('"').count() % 2 == 1 {
-            return false;
-        }
-        let (named, words) = scoped(text);
-        if words.trim().is_empty() {
-            return false;
-        }
-        self.add_badges(named.unwrap_or(SearchScope::Everywhere), words, false);
-        window.global::<KeyPanel>().get_filter_query().is_empty()
-    }
-
-    /// A badge's text clicked: it is dropped and its text goes at the end of the box, quoted
-    /// when it holds a space so it stays one term; where the box's text then ends.
+    /// A badge's text clicked (or ← at the box's start): what is typed becomes a search first,
+    /// then the badge goes back in the box with its scope's prefix; where the box's text ends,
+    /// or -1 when a path typed doesn't parse (it stays in the box, the badge stays too).
     pub(super) fn on_filter_badge_edited(&self, text: &str, scope: SearchScope) -> i32 {
-        let Some(window) = self.weak.upgrade() else { return 0 };
-        self.on_filter_badge_removed(text, scope);
-        let term = if text.contains(char::is_whitespace) { format!("\"{text}\"") } else { text.to_string() };
-        let typed = window.global::<KeyPanel>().get_filter_query();
-        let query = if typed.trim().is_empty() { term } else { format!("{} {term}", typed.trim_end()) };
-        window.global::<KeyPanel>().set_filter_query(query.as_str().into());
+        let Some(window) = self.weak.upgrade() else { return -1 };
+        let panel = window.global::<KeyPanel>();
+        let typed = panel.get_filter_query();
+        if is_path(&typed) {
+            self.apply_path(typed.trim());
+            if !panel.get_filter_query().is_empty() {
+                return -1;
+            }
+        }
+        let mut badges: Vec<BadgeData> =
+            panel.get_filter_badges().iter().filter(|b| !(b.scope == scope && b.text.as_str() == text)).collect();
+        let (named, words) = scoped(&typed);
+        let (words, named) = (words.trim(), named.unwrap_or(SearchScope::Everywhere));
+        if !is_path(&typed) && !words.is_empty() && !badges.iter().any(|b| b.scope == named && b.text.as_str() == words) {
+            badges.push(BadgeData { text: words.into(), scope: named });
+        }
+        panel.set_filter_badges(ModelRc::new(VecModel::from(badges)));
+        panel.set_filter_limit_message("".into());
+        let query = format!("{}{text}", short_prefix(scope));
+        panel.set_filter_query(query.as_str().into());
+        self.on_search_changed();
         query.len() as i32
     }
 
-    /// Filters the values with `path`, the badges waiting applied with it; the box empties
-    /// once it parses (it stays to be fixed).
+    /// Filters the values with `path`; the box empties once it parses (it stays to be fixed).
     fn apply_path(&self, path: &str) {
         let Some(window) = self.weak.upgrade() else { return };
         window.global::<KeyPanel>().set_json_filter(path.into());
         self.on_json_filter_submitted();
         if window.global::<KeyPanel>().get_json_filter_error().is_empty() {
             window.global::<KeyPanel>().set_filter_query("".into());
-            self.add_badges(SearchScope::Everywhere, "", true);
         }
     }
 }

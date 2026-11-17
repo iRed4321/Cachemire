@@ -1,5 +1,5 @@
 import { Theme } from "theme.slint";
-import { HDivider, VScrollBar, IconButton, CheckRow, ModalButton } from "widgets.slint";
+import { HDivider, VScrollBar, IconButton, CheckRow, ModalButton, BackdropArea } from "widgets.slint";
 import { IconPlus, IconPencil, IconCloud } from "icons.slint";
 import { PastePopup } from "widgets.slint";
 import { ProfileTint, ConnProfileRowData, ConnectionRowData, ConnectionForm } from "types.slint";
@@ -620,7 +620,7 @@ export component ConnectionModal inherits Rectangle {
 
     background: #000000aa;
 
-    TouchArea {
+    BackdropArea {
         clicked => { root.cancel(); }
     }
 

@@ -222,7 +222,8 @@ drag callbacks, and `overflow: elide`.
 Modals are components that `inherit Rectangle` filling the window, shown in `main.slint` by
 `if Global.open: SomethingModal { width: 100%; height: 100%; }` at the end of the window body so they
 paint over everything. Their state is a global with an `open` flag; Rust opens a dialog by setting the
-properties then `set_open(true)`.
+properties then `set_open(true)`. A modal's dimmed backdrop is a `BackdropArea` (`widgets.slint`): a
+`TouchArea` that also takes the mouse wheel (Ctrl+wheel aside, for the zoom), so nothing behind scrolls.
 
 - Typical model: `host-key-dialog.slint` (global `HostKeyDialog` with `open`, display properties and
   two callbacks) and [`crate::host_key_dialog`] (`ask` fills the global, stores the continuation in
@@ -231,7 +232,7 @@ properties then `set_open(true)`.
 - A dialog that must resume a flow after the user answers keeps a boxed closure in
   [`App::asked`](crate::app::App) and calls it on answer (see host-key `Answer`).
 - Dropdowns and context menus (connections, AWS profiles, tab menu, row menu, "Copy selection") are
-  `if flag: TouchArea` catchers (any click outside closes) followed by the menu component, so the menu
+  `if flag: BackdropArea` catchers (any click outside closes, the wheel scrolls nothing behind) followed by the menu component, so the menu
   paints on top. Positions are clamped to the window with `min(x, root.width - ..)`. The flags
   (`connections-open`, `tab-menu-open`, `row-menu-open`...) are pure UI state on `MainWindow`; they are
   not in globals.
@@ -272,7 +273,10 @@ Settings are stored in the settings and applied by `set_keys` to the `Shortcuts`
 - The page's rows (actions plus the fixed "standard keys") and its search filter are built by
   `refresh`; the filter text lives in a thread-local.
 - `Esc` is handled in `root-scope.key-pressed`: bumps `collapse-tick` (the key panel folds the open
-  value under the pointer) and leaves export mode.
+  value under the pointer) and leaves export mode. While Settings is open, the `FocusScope` around
+  `SettingsModal` holds the focus and takes it first (`escape()`: a profile form goes back to its list,
+  else the window closes). The cloud settings (`CloudSettingsModal`) are wrapped the same way, Esc
+  closing them as Cancel does; `root-scope` gets the focus back when either closes.
 
 ## 8. Behaviours visible in `main.slint`
 

@@ -47,7 +47,7 @@ export component IconButton inherits Rectangle {
     border-radius: Theme.radius-sm;
     background: active ? Theme.bg-selected-soft : (area.has-hover ? Theme.bg-hover : transparent);
 
-    property <bool> hovered: area.has-hover;
+    out property <bool> hovered: area.has-hover;
     property <bool> pressed: area.pressed;
     property <bool> hint-shown: false;
     // a click means the user already knows what it does, so no hint until
@@ -541,6 +541,17 @@ export component WheelScroller inherits TouchArea {
 // A button of the modal windows (connection form, settings): as wide as its
 // label needs (a translation can be longer than English), and never narrower
 // than a standard button.
+// A dialog's backdrop or a menu's outside: what it covers neither scrolls under the wheel
+// nor takes clicks; Ctrl+wheel goes on to the window's zoom
+export component BackdropArea inherits TouchArea {
+    scroll-event(event) => {
+        if event.modifiers.control {
+            return reject;
+        }
+        return accept;
+    }
+}
+
 export component ModalButton inherits Rectangle {
     in property <string> text;
     // the blue call to action, or the outlined neutral one

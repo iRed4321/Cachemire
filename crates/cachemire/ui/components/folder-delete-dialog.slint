@@ -1,5 +1,5 @@
 import { Theme } from "theme.slint";
-import { ModalButton } from "widgets.slint";
+import { ModalButton, BackdropArea } from "widgets.slint";
 import { IconSpinner } from "icons.slint";
 
 // The confirmation of a folder's deletion. Rust counts the keys under the folder (`counting`
@@ -22,7 +22,7 @@ export global FolderDeleteDialog {
 // Over the whole window; a click outside the card, or Escape, cancels.
 export component FolderDeleteModal inherits Rectangle {
     background: #000000aa;
-    TouchArea {
+    BackdropArea {
         clicked => { FolderDeleteDialog.cancelled(); }
     }
 

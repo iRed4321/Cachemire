@@ -126,8 +126,8 @@ fn the_smart_box_wires_its_case_toggle_enter_and_badges() {
     });
     h.window.global::<KeyPanel>().set_filter_query("".into());
     h.window.global::<KeyPanel>().set_filter_badges(ModelRc::new(VecModel::from(vec![
-        crate::BadgeData { text: "needle".into(), scope: SearchScope::Value, pending: false },
-        crate::BadgeData { text: "prefix".into(), scope: SearchScope::Fields, pending: false },
+        crate::BadgeData { text: "needle".into(), scope: SearchScope::Value },
+        crate::BadgeData { text: "prefix".into(), scope: SearchScope::Fields },
     ])));
     h.settle();
     // the Value badge's text and × are drawn solid accent-purple, in the header

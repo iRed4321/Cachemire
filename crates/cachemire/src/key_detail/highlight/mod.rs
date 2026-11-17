@@ -2,6 +2,7 @@
 //! layering highlight colors on top of syntax colors, and the collapsed
 //! one-line preview.
 
+use std::borrow::Cow;
 use std::ops::Range;
 
 use crate::styled_text::StyledText;
@@ -10,6 +11,7 @@ use slint::Color;
 use crate::theme::paint;
 
 use super::field::FieldValue;
+use super::fold::{find_folded, fold, fold_with_origins};
 use super::formats::{EditKind, colored_single_line};
 use super::pretty_text::{
     COMPACT_PREVIEW_CHAR_BUDGET, ColorSpans, ColoredParagraph, MAX_SHOWN_STRING_BYTES, colored_paragraphs_for,
@@ -23,50 +25,25 @@ use super::pretty_text::{
 /// One match: paragraph index plus byte range within that paragraph.
 pub(super) type Match = (usize, Range<usize>);
 
-/// `text` lowercased, with the offset in `text` of each of its bytes that starts the
-/// lowercase of a character of `text` (and of its end): `None` inside one.
-fn lowercased_with_origins(text: &str) -> (String, Vec<Option<usize>>) {
-    let mut lower = String::with_capacity(text.len());
-    let mut origins = Vec::with_capacity(text.len() + 1);
-    for (at, c) in text.char_indices() {
-        origins.push(Some(at));
-        lower.extend(c.to_lowercase());
-        origins.resize(lower.len(), None);
-    }
-    origins.push(Some(text.len()));
-    (lower, origins)
-}
-
-/// Non-overlapping occurrences of `needle` per paragraph, case-sensitively or not:
-/// case-insensitively, they're found in the lowercased text and mapped back to the
-/// text, a match that would cover part of a character left out.
+/// Non-overlapping occurrences of `needle` per paragraph, case-sensitively or not, both
+/// read as the search does (`fold`): a match is found in the folded text and mapped back to
+/// the text, one that would cover part of a character left out.
 pub(super) fn find_matches(paragraphs: &[ColoredParagraph], needle: &str, case_sensitive: bool) -> Vec<Match> {
     let mut out = Vec::new();
+    let needle = fold(needle, case_sensitive);
     if needle.is_empty() {
         return out;
     }
-    let needle_lower;
-    let needle: &str = if case_sensitive {
-        needle
-    } else {
-        needle_lower = needle.to_lowercase();
-        &needle_lower
-    };
     for (i, (text, _)) in paragraphs.iter().enumerate() {
-        // (lowercasing ASCII keeps every offset where it was)
-        let mapped = (!case_sensitive && !text.is_ascii()).then(|| lowercased_with_origins(text));
-        let lower;
-        let haystack: &str = match &mapped {
-            Some((lowered, _)) => lowered,
-            None if case_sensitive => text,
-            None => {
-                lower = text.to_ascii_lowercase();
-                &lower
-            }
+        // (folding ASCII keeps every offset where it was)
+        let mapped = (!text.is_ascii()).then(|| fold_with_origins(text, case_sensitive));
+        let haystack = match &mapped {
+            Some((folded, _)) => Cow::Borrowed(folded.as_str()),
+            None => fold(text, case_sensitive),
         };
         let mut from = 0;
-        while let Some(pos) = haystack[from..].find(needle) {
-            let (start, end) = (from + pos, from + pos + needle.len());
+        while let Some(start) = find_folded(&haystack, &needle, from) {
+            let end = start + needle.len();
             from = end;
             let range = match &mapped {
                 Some((_, origins)) => origins[start].zip(origins[end]).map(|(start, end)| start..end),

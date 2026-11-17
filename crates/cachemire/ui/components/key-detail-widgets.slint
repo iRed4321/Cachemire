@@ -249,7 +249,7 @@ export struct ViewOption {
 
 // One search badge of the smart box: its text in its scope's color (ScopeColor) and a × to
 // drop it; a click puts its text back in the box. Hovered, it grows upward (over the box's
-// edge) to name its scope above the text, which stays put. Waiting for Enter: only outlined.
+// edge) to name its scope above the text, which stays put.
 component BadgeChip inherits Rectangle {
     in property <BadgeData> data;
     callback clicked();
@@ -285,9 +285,9 @@ component BadgeChip inherits Rectangle {
         animate height { duration: 70ms; easing: ease-out; }
         border-radius: Theme.px(12px);
         // opaque, mixed into the box's own color: over its edge, nothing shows through
-        background: root.data.pending ? Theme.bg-sunken : root.tint.mix(Theme.bg-sunken, 0.16);
+        background: root.tint.mix(Theme.bg-sunken, 0.16);
         border-width: 1px;
-        border-color: root.tint.mix(Theme.bg-sunken, root.data.pending ? 0.7 : 0.3);
+        border-color: root.tint.mix(Theme.bg-sunken, 0.3);
 
         // the whole pill, the × inside it, so pointing at the × or the scope keeps it open
         area := TouchArea {
@@ -453,7 +453,7 @@ component FilterChip inherits Rectangle {
 
 // The key panel's one box for searching and filtering: the search badges and the JSON
 // filter as chips, then what is typed (the host decides what Enter does with it).
-// Backspace in an empty box drops the last chip, Esc empties it; Aa makes the search match case.
+// Backspace in an empty box drops the last chip, ← at its start edits it, Esc empties the box.
 export component SmartBox inherits Rectangle {
     in property <[BadgeData]> badges;
     // the JSON path applied ("" for none), and whether it failed to parse
@@ -577,6 +577,17 @@ export component SmartBox inherits Rectangle {
                                 root.badge-removed(root.badges[root.badges.length - 1].text, root.badges[root.badges.length - 1].scope);
                             }
                             return accept;
+                        }
+                        // the caret at the start, nothing selected: the chip left of it is edited
+                        if event.text == Key.LeftArrow && !event.modifiers.shift && self.cursor-position-byte-offset == 0
+                            && self.anchor-position-byte-offset == 0 {
+                            if root.filter != "" {
+                                root.filter-clicked();
+                                return accept;
+                            } else if root.badges.length > 0 {
+                                root.badge-clicked(root.badges[root.badges.length - 1].text, root.badges[root.badges.length - 1].scope);
+                                return accept;
+                            }
                         }
                         if event.text == Key.Escape && root.text != "" {
                             root.text = "";

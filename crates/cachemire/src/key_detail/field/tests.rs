@@ -55,7 +55,7 @@ fn a_text_value_serializes_as_a_json_string() {
 #[test]
 fn searches_compare_against_the_lowercased_name_and_value() {
     let field = Field::new("UserName".into(), "ÉLODIE".into(), None);
-    assert_eq!((field.lower_name(), field.lower_raw()), ("username", "élodie"));
+    assert_eq!((field.searched_name(false), field.searched_raw(false)), ("username", "e\u{301}lodie"));
 }
 
 #[test]

@@ -12,7 +12,7 @@ use slint::winit_030::winit::window::UserAttentionType;
 use slint::{ComponentHandle, ModelRc, VecModel};
 
 use crate::app::App;
-use crate::{AwsAccount, AwsProfileRow, MainWindow};
+use crate::{AwsAccount, AwsChip, AwsProfileRow, MainWindow};
 use cachemire_core::aws;
 use cachemire_core::settings::CloudScope;
 use rust_i18n::t;
@@ -30,6 +30,8 @@ pub struct Cloud {
     generation: u64,
     // the last session's connection, reached once signed in and listed (see `resume`)
     resume: Option<Resume>,
+    // what the list's filter box last held, to list again after a pin
+    filter: String,
 }
 
 impl Cloud {
@@ -97,8 +99,18 @@ pub(crate) fn account_of(app: &App, window: &MainWindow, name: &str) -> Option<S
     remembered.or_else(|| app.cloud.borrow().profiles.iter().find(|p| p.name == name).and_then(|p| p.account_id()).map(str::to_string))
 }
 
-/// What the list says of profile `name`: its account settings, or that its account isn't known.
-fn profile_row(app: &App, window: &MainWindow, name: &str, now: i64) -> AwsProfileRow {
+/// The chip of the profiles using no connection profile, and of those whose account isn't known.
+const NO_PROFILE_CHIP: &str = "none";
+const UNKNOWN_CHIP: &str = "unknown";
+
+/// The chip of the profiles using connection profile `id`.
+fn profile_chip(id: &str) -> String {
+    format!("profile:{id}")
+}
+
+/// What the list says of profile `name`: its account settings, or that its account isn't known;
+/// and the key of the chip it falls under.
+fn profile_row(app: &App, window: &MainWindow, name: &str, now: i64) -> (AwsProfileRow, String) {
     let account = account_of(app, window, name);
     let settings = app.state.settings.lock();
     let when = if name == window.global::<AwsAccount>().get_profile().as_str() {
@@ -109,67 +121,152 @@ fn profile_row(app: &App, window: &MainWindow, name: &str, now: i64) -> AwsProfi
     let mut row = AwsProfileRow { name: name.into(), when: when.into(), ..Default::default() };
     let Some(account) = account else {
         row.profile_label = t!("Account not known yet").as_ref().into();
-        return row;
+        return (row, UNKNOWN_CHIP.to_string());
     };
     let entry = settings.cloud_settings(&CloudScope::Account(account));
     let profile = entry.connection_profile.filter(|id| !id.is_empty()).and_then(|id| settings.connection_profile(&id));
     row.known = true;
     row.has_tint = profile.is_some();
-    match profile {
+    let chip = match profile {
         Some(profile) => {
             row.tint = crate::connections::profiles::to_tint(profile.color);
             row.profile_label = profile.name.into();
+            profile_chip(&profile.id)
         }
-        None => row.profile_label = t!("No connection profile").as_ref().into(),
-    }
+        None => {
+            row.profile_label = t!("No connection profile").as_ref().into();
+            NO_PROFILE_CHIP.to_string()
+        }
+    };
     row.ssh_label = match entry.ssh.filter(|ssh| ssh.enabled) {
         Some(ssh) => t!("SSH %{host}", host = ssh.host).as_ref().into(),
         None => t!("No SSH tunnel").as_ref().into(),
     };
-    row
+    (row, chip)
 }
 
-/// Fills the list with the profiles whose name holds `filter`: without one, the three last
-/// used first, then the others.
+/// The room a line of chips has, at zoom 1 (the list's width less its padding), and between chips.
+const CHIP_ROOM: f32 = 442.0;
+const CHIP_GAP: f32 = 6.0;
+
+/// About how wide `chip` is drawn at zoom 1 (its 11 px text averages under 6.5 px a character).
+fn chip_width(chip: &AwsChip) -> f32 {
+    let dot = if chip.has_tint { 11.0 } else { 0.0 };
+    let characters = chip.label.chars().count() + chip.count.to_string().len();
+    20.0 + dot + 5.0 + 6.5 * characters as f32
+}
+
+/// The chips over the list, in lines that fit it: all the profiles, each connection profile some
+/// use (in the settings' order), those with none, those whose account isn't known yet. None when
+/// they all fall under one chip. `keys` holds each profile's chip.
+fn chip_lines(app: &App, keys: &[String]) -> Vec<Vec<AwsChip>> {
+    let count = |key: &str| keys.iter().filter(|k| *k == key).count() as i32;
+    let mut chips: Vec<AwsChip> = Vec::new();
+    for profile in app.state.settings.lock().connection_profiles() {
+        let key = profile_chip(&profile.id);
+        let n = count(&key);
+        if n > 0 {
+            let tint = crate::connections::profiles::to_tint(profile.color);
+            chips.push(AwsChip { key: key.into(), label: profile.name.into(), has_tint: true, tint, count: n });
+        }
+    }
+    for (key, label) in [(NO_PROFILE_CHIP, t!("No profile")), (UNKNOWN_CHIP, t!("Unknown account"))] {
+        let n = count(key);
+        if n > 0 {
+            chips.push(AwsChip { key: key.into(), label: label.as_ref().into(), count: n, ..Default::default() });
+        }
+    }
+    if chips.len() < 2 {
+        return Vec::new();
+    }
+    chips.insert(0, AwsChip { label: t!("All").as_ref().into(), count: keys.len() as i32, ..Default::default() });
+    let mut lines: Vec<Vec<AwsChip>> = Vec::new();
+    let mut used = CHIP_ROOM;
+    for chip in chips {
+        let width = chip_width(&chip);
+        match lines.last_mut() {
+            Some(line) if used + CHIP_GAP + width <= CHIP_ROOM => {
+                used += CHIP_GAP + width;
+                line.push(chip);
+            }
+            _ => {
+                used = width;
+                lines.push(vec![chip]);
+            }
+        }
+    }
+    lines
+}
+
+/// Fills the list with the profiles whose name holds `filter`, under the chip picked: the pinned
+/// ones apart, then without a filter the three last used first, then the others.
 fn list(app: &App, window: &MainWindow, filter: &str) {
-    let filter = filter.trim().to_lowercase();
+    app.cloud.borrow_mut().filter = filter.to_string();
+    let words = filter.trim().to_lowercase();
+    let now = cachemire_core::now_ms();
     let names: Vec<String> = app.cloud.borrow().profiles.iter().map(|p| p.name.clone()).collect();
-    let mut order: Vec<(&str, Option<String>)> = Vec::new();
-    if filter.is_empty() {
-        let mut recent: Vec<(&str, i64)> = {
+    let rows: Vec<(AwsProfileRow, String)> = names.iter().map(|name| profile_row(app, window, name, now)).collect();
+    let keys: Vec<String> = rows.iter().map(|(_, key)| key.clone()).collect();
+    let lines = chip_lines(app, &keys);
+    let account = window.global::<AwsAccount>();
+    // a chip gone since (its connection profile no longer used) lets go
+    let mut chip = account.get_chip().to_string();
+    if !lines.iter().flatten().any(|c| c.key.as_str() == chip) {
+        chip.clear();
+        account.set_chip("".into());
+    }
+    let unfiltered = chip.is_empty() && words.is_empty();
+    let kept = |(row, key): &(AwsProfileRow, String)| (chip.is_empty() || *key == chip) && row.name.to_lowercase().contains(&words);
+
+    let pinned: Vec<String> = app.state.settings.lock().cloud_pinned().to_vec();
+    let is_pinned = |row: &AwsProfileRow| pinned.iter().any(|name| row.name.as_str() == name);
+    let pins: Vec<AwsProfileRow> = pinned
+        .iter()
+        .filter_map(|name| rows.iter().find(|(row, _)| row.name.as_str() == name))
+        .filter(|entry| kept(entry))
+        .map(|(row, _)| row.clone())
+        .collect();
+    let rest: Vec<&AwsProfileRow> = rows.iter().filter(|entry| !is_pinned(&entry.0) && kept(entry)).map(|(row, _)| row).collect();
+
+    let mut order: Vec<(&AwsProfileRow, Option<String>)> = Vec::new();
+    if unfiltered {
+        let mut recent: Vec<(&AwsProfileRow, i64)> = {
             let settings = app.state.settings.lock();
-            names.iter().filter_map(|n| settings.cloud_profile_used(n).map(|used| (n.as_str(), used))).collect()
+            rest.iter().filter_map(|row| settings.cloud_profile_used(&row.name).map(|used| (*row, used))).collect()
         };
         recent.sort_by_key(|(_, used)| std::cmp::Reverse(*used));
         recent.truncate(3);
-        let rest: Vec<&str> = names.iter().map(String::as_str).filter(|n| !recent.iter().any(|(r, _)| r == n)).collect();
-        let sections = !recent.is_empty() && !rest.is_empty();
-        for (i, (name, _)) in recent.iter().enumerate() {
-            order.push((name, (sections && i == 0).then(|| t!("Recent").to_uppercase())));
+        let others: Vec<&AwsProfileRow> = rest.iter().filter(|row| !recent.iter().any(|(r, _)| r.name == row.name)).copied().collect();
+        let sections = !recent.is_empty() && !others.is_empty();
+        for (i, (row, _)) in recent.iter().enumerate() {
+            order.push((row, (sections && i == 0).then(|| t!("Recent").to_uppercase())));
         }
-        for (i, name) in rest.iter().enumerate() {
-            order.push((name, (sections && i == 0).then(|| t!("All profiles").to_uppercase())));
+        for (i, row) in others.iter().enumerate() {
+            order.push((row, (sections && i == 0).then(|| t!("All profiles").to_uppercase())));
         }
     } else {
-        order.extend(names.iter().filter(|n| n.to_lowercase().contains(&filter)).map(|n| (n.as_str(), None)));
+        order.extend(rest.iter().map(|row| (*row, None)));
     }
 
-    let now = cachemire_core::now_ms();
     let mut sections_above = 0;
-    let rows: Vec<AwsProfileRow> = order
+    let list_rows: Vec<AwsProfileRow> = order
         .into_iter()
-        .map(|(name, section)| {
+        .map(|(row, section)| {
             sections_above += i32::from(section.is_some());
-            AwsProfileRow { section: section.unwrap_or_default().into(), sections_above, ..profile_row(app, window, name, now) }
+            AwsProfileRow { section: section.unwrap_or_default().into(), sections_above, ..row.clone() }
         })
         .collect();
-    let count = match (filter.is_empty(), names.len()) {
+    let count = match (unfiltered, names.len()) {
         (true, 1) => t!("1 profile").into_owned(),
         (true, total) => t!("%{n} profiles", n = total).into_owned(),
-        (false, total) => t!("%{shown} of %{total}", shown = rows.len(), total = total).into_owned(),
+        (false, total) => t!("%{shown} of %{total}", shown = pins.len() + list_rows.len(), total = total).into_owned(),
     };
-    let account = window.global::<AwsAccount>();
-    account.set_profiles(ModelRc::new(VecModel::from(rows)));
+    account.set_has_pinned(rows.iter().any(|(row, _)| is_pinned(row)));
+    account.set_pins_title(t!("Pinned").to_uppercase().into());
+    account.set_pins(ModelRc::new(VecModel::from(pins)));
+    let lines: Vec<ModelRc<AwsChip>> = lines.into_iter().map(|line| ModelRc::new(VecModel::from(line))).collect();
+    account.set_chip_lines(ModelRc::new(VecModel::from(lines)));
+    account.set_profiles(ModelRc::new(VecModel::from(list_rows)));
     account.set_highlighted(0);
     account.set_count_label(count.into());
 }
@@ -191,6 +288,24 @@ pub fn init(app: &Rc<App>, window: &MainWindow) {
         let app = app.clone();
         move |filter| {
             let Some(window) = app.window.upgrade() else { return };
+            list(&app, &window, &filter);
+        }
+    });
+
+    window.global::<AwsAccount>().on_pin_toggled({
+        let app = app.clone();
+        move |name| {
+            let Some(window) = app.window.upgrade() else { return };
+            let saved = {
+                let mut settings = app.state.settings.lock();
+                let pinned = settings.cloud_pinned().iter().any(|p| p.as_str() == name.as_str());
+                settings.set_cloud_pinned(&name, !pinned)
+            };
+            if let Err(e) = saved {
+                tracing::warn!("can't save the pinned profiles: {e}");
+                crate::toast::show(&window, &e.localized());
+            }
+            let filter = app.cloud.borrow().filter.clone();
             list(&app, &window, &filter);
         }
     });

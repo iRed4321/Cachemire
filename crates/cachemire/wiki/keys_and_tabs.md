@@ -11,7 +11,7 @@ per-tab memory). They call the core's [`cachemire_core::explorer`] for every Red
 | Area | Files |
 |---|---|
 | Tabs | `src/tabs/mod.rs` |
-| Key panel | `src/key_detail/mod.rs` (state, `init`), `load.rs`, `paging/`, `filtering.rs`, `smart_search.rs`, `search_filter/`, `suggest/`, `value_list/`, `table/`, `field/`, `formats/`, `pretty.rs`, `pretty_text.rs`, `value_lines.rs`, `highlight/`, `scroll.rs`, `edit/`, `export/`, `full_value.rs` |
+| Key panel | `src/key_detail/mod.rs` (state, `init`), `load.rs`, `paging/`, `filtering.rs`, `smart_search.rs`, `search_filter/`, `fold.rs`, `suggest/`, `value_list/`, `table/`, `field/`, `formats/`, `pretty.rs`, `pretty_text.rs`, `value_lines.rs`, `highlight/`, `scroll.rs`, `edit/`, `export/`, `full_value.rs` |
 | Keyspace tree | `src/keyspace/mod.rs`, `walk.rs`, `index/`, `search/`, `selection/`, `edit.rs`, `rows.rs` |
 | Search tabs | `src/search/mod.rs` |
 | Slint side | `ui/components/key-detail*.slint`, `keyspace-panel.slint`, `content-header.slint`, `search-panel.slint`; globals `KeyPanel`, `KeyScroll`, `ExportPrefs`, `KeyTree`, `TabStrip`, `SearchTab` in `ui/globals.slint` and `key-detail-types.slint` |
@@ -279,8 +279,12 @@ trait for the message (see [errors](crate::wiki::errors)).
 `fetched_key` builds one `Field` per hash field of the first page, or a single `single_value_field`
 for every other type. A `Field` keeps the raw text, the parsed JSON
 if it is JSON, `too_long` (value left out for its size: shows a size and a "Try to load"), and `binary`
-(not UTF-8: displayed with `\xNN` escapes, never editable). Lowercased copies are computed lazily for
-case-insensitive search.
+(not UTF-8: displayed with `\xNN` escapes, never editable). Its name and value as the search reads
+them (`searched_name`, `searched_raw`) are computed lazily and kept.
+
+The search reads text through `fold.rs`: each character canonically decomposed (`à` stored as one
+character or as `a` and a combining accent compare equal) and lowercased unless case matters. A match
+may not end just before a combining mark (`find_folded`), so `e` does not match the start of `é`.
 
 ## Paging a hash (`paging/`)
 
@@ -310,12 +314,13 @@ locally (`sort_table`), except the Field column of a hash, which maps to the has
 
 The header has one text box that takes either words or a JSON path.
 
-- **Badges.** Words typed then followed by a space become *pending* badges (`on_filter_query_edited`);
-  Enter applies all of them (`on_filter_query_submitted` -> `add_badges(.., apply = true)`). A badge has
+- **Badges.** Enter makes the box's whole text one badge, spaces and quotes included
+  (`on_filter_query_submitted` -> `add_badge`), applied at once. A badge has
   text and a `SearchScope`: `Everywhere`, `Fields` or `Value` (prefix `field:` or `value:`, or `f:` / `v:`, case
-  insensitive). Quoted runs are one term, duplicates are dropped, at most `MAX_BADGES = 5`
-  ("Remove a badge first (5 max)"). Clicking a badge's text moves it back into the box
-  (`on_filter_badge_edited`); its x removes it.
+  insensitive). Duplicates are dropped, at most `MAX_BADGES = 5`
+  ("Remove a badge first (5 max)"). Clicking a badge's text, or ← with the caret at the box's start (the last
+  chip: the JSON filter if any, else the last badge), moves it back into the box with its scope's prefix
+  (`on_filter_badge_edited`), what was typed becoming a badge first; its x removes it.
 - **Matching.** `SearchFilter` = applied terms
   (ANDed) + one case-sensitivity flag; `matches(field)` tests each term against the name, the raw value
   or both. `on_search_changed` rebuilds the rows on a blocking thread from `PanelContent::current`, with
@@ -355,7 +360,7 @@ row's ⋯ menu: JSON, escaped JSON, YAML, XML or raw text) with syntax colors an
   lines near the view. Positions are (line, byte offset); `value-offset-at`, `value-selection`
   (double click = word via `word.rs`, triple = all) and `value-selected-text` support selection;
   `find-in-value` supports the row's own find bar.
-- `highlight/`: `find_matches` (case folding with an offsets map), `overlay_highlights` /
+- `highlight/`: `find_matches` (folding with an offsets map, `fold_with_origins`), `overlay_highlights` /
   `window_highlights` merge badge matches (accent yellow), the current find match (orange) and the
   find-in-value matches over the colored spans, producing the forked `StyledText`
   (see [ui](crate::wiki::ui)). `compact_styled_texts_for` builds the collapsed preview, windowed around

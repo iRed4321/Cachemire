@@ -90,6 +90,9 @@ pub(super) struct StoredCloud {
     // when each local AWS profile last listed its endpoints (Unix ms), by profile name
     #[serde(default)]
     pub(super) used: BTreeMap<String, i64>,
+    // the local AWS profiles pinned at the top of the list, in the order they were pinned
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub(super) pinned: Vec<String>,
 }
 
 /// Which cloud settings are meant: an account's, or one endpoint's.
@@ -339,6 +342,24 @@ impl SettingsStore {
     /// When `profile` last listed its endpoints (Unix ms), if it ever did.
     pub fn cloud_profile_used(&self, profile: &str) -> Option<i64> {
         self.state.cloud.used.get(profile).copied()
+    }
+
+    /// The local AWS profiles pinned at the top of the list, in the order they were pinned.
+    pub fn cloud_pinned(&self) -> &[String] {
+        &self.state.cloud.pinned
+    }
+
+    /// Pins `profile` at the end of the pinned ones, or unpins it.
+    pub fn set_cloud_pinned(&mut self, profile: &str, pinned: bool) -> Result<(), Error> {
+        if self.state.cloud.pinned.iter().any(|p| p == profile) == pinned {
+            return Ok(());
+        }
+        let mut next = self.state.clone();
+        next.cloud.pinned.retain(|p| p != profile);
+        if pinned {
+            next.cloud.pinned.push(profile.to_string());
+        }
+        self.commit(next, false)
     }
 
     /// The profiles last seen listing the endpoints of `account` and `region`, by name.

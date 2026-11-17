@@ -247,11 +247,17 @@ local profiles, selected profile, a `generation` counter and a pending [`resume`
   ignored if `generation` moved on meanwhile (stale listing). On success the settings prune what the account no longer
   has (`observe_cloud_listing`; the cleanups run on a blocking thread), `apply_cloud` gives each item its
   profile and tunnel, and `set_cloud_connections` makes them known for the run.
-- **Profile list** (`AwsProfileDropdown`): a filter (`list_requested`, which fills `AwsAccount.profiles`),
+- **Profile list** (`AwsProfileDropdown`): a filter (`list_requested`, which fills `AwsAccount.profiles`; an edit scrolls back to the top),
   the three profiles used last (`remember_cloud_profile` dates each listing) then the others, each with
-  its account's connection profile and tunnel, a gear, and "Sign out of AWS" at the bottom. A profile's
+  its account's connection profile and tunnel, a star, a gear, and "Sign out of AWS" at the bottom. A profile's
   account is the one listed now, the one it last listed, or its SSO `account_id` ([`account_of`](crate::cloud::account_of));
   with none known, it has no gear.
+- **Chips and pins**: `profile_row` also gives each profile its chip key (`profile:<id>`, `none`, `unknown`);
+  `chip_lines` makes a chip per key in use (none when one key covers them all) and splits them into lines by
+  an estimated width, since Slint has no wrapping layout. `AwsAccount.chip` is the one picked ("" for all),
+  reset when the list opens. The star calls `pin_toggled`: `set_cloud_pinned` keeps the pinned names in the
+  settings, in order. Pinned profiles leave `profiles` for `AwsAccount.pins`, drawn two per line above the
+  list; Enter in the filter box picks the first of them when the list is empty.
 - **Resume**: [`resume`](crate::cloud::resume) is how the last session reaches a cloud
   connection: it signs in if needed, lists the profile, then calls `connect_to`, unless the user made another
   attempt in between (the stored `attempt` no longer equals the counter).

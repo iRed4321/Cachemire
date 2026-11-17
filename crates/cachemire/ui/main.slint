@@ -15,7 +15,7 @@ import { KeyDetail, KeyScroll, ExportPrefs, AllValuesRowData, FindResult, LineSe
 import { SearchPanel, SearchRowData } from "components/search-panel.slint";
 import { QueryEditor, QueryToolbar, ResultTabs, HistoryRow } from "components/query-panel.slint";
 import { TableRowData } from "components/key-detail-types.slint";
-import { FloatingCard, Hint, HResizeHandle, SquareIconButton } from "components/widgets.slint";
+import { BackdropArea, FloatingCard, Hint, HResizeHandle, SquareIconButton } from "components/widgets.slint";
 import { IconSidebar } from "components/icons.slint";
 import { SettingsModal, SshProfileRowData, SshProfileForm, ConnProfileForm } from "components/settings.slint";
 import { ConnectionStatus, TreeRowKind, ExportFormat, ExportTarget, LanguageSetting, SettingsCategory, ProfileTint, KeyView, OpeningView, SidebarView, SearchScope, ShortcutAction, ShortcutRow, ThemeChoice, AwsProfileRow } from "components/types.slint";
@@ -72,6 +72,9 @@ export component MainWindow inherits Window {
     // a row opening or folding can leave no item focused: the key handler takes it back
     property <int> refocus-tick: KeyScroll.refocus-tick;
     changed refocus-tick => { root-scope.focus(); }
+    // Settings or the cloud settings held the keyboard: the key handler takes it back when they close
+    property <bool> settings-open: Preferences.open || CloudSettings.open;
+    changed settings-open => { if !settings-open { root-scope.focus(); } }
     // bumped by Ctrl+F on a key tab: the key panel focuses its search box
     property <int> key-search-focus-tick: 0;
 
@@ -93,6 +96,8 @@ export component MainWindow inherits Window {
     // the title bar's dropdowns: open or not, and where; whether the form edits a connection
     property <bool> connections-open: false;
     property <bool> aws-profiles-open: false;
+    // a gear's hint shown when the list closes would stay, with nothing left to hide it
+    changed aws-profiles-open => { if !aws-profiles-open { Hint.hide(); } }
     property <length> aws-profiles-x: 0px;
     // the sidebar (the keyspace and the saved queries) is hidden; the tab bar has the button to bring it back
     in-out property <bool> sidebar-hidden: false;
@@ -396,7 +401,7 @@ export component MainWindow inherits Window {
         // declared here rather than inside TitleBar so it paints on top: the
         // title bar paints early in tree order, and a dropdown overflowing its
         // bounds would end up under the panels below it
-        if connections-open: TouchArea {
+        if connections-open: BackdropArea {
             width: 100%;
             height: 100%;
             clicked => { root.connections-open = false; }
@@ -454,7 +459,7 @@ export component MainWindow inherits Window {
         }
 
         // the AWS profiles list, under the profile button
-        if aws-profiles-open: TouchArea {
+        if aws-profiles-open: BackdropArea {
             width: 100%;
             height: 100%;
             clicked => { root.aws-profiles-open = false; }
@@ -480,7 +485,7 @@ export component MainWindow inherits Window {
 
         // tab context menu: catcher first (any click outside dismisses),
         // menu after so it paints on top
-        if tab-menu-open: TouchArea {
+        if tab-menu-open: BackdropArea {
             width: 100%;
             height: 100%;
             pointer-event(event) => {
@@ -503,7 +508,7 @@ export component MainWindow inherits Window {
         }
 
         // keyspace row menu: catcher first, menu on top (see tab menu)
-        if row-menu-open: TouchArea {
+        if row-menu-open: BackdropArea {
             width: 100%;
             height: 100%;
             pointer-event(event) => {
@@ -545,7 +550,7 @@ export component MainWindow inherits Window {
         }
 
         // "Copy selection" menu: catcher first, menu on top (see tab menu)
-        if selection-menu-open: TouchArea {
+        if selection-menu-open: BackdropArea {
             width: 100%;
             height: 100%;
             pointer-event(event) => {
@@ -649,12 +654,26 @@ export component MainWindow inherits Window {
 
         // the dialogs are placed by hand (`x`, `y`): an overlay doesn't count toward the size
         // of what it covers
-        if Preferences.open: SettingsModal {
+        // takes the keyboard while open, so what is typed stays out of the window behind; an Esc
+        // no field inside took ends up here
+        if Preferences.open: FocusScope {
             x: 0px;
             y: 0px;
             width: 100%;
             height: 100%;
-            clipboard-has-text() => { return root.clipboard-has-text(); }
+            init => { self.focus(); }
+            key-pressed(event) => {
+                if event.text == Key.Escape {
+                    settings.escape();
+                    return accept;
+                }
+                return reject;
+            }
+            settings := SettingsModal {
+                width: 100%;
+                height: 100%;
+                clipboard-has-text() => { return root.clipboard-has-text(); }
+            }
         }
 
         if ValueEditor.open: ValueEditorModal {
@@ -682,10 +701,25 @@ export component MainWindow inherits Window {
             x: 0px;
             y: 0px;
         }
-        if CloudSettings.open: CloudSettingsModal {
+        // like Settings: holds the keyboard while open, and Esc closes it as Cancel does
+        if CloudSettings.open: FocusScope {
             x: 0px;
             y: 0px;
-            clipboard-has-text() => { return root.clipboard-has-text(); }
+            width: 100%;
+            height: 100%;
+            init => { self.focus(); }
+            key-pressed(event) => {
+                if event.text == Key.Escape {
+                    CloudSettings.open = false;
+                    return accept;
+                }
+                return reject;
+            }
+            CloudSettingsModal {
+                width: 100%;
+                height: 100%;
+                clipboard-has-text() => { return root.clipboard-has-text(); }
+            }
         }
         if ConnectionEditor.open: ConnectionModal {
             x: 0px;

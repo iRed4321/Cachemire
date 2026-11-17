@@ -6,12 +6,12 @@ Every stable release of Cachemire; `Unreleased` is what the next one brings. Bet
 
 ### Added
 
-- **Settings**: the window now lists its categories on the left (general, key bindings, SSH profiles, connection profiles, experimental, about) and shows the one picked beside them. The title bar's **i** button opens its About page, which replaces the separate info window. A search box above the categories gathers every setting it finds on one Settings found page, under its category's name, as you type
+- **Settings**: the window now lists its categories on the left (general, key bindings, SSH profiles, connection profiles, experimental, about) and shows the one picked beside them. The title bar's **i** button opens its About page, which replaces the separate info window. A search box above the categories gathers every setting it finds on one Settings found page, under its category's name, as you type. Esc closes the window, or leaves a profile form
 - **Themes** (Settings, Display): pick the app's colors from a list of themes, dark or light (Cachemire Dark, Nord, Dracula, Tokyo Night, Catppuccin Mocha, Gruvbox, Solarized, Cachemire Light, GitHub Light...). Each is four colors, shown beside its name, from which all the others are worked out; connection profile colors stay the same. **Syntax highlighting** picks the colors of JSON, YAML, XML and Redisql text separately (Monokai, Dracula, One Dark, Nord, GitHub...)
 - **Display** (Settings): a new page with the language, moved from General, and a **Zoom** slider with marks from 60% to 200% to pick the zoom the app starts at. Ctrl+0 returns to it; Ctrl with + or -, or the mouse wheel, still zooms for the session
 - **Key bindings** (Settings): lists every keyboard shortcut, and the app's own (zoom, search, close the tab, run a query, save a value...) can be given other keys. Copy, paste, undo and Esc stay as they are
 - **New tabs open in** (Settings, General): a key's new tab starts in the fields view (as before), the table view, or the view you last picked
-- **Key header**: one row instead of two. A single box searches fields and values, Tab lists where to search (All, Fields or Value, or type `field:` / `value:`, or just `f:` / `v:`), even before a word is typed, and filters the JSON once what you type starts with `$` or `.`. Each word becomes a search pill in its scope's color: a space adds it (a quoted run stays one), outlined until Enter applies them all. Hovering a pill names its scope, its × removes it and a click edits it again; the filter shows as a yellow chip. Exports (JSON or escaped JSON) and the table as CSV are in its **Export…** menu. Pointing at the key's name shows its size and TTL, and a click on it copies it; Refresh and its link sit beside it. In the field view, **Show as** in the Value column picks how every value reads (JSON, escaped JSON, YAML, XML or raw text); an open value's header keeps Edit and its link, with Open, Download, Copy and its own format in a ⋯ menu
+- **Key header**: one row instead of two. A single box searches fields and values, Tab lists where to search (All, Fields or Value, or type `field:` / `value:`, or just `f:` / `v:`), even before a word is typed, and filters the JSON once what you type starts with `$` or `.`. Enter turns what you typed into a search pill in its scope's color, spaces included (no quotes needed). Hovering a pill names its scope, its × removes it, and a click or ← at the start of the box edits it again; the filter shows as a yellow chip. Exports (JSON or escaped JSON) and the table as CSV are in its **Export…** menu. Pointing at the key's name shows its size and TTL, and a click on it copies it; Refresh and its link sit beside it. In the field view, **Show as** in the Value column picks how every value reads (JSON, escaped JSON, YAML, XML or raw text); an open value's header keeps Edit and its link, with Open, Download, Copy and its own format in a ⋯ menu
 - **Field name**: in an open value's header, a click on the field's name copies it (a hint says so) and leaves the value open
 - **YAML, XML and raw text**: **Show as** now also reads values as YAML, XML or raw text, with their own colors: text on several lines shows as written, XML on one line is indented, and a JSON value can be read as YAML. Open, Download and Copy give that text. The value editor has an **Edit as** menu (JSON, YAML, XML, raw text) that checks what you type as that kind, turns JSON into YAML and back, and has a Format button for each. The table view makes columns from YAML and XML values too
 - **Links**: the link button beside the key's name copies a `cachemire://` link to it, with its filter but never a login or password. Opening one goes to that key on the right connection, saved or AWS, and offers to add a server you haven't saved; the Windows installer and the .deb register these links. An opened field has one too, next to its edit button: its link opens the key on that field
@@ -26,7 +26,7 @@ Every stable release of Cachemire; `Unreleased` is what the next one brings. Bet
 ### Changed
 
 - **Text selection**: in a value, a table cell or the key's name, a double click selects a word, a triple click the whole paragraph, and Shift+click extends the selection (a double click in a table cell still selects the whole cell). The interface toolkit moves to Slint 1.19
-- **AWS**: the title bar has one button for the account: **Sign in to AWS** while signed out, then the profile in use. Its list has a filter (arrows and Enter pick, Esc closes), the three profiles used last first with when, each profile's connection profile and SSH tunnel under its name with a gear to change them (once its account is known), and **Sign out of AWS** at the bottom
+- **AWS**: the title bar has one button for the account: **Sign in to AWS** while signed out, then the profile in use. Its list has a filter (arrows and Enter pick, Esc closes), the three profiles used last first with when, each profile's connection profile and SSH tunnel under its name with a gear to change them (once its account is known), and **Sign out of AWS** at the bottom. Chips over the list keep the profiles of one connection profile (or of none), and a profile's star pins it above the others, two per line
 - **AWS**: ElastiCache endpoints with cluster mode enabled are no longer listed, since Cachemire can't connect to them
 - **TLS**: `rediss://` connections now also trust the certificate authorities installed on your computer, such as a company's own
 
@@ -34,6 +34,7 @@ Every stable release of Cachemire; `Unreleased` is what the next one brings. Bet
 
 - **Connection**: a `rediss://` server reached through an SSH tunnel is now verified against its real host name
 - **Connection**: URLs accept `valkey://` and `valkeys://`; other schemes and negative database numbers are refused with a clear message
+- **Dialogs**: scrolling over a dialog or an open menu no longer scrolls the view behind it
 - **Editor**: "Open in editor" now finds VS Code and VSCodium on Windows
 - **Export**: a failed export no longer leaves a half-written file, and keys that aren't valid UTF-8 are written with their exact name
 - **Performance**: big queries and key exports no longer slow the rest of the app down while they work
@@ -42,6 +43,7 @@ Every stable release of Cachemire; `Unreleased` is what the next one brings. Bet
 - **Security**: the AWS SSO sign-in ignores a refusal that doesn't come from your own sign-in attempt
 - **Security**: exported key files are readable by your user only
 - **Security**: passwords, passphrases and sign-in tokens are wiped from memory once no longer needed, and kept out of logs
+- **Search**: a key's search finds accented letters however they are stored (`à` as one character, or `a` plus an accent)
 - **Values**: binary values and field names show their bytes as `\xNN` and can no longer be damaged by an edit
 
 ## 3.2.2 - 2026-11-16

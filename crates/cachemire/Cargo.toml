@@ -15,6 +15,7 @@ serde_json = { workspace = true, features = ["preserve_order"] }
 # YAML and XML values: read to check them and to lay them out as a table, YAML written from JSON
 serde_norway = "0.9"
 roxmltree = "0.21"
+icu_normalizer = { version = "2", default-features = false, features = ["compiled_data"] }
 uuid.workspace = true
 arboard = { version = "3", default-features = false, features = ["wayland-data-control"] }
 # only the portal: dialogs are never attached to a parent window, so no Wayland support is needed

@@ -125,8 +125,8 @@ _version: 2
 "Filter":
   fr: "Filtre"
 # under the smart box's list: how it works, for words, then for a path
-"Space adds a search, Enter applies them; all must match. Click one to edit it, Backspace removes the last one.":
-  fr: "Espace ajoute une recherche, Entrée les applique ; toutes doivent correspondre. Cliquez-en une pour la modifier, Retour arrière ôte la dernière."
+"Enter adds the search; all must match. Click one or press ← to edit it, Backspace removes the last one.":
+  fr: "Entrée ajoute la recherche ; toutes doivent correspondre. Cliquez-en une ou appuyez sur ← pour la modifier, Retour arrière ôte la dernière."
 "Tab writes the first key, or the one picked with the arrows; Enter applies the filter as typed.":
   fr: "Tab écrit la première clé, ou celle choisie avec les flèches ; Entrée applique le filtre tel qu'il est saisi."
 "Remove a badge first (5 max)":
@@ -578,3 +578,11 @@ _version: 2
   fr: "SSH %{host}"
 "No SSH tunnel":
   fr: "Aucun tunnel SSH"
+# the AWS profile list's chips, over the profiles using no connection profile or an unknown account
+"No profile":
+  fr: "Sans profil"
+"Unknown account":
+  fr: "Compte inconnu"
+# the AWS profile list's pinned profiles: their header
+"Pinned":
+  fr: "Épinglés"

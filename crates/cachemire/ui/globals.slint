@@ -1,7 +1,7 @@
 // What Rust reads and writes, grouped by feature: each global is one feature's
 // state and the callbacks Rust answers. `main.slint` binds the components to them.
 import { ConnectionStatus, LanguageSetting, SettingsCategory, ShortcutAction, ShortcutRow, ProfileTint, KeyView, OpeningView, SearchScope, ExportFormat, ExportTarget, ThemeChoice } from "components/types.slint";
-import { AwsProfileRow, ConnectionRowData, ConnProfileRowData, ConnectionForm, SshProfileRowData, SshProfileForm, ConnProfileForm, KeyspaceRowData, SavedQueryRowData, TabData, SearchRowData, HistoryRow } from "components/types.slint";
+import { AwsChip, AwsProfileRow, ConnectionRowData, ConnProfileRowData, ConnectionForm, SshProfileRowData, SshProfileForm, ConnProfileForm, KeyspaceRowData, SavedQueryRowData, TabData, SearchRowData, HistoryRow } from "components/types.slint";
 import { AllValuesRowData, FindResult, LineSelection, ValueLine, TableRowData, SuggestionRow, CompletionEdit, BadgeData } from "components/key-detail-types.slint";
 
 // The connection in use, as the title bar shows it; Rust sets it whole.
@@ -128,6 +128,16 @@ export global AwsAccount {
     in-out property <[AwsProfileRow]> profiles: [];
     in-out property <int> highlighted: 0;
     in-out property <string> count-label: "";
+    // the pinned profiles the filters keep (not in `profiles`), their header, and whether
+    // any profile is pinned at all
+    in-out property <[AwsProfileRow]> pins: [];
+    in-out property <string> pins-title: "";
+    in-out property <bool> has-pinned: false;
+    // the connection profile chips, in lines that fit the list, and the picked one's key ("" for all)
+    in-out property <[[AwsChip]]> chip-lines: [];
+    in-out property <string> chip: "";
+    // pins `name` at the end of the pinned ones, or unpins it, then lists again
+    callback pin-toggled(name: string);
     in-out property <string> profile: "";
     // the selected profile's account was reached (its connections are listed)
     in-out property <bool> account-known: false;
@@ -135,7 +145,7 @@ export global AwsAccount {
     in-out property <string> error: "";
     callback clicked();
     callback profile-selected(name: string);
-    // fills `profiles` with the profiles whose name holds `filter`
+    // fills `profiles` and `pins` with the profiles whose name holds `filter`, under `chip`
     callback list-requested(filter: string);
 }
 
@@ -463,14 +473,11 @@ export global KeyPanel {
     callback export-selection(ExportFormat, ExportTarget);
     // the table cell at `row`, `column` (0 is "Field") onto the clipboard, whole
     callback copy-table-cell(row: int, column: int);
-    // Enter in the smart box: its words become badges, or its `$`/`.` path the JSON filter
+    // Enter in the smart box: its words become one badge, or its `$`/`.` path the JSON filter
     callback filter-query-submitted();
-    // the smart box's text edited, the caret at `cursor`: a space ending its words makes them
-    // badges at once; whether it did (the box is then empty)
-    callback filter-query-edited(text: string, cursor: int) -> bool;
     callback filter-badge-removed(text: string, scope: SearchScope);
-    // a badge's text clicked: Rust drops it and puts its text at the end of the smart box,
-    // answering where the box's text then ends (a byte offset), for the caret
+    // a badge's text clicked (or ← at the box's start): Rust makes what is typed a badge, puts the
+    // clicked one's text in the box and answers where it ends (bytes), -1 if nothing changed
     callback filter-badge-edited(text: string, scope: SearchScope) -> int;
     callback filter-case-sensitivity-changed();
     // An open row's pretty text (valid once `request-pretty-value-async` answered), drawn a

@@ -5,14 +5,12 @@ use crate::error::Localize;
 use std::sync::atomic::Ordering;
 
 use rust_i18n::t;
-use rustc_hash::FxHashSet;
 use slint::{ComponentHandle, Model, ModelRc, VecModel};
 
 use crate::{BadgeData, KeyPanel, SearchScope};
 
 use super::field::Fields;
 use super::scroll::{current_expanded_fields, disarm_scroll};
-use super::search_filter::tokenize;
 use super::value_list::{build_all_values_table, filter_fields, filter_status, parse_filter};
 use super::{AppliedPath, Ctx, MAX_BADGES, current_search_filter};
 
@@ -57,49 +55,39 @@ impl Ctx {
         self.kick_off_scan_if_active();
     }
 
-    /// Turns `words` into badges searching `scope` (a quoted run is one, otherwise each word)
-    /// and clears the smart box: waiting, not searched yet, unless `apply`, which applies every
-    /// waiting badge too. Duplicates are dropped; past [`MAX_BADGES`], none are added (said so).
-    pub(super) fn add_badges(&self, scope: SearchScope, words: &str, apply: bool) {
+    /// Adds a badge searching `scope` for `words` (one term, spaces included) and empties the
+    /// smart box; a badge already there isn't added twice, and past [`MAX_BADGES`] none is (said so).
+    pub(super) fn add_badge(&self, scope: SearchScope, words: &str) {
         let Some(window) = self.weak.upgrade() else { return };
-        let tokens = tokenize(words);
-        let mut badges: Vec<BadgeData> = window.global::<KeyPanel>().get_filter_badges().iter().collect();
-        let already_there = |text: &str| badges.iter().any(|b| b.scope == scope && b.text.as_str() == text);
-        let mut seen = FxHashSet::default();
-        let new_tokens: Vec<String> = tokens.iter().filter(|t| !already_there(t) && seen.insert((*t).clone())).cloned().collect();
-        if badges.len() + new_tokens.len() > MAX_BADGES {
-            window.global::<KeyPanel>().set_filter_limit_message(t!("Remove a badge first (5 max)").as_ref().into());
+        let panel = window.global::<KeyPanel>();
+        let text = words.trim();
+        if text.is_empty() {
             return;
         }
-        let waiting = badges.iter().any(|b| b.pending);
-        if !tokens.is_empty() {
-            window.global::<KeyPanel>().set_filter_query("".into());
-        }
-        if new_tokens.is_empty() && !(apply && waiting) {
+        let mut badges: Vec<BadgeData> = panel.get_filter_badges().iter().collect();
+        if badges.iter().any(|b| b.scope == scope && b.text.as_str() == text) {
+            panel.set_filter_query("".into());
             return;
         }
-        badges.extend(new_tokens.into_iter().map(|text| BadgeData { text: text.into(), scope, pending: true }));
-        if apply {
-            badges.iter_mut().for_each(|badge| badge.pending = false);
+        if badges.len() >= MAX_BADGES {
+            panel.set_filter_limit_message(t!("Remove a badge first (5 max)").as_ref().into());
+            return;
         }
-        window.global::<KeyPanel>().set_filter_badges(ModelRc::new(VecModel::from(badges)));
-        window.global::<KeyPanel>().set_filter_limit_message("".into());
-        if apply {
-            self.on_search_changed();
-        }
+        panel.set_filter_query("".into());
+        badges.push(BadgeData { text: text.into(), scope });
+        panel.set_filter_badges(ModelRc::new(VecModel::from(badges)));
+        panel.set_filter_limit_message("".into());
+        self.on_search_changed();
     }
 
-    /// A badge's × was clicked (or its text, to edit it): drops it, and re-renders unless
-    /// it was still waiting to be applied.
+    /// A badge's × was clicked: drops it and re-renders.
     pub(super) fn on_filter_badge_removed(&self, text: &str, scope: SearchScope) {
         let Some(window) = self.weak.upgrade() else { return };
-        let (gone, badges): (Vec<BadgeData>, Vec<BadgeData>) =
-            window.global::<KeyPanel>().get_filter_badges().iter().partition(|b| b.scope == scope && b.text.as_str() == text);
+        let badges: Vec<BadgeData> =
+            window.global::<KeyPanel>().get_filter_badges().iter().filter(|b| !(b.scope == scope && b.text.as_str() == text)).collect();
         window.global::<KeyPanel>().set_filter_badges(ModelRc::new(VecModel::from(badges)));
         window.global::<KeyPanel>().set_filter_limit_message("".into());
-        if gone.iter().any(|b| !b.pending) {
-            self.on_search_changed();
-        }
+        self.on_search_changed();
     }
 
     /// Applies `json-filter`'s path to the loaded fields (off the UI thread) and swaps

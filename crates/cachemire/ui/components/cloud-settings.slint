@@ -1,5 +1,5 @@
 import { Theme } from "theme.slint";
-import { ModalButton, SegmentedToggle } from "widgets.slint";
+import { ModalButton, SegmentedToggle, BackdropArea } from "widgets.slint";
 import { SshTunnelFields, ProfileChoiceList, ConnProfileRowData } from "connection-picker.slint";
 
 // What the cloud settings form shows and edits; Rust fills it before opening it
@@ -40,7 +40,7 @@ export component CloudSettingsModal inherits Rectangle {
 
     background: #000000aa;
 
-    TouchArea {
+    BackdropArea {
         clicked => { CloudSettings.open = false; }
     }
 

@@ -152,6 +152,16 @@ export struct AwsProfileRow {
     ssh-label: string,
 }
 
+// a chip over the AWS profiles: all of them (key ""), those using one connection profile,
+// those with none, or those whose account isn't known yet; and how many there are
+export struct AwsChip {
+    key: string,
+    label: string,
+    has-tint: bool,
+    tint: ProfileTint,
+    count: int,
+}
+
 // one connection profile, as the settings window and the connection form list it
 export struct ConnProfileRowData {
     id: string,

@@ -2,20 +2,6 @@ use super::*;
 use serde_json::json;
 
 #[test]
-fn tokenize_splits_on_spaces_and_keeps_a_quoted_phrase_together() {
-    assert_eq!(tokenize("foo bar"), vec!["foo", "bar"]);
-    assert_eq!(tokenize("  foo   bar  "), vec!["foo", "bar"]);
-    assert_eq!(tokenize(r#""hello world" foo"#), vec!["hello world", "foo"]);
-    assert_eq!(tokenize("'it is' done"), vec!["it is", "done"]);
-    // an unterminated quote reads to the end of the text
-    assert_eq!(tokenize(r#"foo "bar baz"#), vec!["foo", "bar baz"]);
-    // an empty quoted phrase contributes nothing
-    assert_eq!(tokenize(r#"foo "" bar"#), vec!["foo", "bar"]);
-    assert!(tokenize("   ").is_empty());
-    assert!(tokenize("").is_empty());
-}
-
-#[test]
 fn matches_checks_every_term_against_its_own_scope_anded_together() {
     // the `field()` test helper leaves `raw` empty, so a real value needs
     // `Field::from_value` instead, like a loaded key's fields get built

@@ -1,6 +1,6 @@
 import { Theme } from "theme.slint";
 import { LanguageSetting, OpeningView, SettingsCategory, ProfileTint, SshProfileRowData, SshProfileForm, ConnProfileForm, ThemeChoice } from "types.slint";
-import { VScrollBar, ModalButton, CheckRow, SegmentedToggle, IconButton, PastePopup } from "widgets.slint";
+import { VScrollBar, ModalButton, CheckRow, SegmentedToggle, IconButton, PastePopup, BackdropArea } from "widgets.slint";
 import { IconPlus, IconPencil, IconSettings, IconKey, IconPalette, IconFlask, IconInfo, IconKeyboard, IconDisplay, IconUndo, IconSearch, IconClose } from "icons.slint";
 import { ConnectionModalField, ConnProfileRowData, TintDot } from "connection-picker.slint";
 import { Preferences, About, Shortcuts } from "../globals.slint";
@@ -1202,6 +1202,17 @@ export component SettingsModal inherits Rectangle {
     property <bool> on-ssh-form: root.editing && (root.searching || root.category == SettingsCategory.ssh-profiles);
     property <bool> on-conn-form: root.editing-conn-profile && (root.searching || root.category == SettingsCategory.conn-profiles);
 
+    // Esc not taken inside (the search box empties first, a key being recorded stops): an open
+    // form goes back to its list, as Cancel does, else the window closes
+    public function escape() {
+        if root.on-ssh-form || root.on-conn-form {
+            root.editing = false;
+            root.editing-conn-profile = false;
+        } else {
+            root.close();
+        }
+    }
+
     function select(category: SettingsCategory) {
         Shortcuts.recording = false;
         root.editing = false;
@@ -1231,7 +1242,7 @@ export component SettingsModal inherits Rectangle {
 
     background: #000000aa;
 
-    TouchArea {
+    BackdropArea {
         clicked => { root.close(); }
     }
 

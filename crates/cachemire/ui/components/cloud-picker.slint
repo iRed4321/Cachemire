@@ -1,54 +1,53 @@
 import { Theme } from "theme.slint";
-import { VScrollBar, Hint } from "widgets.slint";
+import { VScrollBar, IconButton } from "widgets.slint";
 import { SearchField } from "key-detail-widgets.slint";
 import { TintDot } from "connection-picker.slint";
-import { IconCheck, IconDot, IconSettings } from "icons.slint";
+import { IconCheck, IconDot, IconSettings, IconStar } from "icons.slint";
 import { AwsAccount } from "../globals.slint";
-import { AwsProfileRow } from "types.slint";
+import { AwsChip, AwsProfileRow } from "types.slint";
 
-// An icon-only gear opening an AWS account's settings, with its hover hint.
-export component AwsGearButton inherits Rectangle {
-    in property <color> hover-background: Theme.bg-hover;
+// A connection profile chip over the list: picked, it keeps the profiles using that one.
+component ProfileChip inherits Rectangle {
+    in property <AwsChip> data;
+    in property <bool> on;
     callback clicked <=> area.clicked;
 
-    background: area.has-hover ? hover-background : transparent;
+    height: Theme.px(22px);
+    border-radius: self.height / 2;
+    border-width: 1px;
+    border-color: on ? Theme.accent-blue-dim : Theme.border-soft;
+    background: on ? Theme.bg-selected-soft : (area.has-hover ? Theme.bg-hover-elevated : transparent);
 
-    property <bool> hovered: area.has-hover;
-    property <bool> tooltip-shown: false;
-    function hide-tooltip() {
-        if tooltip-shown {
-            tooltip-shown = false;
-            Hint.hide();
+    area := TouchArea { mouse-cursor: pointer; }
+    HorizontalLayout {
+        padding-left: Theme.px(9px);
+        padding-right: Theme.px(9px);
+        spacing: Theme.px(5px);
+        if data.has-tint: VerticalLayout {
+            alignment: center;
+            TintDot { tint: data.tint; size: Theme.px(6px); }
         }
-    }
-    changed hovered => { if !hovered { hide-tooltip(); } }
-    Timer {
-        interval: 500ms;
-        running: root.hovered && !root.tooltip-shown && !area.pressed;
-        triggered => {
-            root.tooltip-shown = true;
-            Hint.show-below(@tr("Account settings"), area.absolute-position.x, area.absolute-position.y + area.height + Theme.px(6px));
+        Text {
+            text: data.label;
+            font-size: Theme.pt(11px);
+            color: on || area.has-hover ? Theme.text-primary : Theme.text-secondary;
+            vertical-alignment: center;
         }
-    }
-
-    area := TouchArea {
-        mouse-cursor: pointer;
-        clicked => { root.hide-tooltip(); }
-    }
-
-    IconSettings {
-        x: (parent.width - self.width) / 2;
-        y: (parent.height - self.height) / 2;
-        size: Theme.icon-sm;
-        tint: area.has-hover ? Theme.text-primary : Theme.text-secondary;
+        Text {
+            text: data.count;
+            font-size: Theme.pt(11px);
+            color: Theme.text-tertiary;
+            vertical-alignment: center;
+        }
     }
 }
 
-// Floating list under the title bar's AWS pill: a filter, the recent profiles then the
-// others, each with its account's settings and a gear to edit them, and the sign-out.
-// Positioned and dismissed by main.slint.
+// Floating list under the title bar's AWS pill: a filter, chips keeping one connection profile,
+// the pinned profiles two per line, then the recent ones and the others, each with its account's
+// settings, a star to pin it and a gear. Positioned and dismissed by main.slint.
 export component AwsProfileDropdown inherits Rectangle {
     in property <[AwsProfileRow]> profiles: AwsAccount.profiles;
+    in property <[AwsProfileRow]> pins: AwsAccount.pins;
     in property <string> selected: AwsAccount.profile;
     // whether the clipboard holds text, for the filter's right-click "Paste"
     callback clipboard-has-text() -> bool;
@@ -57,9 +56,12 @@ export component AwsProfileDropdown inherits Rectangle {
     callback sign-out-clicked();
     callback closed();
 
-    init => { AwsAccount.list-requested(""); }
+    init => {
+        AwsAccount.chip = "";
+        AwsAccount.list-requested("");
+    }
 
-    width: Theme.px(360px);
+    width: Theme.px(460px);
     background: Theme.bg-elevated;
     border-radius: Theme.radius-md;
     border-width: 1px;
@@ -69,14 +71,23 @@ export component AwsProfileDropdown inherits Rectangle {
     drop-shadow-offset-y: Theme.shadow-offset-y;
     property <length> row-height: Theme.px(44px);
     property <length> section-height: Theme.px(24px);
-    property <length> list-max-height: Theme.px(360px);
+    property <length> list-max-height: Theme.px(400px);
     property <length> filter-height: Theme.px(40px);
     property <length> footer-height: Theme.px(36px);
-    property <length> content-height: profiles.length == 0 ? Theme.px(48px)
+    property <length> chip-height: Theme.px(22px);
+    property <length> chip-gap: Theme.px(6px);
+    property <int> chip-lines: AwsAccount.chip-lines.length;
+    // the chips' lines and the line under them
+    property <length> chips-height: chip-lines == 0 ? 0px : chip-lines * chip-height + (chip-lines - 1) * chip-gap + Theme.px(8px) + 1px;
+    property <length> pin-height: Theme.px(28px);
+    property <length> pin-gap: Theme.px(4px);
+    property <int> pin-lines: ceil(pins.length / 2);
+    property <length> pins-height: pins.length == 0 ? 0px : section-height + pin-lines * pin-height + (pin-lines - 1) * pin-gap + Theme.px(6px);
+    property <length> content-height: profiles.length == 0 ? (pins.length == 0 ? Theme.px(48px) : 0px)
         : profiles.length * row-height + profiles[profiles.length - 1].sections-above * section-height + Theme.px(4px);
     property <length> list-height: min(list-max-height, content-height);
     // sized to its parts (an unset height would stretch to the window's)
-    height: filter-height + list-height + footer-height;
+    height: filter-height + chips-height + pins-height + list-height + footer-height;
 
     // the top of row `i` in the list, its section's title above it
     pure function row-top(i: int) -> length {
@@ -107,17 +118,23 @@ export component AwsProfileDropdown inherits Rectangle {
             padding-top: Theme.px(8px);
             padding-bottom: Theme.px(6px);
             spacing: Theme.px(8px);
-            SearchField {
+            filter-box := SearchField {
                 auto-focus: true;
                 placeholder: @tr("Filter profiles...");
                 font-size: Theme.pt(12px);
                 height: Theme.px(26px);
                 horizontal-stretch: 1;
                 clipboard-has-text() => { return root.clipboard-has-text(); }
-                edited => { AwsAccount.list-requested(self.text); }
+                // the list is filtered anew with its first row highlighted: back to the top
+                edited => {
+                    AwsAccount.list-requested(self.text);
+                    list-flick.content-y = 0;
+                }
                 accepted => {
                     if profiles.length > 0 {
                         root.picked(profiles[AwsAccount.highlighted].name);
+                    } else if pins.length > 0 {
+                        root.picked(pins[0].name);
                     }
                 }
                 key-intercept(event) => {
@@ -142,7 +159,98 @@ export component AwsProfileDropdown inherits Rectangle {
             }
         }
 
-        if profiles.length == 0: Text {
+        if chip-lines > 0: VerticalLayout {
+            height: chips-height;
+            VerticalLayout {
+                padding-left: Theme.px(8px);
+                padding-right: Theme.px(10px);
+                spacing: chip-gap;
+                for line in AwsAccount.chip-lines: HorizontalLayout {
+                    height: chip-height;
+                    alignment: start;
+                    spacing: chip-gap;
+                    for c in line: ProfileChip {
+                        data: c;
+                        on: c.key == AwsAccount.chip;
+                        // picked again, a chip lets go: all the profiles are back
+                        clicked => {
+                            AwsAccount.chip = c.key == AwsAccount.chip ? "" : c.key;
+                            AwsAccount.list-requested(filter-box.text);
+                            list-flick.content-y = 0;
+                        }
+                    }
+                }
+            }
+            Rectangle { }
+            Rectangle {
+                height: 1px;
+                background: Theme.border-soft;
+            }
+        }
+
+        // the pins: two per line, a click picks one, its star unpins it
+        if pins.length > 0: Rectangle {
+            height: pins-height;
+            HorizontalLayout {
+                y: 0;
+                height: section-height;
+                padding-left: Theme.px(12px);
+                Text {
+                    text: AwsAccount.pins-title;
+                    font-size: Theme.pt(10.5px);
+                    font-weight: 600;
+                    color: Theme.text-tertiary;
+                    vertical-alignment: center;
+                }
+            }
+            for p[i] in pins: Rectangle {
+                property <length> tile-width: (parent.width - Theme.px(16px) - pin-gap) / 2;
+                x: Theme.px(8px) + mod(i, 2) * (tile-width + pin-gap);
+                y: section-height + floor(i / 2) * (pin-height + pin-gap);
+                width: tile-width;
+                height: pin-height;
+                border-radius: Theme.radius-sm;
+                border-width: 1px;
+                border-color: p.name == root.selected ? Theme.accent-blue-dim : Theme.border-soft;
+                background: p.name == root.selected ? Theme.bg-selected-soft
+                    : (tile-area.has-hover ? Theme.bg-hover-elevated : Theme.bg-hover-elevated.mix(Theme.bg-elevated, 0.3));
+                tile-area := TouchArea {
+                    mouse-cursor: pointer;
+                    clicked => { root.picked(p.name); }
+                }
+                HorizontalLayout {
+                    padding-left: Theme.px(8px);
+                    padding-right: Theme.px(2px);
+                    spacing: Theme.px(7px);
+                    VerticalLayout {
+                        alignment: center;
+                        if p.has-tint: TintDot { tint: p.tint; size: Theme.px(7px); }
+                        if !p.has-tint: IconDot { size: Theme.px(7px); tint: Theme.text-tertiary; }
+                    }
+                    Text {
+                        text: p.name;
+                        font-size: Theme.pt(12px);
+                        font-weight: p.name == root.selected ? 700 : 500;
+                        color: Theme.text-primary;
+                        vertical-alignment: center;
+                        overflow: elide;
+                        horizontal-stretch: 1;
+                        min-width: 0px;
+                    }
+                    VerticalLayout {
+                        alignment: center;
+                        IconButton {
+                            box-size: Theme.px(22px);
+                            hint: @tr("Unpin");
+                            clicked => { AwsAccount.pin-toggled(p.name); }
+                            IconStar { size: Theme.px(12px); filled: true; tint: Theme.accent-yellow; }
+                        }
+                    }
+                }
+            }
+        }
+
+        if profiles.length == 0 && pins.length == 0: Text {
             height: list-height;
             text: @tr("No profile matches");
             color: Theme.text-tertiary;
@@ -240,15 +348,27 @@ export component AwsProfileDropdown inherits Rectangle {
                                             }
                                         }
                                     }
+                                    // the star shows on the row under the pointer or the keyboard
+                                    VerticalLayout {
+                                        alignment: center;
+                                        IconButton {
+                                            box-size: Theme.px(26px);
+                                            hint: @tr("Pin to the top");
+                                            opacity: row-area.has-hover || self.hovered || i == AwsAccount.highlighted ? 1 : 0;
+                                            clicked => { AwsAccount.pin-toggled(p.name); }
+                                            IconStar { size: Theme.icon-sm; tint: Theme.text-secondary; }
+                                        }
+                                    }
                                     // the gear's room, kept so the times line up
-                                    if !p.known: Rectangle { width: Theme.px(28px); }
-                                    if p.known: AwsGearButton {
-                                        y: (parent.height - self.height) / 2;
-                                        width: Theme.px(28px);
-                                        height: Theme.px(26px);
-                                        border-radius: Theme.radius-sm;
-                                        hover-background: Theme.bg-hover;
-                                        clicked => { root.settings-clicked(p.name); }
+                                    if !p.known: Rectangle { width: Theme.px(26px); }
+                                    if p.known: VerticalLayout {
+                                        alignment: center;
+                                        IconButton {
+                                            box-size: Theme.px(26px);
+                                            hint: @tr("Account settings");
+                                            clicked => { root.settings-clicked(p.name); }
+                                            IconSettings { size: Theme.icon-sm; tint: Theme.text-secondary; }
+                                        }
                                     }
                                 }
                             }
@@ -287,6 +407,17 @@ export component AwsProfileDropdown inherits Rectangle {
                     color: sign-out-area.has-hover ? Theme.text-primary : Theme.text-secondary;
                     vertical-alignment: center;
                 }
+            }
+            // until something is pinned: how to
+            if !AwsAccount.has-pinned && profiles.length > 0: Text {
+                width: min(self.preferred-width, parent.width - sign-out.width - Theme.px(24px));
+                x: parent.width - self.width - Theme.px(10px);
+                height: parent.height;
+                overflow: elide;
+                text: @tr("Click a profile's star to pin it at the top");
+                font-size: Theme.pt(11px);
+                color: Theme.text-tertiary;
+                vertical-alignment: center;
             }
         }
     }
