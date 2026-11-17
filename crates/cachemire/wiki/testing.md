@@ -8,7 +8,7 @@ test is fixed. After any change `cargo test` is run, and `cargo fmt --all` for R
 
 - `src/**/tests.rs`: unit tests, one sibling file per module (`#[cfg(test)] mod tests;`).
 - `src/ui_tests/`: headless UI tests with the `Harness` (`mod.rs`), by area (`app.rs`, `cloud.rs`,
-  `connections.rs`, `dialogs.rs`, `formats.rs`, `links.rs`, `shortcuts.rs`, `smart_box.rs`, `tabs.rs`, `themes.rs`) and `e2e/` against a real Redis.
+  `connections.rs`, `dialogs.rs`, `export.rs`, `formats.rs`, `links.rs`, `shortcuts.rs`, `smart_box.rs`, `tabs.rs`, `themes.rs`) and `e2e/` against a real Redis.
 - `crates/cachemire-core/src/e2e/`: core end-to-end tests; `src/test_support.rs`: shared helpers.
 - `crates/xtask/src/e2e.rs`: `cargo xtask e2e`. `.config/nextest.toml`: the `ci` profile.
 - `.github/workflows/ci.yml`: what CI runs.
@@ -64,6 +64,8 @@ Tests then drive the real window:
 - `frame()` runs what other threads handed to the UI thread, updates timers and animations, and
   renders into `buffer` (RGB565); `settle()` loops it 30 times at 20 ms for animations and inertia.
 - Assertions read Slint globals (`window.global::<KeyPanel>()...`) or the rendered pixels.
+- Nothing reaches the desktop: under `cfg(test)` a copy or a value opened in an editor lands in
+  `value_actions::HANDED` (read with `handed_out`), and the last toast in `toast::take_last()`.
 
 Design constraints visible in `ui_tests/mod.rs`:
 
@@ -96,7 +98,7 @@ Isolation between tests: `TestRedis::claim` increments a counter key in database
 different databases. That is why the server is started with many databases.
 
 Core e2e areas: `connection`, `browse`, `read`, `edit`, `export`, `search`, `redisql`. The app's `ui_tests/e2e`
-(`tree.rs`, `values.rs`, `tabs.rs`) start a `Running` struct: seed the database, build a `Harness`, connect through
+(`tree.rs`, `values.rs`, `big_keys.rs`, `tabs.rs`, `connections.rs`, `secrets.rs`) start a `Running` struct: seed the database, build a `Harness`, connect through
 `connections::connect_to`, wait for the tree, then act like a user (these also hold an `EventLoopTurn`).
 
 ## CI

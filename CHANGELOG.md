@@ -38,6 +38,7 @@ Every stable release of Cachemire; `Unreleased` is what the next one brings. Bet
 - **Dialogs**: scrolling over a dialog or an open menu no longer scrolls the view behind it
 - **Editor**: "Open in editor" now finds VS Code and VSCodium on Windows
 - **Export**: a failed export no longer leaves a half-written file, and keys that aren't valid UTF-8 are written with their exact name
+- **Export**: in the tree, Select all during a search now shows a folder ticked once all its keys are
 - **Performance**: big queries and key exports no longer slow the rest of the app down while they work
 - **Query**: the completion list is drawn over the results' buttons below the box, no longer mixed with them
 - **Query**: a string over 16 MB is refused with a message naming the key and its size, instead of being read whole

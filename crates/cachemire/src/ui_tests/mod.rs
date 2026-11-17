@@ -1,6 +1,6 @@
 //! Headless input/render tests against the real window, on Slint's software renderer, by area: [`app`],
-//! [`dialogs`], [`connections`], [`cloud`], [`links`], [`shortcuts`], [`smart_box`], [`tabs`] and [`e2e`] (against a real Redis server).
-//! Each test builds its own [`Harness`] (thread-local Slint context).
+//! [`dialogs`], [`export`], [`connections`], [`cloud`], [`links`], [`shortcuts`], [`smart_box`], [`tabs`] and
+//! [`e2e`] (against a real Redis server). Each test builds its own [`Harness`] (thread-local Slint context).
 
 use crate::{KeyPanel, MainWindow, QueryTab, SavedQueries, SearchTab, TabStrip};
 use slint::platform::software_renderer::{MinimalSoftwareWindow, RepaintBufferType, Rgb565Pixel};
@@ -15,6 +15,7 @@ mod cloud;
 mod connections;
 mod dialogs;
 mod e2e;
+mod export;
 mod formats;
 mod links;
 mod shortcuts;
@@ -146,6 +147,20 @@ impl Harness {
 pub(crate) fn wait_out_double_click(h: &mut Harness) {
     std::thread::sleep(std::time::Duration::from_millis(550));
     h.frame();
+}
+
+/// Runs the background work until a text holding `marker` went to the clipboard or an editor:
+/// where it went, and the text. Other tests hand theirs out alongside, with their own markers.
+fn handed_out(h: &mut Harness, rt: &tokio::runtime::Runtime, marker: &str) -> (String, String) {
+    for _ in 0..500 {
+        rt.block_on(async { tokio::time::sleep(std::time::Duration::from_millis(2)).await });
+        h.frame();
+        let mut handed = crate::value_actions::HANDED.lock();
+        if let Some(i) = handed.iter().position(|(_, text)| text.contains(marker)) {
+            return handed.remove(i);
+        }
+    }
+    panic!("nothing holding {marker} was handed out");
 }
 
 /// An app state in a directory of its own, its secrets in memory.

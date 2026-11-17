@@ -85,7 +85,7 @@ fn unticking_a_key_of_a_ticked_folder_keeps_everything_else() {
 fn unticking_a_folder_out_of_the_whole_keyspace_keeps_the_rest() {
     let index = index_of(&KEYS);
     let mut s = selection();
-    s.select_all(&index, false);
+    s.select_all(&index, &index, false);
     assert_eq!(s.count(&index), KEYS.len());
     s.tick("x:y:", false, &index, &index, false);
     assert_eq!(exported(&s, &index).len(), KEYS.len() - 1);
@@ -134,7 +134,7 @@ fn select_all_in_a_search_ticks_only_what_it_shows() {
     let index = index_of(&KEYS);
     let shown = index_of(&["cfg", "x:other"]);
     let mut s = selection();
-    s.select_all(&shown, true);
+    s.select_all(&index, &shown, true);
     assert_eq!(exported(&s, &index), set(&["cfg", "x:other"]));
 }
 
@@ -142,7 +142,7 @@ fn select_all_in_a_search_ticks_only_what_it_shows() {
 fn boxes_are_empty_outside_export_mode() {
     let index = index_of(&KEYS);
     let mut s = selection();
-    s.select_all(&index, false);
+    s.select_all(&index, &index, false);
     s.on = false;
     assert_eq!((s.check_of("cfg", false), s.check_of("app:", true)), (0, 0));
     s.clear();
@@ -228,7 +228,7 @@ fn any_series_of_ticks_in_a_search_ends_on_the_keys_a_user_would_expect() {
         let mut expected: BTreeSet<String> = BTreeSet::new();
         for _step in 0..20 {
             if next() % 10 == 0 {
-                s.select_all(&shown, true);
+                s.select_all(&index, &shown, true);
                 expected.extend(shown_keys.iter().map(|k| k.to_string()));
             } else {
                 let id = &ids[(next() % ids.len() as u64) as usize];

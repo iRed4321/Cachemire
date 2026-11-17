@@ -1,5 +1,5 @@
 //! The keyspace tree on a real server: the walk filling it, and its right-click menu's
-//! Add key, Rename and Delete writing to Redis.
+//! Add key, Rename and Delete writing to Redis; its search box, its export mode's boxes and their count.
 
 use super::*;
 use crate::{FolderDeleteDialog, KeyNameDialog};
@@ -153,4 +153,102 @@ fn deleting_a_key_or_a_folder_removes_it_from_redis_and_the_tree() {
     assert!(r.redis.query::<Vec<String>>(&["KEYS", "user:*"]).is_empty());
     assert_eq!(r.rows(), ["order:"]);
     assert_eq!(r.redis.query::<i64>(&["DBSIZE"]), 1);
+}
+
+/// Each row's export box, by full name: 0 empty, 1 ticked, 2 in part.
+fn boxes(r: &Running) -> Vec<(String, i32)> {
+    r.h.window.global::<KeyTree>().get_rows().iter().map(|row| (row.full_name.to_string(), row.checked)).collect()
+}
+
+fn checked(r: &Running, name: &str) -> i32 {
+    boxes(r).into_iter().find(|(row, _)| row == name).map_or(-1, |(_, check)| check)
+}
+
+#[test]
+#[ignore = "needs a Redis server: cargo xtask e2e"]
+fn in_export_mode_a_folders_box_ticks_every_key_under_it_and_the_count_follows() {
+    let mut r = Running::start(shop);
+    r.click_row("user:");
+    let tree = r.h.window.global::<KeyTree>();
+    assert!(boxes(&r).iter().all(|(_, check)| *check == 0), "no box outside export mode");
+    tree.invoke_export_mode_toggled();
+    assert!(tree.get_export_mode());
+    tree.invoke_export_row_toggled("user:".into());
+    assert_eq!(tree.get_export_count(), 3);
+    assert_eq!((checked(&r, "user:"), checked(&r, "user:1"), checked(&r, "solo")), (1, 1, 0));
+
+    tree.invoke_export_row_toggled("user:1".into());
+    assert_eq!(tree.get_export_count(), 2);
+    assert_eq!(checked(&r, "user:"), 2, "its folder is ticked in part");
+
+    tree.invoke_export_select_all();
+    assert_eq!(tree.get_export_count(), 5);
+    assert!(boxes(&r).iter().all(|(_, check)| *check == 1), "{:?}", boxes(&r));
+    tree.invoke_export_clear();
+    assert_eq!(tree.get_export_count(), 0);
+    assert!(boxes(&r).iter().all(|(_, check)| *check == 0));
+}
+
+#[test]
+#[ignore = "needs a Redis server: cargo xtask e2e"]
+fn shift_clicking_a_box_ticks_every_row_between_and_leaving_export_mode_forgets_them() {
+    let mut r = Running::start(shop);
+    r.click_row("user:");
+    assert_eq!(r.rows(), ["order:", "user:", "user:admin:", "user:1", "user:2", "solo"]);
+    let tree = r.h.window.global::<KeyTree>();
+    // a right-click's "Select" starts export mode on its row
+    tree.invoke_export_select_row("order:".into());
+    assert!(tree.get_export_mode());
+    assert_eq!(tree.get_export_count(), 1);
+
+    tree.invoke_export_range_toggled("order:".into(), "user:1".into());
+    assert_eq!(tree.get_export_count(), 4, "order:7 and the three keys of user:");
+    assert_eq!(checked(&r, "solo"), 0, "past the range: left alone");
+
+    tree.invoke_export_mode_toggled();
+    assert!(!tree.get_export_mode());
+    assert_eq!(tree.get_export_count(), 0);
+    tree.invoke_export_mode_toggled();
+    assert_eq!(tree.get_export_count(), 0, "nothing is ticked anymore");
+}
+
+fn search_tree(r: &mut Running, text: &str) {
+    r.h.window.global::<KeyTree>().invoke_search_submitted(text.into());
+    r.h.frame();
+}
+
+/// The keys the tree shows, folders left out.
+fn keys_shown(r: &Running) -> Vec<String> {
+    r.rows().into_iter().filter(|name| !name.ends_with(':')).collect()
+}
+
+#[test]
+#[ignore = "needs a Redis server: cargo xtask e2e"]
+fn the_tree_search_keeps_the_keys_whose_name_holds_the_text_or_matches_a_glob() {
+    let mut r = Running::start(shop);
+    search_tree(&mut r, "admin");
+    assert_eq!(keys_shown(&r), ["user:admin:root"], "its folders open to show it");
+    search_tree(&mut r, "user:?");
+    assert_eq!(keys_shown(&r), ["user:1", "user:2"], "a glob as Redis reads it");
+    search_tree(&mut r, "nothing like it");
+    assert!(r.rows().is_empty());
+
+    search_tree(&mut r, " ");
+    assert_eq!(r.rows(), ["order:", "user:", "solo"], "an empty box goes back to the folders, closed");
+}
+
+#[test]
+#[ignore = "needs a Redis server: cargo xtask e2e"]
+fn in_a_search_select_all_ticks_only_the_keys_it_shows() {
+    let mut r = Running::start(shop);
+    let tree = r.h.window.global::<KeyTree>();
+    tree.invoke_export_mode_toggled();
+    search_tree(&mut r, "user:");
+    let tree = r.h.window.global::<KeyTree>();
+    tree.invoke_export_select_all();
+    assert_eq!(tree.get_export_count(), 3);
+    search_tree(&mut r, "");
+    assert_eq!(r.h.window.global::<KeyTree>().get_export_count(), 3, "what was ticked stays once the search is left");
+    assert_eq!(checked(&r, "user:"), 1, "a folder all of whose keys are ticked is ticked, as if each was");
+    assert_eq!((checked(&r, "order:"), checked(&r, "solo")), (0, 0));
 }

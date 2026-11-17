@@ -9,6 +9,22 @@ use crate::error::Error;
 use cachemire_core::now_ms;
 use cachemire_core::persist;
 
+/// What the tests copied or opened in an editor, by where it went ("clipboard" or the file's
+/// extension), kept here instead of reaching the desktop.
+#[cfg(test)]
+pub static HANDED: parking_lot::Mutex<Vec<(String, String)>> = parking_lot::Mutex::new(Vec::new());
+
+#[cfg(test)]
+fn kept_for_tests(target: &str, text: &str) -> bool {
+    HANDED.lock().push((target.to_string(), text.to_string()));
+    true
+}
+
+#[cfg(not(test))]
+fn kept_for_tests(_: &str, _: &str) -> bool {
+    false
+}
+
 /// Removes the values opened in an editor more than a day ago: they may hold secrets.
 fn remove_old_files(dir: &std::path::Path) {
     let Ok(entries) = std::fs::read_dir(dir) else { return };
@@ -25,6 +41,9 @@ fn remove_old_files(dir: &std::path::Path) {
 /// `xdg-open`: MIME sniffing often routes JSON-looking content to a
 /// browser regardless of extension. Tries known GUI editors, falling back to the OS default.
 pub fn open_in_external_editor(text: &str, extension: &str) -> Result<(), Error> {
+    if kept_for_tests(extension, text) {
+        return Ok(());
+    }
     let dir = std::env::temp_dir().join("cachemire-values");
     persist::create_private_dir(&dir)?;
     remove_old_files(&dir);
@@ -57,6 +76,10 @@ pub fn open_in_external_editor(text: &str, extension: &str) -> Result<(), Error>
 pub fn copy_to_clipboard(text: &str) -> Result<(), Error> {
     use parking_lot::Mutex;
 
+    if kept_for_tests("clipboard", text) {
+        return Ok(());
+    }
+
     static CLIPBOARD: Mutex<Option<arboard::Clipboard>> = Mutex::new(None);
 
     let mut guard = CLIPBOARD.lock();
@@ -68,6 +91,9 @@ pub fn copy_to_clipboard(text: &str) -> Result<(), Error> {
 
 #[cfg(not(unix))]
 pub fn copy_to_clipboard(text: &str) -> Result<(), Error> {
+    if kept_for_tests("clipboard", text) {
+        return Ok(());
+    }
     let mut clipboard = arboard::Clipboard::new().map_err(Error::from)?;
     clipboard.set_text(text).map_err(Error::from)
 }

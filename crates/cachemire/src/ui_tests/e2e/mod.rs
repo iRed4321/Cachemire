@@ -1,6 +1,6 @@
 //! The whole app against a real Redis server, each test on an emptied database of its own
-//! (see `TestRedis`): connecting walks the keyspace into the tree, then [`tree`], [`values`]
-//! and [`tabs`] act as the user does. A plain `cargo test` skips them: `cargo xtask e2e` runs them.
+//! (see `TestRedis`): connecting walks the keyspace into the tree, then [`tree`], [`values`],
+//! [`big_keys`], [`tabs`], [`connections`] and [`secrets`] act as the user does. `cargo xtask e2e` runs them.
 
 use super::*;
 use crate::{ConnectionState, KeyTree, ValueEditor};
@@ -8,6 +8,9 @@ use cachemire_core::test_support::TestRedis;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
+mod big_keys;
+mod connections;
+mod secrets;
 mod tabs;
 mod tree;
 mod values;
@@ -47,6 +50,8 @@ impl Running {
         crate::connections::init(&app, &h.window);
         crate::search::init(&app, &h.window);
         crate::redisql::init(&app, &h.window);
+        crate::keyring_dialogs::init(&h.window);
+        crate::host_key_dialog::init(&h.window);
         open(&app, &h.window);
         let mut running = Self { h, app, rt, redis, _turn: turn };
         running.until("the connection", |h| h.window.global::<ConnectionState>().get_view().connected);

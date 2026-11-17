@@ -1,5 +1,5 @@
-//! The windows over the app: Settings (with its About page: version and updates), and the
-//! connections' import and export.
+//! The windows over the app: Settings (with its About page: version and updates), the
+//! connections' import and export, and the question about an SSH server's unknown key.
 
 use super::*;
 use crate::{About, ConnectionTransfer, Preferences, SettingsCategory, SshProfileForm};
@@ -409,4 +409,69 @@ fn importing_saves_the_ticked_connections_under_free_names_and_says_so() {
     assert!(!names.contains(&"Skipped".to_string()), "an unticked row isn't imported");
     let listed = h.window.global::<crate::ConnectionState>().get_connections().row_count();
     assert_eq!(listed, names.len(), "the connection list shows them");
+}
+
+/// The answers the SSH host-key dialog handed back, in order.
+type Answers = Rc<RefCell<Vec<&'static str>>>;
+
+/// Asks about server `host`'s key as a connection would, keeping the answer in `answers`.
+fn ask_host_key(app: &Rc<crate::app::App>, h: &Harness, host: &str, answers: &Answers) {
+    use russh::keys::ssh_key::public::{Ed25519PublicKey, KeyData};
+    let key = russh::keys::PublicKey::new(KeyData::Ed25519(Ed25519PublicKey([7; 32])), "");
+    let server = cachemire_core::connection::ssh_tunnel::UnknownHostKey::new(host, 2222, &key);
+    let answers = answers.clone();
+    let answer = Box::new(move |_: &Rc<crate::app::App>, _: &crate::MainWindow, answered: crate::host_key_dialog::Answered| {
+        answers.borrow_mut().push(match answered {
+            crate::host_key_dialog::Answered::Trusted => "trusted",
+            crate::host_key_dialog::Answered::Cancelled => "cancelled",
+            crate::host_key_dialog::Answered::NotSaved(_) => "not saved",
+        });
+    });
+    crate::host_key_dialog::ask(app, &h.window, server, answer);
+}
+
+/// The app's own known-hosts file.
+fn known_hosts(app: &crate::app::App) -> std::path::PathBuf {
+    app.state.settings.lock().file_path().with_file_name("ssh_known_hosts")
+}
+
+#[test]
+fn an_ssh_server_trusted_in_the_dialog_is_remembered_and_the_attempt_goes_on() {
+    let state = test_state();
+    let h = Harness::new();
+    let (app, _rt, _turn) = install_app(&h, &state);
+    crate::host_key_dialog::init(&h.window);
+    let answers = Answers::default();
+    ask_host_key(&app, &h, "bastion.test", &answers);
+    let dialog = h.window.global::<crate::HostKeyDialog>();
+    assert!(dialog.get_open());
+    assert_eq!((dialog.get_server().as_str(), dialog.get_key_type().as_str()), ("bastion.test:2222", "ssh-ed25519"));
+    assert!(dialog.get_fingerprint().starts_with("SHA256:"), "{}", dialog.get_fingerprint());
+
+    dialog.invoke_trusted();
+    assert_eq!(*answers.borrow(), ["trusted"]);
+    let remembered = std::fs::read_to_string(known_hosts(&app)).unwrap();
+    assert!(remembered.contains("[bastion.test]:2222 ssh-ed25519"), "{remembered}");
+
+    dialog.invoke_trusted();
+    assert_eq!(answers.borrow().len(), 1, "a second click answers nothing more");
+}
+
+#[test]
+fn an_ssh_server_cancelled_or_that_cant_be_remembered_stops_the_attempt() {
+    let state = test_state();
+    let h = Harness::new();
+    let (app, _rt, _turn) = install_app(&h, &state);
+    crate::host_key_dialog::init(&h.window);
+    let answers = Answers::default();
+    ask_host_key(&app, &h, "bastion.test", &answers);
+    h.window.global::<crate::HostKeyDialog>().invoke_cancelled();
+    assert_eq!(*answers.borrow(), ["cancelled"]);
+    assert!(!known_hosts(&app).exists(), "nothing is remembered");
+
+    // a folder stands where the file should be written
+    std::fs::create_dir_all(known_hosts(&app)).unwrap();
+    ask_host_key(&app, &h, "other.test", &answers);
+    h.window.global::<crate::HostKeyDialog>().invoke_trusted();
+    assert_eq!(*answers.borrow(), ["cancelled", "not saved"]);
 }

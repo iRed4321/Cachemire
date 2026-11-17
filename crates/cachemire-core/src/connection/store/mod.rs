@@ -350,6 +350,12 @@ impl ConnectionStore {
         Self::with_vault(file_path, Arc::new(crate::secret_vault::MemoryVault::default()))
     }
 
+    /// A store whose secrets go to `vault`, which the tests can make fail like a missing keyring.
+    #[cfg(any(test, feature = "test-support"))]
+    pub fn with_memory_vault(file_path: PathBuf, vault: crate::secret_vault::MemoryVault) -> Self {
+        Self::with_vault(file_path, Arc::new(vault))
+    }
+
     pub(crate) fn with_vault(file_path: PathBuf, vault: Arc<dyn Vault>) -> Self {
         // a file that can't be read is kept, never replaced by the defaults
         let (stored, writable) = persist::load_store::<StoredState>(&file_path);

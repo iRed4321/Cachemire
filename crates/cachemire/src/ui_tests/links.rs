@@ -215,3 +215,24 @@ fn an_aws_link_follows_once_its_account_is_listed() {
     assert_eq!(picked(&app), "aws:ops:carts");
     assert!(app.tabs.borrow().parked_connections().contains("aws:ops:carts"));
 }
+
+#[test]
+fn the_share_buttons_copy_a_link_to_the_key_or_its_field_without_the_password() {
+    let (mut h, app, rt, _turn, _) = links_ready(&[("a", "redis://cache.test:6379")]);
+    show_connection(&h, "a");
+    app.key_detail.seed_hash("a", "sharedkey", &[("bio", json!({"age": 1}))]);
+    crate::tabs::select_key(&app, "sharedkey".into());
+    app.key_detail.load("sharedkey".into(), Default::default(), true);
+    assert!(loaded(&mut h, &rt));
+
+    crate::toast::take_last();
+    h.window.global::<KeyPanel>().invoke_share_requested();
+    let (target, link) = handed_out(&mut h, &rt, "sharedkey");
+    assert_eq!(target, "clipboard");
+    assert!(link.starts_with("cachemire://") && !link.contains("secret"), "{link}");
+    assert_eq!(crate::toast::take_last(), "Link copied");
+
+    h.window.global::<KeyPanel>().invoke_share_field_requested("bio".into());
+    let (_, to_field) = handed_out(&mut h, &rt, "sharedkey");
+    assert!(to_field.contains("bio") && to_field != link, "{to_field}");
+}
