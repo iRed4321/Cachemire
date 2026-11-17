@@ -1,6 +1,6 @@
 //! The whole app against a real Redis server, each test on an emptied database of its own
-//! (see `TestRedis`): connecting walks the keyspace into the tree, then [`tree`] and
-//! [`values`] act as the user does. A plain `cargo test` skips them: `cargo xtask e2e` runs them.
+//! (see `TestRedis`): connecting walks the keyspace into the tree, then [`tree`], [`values`]
+//! and [`tabs`] act as the user does. A plain `cargo test` skips them: `cargo xtask e2e` runs them.
 
 use super::*;
 use crate::{ConnectionState, KeyTree, ValueEditor};
@@ -8,13 +8,14 @@ use cachemire_core::test_support::TestRedis;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
+mod tabs;
 mod tree;
 mod values;
 
 /// The app connected to a database the test filled, its keyspace walked into the tree.
 struct Running {
     h: Harness,
-    _app: Rc<crate::app::App>,
+    app: Rc<crate::app::App>,
     rt: tokio::runtime::Runtime,
     redis: TestRedis,
     _turn: EventLoopTurn,
@@ -23,9 +24,20 @@ struct Running {
 impl Running {
     /// Connects to a fresh database once `seed` has filled it, and waits for the tree.
     fn start(seed: impl FnOnce(&mut TestRedis)) -> Self {
+        Self::launch(seed, |_| {}, |app, window| crate::connections::connect_to(window, app.state.clone(), &app.rt, "e2e".into(), true))
+    }
+
+    /// As [`Running::start`], with `prepare` setting up the state first and `open` connecting
+    /// as the app does when it starts.
+    fn launch(
+        seed: impl FnOnce(&mut TestRedis),
+        prepare: impl FnOnce(&cachemire_core::state::AppState),
+        open: impl FnOnce(&crate::app::App, &crate::MainWindow),
+    ) -> Self {
         let mut redis = TestRedis::claim();
         seed(&mut redis);
         let state = Arc::new(redis.state());
+        prepare(&state);
         let h = Harness::new();
         h.window.global::<TabStrip>().set_tabs(ModelRc::new(VecModel::from(Vec::<crate::TabData>::new())));
         h.window.global::<ConnectionState>().set_view(Default::default());
@@ -33,8 +45,10 @@ impl Running {
         crate::tabs::init(&app, &h.window);
         crate::keyspace::init(&app, &h.window);
         crate::connections::init(&app, &h.window);
-        crate::connections::connect_to(&h.window, state, rt.handle(), "e2e".into(), true);
-        let mut running = Self { h, _app: app, rt, redis, _turn: turn };
+        crate::search::init(&app, &h.window);
+        crate::redisql::init(&app, &h.window);
+        open(&app, &h.window);
+        let mut running = Self { h, app, rt, redis, _turn: turn };
         running.until("the connection", |h| h.window.global::<ConnectionState>().get_view().connected);
         running.until("the walk", |h| h.window.global::<KeyTree>().get_footer().ends_with("keys scanned"));
         running

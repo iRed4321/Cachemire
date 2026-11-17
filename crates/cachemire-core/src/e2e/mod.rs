@@ -1,10 +1,11 @@
 //! End-to-end tests of the core against a real Redis server, each on an emptied database of
 //! its own (see [`TestRedis`]). A plain `cargo test` skips them: `cargo xtask e2e` runs them,
-//! by area: [`connection`], [`browse`], [`read`], [`edit`], [`search`] and [`redisql`].
+//! by area: [`connection`], [`browse`], [`read`], [`edit`], [`export`], [`search`] and [`redisql`].
 
 mod browse;
 mod connection;
 mod edit;
+mod export;
 mod read;
 mod redisql;
 mod search;

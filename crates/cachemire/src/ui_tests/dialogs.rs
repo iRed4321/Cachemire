@@ -2,7 +2,7 @@
 //! connections' import and export.
 
 use super::*;
-use crate::{About, ConnectionTransfer, Preferences, SettingsCategory};
+use crate::{About, ConnectionTransfer, Preferences, SettingsCategory, SshProfileForm};
 use cachemire_core::connection::ConnectionPayloadInput;
 use cachemire_core::updates::{Channel, Release};
 
@@ -74,6 +74,152 @@ fn the_search_depth_buttons_save_the_depth_picked() {
     let picked = |h: &Harness| h.window.global::<Preferences>().get_search_depth() == 60;
     sweep(&mut h, 300..1000, 100..780, 6, back_to_settings, picked).expect("the 60 button");
     assert_eq!(state.settings.lock().search_depth(), 60);
+}
+
+/// The Settings window in a running app, for what it saves off the UI thread.
+fn settings_in_app() -> (Harness, Rc<crate::app::App>, tokio::runtime::Runtime, EventLoopTurn) {
+    let state = test_state();
+    let h = Harness::new();
+    let (app, runtime, turn) = install_app(&h, &state);
+    crate::settings::init(&h.window, state, runtime.handle().clone());
+    h.window.global::<Preferences>().on_language_selected(|_| {});
+    (h, app, runtime, turn)
+}
+
+/// The SSH profiles listed: (name, username, active).
+fn ssh_profiles(h: &Harness) -> Vec<(String, String, bool)> {
+    h.window.global::<Preferences>().get_ssh_profiles().iter().map(|p| (p.name.to_string(), p.username.to_string(), p.active)).collect()
+}
+
+/// What an SSH tunnel with no login of its own logs in with: the active profile's username and password.
+fn tunnel_login(state: &cachemire_core::state::AppState) -> Option<(String, String)> {
+    let mut ssh = cachemire_core::connection::SshSettings {
+        host: "bastion".into(),
+        port: 22,
+        username: String::new(),
+        password: Default::default(),
+        private_key: String::new(),
+        passphrase: Default::default(),
+    };
+    state.settings.lock().fill_ssh(&mut ssh).ok()?;
+    Some((ssh.username, ssh.password.expose().to_string()))
+}
+
+#[test]
+fn the_first_ssh_profile_added_is_the_one_tunnels_log_in_with_until_a_click_turns_it_off() {
+    let (mut h, app, _rt, _turn) = settings_in_app();
+    let preferences = h.window.global::<Preferences>();
+    preferences.set_ssh_profile_editing(true);
+    let form = SshProfileForm { id: "".into(), name: "Bastion".into(), username: "deploy".into(), password: "pw".into() };
+    preferences.invoke_ssh_profile_saved(form);
+    assert!(wait_for(&mut h, |h| !ssh_profiles(h).is_empty()), "the profile is saved");
+    assert_eq!(ssh_profiles(&h), [("Bastion".to_string(), "deploy".to_string(), true)]);
+    assert!(!h.window.global::<Preferences>().get_ssh_profile_editing(), "the form closes");
+    assert_eq!(tunnel_login(&app.state), Some(("deploy".to_string(), "pw".to_string())));
+
+    let id = h.window.global::<Preferences>().get_ssh_profiles().row_data(0).unwrap().id;
+    h.window.global::<Preferences>().invoke_ssh_profile_activated(id.clone());
+    assert!(!ssh_profiles(&h)[0].2, "a click on the active one leaves none active");
+    assert_eq!(tunnel_login(&app.state), None);
+    h.window.global::<Preferences>().invoke_ssh_profile_activated(id);
+    assert!(ssh_profiles(&h)[0].2, "and another makes it active again");
+
+    // a form that can't be saved says why and stays open
+    h.window.global::<Preferences>().set_ssh_profile_editing(true);
+    let unnamed = SshProfileForm { id: "".into(), name: " ".into(), username: "x".into(), password: "".into() };
+    h.window.global::<Preferences>().invoke_ssh_profile_saved(unnamed);
+    assert!(wait_for(&mut h, |h| !h.window.global::<Preferences>().get_error().is_empty()));
+    assert!(h.window.global::<Preferences>().get_ssh_profile_editing());
+    assert_eq!(ssh_profiles(&h).len(), 1);
+}
+
+#[test]
+fn an_ssh_profile_edited_with_a_blank_password_keeps_its_own_and_can_be_deleted() {
+    let (mut h, app, _rt, _turn) = settings_in_app();
+    let policy = cachemire_core::secret_vault::SecretsPolicy::PlainText;
+    let id = app.state.settings.lock().create_ssh_profile_with_id("p1", "Bastion", "deploy", "pw", policy).unwrap();
+    let preferences = h.window.global::<Preferences>();
+    let form = SshProfileForm { id: id.as_str().into(), name: "Jump host".into(), username: "ops".into(), password: "".into() };
+    preferences.invoke_ssh_profile_saved(form);
+    assert!(wait_for(&mut h, |h| ssh_profiles(h).first().is_some_and(|p| p.0 == "Jump host")));
+    assert_eq!(tunnel_login(&app.state), Some(("ops".to_string(), "pw".to_string())), "the password stays");
+
+    h.window.global::<Preferences>().set_ssh_profile_editing(true);
+    h.window.global::<Preferences>().invoke_ssh_profile_deleted(id.as_str().into());
+    assert!(ssh_profiles(&h).is_empty());
+    assert!(!h.window.global::<Preferences>().get_ssh_profile_editing(), "its form closes");
+    assert_eq!(tunnel_login(&app.state), None);
+}
+
+#[test]
+fn the_fonts_and_zoom_picked_are_saved_and_used_at_once() {
+    let (h, app, _rt, _turn) = settings_in_app();
+    let preferences = h.window.global::<Preferences>();
+    preferences.invoke_ui_font_selected("Noto Sans".into());
+    preferences.invoke_mono_font_selected("Fira Code".into());
+    let theme = h.window.global::<crate::Theme>();
+    assert_eq!((theme.get_font_ui().as_str(), theme.get_font_mono().as_str()), ("Noto Sans", "Fira Code"));
+    let settings = app.state.settings.lock();
+    assert_eq!((settings.ui_font(), settings.mono_font()), ("Noto Sans", "Fira Code"));
+    drop(settings);
+
+    preferences.invoke_ui_font_selected("".into());
+    assert_eq!(theme.get_font_ui(), "Roboto", "none picked: the app's own");
+
+    preferences.invoke_zoom_selected(150);
+    assert_eq!((preferences.get_zoom(), theme.get_zoom()), (150, 1.5));
+    preferences.invoke_zoom_selected(500);
+    assert_eq!(preferences.get_zoom(), 200, "kept within the slider's marks");
+    assert_eq!(app.state.settings.lock().zoom(), 200);
+}
+
+#[test]
+fn new_tabs_can_start_on_the_view_last_picked() {
+    let (h, app, _rt, _turn) = settings_in_app();
+    let preferences = h.window.global::<Preferences>();
+    preferences.invoke_opening_view_selected(crate::OpeningView::Last);
+    assert_eq!(preferences.get_opening_view(), crate::OpeningView::Last);
+    assert_eq!(app.state.settings.lock().opening_view(), cachemire_core::settings::OpeningView::Last);
+
+    preferences.invoke_view_picked(crate::KeyView::Table);
+    assert_eq!(preferences.get_last_view(), crate::KeyView::Table);
+    assert!(app.state.settings.lock().last_view_table(), "remembered for the next start");
+}
+
+#[test]
+fn turning_off_the_session_restore_forgets_the_session_kept() {
+    let (h, app, _rt, _turn) = settings_in_app();
+    let file = app.state.settings.lock().file_path().with_file_name("last_session.json");
+    let preferences = h.window.global::<Preferences>();
+    preferences.invoke_restore_session_toggled(true);
+    std::fs::write(&file, r#"{"connection": "e2e"}"#).unwrap();
+    assert!(preferences.get_restore_session());
+
+    preferences.invoke_restore_session_toggled(false);
+    assert!(!preferences.get_restore_session());
+    assert!(!app.state.settings.lock().restore_session());
+    assert!(!file.exists(), "nothing is left to reopen");
+}
+
+#[test]
+fn new_ssh_host_keys_can_be_accepted_without_asking() {
+    let (h, app, _rt, _turn) = settings_in_app();
+    let preferences = h.window.global::<Preferences>();
+    let before = app.state.settings.lock().accept_new_ssh_host_keys();
+    preferences.invoke_accept_new_ssh_host_keys_toggled(!before);
+    assert_eq!(preferences.get_accept_new_ssh_host_keys(), !before);
+    assert_eq!(app.state.settings.lock().accept_new_ssh_host_keys(), !before);
+}
+
+#[test]
+fn the_settings_search_ignores_case_and_accents_and_needs_every_word() {
+    let (h, _rt) = settings_open(&test_state());
+    let matches = |query: &str, text: &str| h.window.global::<Preferences>().invoke_search_matches(query.into(), text.into());
+    assert!(matches("DEMARRAGE", "Restaurer au démarrage"));
+    assert!(matches("dé", "Delete"), "an accent typed matches the plain letter too");
+    assert!(matches("zoom molette", "Molette de la souris : zoom"), "the words in any order");
+    assert!(!matches("zoom clavier", "Molette de la souris : zoom"), "every word must be there");
+    assert!(matches("", "anything"));
 }
 
 /// The About page, its callbacks wired, and its link to the repository kept from opening a browser.

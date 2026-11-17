@@ -8,7 +8,7 @@ test is fixed. After any change `cargo test` is run, and `cargo fmt --all` for R
 
 - `src/**/tests.rs`: unit tests, one sibling file per module (`#[cfg(test)] mod tests;`).
 - `src/ui_tests/`: headless UI tests with the `Harness` (`mod.rs`), by area (`app.rs`, `cloud.rs`,
-  `connections.rs`, `dialogs.rs`, `formats.rs`, `links.rs`, `tabs.rs`, `themes.rs`) and `e2e/` against a real Redis.
+  `connections.rs`, `dialogs.rs`, `formats.rs`, `links.rs`, `shortcuts.rs`, `smart_box.rs`, `tabs.rs`, `themes.rs`) and `e2e/` against a real Redis.
 - `crates/cachemire-core/src/e2e/`: core end-to-end tests; `src/test_support.rs`: shared helpers.
 - `crates/xtask/src/e2e.rs`: `cargo xtask e2e`. `.config/nextest.toml`: the `ci` profile.
 - `.github/workflows/ci.yml`: what CI runs.
@@ -95,8 +95,8 @@ Isolation between tests: `TestRedis::claim` increments a counter key in database
 `1 + (n - 1) % (databases - 1)` and `FLUSHDB`s it, so parallel tests and parallel test processes use
 different databases. That is why the server is started with many databases.
 
-Core e2e areas: `connection`, `browse`, `read`, `edit`, `search`, `redisql`. The app's `ui_tests/e2e`
-(`tree.rs`, `values.rs`) start a `Running` struct: seed the database, build a `Harness`, connect through
+Core e2e areas: `connection`, `browse`, `read`, `edit`, `export`, `search`, `redisql`. The app's `ui_tests/e2e`
+(`tree.rs`, `values.rs`, `tabs.rs`) start a `Running` struct: seed the database, build a `Harness`, connect through
 `connections::connect_to`, wait for the tree, then act like a user (these also hold an `EventLoopTurn`).
 
 ## CI
