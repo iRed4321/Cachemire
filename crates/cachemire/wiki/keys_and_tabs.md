@@ -531,7 +531,8 @@ field; the name is checked with `check_key_name` and `key_exists`), rename (key:
 returning a `FolderMove`), delete (key: [`delete_key`](cachemire_core::explorer::delete_key); folder: first
 [`count_keys_under`](cachemire_core::explorer::count_keys_under) for the confirmation dialog, then
 [`delete_folder`](cachemire_core::explorer::delete_folder)). After a change the tree places or removes ids in
-the index and the tabs follow (`tabs::rename_keys`, `tabs::close_keys`).
+the index and the tabs follow (`tabs::rename_keys`, `tabs::close_keys`). The menu's Copy (any row, also on a
+read-only connection) is not a write: `copy_requested` in `keyspace/mod.rs` copies the row's `display_id`.
 
 ---
 

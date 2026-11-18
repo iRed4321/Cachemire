@@ -351,7 +351,7 @@ pub(super) fn init(window: &MainWindow, ctx: &Ctx) {
     });
     panel.on_export_all_fields(move |format, target| exporter.all_fields(format, target));
 
-    // Right-click → "Copy selection": the text comes straight from the
+    // Right-click → "Copy": the text comes straight from the
     // StyledText's own `selected-text` (same plain text Ctrl+C would copy).
     panel.on_copy_selection({
         let weak = ctx.weak.clone();

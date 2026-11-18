@@ -20,7 +20,8 @@ Every stable release of Cachemire; `Unreleased` is what the next one brings. Bet
 - **SSH known hosts**: keys listed in `~/.ssh/known_hosts` are trusted without asking, and a different key listed there is refused. New keys are only written to Cachemire's own file
 - **Portable zip**: on Windows it now keeps all its data (connections, settings, history, logs) in a `data` folder next to the exe
 - **Read-only mode**: tick *Read-only* on a connection profile or on a connection and nothing can be written to Redis through it. The default Production profile is read-only
-- **Light theming**: tick *Light theming* on a connection profile and only the borders take its color, not the whole background. Handy for a dev profile
+- **Light theming**: tick *Light theming* on a connection profile and only the connection bar at the top takes its color, not the whole window. Handy for a dev profile
+- **Copy a key's name**: right-click a key in the tree and pick **Copy** (a folder copies its prefix)
 - **Folder deletion**: deleting a folder asks first, with the number of keys it will remove
 - **Changed values**: saving an edit to a value that changed in Redis meanwhile asks whether to cancel, reload the new value or overwrite it
 - **Passwords without a keyring**: when the system keyring can't store a password, Cachemire now asks instead of writing it to the data file in clear text. Choose to save it in the file anyway, or (for a connection) to save without it: the Redis password, SSH password or key passphrase is then asked for each time you connect, kept in memory only. This covers connections, imports, SSH profiles and the AWS tunnel settings
@@ -50,6 +51,7 @@ Every stable release of Cachemire; `Unreleased` is what the next one brings. Bet
 - **Security**: exported key files are readable by your user only
 - **Security**: passwords, passphrases and sign-in tokens are wiped from memory once no longer needed, and kept out of logs
 - **Search**: key and instance searches find accented letters however stored: `à`, `a` plus an accent, or JSON's `\u00e0`
+- **Table view**: a click near the line between two rows now selects the cell, not only a click on its text
 - **Values**: binary values and field names show their bytes as `\xNN` and can no longer be damaged by an edit
 - **Window**: a scrollbar no longer hides the border of the tab panel, tinted by a connection profile
 

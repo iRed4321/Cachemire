@@ -320,9 +320,9 @@ export component TitleBar inherits Rectangle {
         width: pill.height;
         height: pill.height;
         border-radius: Theme.radius-md;
-        background: settings-area.has-hover ? Theme.bg-hover : Theme.bg-elevated;
+        background: root.bar-background(settings-area.has-hover);
         border-width: hairline;
-        border-color: Theme.chrome-border;
+        border-color: Theme.env-border;
 
         settings-area := TouchArea {
             mouse-cursor: pointer;
@@ -384,16 +384,26 @@ export component TitleBar inherits Rectangle {
     // below 960px of window, the pill is a third as wide and shows the connection's name alone
     property <bool> compact: root.width < 960px;
 
+    // a lightly tinted profile colors the connection pill and the buttons beside it (the rest of
+    // the window keeps its own): their background, hovered or not
+    property <bool> pill-tinted: Theme.env-tinted && Theme.env-light;
+    property <color> pill-tint: Theme.profile-color(Theme.env-tint);
+    pure function bar-background(hovered: bool) -> color {
+        let plain = hovered ? Theme.bg-hover : Theme.bg-elevated;
+        return root.pill-tinted ? root.pill-tint.mix(plain, hovered ? 0.15 : 0.1) : plain;
+    }
+
     // connection pill, centered — click opens the connection picker
     pill := Rectangle {
         x: snap((parent.width - self.width) / 2);
         y: snap((parent.height - self.height) / 2);
         width: snap(Theme.px(root.compact ? 180px : 420px));
         height: snap(Theme.px(30px));
-        background: pill-area.has-hover ? Theme.bg-hover : Theme.bg-elevated;
+        background: root.bar-background(pill-area.has-hover);
         border-radius: Theme.radius-md;
         border-width: hairline;
-        border-color: Theme.chrome-border;
+        // the profile's tint, even a light one
+        border-color: Theme.env-border;
 
         pill-area := TouchArea {
             mouse-cursor: pointer;
@@ -468,9 +478,9 @@ export component TitleBar inherits Rectangle {
         width: pill.height;
         height: pill.height;
         border-radius: pill.border-radius;
-        background: copy-area.has-hover ? Theme.bg-hover : Theme.bg-elevated;
+        background: root.bar-background(copy-area.has-hover);
         border-width: hairline;
-        border-color: Theme.chrome-border;
+        border-color: Theme.env-border;
 
         copy-area := TouchArea {
             mouse-cursor: pointer;

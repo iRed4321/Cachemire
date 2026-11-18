@@ -103,12 +103,6 @@ Open keys, searches and queries in tabs. Drag them around; each remembers its fi
 
 Zoom with <kbd>Ctrl</kbd>+<kbd>+</kbd>/<kbd>-</kbd>/<kbd>0</kbd> or <kbd>Ctrl</kbd>+scroll. ⌨️ **Configurable key bindings**. 🌍 **English and French**, following your system or chosen in **Settings**, switched without a restart.
 
-## Planned
-
-- 🗝️ **Valkey** support
-- 🎨 **Themes**
-- 🖍️ **Syntax highlighting** for values in other languages than JSON
-
 ## Install
 
 Download the file for your system from the [releases page](https://github.com/iRed4321/Cachemire/releases/latest):

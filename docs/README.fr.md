@@ -105,12 +105,6 @@ Les clés, les recherches et les requêtes s'ouvrent dans des onglets que vous p
 
 Zoomez avec <kbd>Ctrl</kbd>+<kbd>+</kbd>/<kbd>-</kbd>/<kbd>0</kbd> ou <kbd>Ctrl</kbd>+molette. ⌨️ **Raccourcis clavier configurables**. 🌍 **Anglais et français**, selon la langue du système ou votre choix dans les **Paramètres**, avec changement à la volée, sans redémarrage.
 
-## Prévu
-
-- 🗝️ Prise en charge de **Valkey**
-- 🎨 **Thèmes**
-- 🖍️ **Coloration syntaxique** des valeurs dans d'autres langages que le JSON
-
 ## Installer
 
 Téléchargez le fichier correspondant à votre système sur la [page des versions](https://github.com/iRed4321/Cachemire/releases/latest) :

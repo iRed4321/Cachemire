@@ -21,7 +21,7 @@ OS keyring, Redisql query language. UI text is English + French.
 - `crates/xtask/` dev and release tooling (`cargo xtask`, `cargo ship`).
 - `crates/installer-test/` stand-in app to try the MSI installer quickly.
 - `resources/` icons, desktop entry, MSI, fonts, `lang/` (`cachemire.pot`, `fr/…/cachemire.po`, `app.yml`).
-- `docs/` `releasing.md` (branch model, `cargo ship`), `slint-fork.md` (the Slint fork, upgrades).
+- `docs/` `releasing.md` (branch model, `cargo ship`), `slint-fork.md` (the Slint fork, upgrades), `README.fr.md`.
 - Default members: `cachemire` + `cachemire-core`. Edition 2024, resolver 3, no pinned toolchain.
 
 ## Commands
@@ -92,6 +92,7 @@ OS keyring, Redisql query language. UI text is English + French.
   `.po` files by hand. Then only fill in the `msgstr` of what the task reports as
   untranslated, and run it again until nothing is. Messages built in Rust
   (`t!(...)`) live in `resources/lang/app.yml`, which has no task.
+- README: `README.md` has a French twin, `docs/README.fr.md`: make every change to one in the other too.
 - Changelog: after a substantial change a user would notice (a feature, a fix, a
   changed behavior or limit), add or update its line under `## Unreleased` in
   `CHANGELOG.md`, in the subsection it belongs to; create `## Unreleased` at the

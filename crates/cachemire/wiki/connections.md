@@ -210,7 +210,7 @@ profile badge. A profile id that no longer exists counts as none.
 ## Connection profiles
 
 [`profiles`](crate::connections::profiles) edits the *connection profiles* (name, tint, read-only, light theming)
-stored in the settings. [`apply_tint`](crate::connections::profiles::apply_tint) tints the window (only its borders for a light tint) for the
+stored in the settings. [`apply_tint`](crate::connections::profiles::apply_tint) tints the window (only the connection pill for a light tint) for the
 connection in use and sets `ConnectionState.read_only` (and forces the key panel non-editable)
 using [`is_read_only`](cachemire_core::state::is_read_only). A profile cannot be deleted while a connection uses it
 (the message lists up to three names, then `+N`). The tint enum has `to_tint` / `from_tint` as

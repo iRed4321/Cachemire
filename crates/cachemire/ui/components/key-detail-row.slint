@@ -220,7 +220,7 @@ export component AllValuesRow inherits Rectangle {
     callback selection-drag-check(abs-y: length);
     callback selection-drag-ended();
     // right-click somewhere on this row: its position plus the row's
-    // currently-selected text (if any), for "Copy selection". Reaches
+    // currently-selected text (if any), for "Copy". Reaches
     // `row-area` since StyledText leaves non-left clicks to its ancestors.
     callback context-requested(x: length, y: length, selected: string);
     // mirror of the live value text's `selected-text` (the text itself sits

@@ -345,7 +345,12 @@ msgid "Export ({})"
 msgstr "Exporter ({})"
 
 #: crates/cachemire/ui/components/content-header.slint:402
-msgid "Copy selection"
+#: crates/cachemire/ui/components/content-header.slint:402
+#: crates/cachemire/ui/components/content-header.slint:402
+#: crates/cachemire/ui/components/content-header.slint:402
+#: crates/cachemire/ui/components/content-header.slint:402
+#: crates/cachemire/ui/components/content-header.slint:402
+msgid "Copy"
 msgstr "Copier"
 
 #: crates/cachemire/ui/components/content-header.slint:430
@@ -356,24 +361,24 @@ msgstr "Fermer les autres onglets"
 msgid "Close all tabs"
 msgstr "Fermer tous les onglets"
 
-#: crates/cachemire/ui/components/content-header.slint:468
-#: crates/cachemire/ui/components/content-header.slint:468
+#: crates/cachemire/ui/components/content-header.slint:470
+#: crates/cachemire/ui/components/content-header.slint:470
 msgid "Export…"
 msgstr "Exporter…"
 
-#: crates/cachemire/ui/components/content-header.slint:469
+#: crates/cachemire/ui/components/content-header.slint:471
 msgid "Select for export"
 msgstr "Sélectionner pour l'export"
 
-#: crates/cachemire/ui/components/content-header.slint:470
+#: crates/cachemire/ui/components/content-header.slint:472
 msgid "Export {} selected…"
 msgstr "Exporter {} sélectionné(s)…"
 
-#: crates/cachemire/ui/components/content-header.slint:471
+#: crates/cachemire/ui/components/content-header.slint:473
 msgid "Add key…"
 msgstr "Ajouter une clé…"
 
-#: crates/cachemire/ui/components/content-header.slint:472
+#: crates/cachemire/ui/components/content-header.slint:474
 msgid "Rename…"
 msgstr "Renommer…"
 
@@ -469,13 +474,6 @@ msgstr "Ouvrir dans un éditeur de texte"
 msgid "Download"
 msgstr "Télécharger"
 
-#: crates/cachemire/ui/components/key-detail-row.slint:664
-#: crates/cachemire/ui/components/key-detail-row.slint:664
-#: crates/cachemire/ui/components/key-detail-row.slint:664
-#: crates/cachemire/ui/components/key-detail-row.slint:664
-msgid "Copy"
-msgstr "Copier"
-
 #: crates/cachemire/ui/components/key-detail-row.slint:679
 msgid "Try to load"
 msgstr "Essayer de charger"
@@ -485,10 +483,10 @@ msgid "Formatting..."
 msgstr "Mise en forme..."
 
 #. Redisql query's row number, say)
-#: crates/cachemire/ui/components/key-detail-table.slint:243
-#: crates/cachemire/ui/components/key-detail-table.slint:243
-#: crates/cachemire/ui/components/key-detail-table.slint:243
-#: crates/cachemire/ui/components/key-detail-table.slint:243
+#: crates/cachemire/ui/components/key-detail-table.slint:261
+#: crates/cachemire/ui/components/key-detail-table.slint:261
+#: crates/cachemire/ui/components/key-detail-table.slint:261
+#: crates/cachemire/ui/components/key-detail-table.slint:261
 msgid "Field"
 msgstr "Champ"
 
@@ -1250,11 +1248,11 @@ msgstr "Couleur"
 
 #: crates/cachemire/ui/components/settings.slint:1807
 msgid ""
-"Only the borders take the color, not the app's background: easier on the eye "
-"for a profile like dev."
+"Only the connection bar at the top takes the color, not the whole window: "
+"easier on the eye for a profile like dev."
 msgstr ""
-"Seules les bordures prennent la couleur, pas le fond de l'application : plus "
-"reposant pour un profil comme dev."
+"Seule la barre de connexion en haut prend la couleur, pas toute la fenêtre : "
+"plus reposant pour un profil comme dev."
 
 #: crates/cachemire/ui/components/settings.slint:1819
 msgid ""
@@ -1283,11 +1281,11 @@ msgstr "Se connecter à AWS"
 msgid "Select Profile"
 msgstr "Choisir un profil"
 
-#: crates/cachemire/ui/components/title-bar.slint:433
+#: crates/cachemire/ui/components/title-bar.slint:443
 msgid "Connecting..."
 msgstr "Connexion..."
 
-#: crates/cachemire/ui/components/title-bar.slint:433
+#: crates/cachemire/ui/components/title-bar.slint:443
 msgid "No connection"
 msgstr "Aucune connexion"
 

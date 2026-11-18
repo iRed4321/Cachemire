@@ -325,6 +325,8 @@ export global KeyTree {
     // the row menu's entries: export just this row, or tick it (which opens the mode)
     callback export-row(name: string);
     callback export-select-row(name: string);
+    // copies a row's key name (a folder's prefix) as the tree shows it
+    callback copy-requested(name: string);
     // and writing: a new key (its name starting with `prefix`), renaming or deleting a
     // row's key or folder (its name ends with the delimiter)
     callback add-key-requested(prefix: string);
@@ -538,6 +540,6 @@ export global KeyPanel {
     // the panel scrolled near the end or the start of what's loaded (see AllValuesTable.near-end)
     callback near-end();
     callback near-start();
-    // right-click "Copy selection" over selectable text
+    // right-click "Copy" over selectable text
     callback copy-selection(string);
 }

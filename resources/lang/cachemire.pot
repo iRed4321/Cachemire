@@ -2,7 +2,7 @@
 msgid ""
 msgstr ""
 "Project-Id-Version: cachemire VERSION\n"
-"POT-Creation-Date: 2026-11-18 18:19+0000\n"
+"POT-Creation-Date: 2026-11-18 21:24+0000\n"
 "PO-Revision-Date: YEAR-MO-DA HO:MI+ZONE\n"
 "Last-Translator: FULL NAME <EMAIL@ADDRESS>\n"
 "Language-Team: LANGUAGE <LL@li.org>\n"
@@ -338,7 +338,12 @@ msgid "Export ({})"
 msgstr ""
 
 #: crates/cachemire/ui/components/content-header.slint:402
-msgid "Copy selection"
+#: crates/cachemire/ui/components/content-header.slint:402
+#: crates/cachemire/ui/components/content-header.slint:402
+#: crates/cachemire/ui/components/content-header.slint:402
+#: crates/cachemire/ui/components/content-header.slint:402
+#: crates/cachemire/ui/components/content-header.slint:402
+msgid "Copy"
 msgstr ""
 
 #: crates/cachemire/ui/components/content-header.slint:430
@@ -349,24 +354,24 @@ msgstr ""
 msgid "Close all tabs"
 msgstr ""
 
-#: crates/cachemire/ui/components/content-header.slint:468
-#: crates/cachemire/ui/components/content-header.slint:468
+#: crates/cachemire/ui/components/content-header.slint:470
+#: crates/cachemire/ui/components/content-header.slint:470
 msgid "Export…"
 msgstr ""
 
-#: crates/cachemire/ui/components/content-header.slint:469
+#: crates/cachemire/ui/components/content-header.slint:471
 msgid "Select for export"
 msgstr ""
 
-#: crates/cachemire/ui/components/content-header.slint:470
+#: crates/cachemire/ui/components/content-header.slint:472
 msgid "Export {} selected…"
 msgstr ""
 
-#: crates/cachemire/ui/components/content-header.slint:471
+#: crates/cachemire/ui/components/content-header.slint:473
 msgid "Add key…"
 msgstr ""
 
-#: crates/cachemire/ui/components/content-header.slint:472
+#: crates/cachemire/ui/components/content-header.slint:474
 msgid "Rename…"
 msgstr ""
 
@@ -458,13 +463,6 @@ msgstr ""
 msgid "Download"
 msgstr ""
 
-#: crates/cachemire/ui/components/key-detail-row.slint:664
-#: crates/cachemire/ui/components/key-detail-row.slint:664
-#: crates/cachemire/ui/components/key-detail-row.slint:664
-#: crates/cachemire/ui/components/key-detail-row.slint:664
-msgid "Copy"
-msgstr ""
-
 #: crates/cachemire/ui/components/key-detail-row.slint:679
 msgid "Try to load"
 msgstr ""
@@ -474,10 +472,10 @@ msgid "Formatting..."
 msgstr ""
 
 #. Redisql query's row number, say)
-#: crates/cachemire/ui/components/key-detail-table.slint:243
-#: crates/cachemire/ui/components/key-detail-table.slint:243
-#: crates/cachemire/ui/components/key-detail-table.slint:243
-#: crates/cachemire/ui/components/key-detail-table.slint:243
+#: crates/cachemire/ui/components/key-detail-table.slint:261
+#: crates/cachemire/ui/components/key-detail-table.slint:261
+#: crates/cachemire/ui/components/key-detail-table.slint:261
+#: crates/cachemire/ui/components/key-detail-table.slint:261
 msgid "Field"
 msgstr ""
 
@@ -1187,8 +1185,8 @@ msgstr ""
 
 #: crates/cachemire/ui/components/settings.slint:1807
 msgid ""
-"Only the borders take the color, not the app's background: easier on the eye "
-"for a profile like dev."
+"Only the connection bar at the top takes the color, not the whole window: "
+"easier on the eye for a profile like dev."
 msgstr ""
 
 #: crates/cachemire/ui/components/settings.slint:1819
@@ -1216,11 +1214,11 @@ msgstr ""
 msgid "Select Profile"
 msgstr ""
 
-#: crates/cachemire/ui/components/title-bar.slint:433
+#: crates/cachemire/ui/components/title-bar.slint:443
 msgid "Connecting..."
 msgstr ""
 
-#: crates/cachemire/ui/components/title-bar.slint:433
+#: crates/cachemire/ui/components/title-bar.slint:443
 msgid "No connection"
 msgstr ""
 

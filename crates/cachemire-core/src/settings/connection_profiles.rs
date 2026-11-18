@@ -65,7 +65,7 @@ pub struct ConnectionProfile {
     pub color: ProfileColor,
     /// no write to Redis is made through a connection using this profile
     pub read_only: bool,
-    /// only the borders take the tint, the app's background stays as it is
+    /// only the title bar's connection pill takes the tint, the rest of the window stays as it is
     pub light_tint: bool,
 }
 

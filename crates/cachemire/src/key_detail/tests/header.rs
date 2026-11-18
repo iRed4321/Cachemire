@@ -33,13 +33,13 @@ fn header_key_name_can_be_selected_and_copied_via_right_click() {
     press(&h, 355.0 + shift, PointerEventButton::Right);
     release(&h, 355.0 + shift, PointerEventButton::Right);
     h.frame();
-    // the menu opened at the click, its "Copy selection" row just under it
+    // the menu opened at the click, its "Copy" row just under it
     let item = LogicalPosition::new(355.0 + shift + 30.0, y + 16.0);
     h.window.window().dispatch_event(WindowEvent::PointerMoved { position: item });
     h.window.window().dispatch_event(WindowEvent::PointerPressed { position: item, button: PointerEventButton::Left });
     h.window.window().dispatch_event(WindowEvent::PointerReleased { position: item, button: PointerEventButton::Left });
     h.frame();
-    assert_eq!(copied.borrow().len(), 1, "one Copy selection from the header");
+    assert_eq!(copied.borrow().len(), 1, "one Copy from the header");
     assert!(!copied.borrow()[0].is_empty() && "users".contains(copied.borrow()[0].as_str()), "the key's own text: {:?}", copied.borrow());
 }
 

@@ -16,7 +16,7 @@ import { ProfileTint } from "types.slint";
 export global Theme {
     // backgrounds: the app's own background (behind the panels and title bar) is
     // `bg-app-base` with some of the tint of the connection profile in use mixed in,
-    // unless its tint is light: only the borders then (set from Rust)
+    // unless its tint is light: only the connection pill's border then (set from Rust)
     in property <color> bg-app-base: #151517;
     in-out property <bool> env-tinted: false;
     in-out property <ProfileTint> env-tint: ProfileTint.red;
@@ -26,10 +26,11 @@ export global Theme {
     out property <float> env-tint-strength: 0.25;
     // (`mix` weighs the color it is called on by the factor)
     out property <color> bg-app: env-tinted && !env-light ? profile-color(env-tint).mix(bg-app-base, env-tint-strength) : bg-app-base;
-    // the border of the app's own chrome (keyspace panel, key panel, title bar pills):
-    // plain `border-soft` untinted, well into the profile's color when one is in use
+    // the border of the app's own chrome (keyspace panel, key panel, title bar pills): plain
+    // `border-soft` untinted or lightly tinted, well into the profile's color otherwise
     out property <float> env-border-strength: 0.5;
-    out property <color> chrome-border: env-tinted ? profile-color(env-tint).mix(border-soft, env-border-strength) : border-soft;
+    out property <color> env-border: env-tinted ? profile-color(env-tint).mix(border-soft, env-border-strength) : border-soft;
+    out property <color> chrome-border: env-light ? border-soft : env-border;
     in property <color> bg-panel: #19191c;
     in property <color> bg-sunken: #111113;
     in property <color> bg-elevated: #222226;

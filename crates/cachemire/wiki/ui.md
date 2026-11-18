@@ -135,8 +135,10 @@ to them.
   [`key_detail::display_sample`](crate::key_detail::display_sample)), colored as the rows are. The
   preview (`DisplayPreview`) shows on the Display page, and above the search's results when they hold
   the theme, syntax or font settings. Profile colors (`profile-color`) are fixed.
-  `bg-app` is `bg-app-base` mixed with the profile tint when `env-tinted` is true (25%), unless
-  `env-light` (the profile's light theming) is too, and `chrome-border` mixes 50% in both cases. This is how a connection profile (Production = red...) colors the window.
+  `bg-app` is `bg-app-base` mixed with the profile tint when `env-tinted` is true (25%), and
+  `chrome-border` mixes 50% (`env-border`). With `env-light` (the profile's light theming) both stay
+  plain and only the title bar's connection pill, with the settings and copy buttons beside it, takes the
+  tint: `env-border`, and a background mixed with 10% of the color (15% on hover). This is how a connection profile (Production = red...) colors the window.
 - **Fonts**: `font-ui` = Roboto, `font-mono` = JetBrains Mono, both bundled by `import "...ttf"` lines
   at the top of the file, unless the Display settings picked installed ones (`ui_font`, `mono_font`,
   "" for these; [`fonts::apply`](crate::fonts::apply) sets them). The menus' lists come from
@@ -239,7 +241,7 @@ properties then `set_open(true)`. A modal's dimmed backdrop is a `BackdropArea` 
   two secret prompts, sharing `DialogBackdrop` from `secrets-dialogs.slint`.
 - A dialog that must resume a flow after the user answers keeps a boxed closure in
   [`App::asked`](crate::app::App) and calls it on answer (see host-key `Answer`).
-- Dropdowns and context menus (connections, AWS profiles, tab menu, row menu, "Copy selection") are
+- Dropdowns and context menus (connections, AWS profiles, tab menu, row menu, "Copy") are
   `if flag: BackdropArea` catchers (any click outside closes, the wheel scrolls nothing behind) followed by the menu component, so the menu
   paints on top. Positions are clamped to the window with `min(x, root.width - ..)`. The flags
   (`connections-open`, `tab-menu-open`, `row-menu-open`...) are pure UI state on `MainWindow`; they are

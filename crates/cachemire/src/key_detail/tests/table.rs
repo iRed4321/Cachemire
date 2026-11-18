@@ -42,7 +42,7 @@ fn table_checkbox_selection_ticks_unticks_and_header_clears_all() {
     assert_eq!(h.window.global::<KeyPanel>().get_table_selected_count(), 0, "with nothing ticked there is no select-all");
 }
 
-/// Right-click on a selected cell's text offers "Copy selection"; a click
+/// Right-click on a selected cell's text offers "Copy"; a click
 /// elsewhere drops the selection, and a right-click with nothing selected
 /// offers nothing.
 #[test]
@@ -71,13 +71,13 @@ fn table_cell_right_click_copies_the_selected_text() {
     };
     right(&h, x0 + 30.0, PointerEventButton::Right);
     h.frame();
-    // the menu opened at the click: its "Copy selection" row sits just under it
+    // the menu opened at the click: its "Copy" row sits just under it
     let menu_item = LogicalPosition::new(x0 + 60.0, y + 16.0);
     h.window.window().dispatch_event(WindowEvent::PointerMoved { position: menu_item });
     h.window.window().dispatch_event(WindowEvent::PointerPressed { position: menu_item, button: PointerEventButton::Left });
     h.window.window().dispatch_event(WindowEvent::PointerReleased { position: menu_item, button: PointerEventButton::Left });
     h.frame();
-    assert_eq!(copied.borrow().len(), 1, "one Copy selection");
+    assert_eq!(copied.borrow().len(), 1, "one Copy");
     assert!(!copied.borrow()[0].is_empty());
     // a click in another cell drops the selection, and a right-click with
     // nothing selected offers nothing
@@ -131,7 +131,7 @@ fn table_cell_double_click_selects_the_whole_cell() {
     h.frame();
     choose_copy(&h);
     h.frame();
-    assert_eq!(copied.borrow().len(), 1, "one Copy selection");
+    assert_eq!(copied.borrow().len(), 1, "one Copy");
     assert!(copied.borrow()[0].contains("person number 0"), "the whole cell, got {:?}", copied.borrow()[0]);
 }
 

@@ -106,7 +106,7 @@ export component MainWindow inherits Window {
     // whether the clipboard holds text, for a text box's right-click "Paste"
     callback clipboard-has-text() -> bool;
 
-    // Right-click "Copy selection" over selectable text in the key detail
+    // Right-click "Copy" over selectable text in the key detail
     // panel: the panel reports the click position and the selected text
     // (see KeyDetail.context-requested); the menu opens only if there is one.
     property <string> selection-text: "";
@@ -269,7 +269,7 @@ export component MainWindow inherits Window {
                             }
                             root.row-menu-name = name;
                             root.row-menu-x = min(x, root.width - Theme.px(200px) - Theme.px(4px));
-                            root.row-menu-y = min(y, root.height - Theme.px(190px));
+                            root.row-menu-y = min(y, root.height - Theme.px(220px));
                             root.row-menu-open = true;
                         }
                     }
@@ -530,6 +530,10 @@ export component MainWindow inherits Window {
             selection-count: KeyTree.export-mode ? KeyTree.export-count : 0;
             on-row: root.row-menu-name != "";
             read-only: ConnectionState.read-only;
+            copy => {
+                root.row-menu-open = false;
+                KeyTree.copy-requested(root.row-menu-name);
+            }
             add-key => {
                 root.row-menu-open = false;
                 KeyTree.add-key-requested(root.row-menu-name);
@@ -556,7 +560,7 @@ export component MainWindow inherits Window {
             }
         }
 
-        // "Copy selection" menu: catcher first, menu on top (see tab menu)
+        // "Copy" menu: catcher first, menu on top (see tab menu)
         if selection-menu-open: BackdropArea {
             width: 100%;
             height: 100%;
