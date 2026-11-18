@@ -402,17 +402,23 @@ export component ConnectionModalField inherits Rectangle {
     }
 }
 
-// The connection profiles to pick one from, in the connection form: a radio
-// row per profile in a box that scrolls past three and a half of them.
+// The connection profiles to pick one from: a radio row per profile in a box that scrolls past
+// three and a half of them, or with `grows`, as tall as its rows unless its layout runs out of
+// room (it then shrinks, down to three and a half rows, and scrolls).
 export component ProfileChoiceList inherits Rectangle {
     in property <[ConnProfileRowData]> profiles: [];
     in-out property <string> selected: "";
+    in property <bool> grows: false;
 
     property <length> row-height: Theme.px(28px);
     property <length> list-max-height: row-height * 3.5;
-    property <bool> needs-scrollbar: profiles.length * row-height > list-max-height;
+    property <length> full-height: profiles.length * row-height + Theme.px(2px);
+    property <length> capped-height: min(profiles.length * row-height, list-max-height) + Theme.px(2px);
 
-    height: min(profiles.length * row-height, list-max-height) + Theme.px(2px);
+    min-height: capped-height;
+    preferred-height: grows ? full-height : capped-height;
+    max-height: grows ? full-height : capped-height;
+    vertical-stretch: grows ? 1 : 0;
     background: Theme.bg-sunken;
     border-radius: Theme.radius-md;
     border-width: 1px;
@@ -468,7 +474,8 @@ export component ProfileChoiceList inherits Rectangle {
                 }
             }
         }
-        if root.needs-scrollbar: VScrollBar {
+        // (it shows only while the rows don't fit)
+        VScrollBar {
             content-height: choice-flick.content-height;
             content-y <=> choice-flick.content-y;
         }

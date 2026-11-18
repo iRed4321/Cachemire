@@ -117,7 +117,7 @@ fn profiles_ready() -> (Harness, Rc<crate::app::App>, (tokio::runtime::Runtime, 
 }
 
 fn save_profile(h: &Harness, id: &str, name: &str, tint: crate::ProfileTint, read_only: bool) {
-    let form = crate::ConnProfileForm { id: id.into(), name: name.into(), tint, read_only };
+    let form = crate::ConnProfileForm { id: id.into(), name: name.into(), tint, read_only, light_tint: false };
     h.window.global::<crate::Preferences>().invoke_conn_profile_saved(form);
 }
 

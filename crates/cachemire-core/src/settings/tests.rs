@@ -168,7 +168,13 @@ fn a_first_run_has_a_red_production_profile_that_stays_deleted_once_removed() {
     let listed = store.connection_profiles();
     assert_eq!(
         listed,
-        vec![ConnectionProfile { id: DEFAULT_PROFILE_ID.into(), name: "Production".into(), color: ProfileColor::Red, read_only: true }]
+        vec![ConnectionProfile {
+            id: DEFAULT_PROFILE_ID.into(),
+            name: "Production".into(),
+            color: ProfileColor::Red,
+            read_only: true,
+            light_tint: false
+        }]
     );
 
     store.remove_connection_profile(DEFAULT_PROFILE_ID).unwrap();
@@ -195,17 +201,20 @@ fn a_settings_file_from_before_connection_profiles_gets_the_default_one_once() {
 fn connection_profiles_are_created_renamed_recolored_and_read_back() {
     let file = temp_file("connection-profiles-crud");
     let mut store = SettingsStore::with_vault(file.clone(), Arc::new(MemoryVault::default()));
-    let dev = store.create_connection_profile(" dev ", ProfileColor::Green, false).unwrap();
+    let dev = store.create_connection_profile(" dev ", ProfileColor::Green, false, false).unwrap();
     assert_eq!(
         store.connection_profile(&dev),
-        Some(ConnectionProfile { id: dev.clone(), name: "dev".into(), color: ProfileColor::Green, read_only: false })
+        Some(ConnectionProfile { id: dev.clone(), name: "dev".into(), color: ProfileColor::Green, read_only: false, light_tint: false })
     );
-    assert_eq!(store.create_connection_profile("  ", ProfileColor::Blue, false).unwrap_err().to_string(), "The profile needs a name.");
+    assert_eq!(
+        store.create_connection_profile("  ", ProfileColor::Blue, false, false).unwrap_err().to_string(),
+        "The profile needs a name."
+    );
 
-    store.update_connection_profile(&dev, "staging", ProfileColor::Purple, false).unwrap();
+    store.update_connection_profile(&dev, "staging", ProfileColor::Purple, false, false).unwrap();
     assert_eq!(store.connection_profile(&dev).map(|p| (p.name, p.color)), Some(("staging".to_string(), ProfileColor::Purple)));
-    assert!(store.update_connection_profile("nope", "x", ProfileColor::Red, false).is_err());
-    assert!(store.update_connection_profile(&dev, "", ProfileColor::Red, false).is_err());
+    assert!(store.update_connection_profile("nope", "x", ProfileColor::Red, false, false).is_err());
+    assert!(store.update_connection_profile(&dev, "", ProfileColor::Red, false, false).is_err());
 
     let reopened = SettingsStore::with_vault(file, Arc::new(MemoryVault::default()));
     assert_eq!(reopened.connection_profile(&dev).map(|p| (p.name, p.color)), Some(("staging".to_string(), ProfileColor::Purple)));

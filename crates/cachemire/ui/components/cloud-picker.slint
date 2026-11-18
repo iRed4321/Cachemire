@@ -2,7 +2,7 @@ import { Theme } from "theme.slint";
 import { VScrollBar, IconButton } from "widgets.slint";
 import { SearchField } from "key-detail-widgets.slint";
 import { TintDot } from "connection-picker.slint";
-import { IconCheck, IconDot, IconSettings, IconStar } from "icons.slint";
+import { IconCheck, IconDot, IconRefresh, IconSettings, IconStar } from "icons.slint";
 import { AwsAccount } from "../globals.slint";
 import { AwsChip, AwsProfileRow } from "types.slint";
 
@@ -156,6 +156,13 @@ export component AwsProfileDropdown inherits Rectangle {
                 font-size: Theme.pt(11px);
                 color: Theme.text-tertiary;
                 vertical-alignment: center;
+            }
+            IconButton {
+                box-size: Theme.px(24px);
+                y: (parent.height - self.height) / 2;
+                hint: @tr("Reload the profiles from the AWS config");
+                clicked => { AwsAccount.reload-requested(); }
+                IconRefresh { size: Theme.icon-sm; tint: Theme.text-tertiary; }
             }
         }
 

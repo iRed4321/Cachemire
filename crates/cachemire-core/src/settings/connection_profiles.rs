@@ -65,6 +65,8 @@ pub struct ConnectionProfile {
     pub color: ProfileColor,
     /// no write to Redis is made through a connection using this profile
     pub read_only: bool,
+    /// only the borders take the tint, the app's background stays as it is
+    pub light_tint: bool,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -76,6 +78,8 @@ pub(super) struct StoredConnectionProfile {
     pub(super) color: String,
     #[serde(default)]
     pub(super) read_only: bool,
+    #[serde(default)]
+    pub(super) light_tint: bool,
 }
 
 /// The id of the profile a first run starts with (fixed, so a connection can
@@ -88,6 +92,7 @@ pub(super) fn to_profile(stored: &StoredConnectionProfile) -> ConnectionProfile 
         name: stored.name.clone(),
         color: ProfileColor::from_code(&stored.color),
         read_only: stored.read_only,
+        light_tint: stored.light_tint,
     }
 }
 
@@ -100,7 +105,13 @@ impl SettingsStore {
         self.state.connection_profiles.iter().find(|p| p.id == id).map(to_profile)
     }
 
-    pub fn create_connection_profile(&mut self, name: &str, color: ProfileColor, read_only: bool) -> Result<String, Error> {
+    pub fn create_connection_profile(
+        &mut self,
+        name: &str,
+        color: ProfileColor,
+        read_only: bool,
+        light_tint: bool,
+    ) -> Result<String, Error> {
         let name = name.trim();
         if name.is_empty() {
             return Err(Invalid::ProfileName.into());
@@ -112,12 +123,20 @@ impl SettingsStore {
             name: name.to_string(),
             color: color.code().to_string(),
             read_only,
+            light_tint,
         });
         self.commit(next, false)?;
         Ok(id)
     }
 
-    pub fn update_connection_profile(&mut self, id: &str, name: &str, color: ProfileColor, read_only: bool) -> Result<(), Error> {
+    pub fn update_connection_profile(
+        &mut self,
+        id: &str,
+        name: &str,
+        color: ProfileColor,
+        read_only: bool,
+        light_tint: bool,
+    ) -> Result<(), Error> {
         let name = name.trim();
         if name.is_empty() {
             return Err(Invalid::ProfileName.into());
@@ -127,6 +146,7 @@ impl SettingsStore {
         profile.name = name.to_string();
         profile.color = color.code().to_string();
         profile.read_only = read_only;
+        profile.light_tint = light_tint;
         self.commit(next, false)
     }
 

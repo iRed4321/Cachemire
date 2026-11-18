@@ -157,6 +157,7 @@ component ConnProfileRow inherits Rectangle {
     in property <string> name;
     in property <ProfileTint> tint;
     in property <bool> read-only: false;
+    in property <bool> light-tint: false;
     callback edit();
 
     height: Theme.px(34px);
@@ -181,6 +182,12 @@ component ConnProfileRow inherits Rectangle {
                 vertical-alignment: center;
                 horizontal-stretch: 1;
                 overflow: elide;
+            }
+            if root.light-tint: Text {
+                text: @tr("Light theming");
+                font-size: Theme.pt(10.5px);
+                color: Theme.text-tertiary;
+                vertical-alignment: center;
             }
             if root.read-only: Text {
                 text: @tr("Read-only");
@@ -1323,7 +1330,7 @@ component SshProfileList inherits VerticalLayout {
 // the connection profiles under their hint, laid out like SshProfileList
 component ConnProfileList inherits VerticalLayout {
     in property <bool> scrolls: true;
-    callback edit(id: string, name: string, tint: ProfileTint, read-only: bool);
+    callback edit(id: string, name: string, tint: ProfileTint, read-only: bool, light-tint: bool);
     property <[ConnProfileRowData]> profiles: Preferences.conn-profiles;
     property <length> row-height: Theme.px(34px);
 
@@ -1359,7 +1366,8 @@ component ConnProfileList inherits VerticalLayout {
                         name: p.name;
                         tint: p.tint;
                         read-only: p.read-only;
-                        edit => { root.edit(p.id, p.name, p.tint, p.read-only); }
+                        light-tint: p.light-tint;
+                        edit => { root.edit(p.id, p.name, p.tint, p.read-only, p.light-tint); }
                     }
                 }
             }
@@ -1374,7 +1382,8 @@ component ConnProfileList inherits VerticalLayout {
                 name: p.name;
                 tint: p.tint;
                 read-only: p.read-only;
-                edit => { root.edit(p.id, p.name, p.tint, p.read-only); }
+                light-tint: p.light-tint;
+                edit => { root.edit(p.id, p.name, p.tint, p.read-only, p.light-tint); }
             }
         }
     }
@@ -1411,9 +1420,10 @@ export component SettingsModal inherits Rectangle {
     in-out property <string> conn-field-name <=> Preferences.conn-profile-name;
     in-out property <ProfileTint> conn-field-tint <=> Preferences.conn-profile-tint;
     in-out property <bool> conn-field-read-only <=> Preferences.conn-profile-read-only;
+    in-out property <bool> conn-field-light-tint <=> Preferences.conn-profile-light-tint;
     callback conn-save();
     conn-save => {
-        Preferences.conn-profile-saved({ id: conn-field-id, name: conn-field-name, tint: conn-field-tint, read-only: conn-field-read-only });
+        Preferences.conn-profile-saved({ id: conn-field-id, name: conn-field-name, tint: conn-field-tint, read-only: conn-field-read-only, light-tint: conn-field-light-tint });
     }
     callback conn-delete();
     conn-delete => { Preferences.conn-profile-deleted(conn-field-id); }
@@ -1500,11 +1510,12 @@ export component SettingsModal inherits Rectangle {
         root.editing = true;
     }
 
-    function show-conn-form(id: string, name: string, tint: ProfileTint, read-only: bool) {
+    function show-conn-form(id: string, name: string, tint: ProfileTint, read-only: bool, light-tint: bool) {
         root.conn-field-id = id;
         root.conn-field-name = name;
         root.conn-field-tint = tint;
         root.conn-field-read-only = read-only;
+        root.conn-field-light-tint = light-tint;
         root.confirming-delete = false;
         root.editing-conn-profile = true;
     }
@@ -1659,7 +1670,7 @@ export component SettingsModal inherits Rectangle {
                         }
                         if !root.searching && root.category == SettingsCategory.conn-profiles && !root.on-conn-form: AddLink {
                             text: @tr("Add profile");
-                            clicked => { root.show-conn-form("", "", ProfileTint.red, false); }
+                            clicked => { root.show-conn-form("", "", ProfileTint.red, false, false); }
                         }
                     }
 
@@ -1685,7 +1696,7 @@ export component SettingsModal inherits Rectangle {
                     }
                     if !root.searching && root.category == SettingsCategory.conn-profiles && !root.editing-conn-profile: ConnProfileList {
                         vertical-stretch: 1;
-                        edit(id, name, tint, read-only) => { root.show-conn-form(id, name, tint, read-only); }
+                        edit(id, name, tint, read-only, light-tint) => { root.show-conn-form(id, name, tint, read-only, light-tint); }
                     }
 
                     // ---- the search's results, by category, on one page
@@ -1730,10 +1741,10 @@ export component SettingsModal inherits Rectangle {
                             category: SettingsCategory.conn-profiles;
                             text: @tr("Connection profiles");
                             add-text: @tr("Add profile");
-                            add => { root.show-conn-form("", "", ProfileTint.red, false); }
+                            add => { root.show-conn-form("", "", ProfileTint.red, false, false); }
                             ConnProfileList {
                                 scrolls: false;
-                                edit(id, name, tint, read-only) => { root.show-conn-form(id, name, tint, read-only); }
+                                edit(id, name, tint, read-only, light-tint) => { root.show-conn-form(id, name, tint, read-only, light-tint); }
                             }
                         }
                         if root.found(SettingsCategory.experimental): ResultSection {
@@ -1785,6 +1796,18 @@ export component SettingsModal inherits Rectangle {
                                 color: Theme.text-secondary;
                             }
                             TintSwatches { tint <=> root.conn-field-tint; }
+                        }
+                        CheckRow {
+                            text: @tr("Light theming");
+                            bold: true;
+                            checked: root.conn-field-light-tint;
+                            toggled => { root.conn-field-light-tint = !root.conn-field-light-tint; }
+                        }
+                        Text {
+                            text: @tr("Only the borders take the color, not the app's background: easier on the eye for a profile like dev.");
+                            font-size: Theme.pt(10.5px);
+                            color: Theme.text-tertiary;
+                            wrap: word-wrap;
                         }
                         CheckRow {
                             text: @tr("Read-only");

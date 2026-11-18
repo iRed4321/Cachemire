@@ -393,6 +393,13 @@ export component MainWindow inherits Window {
                                 }
                             }
                         }
+                        // the card's border again, over the content: a scrollbar's strip
+                        // reaching the edge doesn't hide it
+                        Rectangle {
+                            border-radius: Theme.radius-lg;
+                            border-width: 1px;
+                            border-color: Theme.chrome-border;
+                        }
                     }
                 }
             }

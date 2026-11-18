@@ -169,7 +169,7 @@ username is empty; a connection with its own username ignores the profile. The U
 
 A [`ConnectionProfile`](crate::settings::ConnectionProfile) is a name, a
 [`ProfileColor`](crate::settings::ProfileColor) (fixed palette of eight, each checked against the
-app background) and a `read_only` flag. The default profile has the fixed id `production`.
+app background), a `read_only` flag and a `light_tint` flag (only the borders take the color). The default profile has the fixed id `production`.
 The store does not know which connections use a profile: `remove_connection_profile` leaves that
 check to the caller. Read-only is enforced by [`is_read_only`](crate::state::is_read_only) /
 [`ensure_writable`](crate::state::ensure_writable).

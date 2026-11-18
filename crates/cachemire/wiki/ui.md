@@ -135,8 +135,8 @@ to them.
   [`key_detail::display_sample`](crate::key_detail::display_sample)), colored as the rows are. The
   preview (`DisplayPreview`) shows on the Display page, and above the search's results when they hold
   the theme, syntax or font settings. Profile colors (`profile-color`) are fixed.
-  `bg-app` is `bg-app-base` mixed with the profile tint when `env-tinted` is true (25%), and
-  `chrome-border` mixes 50%. This is how a connection profile (Production = red...) colors the window.
+  `bg-app` is `bg-app-base` mixed with the profile tint when `env-tinted` is true (25%), unless
+  `env-light` (the profile's light theming) is too, and `chrome-border` mixes 50% in both cases. This is how a connection profile (Production = red...) colors the window.
 - **Fonts**: `font-ui` = Roboto, `font-mono` = JetBrains Mono, both bundled by `import "...ttf"` lines
   at the top of the file, unless the Display settings picked installed ones (`ui_font`, `mono_font`,
   "" for these; [`fonts::apply`](crate::fonts::apply) sets them). The menus' lists come from

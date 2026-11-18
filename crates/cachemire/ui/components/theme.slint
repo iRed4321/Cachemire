@@ -15,16 +15,17 @@ import { ProfileTint } from "types.slint";
 // theme picked in the settings; the values here are those of the default theme.
 export global Theme {
     // backgrounds: the app's own background (behind the panels and title bar) is
-    // `bg-app-base` with some of the tint of the connection profile in use mixed in
-    // (set from Rust)
+    // `bg-app-base` with some of the tint of the connection profile in use mixed in,
+    // unless its tint is light: only the borders then (set from Rust)
     in property <color> bg-app-base: #151517;
     in-out property <bool> env-tinted: false;
     in-out property <ProfileTint> env-tint: ProfileTint.red;
+    in-out property <bool> env-light: false;
     // how much of the tint is mixed into the background: enough to tell the
     // environments apart at a glance, not enough to tire the eye
     out property <float> env-tint-strength: 0.25;
     // (`mix` weighs the color it is called on by the factor)
-    out property <color> bg-app: env-tinted ? profile-color(env-tint).mix(bg-app-base, env-tint-strength) : bg-app-base;
+    out property <color> bg-app: env-tinted && !env-light ? profile-color(env-tint).mix(bg-app-base, env-tint-strength) : bg-app-base;
     // the border of the app's own chrome (keyspace panel, key panel, title bar pills):
     // plain `border-soft` untinted, well into the profile's color when one is in use
     out property <float> env-border-strength: 0.5;

@@ -49,7 +49,7 @@ fn effective(store: &SettingsStore, name: &str) -> (String, Option<String>) {
 #[test]
 fn an_endpoint_inherits_its_accounts_settings_until_it_sets_its_own() {
     let (mut store, _, _) = new_store();
-    let staging = store.create_connection_profile("Staging", ProfileColor::Green, false).unwrap();
+    let staging = store.create_connection_profile("Staging", ProfileColor::Green, false, false).unwrap();
     let prod = store.connection_profiles()[0].id.clone();
     store
         .set_cloud_scope(&account(), "Main", Some(staging.clone()), Some(tunnel("account-bastion", "")), SecretsPolicy::PlainText)
@@ -74,7 +74,7 @@ fn an_endpoint_can_turn_off_what_its_account_sets() {
 #[test]
 fn a_deleted_connection_profile_counts_as_none() {
     let (mut store, _, _) = new_store();
-    let staging = store.create_connection_profile("Staging", ProfileColor::Green, false).unwrap();
+    let staging = store.create_connection_profile("Staging", ProfileColor::Green, false, false).unwrap();
     store.set_cloud_scope(&account(), "", Some(staging.clone()), None, SecretsPolicy::PlainText).unwrap();
     store.remove_connection_profile(&staging).unwrap();
     assert_eq!(effective(&store, "any").0, "");

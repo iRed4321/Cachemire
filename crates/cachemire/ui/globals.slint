@@ -147,6 +147,8 @@ export global AwsAccount {
     callback profile-selected(name: string);
     // fills `profiles` and `pins` with the profiles whose name holds `filter`, under `chip`
     callback list-requested(filter: string);
+    // reads the local profiles again (the AWS config edited since signing in), then lists them
+    callback reload-requested();
 }
 
 // The About page of the settings window: which version this is and whether a newer one
@@ -247,6 +249,7 @@ export global Preferences {
     in-out property <string> conn-profile-name: "";
     in-out property <ProfileTint> conn-profile-tint: ProfileTint.red;
     in-out property <bool> conn-profile-read-only: false;
+    in-out property <bool> conn-profile-light-tint: false;
     callback conn-profile-saved(ConnProfileForm);
     callback conn-profile-deleted(id: string);
 }

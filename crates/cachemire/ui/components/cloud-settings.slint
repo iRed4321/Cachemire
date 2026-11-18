@@ -47,6 +47,7 @@ export component CloudSettingsModal inherits Rectangle {
     VerticalLayout {
         alignment: center;
         cross-axis-alignment: center;
+        padding: Theme.px(16px);
 
         card := Rectangle {
             width: Theme.px(440px);
@@ -115,6 +116,7 @@ export component CloudSettingsModal inherits Rectangle {
                     wrap: word-wrap;
                 }
                 if CloudSettings.profile-mode == 2 && CloudSettings.profiles.length > 0: ProfileChoiceList {
+                    grows: true;
                     profiles: CloudSettings.profiles;
                     selected <=> CloudSettings.profile-id;
                 }

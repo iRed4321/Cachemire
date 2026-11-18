@@ -111,6 +111,7 @@ fn open_form(app: &App, window: &MainWindow, kind: i32, id: &str) -> Option<Open
             name: p.name.into(),
             tint: crate::connections::profiles::to_tint(p.color),
             read_only: p.read_only,
+            light_tint: p.light_tint,
         })
         .collect();
     global.set_profiles(ModelRc::new(VecModel::from(rows)));

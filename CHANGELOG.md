@@ -20,6 +20,7 @@ Every stable release of Cachemire; `Unreleased` is what the next one brings. Bet
 - **SSH known hosts**: keys listed in `~/.ssh/known_hosts` are trusted without asking, and a different key listed there is refused. New keys are only written to Cachemire's own file
 - **Portable zip**: on Windows it now keeps all its data (connections, settings, history, logs) in a `data` folder next to the exe
 - **Read-only mode**: tick *Read-only* on a connection profile or on a connection and nothing can be written to Redis through it. The default Production profile is read-only
+- **Light theming**: tick *Light theming* on a connection profile and only the borders take its color, not the whole background. Handy for a dev profile
 - **Folder deletion**: deleting a folder asks first, with the number of keys it will remove
 - **Changed values**: saving an edit to a value that changed in Redis meanwhile asks whether to cancel, reload the new value or overwrite it
 - **Passwords without a keyring**: when the system keyring can't store a password, Cachemire now asks instead of writing it to the data file in clear text. Choose to save it in the file anyway, or (for a connection) to save without it: the Redis password, SSH password or key passphrase is then asked for each time you connect, kept in memory only. This covers connections, imports, SSH profiles and the AWS tunnel settings
@@ -28,11 +29,14 @@ Every stable release of Cachemire; `Unreleased` is what the next one brings. Bet
 
 - **Text selection**: in a value, a table cell or the key's name, a double click selects a word, a triple click the whole paragraph, and Shift+click extends the selection (a double click in a table cell still selects the whole cell). The interface toolkit moves to Slint 1.19
 - **AWS**: the title bar has one button for the account: **Sign in to AWS** while signed out, then the profile in use. Its list has a filter (arrows and Enter pick, Esc closes), the three profiles used last first with when, each profile's connection profile and SSH tunnel under its name with a gear to change them (once its account is known), and **Sign out of AWS** at the bottom. Chips over the list keep the profiles of one connection profile (or of none), and a profile's star pins it above the others, two per line
+- **AWS**: a reload button beside the profile count reads your AWS config again, so newly added profiles show without restarting
 - **AWS**: ElastiCache endpoints with cluster mode enabled are no longer listed, since Cachemire can't connect to them
+- **Scrollbars**: only their thumb shows, with no strip behind it while you scroll or point at them
 - **TLS**: `rediss://` connections now also trust the certificate authorities installed on your computer, such as a company's own
 
 ### Fixes
 
+- **AWS**: an account's settings list every connection profile without scrolling, unless the window is too short
 - **Connection**: a `rediss://` server reached through an SSH tunnel is now verified against its real host name
 - **Connection**: URLs accept `valkey://` and `valkeys://`; other schemes and negative database numbers are refused with a clear message
 - **Dialogs**: scrolling over a dialog or an open menu no longer scrolls the view behind it
@@ -47,6 +51,7 @@ Every stable release of Cachemire; `Unreleased` is what the next one brings. Bet
 - **Security**: passwords, passphrases and sign-in tokens are wiped from memory once no longer needed, and kept out of logs
 - **Search**: key and instance searches find accented letters however stored: `à`, `a` plus an accent, or JSON's `\u00e0`
 - **Values**: binary values and field names show their bytes as `\xNN` and can no longer be damaged by an edit
+- **Window**: a scrollbar no longer hides the border of the tab panel, tinted by a connection profile
 
 ## 3.2.2 - 2026-11-16
 

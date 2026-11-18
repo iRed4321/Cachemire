@@ -209,8 +209,8 @@ profile badge. A profile id that no longer exists counts as none.
 
 ## Connection profiles
 
-[`profiles`](crate::connections::profiles) edits the *connection profiles* (name, tint, read-only)
-stored in the settings. [`apply_tint`](crate::connections::profiles::apply_tint) tints the window for the
+[`profiles`](crate::connections::profiles) edits the *connection profiles* (name, tint, read-only, light theming)
+stored in the settings. [`apply_tint`](crate::connections::profiles::apply_tint) tints the window (only its borders for a light tint) for the
 connection in use and sets `ConnectionState.read_only` (and forces the key panel non-editable)
 using [`is_read_only`](cachemire_core::state::is_read_only). A profile cannot be deleted while a connection uses it
 (the message lists up to three names, then `+N`). The tint enum has `to_tint` / `from_tint` as
@@ -252,6 +252,8 @@ local profiles, selected profile, a `generation` counter and a pending [`resume`
   its account's connection profile and tunnel, a star, a gear, and "Sign out of AWS" at the bottom. A profile's
   account is the one listed now, the one it last listed, or its SSO `account_id` ([`account_of`](crate::cloud::account_of));
   with none known, it has no gear.
+  The profiles are read at sign-in; the reload button beside the count (`reload_requested`) reads
+  [`aws::profiles`](cachemire_core::aws::profiles) again and lists them with the same filter and chip.
 - **Chips and pins**: `profile_row` also gives each profile its chip key (`profile:<id>`, `none`, `unknown`);
   `chip_lines` makes a chip per key in use (none when one key covers them all) and splits them into lines by
   an estimated width, since Slint has no wrapping layout. `AwsAccount.chip` is the one picked ("" for all),

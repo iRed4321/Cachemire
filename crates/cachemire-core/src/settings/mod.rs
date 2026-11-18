@@ -169,6 +169,7 @@ impl SettingsStore {
                 name: "Production".to_string(),
                 color: ProfileColor::Red.code().to_string(),
                 read_only: true,
+                light_tint: false,
             });
         }
         if !state.default_profile_read_only_set {

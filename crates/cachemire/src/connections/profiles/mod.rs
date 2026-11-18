@@ -50,27 +50,34 @@ pub(crate) fn refresh(window: &MainWindow, state: &AppState) {
         .lock()
         .connection_profiles()
         .into_iter()
-        .map(|p| ConnProfileRowData { id: p.id.into(), name: p.name.into(), tint: to_tint(p.color), read_only: p.read_only })
+        .map(|p| ConnProfileRowData {
+            id: p.id.into(),
+            name: p.name.into(),
+            tint: to_tint(p.color),
+            read_only: p.read_only,
+            light_tint: p.light_tint,
+        })
         .collect();
     window.global::<Preferences>().set_conn_profiles(ModelRc::new(VecModel::from(rows)));
 }
 
-/// Tints the background for the connection in use (if its profile still exists) or clears
-/// the tint, and says whether it is read-only. Called whenever that can have changed:
+/// Tints the background (or only the borders, for a light tint) for the connection in use, if
+/// its profile still exists, or clears the tint, and says whether it is read-only. Called whenever that can have changed:
 /// a connection made or lost, a connection or a profile edited.
 pub(crate) fn apply_tint(window: &MainWindow, state: &AppState) {
     let connection_id = window.connection_id();
     let profile_id = (!connection_id.is_empty()).then(|| state.connections.lock().get(&connection_id).map(|c| c.profile_id)).flatten();
-    let color = profile_id.filter(|id| !id.is_empty()).and_then(|id| state.settings.lock().connection_profile(&id)).map(|p| p.color);
+    let profile = profile_id.filter(|id| !id.is_empty()).and_then(|id| state.settings.lock().connection_profile(&id));
     let read_only = !connection_id.is_empty() && cachemire_core::state::is_read_only(state, Some(&connection_id)).unwrap_or(false);
     window.global::<ConnectionState>().set_read_only(read_only);
     if read_only {
         window.global::<KeyPanel>().set_editable(false);
     }
     let theme = window.global::<Theme>();
-    match color {
-        Some(color) => {
-            theme.set_env_tint(to_tint(color));
+    match profile {
+        Some(profile) => {
+            theme.set_env_tint(to_tint(profile.color));
+            theme.set_env_light(profile.light_tint);
             theme.set_env_tinted(true);
         }
         None => theme.set_env_tinted(false),
@@ -111,9 +118,9 @@ pub fn init(app: &Rc<App>, window: &MainWindow) {
             let saved = {
                 let mut settings = state.settings.lock();
                 if form.id.is_empty() {
-                    settings.create_connection_profile(&form.name, color, form.read_only).map(|_| ())
+                    settings.create_connection_profile(&form.name, color, form.read_only, form.light_tint).map(|_| ())
                 } else {
-                    settings.update_connection_profile(&form.id, &form.name, color, form.read_only)
+                    settings.update_connection_profile(&form.id, &form.name, color, form.read_only, form.light_tint)
                 }
             };
             match saved {

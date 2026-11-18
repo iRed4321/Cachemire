@@ -292,6 +292,27 @@ pub fn init(app: &Rc<App>, window: &MainWindow) {
         }
     });
 
+    // the AWS config edited since signing in: its profiles are read again and listed
+    window.global::<AwsAccount>().on_reload_requested({
+        let app = app.clone();
+        move || {
+            crate::app::spawn(&app.rt, aws::profiles(), |app, window, profiles| {
+                let Ok(profiles) = profiles else { return };
+                let filter = {
+                    let mut cloud = app.cloud.borrow_mut();
+                    // signed out meanwhile
+                    if !cloud.connected {
+                        return;
+                    }
+                    tracing::info!(profiles = profiles.len(), "AWS profiles reloaded");
+                    cloud.profiles = profiles;
+                    cloud.filter.clone()
+                };
+                list(app, window, &filter);
+            });
+        }
+    });
+
     window.global::<AwsAccount>().on_pin_toggled({
         let app = app.clone();
         move |name| {

@@ -168,6 +168,7 @@ export struct ConnProfileRowData {
     name: string,
     tint: ProfileTint,
     read-only: bool,
+    light-tint: bool,
 }
 
 export struct ConnectionRowData {
@@ -233,6 +234,7 @@ export struct ConnProfileForm {
     name: string,
     tint: ProfileTint,
     read-only: bool,
+    light-tint: bool, // only the borders take the tint
 }
 
 export struct KeyspaceRowData {

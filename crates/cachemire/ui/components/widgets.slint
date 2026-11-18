@@ -332,15 +332,7 @@ export component VScrollBar inherits Rectangle {
         }
     }
 
-    // hover zone only: nothing else lives in this strip
-    track := Rectangle {
-        x: -root.strip;
-        width: root.strip;
-        height: root.height;
-        background: root.engaged ? Theme.bg-elevated.with-alpha(0.9) : Theme.bg-elevated.with-alpha(0);
-        animate background { duration: 130ms; }
-    }
-
+    // the strip that wakes the bar: nothing is drawn there but the thumb
     track-area := TouchArea {
         x: -root.strip;
         width: root.strip;
@@ -434,14 +426,7 @@ export component HScrollBar inherits Rectangle {
         }
     }
 
-    track := Rectangle {
-        y: -root.strip;
-        width: root.width;
-        height: root.strip;
-        background: root.engaged ? Theme.bg-elevated.with-alpha(0.9) : Theme.bg-elevated.with-alpha(0);
-        animate background { duration: 130ms; }
-    }
-
+    // the strip that wakes the bar: nothing is drawn there but the thumb
     track-area := TouchArea {
         y: -root.strip;
         width: root.width;
