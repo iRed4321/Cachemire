@@ -59,7 +59,10 @@ impl SearchFilter {
 
     fn term_matches(&self, scope: SearchScope, needle: &str, field: &Field) -> bool {
         let name = || contains_folded(field.searched_name(self.case_sensitive), needle);
-        let value = || contains_folded(field.searched_raw(self.case_sensitive), needle);
+        let value = || {
+            contains_folded(field.searched_raw(self.case_sensitive), needle)
+                || field.searched_unescaped(self.case_sensitive).is_some_and(|text| contains_folded(text, needle))
+        };
         match scope {
             SearchScope::Fields => name(),
             SearchScope::Value => value(),

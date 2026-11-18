@@ -32,7 +32,7 @@ fn push_folded(c: char, case_sensitive: bool, out: &mut String) {
 }
 
 /// `text` as the search reads it: borrowed when that is `text` itself.
-pub(super) fn fold(text: &str, case_sensitive: bool) -> Cow<'_, str> {
+pub(crate) fn fold(text: &str, case_sensitive: bool) -> Cow<'_, str> {
     if text.is_ascii() {
         let unchanged = case_sensitive || !text.bytes().any(|b| b.is_ascii_uppercase());
         return if unchanged { Cow::Borrowed(text) } else { Cow::Owned(text.to_ascii_lowercase()) };
@@ -73,6 +73,12 @@ pub(super) fn find_folded(haystack: &str, needle: &str, mut from: usize) -> Opti
 }
 
 /// Whether the folded `needle` occurs in the folded `haystack` (see [`find_folded`]).
-pub(super) fn contains_folded(haystack: &str, needle: &str) -> bool {
+pub(crate) fn contains_folded(haystack: &str, needle: &str) -> bool {
     find_folded(haystack, needle, 0).is_some()
+}
+
+/// `json` as compact text when `raw`, the text it was read from, holds `\uXXXX` escapes:
+/// what they stand for written out (`caf\u00e9` reads `café`), as the rows show it.
+pub(crate) fn unescaped_json(raw: &str, json: &serde_json::Value) -> Option<String> {
+    raw.contains("\\u").then(|| serde_json::to_string(json).ok()).flatten()
 }

@@ -280,11 +280,14 @@ trait for the message (see [errors](crate::wiki::errors)).
 for every other type. A `Field` keeps the raw text, the parsed JSON
 if it is JSON, `too_long` (value left out for its size: shows a size and a "Try to load"), and `binary`
 (not UTF-8: displayed with `\xNN` escapes, never editable). Its name and value as the search reads
-them (`searched_name`, `searched_raw`) are computed lazily and kept.
+them (`searched_name`, `searched_raw`, and `searched_unescaped` for JSON holding `\uXXXX` escapes)
+are computed lazily and kept.
 
 The search reads text through `fold.rs`: each character canonically decomposed (`à` stored as one
 character or as `a` and a combining accent compare equal) and lowercased unless case matters. A match
 may not end just before a combining mark (`find_folded`), so `e` does not match the start of `é`.
+A JSON value whose raw text holds `\uXXXX` escapes also matches through its compact text with them
+written out (`unescaped_json`), as the rows show it: `à` finds `\u00e0`.
 
 ## Paging a hash (`paging/`)
 
@@ -545,7 +548,8 @@ panel's filter (one key) and the tree's search (key names only).
 - `submit(query)`: bumps `run`, resets rows and progress, then runs
   [`explorer::scan_entries`](cachemire_core::explorer::scan_entries)`(depth, server_filter, keep_going,
   paused, on_batch)`: each batch's keys are scanned for hits **across cores** with rayon
-  (`hits_in_key`, `hits_in`). `depth` is the setting "search depth" (entries read per key, default 1000);
+  (`hits_in_key`, `hits_in`), read through `fold.rs` like the key panel's search (accents, and the
+  `\uXXXX` escapes of a JSON object or array, see Part 2). `depth` is the setting "search depth" (entries read per key, default 1000);
   `server_filter` is the experimental "server search" setting (a Redis script drops what cannot match).
 - A hit row has highlighted key, field and value texts (`search_plain_text`, `search_value_text`),
   `key_name` (id) and `target_field` (for a non-hash key, the single `(value)` row). A key whose name alone

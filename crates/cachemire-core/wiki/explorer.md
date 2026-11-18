@@ -247,7 +247,7 @@ Behaviour worth knowing:
 
 ### Server-side filter
 
-When `server_filter` is given (the needle, already lowercased), each read first tries
+When `server_filter` is given (the needle, already lowercased and its accents decomposed), each read first tries
 `read_entries_lua`, which runs `search.lua` through
 [`Session::search_script`](crate::session::Session::search_script): the server returns only the
 keys and entries that *might* match. Keys the script leaves to the caller (streams, status 1) are

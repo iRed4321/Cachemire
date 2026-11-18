@@ -45,7 +45,7 @@ Every stable release of Cachemire; `Unreleased` is what the next one brings. Bet
 - **Security**: the AWS SSO sign-in ignores a refusal that doesn't come from your own sign-in attempt
 - **Security**: exported key files are readable by your user only
 - **Security**: passwords, passphrases and sign-in tokens are wiped from memory once no longer needed, and kept out of logs
-- **Search**: a key's search finds accented letters however they are stored (`à` as one character, or `a` plus an accent)
+- **Search**: key and instance searches find accented letters however stored: `à`, `a` plus an accent, or JSON's `\u00e0`
 - **Values**: binary values and field names show their bytes as `\xNN` and can no longer be damaged by an edit
 
 ## 3.2.2 - 2026-11-16

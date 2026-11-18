@@ -1,16 +1,16 @@
 -- The global search's server-side prefilter (see `read_entries_lua` in explorer.rs).
 --
 -- KEYS: the keys to look at.
--- ARGV[1]: the word searched for, already lowercased by the caller.
+-- ARGV[1]: the word searched for, already lowercased (and accents decomposed) by the caller.
 -- ARGV[2]: how many entries of a key to read.
 -- ARGV[3]: how many bytes of a string to read.
 --
 -- Answers, for each key that could hold a hit, {key, type, status, entries}, where
 -- `entries` lists field, value, field, value... of the entries that might match.
 -- It never leaves out a real hit: the caller checks what it gets exactly, this only
--- spares it the entries that certainly don't match. Text with a non-ASCII byte in
--- it is always passed on, since only the caller lowercases Unicode the way it
--- searches. status 1 means "a stream: read it yourself".
+-- spares it the entries that certainly don't match. Text with a non-ASCII byte or
+-- a `\u` escape in it is always passed on, since only the caller lowercases Unicode
+-- and reads JSON escapes the way it searches. status 1 means "a stream: read it yourself".
 --
 -- It only reads. Keys that vanished meanwhile are left out.
 
@@ -21,11 +21,11 @@ local find, lower = string.find, string.lower
 local NON_ASCII = '[\128-\255]'
 local ascii_needle = not find(needle, NON_ASCII)
 
--- false only when `text` certainly doesn't hold the word: an all-ASCII text is
--- lowercased the same way here as by the caller, and a word with non-ASCII
--- letters can't be in it
+-- false only when `text` certainly doesn't hold the word: an all-ASCII text with
+-- no `\u` escape is lowercased the same way here as by the caller, and a word
+-- with non-ASCII letters can't be in it
 local function may_match(text)
-  if find(text, NON_ASCII) then
+  if find(text, NON_ASCII) or find(text, '\\u', 1, true) then
     return true
   end
   return ascii_needle and find(lower(text), needle, 1, true) ~= nil

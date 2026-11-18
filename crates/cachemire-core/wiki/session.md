@@ -214,9 +214,9 @@ Design points, all visible in the script:
 - It is a prefilter, never a filter: it must never drop a real hit. The caller re-checks what it
   receives exactly.
 - Matching is a case-insensitive substring test, done in Lua only for ASCII (`string.lower`);
-  any text with a non-ASCII byte is always passed on, because only the Rust side lowercases
-  Unicode the way the search does. A needle with non-ASCII letters therefore matches nothing in
-  an all-ASCII text and everything non-ASCII passes.
+  any text with a non-ASCII byte or a `\u` escape is always passed on, because only the Rust side
+  lowercases Unicode and reads JSON escapes the way the search does. A needle with non-ASCII
+  letters therefore matches nothing in an all-ASCII text without `\u`, and the rest passes.
 - A key whose own name may match is kept even with no matching entry.
 - It only reads. Streams are left to the caller (`status 1`) because their entries are not
   simply field/value pairs.

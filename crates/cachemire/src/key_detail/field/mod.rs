@@ -12,7 +12,7 @@ use rust_i18n::t;
 use serde::Serialize;
 use serde_json::Value;
 
-use super::fold::fold;
+use super::fold::{fold, unescaped_json};
 use super::formats::{ShowFormat, structured_value};
 use super::pretty_text::ColoredParagraph;
 
@@ -48,13 +48,24 @@ pub(super) struct Field {
     // `name` and `raw` as the search reads them (`fold`), case kept then not, made on first
     // use and kept for every later badge (`None`: the text itself); `raw` can be a large blob
     folded: [[OnceLock<Option<String>>; 2]; 2],
+    // its JSON's `\uXXXX` escapes written out, then folded, case kept then not (`None`: no escape)
+    unescaped: [OnceLock<Option<String>>; 2],
     // the object or array a YAML or XML value stands for, read on first use by the table
     structured: OnceLock<Option<Value>>,
 }
 
 impl Field {
     pub(super) fn new(name: String, raw: String, json: Option<Value>) -> Field {
-        Field { name, raw, json, too_long: None, binary: false, folded: Default::default(), structured: OnceLock::new() }
+        Field {
+            name,
+            raw,
+            json,
+            too_long: None,
+            binary: false,
+            folded: Default::default(),
+            unescaped: Default::default(),
+            structured: OnceLock::new(),
+        }
     }
 
     /// A hash field whose value, `size` bytes long, was left out for its size.
@@ -106,6 +117,17 @@ impl Field {
     /// The field's raw value as a search matching case or not reads it.
     pub(super) fn searched_raw(&self, case_sensitive: bool) -> &str {
         folded_once(&self.folded[1][usize::from(case_sensitive)], &self.raw, case_sensitive)
+    }
+
+    /// The field's JSON value with its `\uXXXX` escapes written out, as a search reads it:
+    /// `None` when its raw text holds none.
+    pub(super) fn searched_unescaped(&self, case_sensitive: bool) -> Option<&str> {
+        self.unescaped[usize::from(case_sensitive)]
+            .get_or_init(|| {
+                let text = unescaped_json(&self.raw, self.json.as_ref()?)?;
+                Some(fold(&text, case_sensitive).into_owned())
+            })
+            .as_deref()
     }
 }
 
