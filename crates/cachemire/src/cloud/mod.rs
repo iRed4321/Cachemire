@@ -12,10 +12,10 @@ use slint::winit_030::winit::window::UserAttentionType;
 use slint::{ComponentHandle, ModelRc, VecModel};
 
 use crate::app::App;
+use crate::t;
 use crate::{AwsAccount, AwsChip, AwsProfileRow, MainWindow};
 use cachemire_core::aws;
 use cachemire_core::settings::CloudScope;
-use rust_i18n::t;
 
 pub mod settings;
 

@@ -5,7 +5,7 @@
 use parking_lot::Mutex;
 use std::sync::Arc;
 
-use rust_i18n::t;
+use crate::t;
 use rustc_hash::FxHashMap;
 use serde::Serialize;
 use slint::{Model, Weak};

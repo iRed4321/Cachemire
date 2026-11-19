@@ -2,8 +2,8 @@
 //! concern across submodules ([`field`], [`pretty_text`]/[`highlight`],
 //! [`table`]/[`value_list`], [`export`], [`scroll`]); this wires them together.
 
+use crate::t;
 use parking_lot::Mutex;
-use rust_i18n::t;
 use rustc_hash::{FxHashMap, FxHashSet};
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};

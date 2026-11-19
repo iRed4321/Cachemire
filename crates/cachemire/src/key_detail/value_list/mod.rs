@@ -5,8 +5,8 @@
 use rustc_hash::FxHashSet;
 use std::sync::Arc;
 
+use crate::t;
 use rayon::prelude::*;
-use rust_i18n::t;
 use serde_json::Value;
 
 use crate::AllValuesRowData;

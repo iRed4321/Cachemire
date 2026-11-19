@@ -2,7 +2,7 @@
 //! `filtering`); a text starting with `$` or `.` is a JSON path filtering the values.
 //! Its list offers the path's keys, or for words where to look.
 
-use rust_i18n::t;
+use crate::t;
 use slint::{ComponentHandle, Model, ModelRc, VecModel};
 
 use super::Ctx;

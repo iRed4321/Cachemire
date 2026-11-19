@@ -4,7 +4,7 @@ UI-thread glue between `ui/*.slint` and `cachemire-core`. No business logic here
 
 ## Layout
 
-- `src/main.rs`: declares modules, `rust_i18n::i18n!`, `slint::include_modules!()` (re-exported as `ui::*`), backend choice.
+- `src/main.rs`: declares modules, `slint::include_modules!()` (re-exported as `ui::*`), backend choice.
 - `build.rs`: compiles `ui/main.slint` with bundled translations.
 - `src/theme/`: the themes (four colors each, the rest derived) and syntax themes; fills the Slint `Theme` global and
   `theme::paint()`, the colors of the text Rust paints.
@@ -12,6 +12,7 @@ UI-thread glue between `ui/*.slint` and `cachemire-core`. No business logic here
 - One module per feature (`connections/`, `cloud/`, `key_detail/`, `keyspace/`, `search/`, `redisql/`, `tabs/`…),
   each with an `init` that attaches the `on_*` callbacks; `init`s are called from `main.rs`.
 - `ui/main.slint` root window; `ui/globals.slint` globals (callbacks Rust answers); `ui/components/*.slint` widgets.
+- `src/i18n/`: the `t!` macro, over the table `build.rs` makes of `resources/lang/app.yml`.
 - `src/error/`: `Localize` trait turning core errors into translated text.
 - `src/styled_text.rs`: the only place allowed to name `slint::private_unstable_api`.
 

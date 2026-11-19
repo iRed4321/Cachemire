@@ -6,7 +6,7 @@ use rustc_hash::FxHashSet;
 use std::path::Path;
 use std::rc::Rc;
 
-use rust_i18n::t;
+use crate::t;
 use serde_json::{Value, json};
 use slint::{ComponentHandle, Model, ModelRc, VecModel};
 

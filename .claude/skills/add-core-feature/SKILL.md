@@ -13,4 +13,4 @@ description: Use when adding or extending a core backend in cachemire-core (conn
 5. Secrets are `Secret` (`src/secret.rs`), never `String`. No `unwrap` outside tests. Keep sibling `tests.rs` passing.
 6. Run `cargo test`; `cargo xtask e2e` if it touches Redis behavior.
 
-Avoid: importing Slint or rust-i18n into core; logging secrets; Windows-only code without `#[cfg(windows)]`.
+Avoid: importing Slint or the app's `t!` into core; logging secrets; Windows-only code without `#[cfg(windows)]`.

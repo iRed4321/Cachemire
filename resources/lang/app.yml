@@ -1,4 +1,4 @@
-# Messages built in Rust (`t!("...")`), compiled into the executable by rust-i18n.
+# Messages built in Rust (`t!("...")`), compiled into the executable by build.rs.
 # The key is the English text, which is also what is shown for a language that
 # has no entry. The messages in the .slint files are in */LC_MESSAGES/cachemire.po.
 _version: 2

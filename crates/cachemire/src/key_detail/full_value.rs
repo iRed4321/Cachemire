@@ -3,7 +3,7 @@
 
 use std::sync::Arc;
 
-use rust_i18n::t;
+use crate::t;
 use slint::{ComponentHandle, Model};
 
 use crate::error::{Error, Localize};

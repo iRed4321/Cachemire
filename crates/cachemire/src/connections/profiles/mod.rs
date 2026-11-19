@@ -5,7 +5,7 @@
 use crate::error::Localize;
 use std::rc::Rc;
 
-use rust_i18n::t;
+use crate::t;
 use slint::{ComponentHandle, ModelRc, VecModel};
 
 use crate::app::App;

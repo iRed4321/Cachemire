@@ -7,8 +7,8 @@ use rustc_hash::{FxHashMap, FxHashSet};
 use std::borrow::Cow;
 use std::sync::{Arc, OnceLock};
 
+use crate::t;
 use rayon::prelude::*;
-use rust_i18n::t;
 use serde::Serialize;
 use serde_json::Value;
 

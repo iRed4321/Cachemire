@@ -1,6 +1,6 @@
 # cachemire-core (UI-free library)
 
-Must not depend on Slint or rust-i18n. Feature `test-support` exposes helpers to the app's tests.
+Must not depend on Slint or the app's `t!` messages. Feature `test-support` exposes helpers to the app's tests.
 
 ## Layout (`src/`)
 

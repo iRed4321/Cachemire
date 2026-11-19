@@ -5,7 +5,7 @@ use std::rc::Rc;
 use std::sync::Arc;
 use std::sync::atomic::Ordering;
 
-use rust_i18n::t;
+use crate::t;
 use slint::ComponentHandle;
 use tokio::runtime::Handle;
 

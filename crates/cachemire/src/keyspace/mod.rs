@@ -4,8 +4,8 @@
 
 use crate::app::App;
 use crate::error::Localize;
+use crate::t;
 use parking_lot::Mutex;
-use rust_i18n::t;
 use rustc_hash::FxHashMap;
 use std::rc::Rc;
 use std::sync::Arc;

@@ -6,8 +6,8 @@ use std::borrow::Cow;
 use std::cell::RefCell;
 use std::sync::Arc;
 
+use crate::t;
 use cachemire_core::state::AppState;
-use rust_i18n::t;
 use slint::{ComponentHandle, Keys, ModelRc, SharedString, VecModel};
 
 use crate::error::Localize;

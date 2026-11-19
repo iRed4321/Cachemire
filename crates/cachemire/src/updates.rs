@@ -6,7 +6,7 @@ use crate::error::Localize;
 use std::cell::RefCell;
 use std::sync::Arc;
 
-use rust_i18n::t;
+use crate::t;
 use semver::Version;
 use slint::ComponentHandle;
 

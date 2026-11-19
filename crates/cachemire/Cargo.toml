@@ -31,8 +31,7 @@ open.workspace = true
 semver.workspace = true
 # the fork's patched/1.19.0 branch at a fixed commit (also for slint-build): move both `rev`s to update
 # what the fork changes and how to move to a newer Slint: docs/slint-fork.md
-slint = { git = "https://github.com/iRed4321/SlintFork.git", rev = "47cda3504961d71a0348debc73e8d77485c5460e", default-features = false, features = ["std", "backend-winit", "renderer-software", "compat-1-2", "unstable-winit-030"] }
-rust-i18n = "4"
+slint = { git = "https://github.com/iRed4321/SlintFork.git", rev = "83de1d91f49ada0f7a17e999a48cbe88095f9efb", default-features = false, features = ["std", "backend-winit", "renderer-software", "compat-1-2", "unstable-winit-030"] }
 thiserror.workspace = true
 # the log: a daily file in the data directory (see logging.rs), and stderr in debug builds
 tracing.workspace = true
@@ -45,7 +44,9 @@ cachemire-core = { path = "../cachemire-core", features = ["test-support"] }
 russh.workspace = true
 
 [build-dependencies]
-slint-build = { git = "https://github.com/iRed4321/SlintFork.git", rev = "47cda3504961d71a0348debc73e8d77485c5460e" }
+# app.yml read into the table of the `t!` messages (see build.rs, src/i18n)
+serde_norway = "0.9"
+slint-build = { git = "https://github.com/iRed4321/SlintFork.git", rev = "83de1d91f49ada0f7a17e999a48cbe88095f9efb" }
 
 # a message to the window that clears winit's drag latch (see drag_latch.rs)
 [target.'cfg(windows)'.dependencies]

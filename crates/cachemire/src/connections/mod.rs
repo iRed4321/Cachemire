@@ -4,7 +4,7 @@
 
 use crate::app::App;
 use crate::host_key_dialog::Answered;
-use rust_i18n::t;
+use crate::t;
 use rustc_hash::FxHashMap;
 use std::rc::Rc;
 

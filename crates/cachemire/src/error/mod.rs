@@ -2,7 +2,7 @@
 //! in the interface language, while `Display` stays English for the log. What comes from
 //! outside (Redis, the OS, a library) is shown as it was given.
 
-use rust_i18n::t;
+use crate::t;
 
 use cachemire_core::aws::AwsError;
 use cachemire_core::connection::ssh_tunnel::TunnelError;

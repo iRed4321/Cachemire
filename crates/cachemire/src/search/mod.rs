@@ -9,8 +9,8 @@ use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::time::{Duration, Instant};
 
+use crate::t;
 use rayon::prelude::*;
-use rust_i18n::t;
 use slint::{ModelRc, SharedString, VecModel};
 use tokio::sync::watch;
 

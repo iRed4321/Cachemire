@@ -165,7 +165,7 @@ fn core_errors() -> Vec<CoreError> {
 /// text differs from its error's `Display` would lose that message's translation.
 #[test]
 fn every_error_reads_in_english_as_its_display() {
-    assert_eq!(&*rust_i18n::locale(), "en", "the tests run in English");
+    assert_eq!(crate::i18n::locale(), "en", "the tests run in English");
     for error in core_errors() {
         assert_eq!(error.localized(), error.to_string(), "{error:?}");
     }

@@ -8,7 +8,7 @@ use std::rc::Rc;
 use std::sync::Arc;
 
 use crate::styled_text::StyledText;
-use rust_i18n::t;
+use crate::t;
 use serde_json::Value;
 use slint::{ComponentHandle, Model, ModelRc, SharedString, VecModel};
 

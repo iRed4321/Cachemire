@@ -9,13 +9,13 @@ Cachemire builds against a fork of Slint, pinned to a commit, and uses a few thi
 
 ## What the fork is
 
-[`iRed4321/SlintFork`](https://github.com/iRed4321/SlintFork) is upstream [`slint-ui/slint`](https://github.com/slint-ui/slint) plus a short series of patches. The app uses its `patched/1.19.0` branch: upstream `v1.19.0` plus 15 commits (`gh api repos/iRed4321/SlintFork/compare/v1.19.0...<rev>` lists them). `slint` and `slint-build` in [`crates/cachemire/Cargo.toml`](../crates/cachemire/Cargo.toml) both point at the commit `47cda3504961d71a0348debc73e8d77485c5460e`, the tip of that branch.
+[`iRed4321/SlintFork`](https://github.com/iRed4321/SlintFork) is upstream [`slint-ui/slint`](https://github.com/slint-ui/slint) plus a short series of patches. The app uses its `patched/1.19.0` branch: upstream `v1.19.0` plus 16 commits (`gh api repos/iRed4321/SlintFork/compare/v1.19.0...<rev>` lists them). `slint` and `slint-build` in [`crates/cachemire/Cargo.toml`](../crates/cachemire/Cargo.toml) both point at the commit `83de1d91f49ada0f7a17e999a48cbe88095f9efb`, the tip of that branch.
 
 The fork keeps its own notes in a `FORK.md` at its root (branch layout, one row per patch, an upgrade script `scripts/fork-upgrade.sh`). This page is the app's side of it.
 
 ## What the fork changes
 
-The 15 commits over `v1.19.0`, oldest first. The "why" is the one given in each commit message; the last column is only filled in where the app's code shows the link.
+The 16 commits over `v1.19.0`, oldest first. The "why" is the one given in each commit message; the last column is only filled in where the app's code shows the link.
 
 | Commit | Subject | What it changes | Used by |
 |---|---|---|---|
@@ -31,6 +31,7 @@ The 15 commits over `v1.19.0`, oldest first. The "why" is the one given in each 
 | `1f7a269c` | software renderer: cull against the whole pixels of the dirty region | With a fractional scale factor, grows the logical dirty region to the whole physical pixels it is rounded out to, so an item reaching only into those is drawn again. (The other half of the 1.18 patch, clipping `Path`s to the dirty region, is upstream since 1.19, #14644.) | Partial repaints on the software renderer at 125%/150% scaling |
 | `0dfadd1b` | styled-text: selection offsets, selected-text, clicked and drag callbacks | What the app needs on top of upstream's own `StyledText` selection (`selectable`, new in 1.19): `anchor-position-byte-offset` / `cursor-position-byte-offset` as properties, `selected-text`, `clicked`, `selection-drag-moved` / `selection-drag-ended`, the other mouse buttons left to ancestors, and a transparent `selection-foreground-color` keeping the text's own colors. It replaces the fork's whole selection patch of 1.18. | The value rows, the table cells and the key's name (`key-detail-row.slint`, `key-detail-table.slint`, `key-detail.slint`): selection across lines, drag auto-scroll, right-click menu, syntax colors kept under a selection |
 | `47cda350` | styled-text: add `keep-mouse-cursor` | Upstream's selectable `StyledText` sets the text cursor whenever the pointer is over it. With `keep-mouse-cursor: true` it leaves the cursor to the `TouchArea` holding it (only a link changes it), and shows the text cursor only while the mouse selects. | The same three texts: the hand over a collapsed row, the key's name and a table cell, which are clicked as well as selected from |
+| `83de1d91` | winit: no Adwaita window borders on Wayland | The winit backend's `wayland` feature no longer turns on `winit/wayland-csd-adwaita`, the window borders winit draws on Wayland (`sctk-adwaita`, its font rasterizer, a second `tiny-skia`): about 30 s of CPU off a clean Linux build. A framed window would get winit's plain frame. | The app's window has none (`no-frame: true` in `ui/main.slint`), so they were never drawn |
 
 The "Used by" cells marked inferred come from reading the code, not from a commit that says so.
 

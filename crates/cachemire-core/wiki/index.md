@@ -5,7 +5,7 @@ application *does*: saved connections and their pools, SSH tunnels, AWS sign-in,
 Redis command, the key explorer, the Redisql language, settings and their persistence.
 
 The application crate, `cachemire` (a Slint window, documented in its own wiki front page), is only glue
-between the screen and this library. The core **must not depend on Slint or on `rust-i18n`**: its error
+between the screen and this library. The core **must not depend on Slint or on the app's `t!` messages**: its error
 messages are English and the app translates them (see [errors](crate::wiki::errors)). That keeps the
 core testable without a window.
 

@@ -4,13 +4,10 @@
 #![cfg_attr(doc, doc = include_str!("../wiki/index.md"))]
 #![cfg_attr(doc, allow(rustdoc::private_intra_doc_links))]
 
-use rust_i18n::t;
 use std::sync::Arc;
 
 use slint::ComponentHandle;
 use slint::winit_030::WinitWindowAccessor;
-
-rust_i18n::i18n!("../../resources/lang", fallback = "en");
 
 mod app;
 mod cloud;
@@ -151,7 +148,7 @@ fn main() -> Result<(), slint::PlatformError> {
             }
         }
         tracing::warn!("another instance is running: this one stops");
-        rust_i18n::set_locale(cachemire_core::i18n::Language::Automatic.resolve());
+        i18n::set_locale(cachemire_core::i18n::Language::Automatic.resolve());
         rfd::MessageDialog::new()
             .set_title("Cachemire")
             .set_description(t!("Cachemire is already running."))

@@ -30,7 +30,7 @@ flowchart LR
 Three rules hold the layers apart:
 
 1. **Slint never reaches the core and the core never reaches Slint.** The app is the only place that
-   knows both. The core must not depend on Slint or on `rust-i18n`.
+   knows both. The core must not depend on Slint or on the app's `t!`.
 2. **Slint handles live on the UI thread only.** Tokio tasks cannot hold the window: they hold
    plain data and hand results back with [`app::later`](crate::app::later) (see
    [runtime](crate::wiki::runtime)).

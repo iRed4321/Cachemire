@@ -5,7 +5,7 @@
 use std::cell::RefCell;
 use std::rc::Rc;
 
-use rust_i18n::t;
+use crate::t;
 use slint::ComponentHandle;
 use tokio::task::AbortHandle;
 

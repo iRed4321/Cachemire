@@ -6,7 +6,7 @@ use std::cell::RefCell;
 use std::path::{Path, PathBuf};
 use std::time::{Duration, SystemTime};
 
-use rust_i18n::t;
+use crate::t;
 use slint::ComponentHandle;
 
 use crate::app::App;

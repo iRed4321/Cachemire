@@ -5,7 +5,7 @@ use crate::error::Localize;
 use std::sync::Arc;
 use std::sync::atomic::Ordering;
 
-use rust_i18n::t;
+use crate::t;
 use slint::{ComponentHandle, ModelRc, VecModel};
 
 use crate::{AllValuesRowData, KeyPanel, KeyTree};

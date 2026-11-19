@@ -6,7 +6,7 @@ use std::rc::Rc;
 use std::sync::atomic::Ordering;
 use std::time::{Duration, Instant};
 
-use rust_i18n::t;
+use crate::t;
 use rustc_hash::{FxHashMap, FxHashSet};
 use slint::{ComponentHandle, Model};
 

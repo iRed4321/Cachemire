@@ -4,7 +4,7 @@
 
 use std::cell::Cell;
 
-use rust_i18n::t;
+use crate::t;
 
 use slint::ComponentHandle;
 use slint::winit_030::winit::event::WindowEvent;

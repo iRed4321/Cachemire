@@ -5,8 +5,8 @@ use std::cmp::Ordering;
 use std::sync::Arc;
 
 use crate::styled_text::StyledText;
+use crate::t;
 use rayon::prelude::*;
-use rust_i18n::t;
 use serde_json::Value;
 use slint::{Model, ModelRc, SharedString, VecModel};
 

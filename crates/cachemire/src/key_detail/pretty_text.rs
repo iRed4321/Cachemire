@@ -8,7 +8,7 @@ use std::io;
 use std::ops::Range;
 use std::rc::Rc;
 
-use rust_i18n::t;
+use crate::t;
 use serde::Serialize;
 use serde_json::ser::{CharEscape, Formatter};
 use slint::Color;

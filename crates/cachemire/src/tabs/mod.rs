@@ -10,12 +10,12 @@ use crate::app::App;
 use crate::key_detail::{ScrollPos, current_expanded_fields, current_scroll, restore_expanded_fields};
 use crate::redisql;
 use crate::search;
+use crate::t;
 use crate::{
     AllValuesRowData, BadgeData, ExportPrefs, KeyPanel, KeyTree, KeyView, MainWindow, OpeningView, Preferences, SavedQueries, SearchTab,
     TabData, TabStrip,
 };
 use cachemire_core::key_name::KeyName;
-use rust_i18n::t;
 
 /// Per-tab UI state outside the fetched key data: the search bar, scroll
 /// position, open value-list rows. Saved/restored on tab switch; a new tab

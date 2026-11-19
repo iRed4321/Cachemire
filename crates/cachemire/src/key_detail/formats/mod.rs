@@ -5,7 +5,7 @@
 use std::borrow::Cow;
 use std::ops::Range;
 
-use rust_i18n::t;
+use crate::t;
 use serde_json::{Map, Value};
 
 use super::color::color_for_kind;
