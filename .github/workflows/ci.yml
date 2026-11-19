@@ -9,6 +9,8 @@ on:
     # a push touching only text or the workflows has nothing to build; a pull request runs its
     # checks anyway (`main` requires them), each step skipped then (see "Anything to test")
     paths-ignore: ["**.md", "docs/**", "LICENSE", ".github/**"]
+  # by hand (`gh workflow run ci.yml --ref next`): everything runs, whatever the commit touches
+  workflow_dispatch:
 
 # nothing beyond reading the repository, unless a job asks for more
 permissions:
