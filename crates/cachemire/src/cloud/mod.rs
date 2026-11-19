@@ -35,6 +35,12 @@ pub struct Cloud {
 }
 
 impl Cloud {
+    /// The local profiles, as a sign-in would have read them.
+    #[cfg(test)]
+    pub fn set_profiles(&mut self, profiles: Vec<aws::Profile>) {
+        self.profiles = profiles;
+    }
+
     /// The profile whose connections are listed ("" for none).
     pub fn profile(&self) -> &str {
         &self.profile
@@ -209,12 +215,12 @@ fn list(app: &App, window: &MainWindow, filter: &str) {
     let keys: Vec<String> = rows.iter().map(|(_, key)| key.clone()).collect();
     let lines = chip_lines(app, &keys);
     let account = window.global::<AwsAccount>();
-    // a chip gone since (its connection profile no longer used) lets go
-    let mut chip = account.get_chip().to_string();
+    // the chip picked last, unless it isn't there (its connection profile no longer used)
+    let mut chip = app.state.settings.lock().cloud_chip().to_string();
     if !lines.iter().flatten().any(|c| c.key.as_str() == chip) {
         chip.clear();
-        account.set_chip("".into());
     }
+    account.set_chip(chip.as_str().into());
     let unfiltered = chip.is_empty() && words.is_empty();
     let kept = |(row, key): &(AwsProfileRow, String)| (chip.is_empty() || *key == chip) && row.name.to_lowercase().contains(&words);
 
@@ -328,6 +334,17 @@ pub fn init(app: &Rc<App>, window: &MainWindow) {
             }
             let filter = app.cloud.borrow().filter.clone();
             list(&app, &window, &filter);
+        }
+    });
+
+    window.global::<AwsAccount>().on_chip_picked({
+        let app = app.clone();
+        move |key| {
+            let Some(window) = app.window.upgrade() else { return };
+            if let Err(e) = app.state.settings.lock().set_cloud_chip(&key) {
+                tracing::warn!("can't save the picked chip: {e}");
+                crate::toast::show(&window, &e.localized());
+            }
         }
     });
 

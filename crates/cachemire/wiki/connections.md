@@ -256,8 +256,9 @@ local profiles, selected profile, a `generation` counter and a pending [`resume`
   [`aws::profiles`](cachemire_core::aws::profiles) again and lists them with the same filter and chip.
 - **Chips and pins**: `profile_row` also gives each profile its chip key (`profile:<id>`, `none`, `unknown`);
   `chip_lines` makes a chip per key in use (none when one key covers them all) and splits them into lines by
-  an estimated width, since Slint has no wrapping layout. `AwsAccount.chip` is the one picked ("" for all),
-  reset when the list opens. The star calls `pin_toggled`: `set_cloud_pinned` keeps the pinned names in the
+  an estimated width, since Slint has no wrapping layout. `AwsAccount.chip` is the one picked ("" for all):
+  `chip_picked` saves it (`set_cloud_chip`), and `list` shows the saved one while it exists, so it outlasts a
+  closed list and a restart. The star calls `pin_toggled`: `set_cloud_pinned` keeps the pinned names in the
   settings, in order. Pinned profiles leave `profiles` for `AwsAccount.pins`, drawn two per line above the
   list; Enter in the filter box picks the first of them when the list is empty.
 - **Resume**: [`resume`](crate::cloud::resume) is how the last session reaches a cloud

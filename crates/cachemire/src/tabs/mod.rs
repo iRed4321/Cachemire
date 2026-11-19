@@ -471,8 +471,10 @@ pub fn repaint(app: &App, window: &MainWindow) {
 /// search or query tab shown is read into its tab first.
 pub fn open_tabs(app: &App, window: &MainWindow) -> (Vec<String>, Option<String>) {
     let tabs = app.tabs.borrow();
-    if let Some(active) = tabs.active.as_deref() {
-        leave_special(app, window, active);
+    match tabs.active.as_deref().map(|active| (active, special_kind(active))) {
+        Some((active, Some(Special::Search))) => app.searches.borrow_mut().keep_box(window, active),
+        Some((active, Some(Special::Query))) => app.queries.borrow_mut().keep_box(window, active),
+        _ => {}
     }
     (tabs.open.clone(), tabs.active.clone())
 }

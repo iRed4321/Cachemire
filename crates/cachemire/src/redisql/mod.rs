@@ -123,10 +123,15 @@ impl QueryTabs {
     /// The tab is being left: keeps what was typed in its box (its last result is
     /// already kept, from when the run that produced it landed).
     pub fn leave(&mut self, window: &MainWindow, id: &str) {
+        self.keep_box(window, id);
+        self.drop_active(id);
+    }
+
+    /// Copies what the shown box holds into tab `id`, which stays shown.
+    pub fn keep_box(&mut self, window: &MainWindow, id: &str) {
         if let Some(tab) = self.tabs.get_mut(id) {
             tab.text = window.global::<QueryTab>().get_text().to_string();
         }
-        self.drop_active(id);
     }
 
     /// The tab is closed: its query stops (if still running) and its result goes.

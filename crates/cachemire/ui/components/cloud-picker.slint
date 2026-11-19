@@ -57,7 +57,6 @@ export component AwsProfileDropdown inherits Rectangle {
     callback closed();
 
     init => {
-        AwsAccount.chip = "";
         AwsAccount.list-requested("");
     }
 
@@ -181,7 +180,7 @@ export component AwsProfileDropdown inherits Rectangle {
                         on: c.key == AwsAccount.chip;
                         // picked again, a chip lets go: all the profiles are back
                         clicked => {
-                            AwsAccount.chip = c.key == AwsAccount.chip ? "" : c.key;
+                            AwsAccount.chip-picked(c.key == AwsAccount.chip ? "" : c.key);
                             AwsAccount.list-requested(filter-box.text);
                             list-flick.content-y = 0;
                         }

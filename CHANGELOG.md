@@ -30,6 +30,7 @@ Every stable release of Cachemire; `Unreleased` is what the next one brings. Bet
 
 - **Text selection**: in a value, a table cell or the key's name, a double click selects a word, a triple click the whole paragraph, and Shift+click extends the selection (a double click in a table cell still selects the whole cell). The interface toolkit moves to Slint 1.19
 - **AWS**: the title bar has one button for the account: **Sign in to AWS** while signed out, then the profile in use. Its list has a filter (arrows and Enter pick, Esc closes), the three profiles used last first with when, each profile's connection profile and SSH tunnel under its name with a gear to change them (once its account is known), and **Sign out of AWS** at the bottom. Chips over the list keep the profiles of one connection profile (or of none), and a profile's star pins it above the others, two per line
+- **AWS**: the connection profile chip picked over the profile list stays picked when the list is opened again, and after a restart
 - **AWS**: a reload button beside the profile count reads your AWS config again, so newly added profiles show without restarting
 - **AWS**: ElastiCache endpoints with cluster mode enabled are no longer listed, since Cachemire can't connect to them
 - **Scrollbars**: only their thumb shows, with no strip behind it while you scroll or point at them
@@ -47,9 +48,11 @@ Every stable release of Cachemire; `Unreleased` is what the next one brings. Bet
 - **Performance**: big queries and key exports no longer slow the rest of the app down while they work
 - **Query**: the completion list is drawn over the results' buttons below the box, no longer mixed with them
 - **Query**: a string over 16 MB is refused with a message naming the key and its size, instead of being read whole
+- **Query**: with *Restore the last connection* on, Run no longer does nothing in a query tab after a while
 - **Security**: the AWS SSO sign-in ignores a refusal that doesn't come from your own sign-in attempt
 - **Security**: exported key files are readable by your user only
 - **Security**: passwords, passphrases and sign-in tokens are wiped from memory once no longer needed, and kept out of logs
+- **Search**: with *Restore the last connection* on, Enter no longer does nothing and long searches no longer stall after a while
 - **Search**: key and instance searches find accented letters however stored: `à`, `a` plus an accent, or JSON's `\u00e0`
 - **Table view**: a click near the line between two rows now selects the cell, not only a click on its text
 - **Values**: binary values and field names show their bytes as `\xNN` and can no longer be damaged by an edit

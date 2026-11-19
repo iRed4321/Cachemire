@@ -93,6 +93,9 @@ pub(super) struct StoredCloud {
     // the local AWS profiles pinned at the top of the list, in the order they were pinned
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub(super) pinned: Vec<String>,
+    // the connection profile chip picked over the list of profiles ("" for all of them)
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub(super) chip: String,
 }
 
 /// Which cloud settings are meant: an account's, or one endpoint's.
@@ -359,6 +362,21 @@ impl SettingsStore {
         if pinned {
             next.cloud.pinned.push(profile.to_string());
         }
+        self.commit(next, false)
+    }
+
+    /// The chip picked over the list of local AWS profiles, "" for none.
+    pub fn cloud_chip(&self) -> &str {
+        &self.state.cloud.chip
+    }
+
+    /// Keeps `chip` picked over the list of local AWS profiles ("" for none).
+    pub fn set_cloud_chip(&mut self, chip: &str) -> Result<(), Error> {
+        if self.state.cloud.chip == chip {
+            return Ok(());
+        }
+        let mut next = self.state.clone();
+        next.cloud.chip = chip.to_string();
         self.commit(next, false)
     }
 

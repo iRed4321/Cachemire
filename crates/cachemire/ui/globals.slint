@@ -136,6 +136,8 @@ export global AwsAccount {
     // the connection profile chips, in lines that fit the list, and the picked one's key ("" for all)
     in-out property <[[AwsChip]]> chip-lines: [];
     in-out property <string> chip: "";
+    // a chip was picked ("" for all): kept for the next times the list opens
+    callback chip-picked(key: string);
     // pins `name` at the end of the pinned ones, or unpins it, then lists again
     callback pin-toggled(name: string);
     in-out property <string> profile: "";

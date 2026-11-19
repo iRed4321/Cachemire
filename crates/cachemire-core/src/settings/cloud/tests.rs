@@ -225,3 +225,15 @@ fn each_profile_is_remembered_with_the_account_and_region_it_lists() {
     assert_eq!(store.cloud_profiles_of("111", "eu-west-1"), ["dev"]);
     assert_eq!(store.cloud_profiles_of("333", "us-east-1"), ["ops"]);
 }
+
+#[test]
+fn the_picked_chip_is_kept_across_runs_until_another_is_picked() {
+    let (mut store, vault, file) = new_store();
+    assert_eq!(store.cloud_chip(), "", "all the profiles at first");
+    store.set_cloud_chip("profile:dev").unwrap();
+    let mut store = store_in(&file, &vault);
+    assert_eq!(store.cloud_chip(), "profile:dev");
+
+    store.set_cloud_chip("").unwrap();
+    assert_eq!(store_in(&file, &vault).cloud_chip(), "");
+}

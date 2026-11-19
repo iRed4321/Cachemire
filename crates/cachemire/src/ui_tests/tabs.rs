@@ -147,3 +147,26 @@ fn a_deleted_connection_leaves_no_tabs_behind() {
     connect_to(&h, "a");
     assert_eq!(strip(&h), (Vec::new(), None));
 }
+
+#[test]
+fn saving_the_session_leaves_the_search_or_query_tab_shown_working() {
+    let (h, app, _rt, _turn) = tabs_ready();
+    crate::search::init(&app, &h.window);
+    crate::redisql::init(&app, &h.window);
+    app.state.settings.lock().set_restore_session(true).unwrap();
+
+    crate::tabs::open_search(&app);
+    let search = strip(&h).1.unwrap();
+    h.window.global::<SearchTab>().set_query("ada".into());
+    crate::last_session::save(&app, &h.window);
+    assert_eq!(app.searches.borrow().query(&search), Some("ada"), "the box is saved");
+    h.window.global::<SearchTab>().invoke_submitted("ada".into());
+    assert!(h.window.global::<SearchTab>().get_searched(), "Enter still searches");
+    assert!(h.window.global::<SearchTab>().get_loading());
+
+    crate::tabs::open_query(&app, String::new());
+    crate::last_session::save(&app, &h.window);
+    h.window.global::<QueryTab>().invoke_run_requested("".into(), 0, 0, false);
+    assert!(h.window.global::<QueryTab>().get_ran(), "Run still runs");
+    assert_eq!(h.window.global::<QueryTab>().get_status(), "The query is empty.");
+}

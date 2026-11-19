@@ -51,6 +51,12 @@ impl Profile {
     pub fn account_id(&self) -> Option<&str> {
         self.sso.as_ref().map(|sso| sso.account_id.as_str())
     }
+
+    /// A profile called `name` with no region nor SSO settings.
+    #[cfg(any(test, feature = "test-support"))]
+    pub fn named(name: &str) -> Self {
+        Self { name: name.to_string(), region: None, sso: None }
+    }
 }
 
 /// The `.aws` folder of the user, if there is one.

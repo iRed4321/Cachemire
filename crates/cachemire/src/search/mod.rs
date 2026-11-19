@@ -134,13 +134,20 @@ impl SearchTabs {
     /// if it is still running — whatever is opened next (a key, from a hit, say) gets
     /// Redis to itself, and the search is resumed from the tab when wanted.
     pub fn leave(&mut self, window: &MainWindow, id: &str) {
-        if let Some(tab) = self.tabs.get_mut(id) {
-            tab.query = window.global::<SearchTab>().get_query().to_string();
-            if tab.loading {
-                tab.paused.send_replace(true);
-            }
+        self.keep_box(window, id);
+        if let Some(tab) = self.tabs.get_mut(id)
+            && tab.loading
+        {
+            tab.paused.send_replace(true);
         }
         self.drop_active(id);
+    }
+
+    /// Copies what the shown box holds into tab `id`, which stays shown and keeps searching.
+    pub fn keep_box(&mut self, window: &MainWindow, id: &str) {
+        if let Some(tab) = self.tabs.get_mut(id) {
+            tab.query = window.global::<SearchTab>().get_query().to_string();
+        }
     }
 
     /// The tab is closed: its search stops and its hits go.
