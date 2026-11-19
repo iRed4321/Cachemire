@@ -61,6 +61,16 @@ jobs:
             echo "Only text or workflows changed: nothing to test."
             echo "code=false" >> "$GITHUB_OUTPUT"
           fi
+      # the end-to-end tests' Redis server on Windows, whose Docker runs no Linux containers: Debian's, in
+      # WSL (`cargo xtask e2e` starts it there; on Linux, it uses Docker). In the background, during the
+      # build and the tests, until the `wait-all` before the end-to-end tests
+      - name: Install Redis in WSL
+        if: env.CODE && runner.os == 'Windows'
+        background: true
+        uses: Vampire/setup-wsl@v7
+        with:
+          distribution: Debian-13
+          additional-packages: redis-server
       # the runner's CPU and memory, in the log and the run's summary: a slow run may just be a weaker machine
       - name: Runner
         if: env.CODE
@@ -168,15 +178,10 @@ jobs:
           cargo nextest run --profile ci || failed=1
           if [[ -f target/nextest/ci/junit.xml ]]; then cp target/nextest/ci/junit.xml target/test-output/tests.xml; fi
           exit ${failed:-0}
-      # the end-to-end tests' Redis server on Windows, whose Docker runs no Linux containers:
-      # Debian's, in WSL (`cargo xtask e2e` starts it there; on Linux, it uses Docker)
-      - name: Install Redis in WSL
-        if: env.CODE && runner.os == 'Windows'
-        uses: Vampire/setup-wsl@v7
-        with:
-          distribution: Debian-13
-          additional-packages: redis-server
-      # the tests the step above skips, against a Redis server started for them; xtask is already
+      # WSL's install, started in the background (none on Linux, where this returns at once)
+      - name: Wait for WSL
+        wait-all:
+      # the tests the "Tests" step skips, against a Redis server started for them; xtask is already
       # built, so only the tests it runs are instrumented by cargo-llvm-cov's environment
       - name: End-to-end tests
         if: ${{ !cancelled() && steps.build.outcome == 'success' }}
