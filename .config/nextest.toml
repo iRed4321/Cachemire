@@ -5,3 +5,11 @@ fail-fast = false
 
 [profile.ci.junit]
 path = "junit.xml"
+
+# `cargo xtask e2e -- --profile ci-e2e`: the same for the end-to-end tests, which CI runs beside the
+# others, so into a JUnit file of their own (target/nextest/ci-e2e/junit.xml)
+[profile.ci-e2e]
+fail-fast = false
+
+[profile.ci-e2e.junit]
+path = "junit.xml"

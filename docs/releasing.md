@@ -67,7 +67,7 @@ It sets up, on GitHub:
 - the repository's **auto-merge**, and the **deletion of merged branches** (`fix/*`, `stable/*`);
 - the **`release` label**, which tells the Release workflow to publish a merged pull request;
 - the **`next` branch**, from `main`;
-- the **rules of `main`** (a ruleset named `cargo ship: main`): changed by pull requests only, which must pass the CI's `Test (ubuntu-latest)` and `Test (windows-latest)` checks and be up to date with `main`; no force-push, no deletion;
+- the **rules of `main`** (a ruleset named `cargo ship: main`): changed by pull requests only, which must pass the CI's `Lint (…)` and `Test (…)` checks on `ubuntu-latest` and `windows-latest` and be up to date with `main`; no force-push, no deletion;
 - the **rules of `next`** (`cargo ship: next`): no force-push, no deletion;
 - **Dependabot alerts**, which Renovate reads to fix the advisories of indirect dependencies (its own OSV check only covers direct ones).
 
@@ -293,7 +293,7 @@ To see what a request would release without pushing anything: `cargo xtask next-
 
 ### CI
 
-[`.github/workflows/ci.yml`](../.github/workflows/ci.yml): on every pull request, and every push to `main` and `next`. Formatting, `cargo deny check` on Ubuntu (the advisories, licenses and sources of the dependencies, per `deny.toml`; an advisory accepted for good is recorded there as an `ignore` entry with its reason), Clippy, the tests on Ubuntu and Windows (the end-to-end ones against a Redis server in Docker, or in WSL on Windows) with their coverage, and a summary. Its `Test (ubuntu-latest)` and `Test (windows-latest)` jobs are the checks `main`'s rules require.
+[`.github/workflows/ci.yml`](../.github/workflows/ci.yml): on every pull request, and every push to `main` and `next`. Each OS runs two jobs side by side. `Lint (…)`: formatting and `cargo deny check` on Ubuntu (the advisories, licenses and sources of the dependencies, per `deny.toml`; an advisory accepted for good is recorded there as an `ignore` entry with its reason), and Clippy. `Test (…)`: the tests (the end-to-end ones against a Redis server in Docker, or in WSL on Windows, run beside the others) with their coverage. Then a summary. The four `Lint` and `Test` jobs are the checks `main`'s rules require: after changing them, run `cargo ship setup` again.
 
 ### Dependencies
 
