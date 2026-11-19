@@ -124,9 +124,9 @@ jobs:
         with:
           upload: true
 
-  # a try build skips them: the pull request's checks run them
+  # Clippy and the tests, side by side on each OS (a try build skips them: the pull request's checks run them)
   test:
-    name: Tests (${{ matrix.os }})
+    name: ${{ matrix.task == 'lint' && 'Clippy' || 'Tests' }} (${{ matrix.os }})
     needs: [plan, xtask-windows]
     if: needs.plan.outputs.try != 'true'
     runs-on: ${{ matrix.os }}
@@ -134,44 +134,112 @@ jobs:
     strategy:
       matrix:
         os: [ubuntu-latest, windows-latest]
+        task: [lint, test]
     steps:
       - uses: actions/checkout@v7
         with:
           persist-credentials: false
           ref: ${{ needs.plan.outputs.sha }}
+      # Windows: CARGO_HOME, RUSTUP_HOME and `target` (a junction) on a trusted Dev Drive (ReFS, which the
+      # antivirus leaves alone), faster for the many small files of crates, Rust and builds. No cache here,
+      # so `target` can be a junction (a cache would keep the link only). The Windows jobs share these steps
+      - &dev-drive
+        if: runner.os == 'Windows'
+        uses: samypr100/setup-dev-drive@v4
+        with:
+          drive-size: 20GB
+          trusted-dev-drive: true
+          env-mapping: |
+            CARGO_HOME,{{ DEV_DRIVE }}/.cargo
+            RUSTUP_HOME,{{ DEV_DRIVE }}/.rustup
+      - &dev-drive-folders
+        name: Cargo's home and the build folder on the Dev Drive
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Path "$env:CARGO_HOME\bin", "$env:DEV_DRIVE\target" -Force | Out-Null
+          Add-Content -Path $env:GITHUB_PATH -Value "$env:CARGO_HOME\bin"
+          New-Item -ItemType Junction -Path target -Target "$env:DEV_DRIVE\target" | Out-Null
+      # the Rust of rust-toolchain.toml, in a step of its own to time it
+      - &toolchain
+        name: Rust toolchain
+        run: rustup toolchain install
+      # nextest runs the tests: installed in the background, until the wait before the tests' build
+      - name: Install cargo-nextest
+        if: matrix.task == 'test'
+        background: true
+        uses: taiki-e/install-action@v2
+        with:
+          tool: cargo-nextest
       - uses: ./.github/actions/xtask-download
       # quiet: the build log then lists what gets compiled, not each crate downloaded
-      - name: Fetch crates
+      - &fetch
+        name: Fetch crates
         run: cargo fetch --locked --quiet
-      - name: Install Linux libraries
+      # the packages' files kept in a cache: a hit skips apt (its index and downloads) altogether.
+      # `version` names the cache: change it to start a new one (a new runner image, say)
+      - &linux-libraries
+        name: Install Linux libraries
         if: runner.os == 'Linux'
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y pkg-config libfontconfig1-dev libfreetype6-dev \
-            libxkbcommon-dev libxkbcommon-x11-dev libwayland-dev libx11-dev libxcb1-dev
-      # the checks of the CI's test job, but for coverage; --timings + `report-build`: what was
-      # built, for the summary job
+        uses: awalsh128/cache-apt-pkgs-action@v1
+        with:
+          packages: pkg-config libfontconfig1-dev libfreetype6-dev libxkbcommon-dev libxkbcommon-x11-dev libwayland-dev libx11-dev libxcb1-dev
+          version: 1
+      # the checks of the CI's lint job; --timings + `report-build`: what was built, for the summary job
       - name: Clippy
+        if: matrix.task == 'lint'
+        timeout-minutes: 45
         run: cargo clippy --all-targets --timings -- -D warnings
       - name: Save the report (clippy)
+        if: matrix.task == 'lint'
         run: xtask report-build Clippy
-      - name: Test
-        run: cargo test --timings
-      - name: Save the report
-        run: xtask report-build Tests
-      # the end-to-end tests' Redis server on Windows, whose Docker runs no Linux containers:
-      # Debian's, in WSL (`cargo xtask e2e` starts it there; on Linux, it uses Docker)
+      # the tests, as the CI's test job runs them but for coverage
+      - name: Wait for nextest
+        wait-all:
+      # the end-to-end tests' Redis server on Windows, whose Docker runs no Linux containers: Debian's, in
+      # WSL, where `cargo xtask e2e` starts it. In the background during the tests' build; timeouts here and
+      # on the builds, so a hang (seen once in the CI) fails fast
       - name: Install Redis in WSL
-        if: runner.os == 'Windows'
+        if: matrix.task == 'test' && runner.os == 'Windows'
+        background: true
+        timeout-minutes: 10
         uses: Vampire/setup-wsl@v7
         with:
           distribution: Debian-13
           additional-packages: redis-server
+      - name: Build the tests
+        if: matrix.task == 'test'
+        id: build
+        timeout-minutes: 45
+        run: cargo nextest run --no-run --timings
+      - name: Wait for WSL
+        wait-all:
+      # in the background beside the others, as they mostly wait on Redis; their own nextest profile, so
+      # their own JUnit file
       - name: End-to-end tests
-        run: xtask e2e
+        if: ${{ !cancelled() && steps.build.outcome == 'success' }}
+        background: true
+        run: |
+          mkdir -p target/test-output
+          xtask e2e -- --profile ci-e2e || failed=1
+          if [[ -f target/nextest/ci-e2e/junit.xml ]]; then cp target/nextest/ci-e2e/junit.xml target/test-output/e2e.xml; fi
+          exit ${failed:-0}
+      - name: Tests
+        if: ${{ !cancelled() && steps.build.outcome == 'success' }}
+        run: |
+          mkdir -p target/test-output
+          cargo nextest run --profile ci || failed=1
+          if [[ -f target/nextest/ci/junit.xml ]]; then cp target/nextest/ci/junit.xml target/test-output/tests.xml; fi
+          exit ${failed:-0}
+      - name: Wait for the end-to-end tests
+        wait-all:
+      - name: Save the report (tests)
+        if: ${{ !cancelled() && steps.build.outcome == 'success' }}
+        run: xtask report-build Tests --tests "Tests=target/test-output/tests.xml" --tests "End-to-end=target/test-output/e2e.xml"
       - uses: actions/upload-artifact@v7
+        if: ${{ !cancelled() }}
         with:
-          name: report-tests-${{ matrix.os }}
+          name: report-${{ matrix.task }}-${{ matrix.os }}
           path: target/reports/
           retention-days: 5
 
@@ -185,16 +253,21 @@ jobs:
         with:
           persist-credentials: false
           ref: ${{ needs.plan.outputs.sha }}
-      - uses: ./.github/actions/xtask-download
-      # quiet: the build log then lists what gets compiled, not each crate downloaded
-      - name: Fetch crates
-        run: cargo fetch --locked --quiet
+      - *dev-drive
+      - *dev-drive-folders
+      - *toolchain
+      # WiX makes the MSI: installed in the background, during the crates, until the wait before the build
       - name: Install WiX
+        background: true
         shell: pwsh
         run: |
           dotnet tool install --global wix --version "7.*"
           "$env:USERPROFILE\.dotnet\tools" | Out-File -FilePath $env:GITHUB_PATH -Append
           & "$env:USERPROFILE\.dotnet\tools\wix.exe" eula accept wix7
+      - uses: ./.github/actions/xtask-download
+      - *fetch
+      - name: Wait for WiX
+        wait-all:
       - name: Build
       # a beta (a version with a suffix, a try build too) is built without LTO: much quicker, and
       # stripped like a release so its packages stay the same size
@@ -227,6 +300,13 @@ jobs:
         with:
           persist-credentials: false
           ref: ${{ needs.plan.outputs.sha }}
+      - *toolchain
+      # cargo-deb makes the .deb: installed in the background, until the wait before the build
+      - name: Install cargo-deb
+        background: true
+        uses: taiki-e/install-action@v2
+        with:
+          tool: cargo-deb
       - uses: ./.github/actions/xtask-download
       # a stable release's notes: its section of CHANGELOG.md, checked before anything is built
       - name: Release notes
@@ -241,18 +321,10 @@ jobs:
         with:
           name: release-notes
           path: target/notes/release-notes.md
-      # quiet: the build log then lists what gets compiled, not each crate downloaded
-      - name: Fetch crates
-        run: cargo fetch --locked --quiet
-      - name: Install Linux libraries
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y pkg-config libfontconfig1-dev libfreetype6-dev \
-            libxkbcommon-dev libxkbcommon-x11-dev libwayland-dev libx11-dev libxcb1-dev
-      - name: Install cargo-deb
-        uses: taiki-e/install-action@v2
-        with:
-          tool: cargo-deb
+      - *fetch
+      - *linux-libraries
+      - name: Wait for cargo-deb
+        wait-all:
       - name: Build
       # a beta (a version with a suffix, a try build too) is built without LTO: much quicker, and
       # stripped like a release so its packages stay the same size

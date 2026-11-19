@@ -322,12 +322,14 @@ A pull request closed without being merged, or without the label, releases nothi
 |---|---|---|
 | Version | Ubuntu | works out what's released and its version from the tags, once for all the jobs; checks a beta is on `next` |
 | xtask (Windows) | Windows | builds `xtask` for the Windows jobs, next to Version, which does it for the Linux ones; both upload it as an artifact (see [xtask in the workflows](#xtask-in-the-workflows)) |
-| Tests | Ubuntu, Windows | Clippy, `cargo test` and the end-to-end tests (skipped by a try build: its pull request's checks run them) |
+| Clippy, Tests | Ubuntu, Windows | side by side on each OS: Clippy; the tests with nextest, the end-to-end ones beside the others (both skipped by a try build: its pull request's checks run them) |
 | Windows | Windows | builds the MSI and the portable zip as that version (a beta or a try build without LTO: `--fast`, stripped) |
 | Linux | Ubuntu | takes a stable release's notes from `CHANGELOG.md` (failing early if they're missing), builds the .deb and the AppImage (a beta or a try build without LTO, like Windows) |
 | GitHub release | Ubuntu | tags the commit, creates the release with the 4 files: a pre-release for a beta, the changelog notes for a stable release or a fix (not for a try build) |
 | Remove the release request | Ubuntu | for a beta: deletes the `release/*` branch, whatever happened, so the same request can be pushed again |
 | Summary | Ubuntu | a report of what was built and how long it took, on the run's page |
+
+On Windows, the jobs build on a Dev Drive (`CARGO_HOME`, `RUSTUP_HOME` and `target`), faster for the many files of a build; tools (nextest, WiX, cargo-deb, WSL) install in background steps while other steps run.
 
 Only one release runs at a time; try builds run beside them, one per branch at a time. The tag is created only once everything passed, so a failed run leaves no tag and no release behind.
 
