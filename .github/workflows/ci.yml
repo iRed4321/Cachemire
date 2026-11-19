@@ -66,7 +66,7 @@ jobs:
         if: env.CODE
         run: |
           if [[ "$RUNNER_OS" == Windows ]]; then
-            cpu=$(powershell -NoProfile -Command "(Get-CimInstance Win32_Processor | Select-Object -First 1).Name" | tr -d '\r')
+            cpu=$(powershell -NoProfile -Command "(Get-CimInstance Win32_Processor | Select-Object -First 1).Name.Trim()" | tr -d '\r')
             mem=$(powershell -NoProfile -Command "[math]::Round((Get-CimInstance Win32_ComputerSystem).TotalPhysicalMemory / 1GB)" | tr -d '\r')
           else
             cpu=$(lscpu | sed -n 's/^Model name:[[:space:]]*//p' | head -n 1)
@@ -75,19 +75,23 @@ jobs:
           line="$cpu, $(nproc) logical CPUs, $mem GB of memory"
           echo "$line"
           echo "**Runner ($RUNNER_OS)**: $line" >> "$GITHUB_STEP_SUMMARY"
-      # Windows: `target` is a junction to a trusted Dev Drive (ReFS, which the antivirus leaves alone),
-      # faster for the many small files a build writes. Before the caches: their post steps run first
+      # Windows: CARGO_HOME and `target` (a junction) on a trusted Dev Drive (ReFS, which the antivirus
+      # leaves alone), faster for the many small files crates and builds write. Before the caches: their
+      # post steps run first. The tools installed later go to CARGO_HOME's bin, put on the PATH
       - uses: samypr100/setup-dev-drive@v4
         if: env.CODE && runner.os == 'Windows'
         with:
           drive-size: 20GB
           trusted-dev-drive: true
-      - name: Build folder on the Dev Drive
+          env-mapping: |
+            CARGO_HOME,{{ DEV_DRIVE }}/.cargo
+      - name: Build folder and cargo's home on the Dev Drive
         if: env.CODE && runner.os == 'Windows'
         shell: pwsh
         run: |
-          New-Item -ItemType Directory -Path "$env:DEV_DRIVE\target" -Force | Out-Null
+          New-Item -ItemType Directory -Path "$env:DEV_DRIVE\target", "$env:CARGO_HOME\bin" -Force | Out-Null
           New-Item -ItemType Junction -Path target -Target "$env:DEV_DRIVE\target" | Out-Null
+          Add-Content -Path $env:GITHUB_PATH -Value "$env:CARGO_HOME\bin"
       # the compiled dependencies, kept between runs (one cache per OS); saved from main, which pull
       # requests start from, and next. cache-bin off: its cleanup deletes cargo, which the other
       # cache's post step still needs
