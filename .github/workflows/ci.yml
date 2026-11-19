@@ -59,6 +59,19 @@ jobs:
             echo "Only text or workflows changed: nothing to test."
             echo "code=false" >> "$GITHUB_OUTPUT"
           fi
+      # Windows: `target` is a junction to a trusted Dev Drive (ReFS, which the antivirus leaves alone),
+      # faster for the many small files a build writes. Before the caches: their post steps run first
+      - uses: samypr100/setup-dev-drive@v4
+        if: env.CODE && runner.os == 'Windows'
+        with:
+          drive-size: 20GB
+          trusted-dev-drive: true
+      - name: Build folder on the Dev Drive
+        if: env.CODE && runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Path "$env:DEV_DRIVE\target" -Force | Out-Null
+          New-Item -ItemType Junction -Path target -Target "$env:DEV_DRIVE\target" | Out-Null
       # the compiled dependencies, kept between runs (one cache per OS); saved from main, which pull
       # requests start from, and next. cache-bin off: its cleanup deletes cargo, which the other
       # cache's post step still needs
@@ -78,12 +91,14 @@ jobs:
       - name: Format
         if: env.CODE && runner.os == 'Linux'
         run: cargo fmt --all --check
+      # the packages' files kept in a cache: a hit skips apt (its index and downloads) altogether.
+      # `version` names the cache: change it to start a new one (a new runner image, say)
       - name: Install Linux libraries
         if: env.CODE && runner.os == 'Linux'
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y pkg-config libfontconfig1-dev libfreetype6-dev \
-            libxkbcommon-dev libxkbcommon-x11-dev libwayland-dev libx11-dev libxcb1-dev
+        uses: awalsh128/cache-apt-pkgs-action@v1
+        with:
+          packages: pkg-config libfontconfig1-dev libfreetype6-dev libxkbcommon-dev libxkbcommon-x11-dev libwayland-dev libx11-dev libxcb1-dev
+          version: 1
       # nextest runs the tests, cargo-llvm-cov measures their coverage with rustup's LLVM tools
       - name: Install cargo-nextest and cargo-llvm-cov
         if: env.CODE
