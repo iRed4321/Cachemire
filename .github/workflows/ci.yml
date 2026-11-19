@@ -61,6 +61,20 @@ jobs:
             echo "Only text or workflows changed: nothing to test."
             echo "code=false" >> "$GITHUB_OUTPUT"
           fi
+      # the runner's CPU and memory, in the log and the run's summary: a slow run may just be a weaker machine
+      - name: Runner
+        if: env.CODE
+        run: |
+          if [[ "$RUNNER_OS" == Windows ]]; then
+            cpu=$(powershell -NoProfile -Command "(Get-CimInstance Win32_Processor | Select-Object -First 1).Name" | tr -d '\r')
+            mem=$(powershell -NoProfile -Command "[math]::Round((Get-CimInstance Win32_ComputerSystem).TotalPhysicalMemory / 1GB)" | tr -d '\r')
+          else
+            cpu=$(lscpu | sed -n 's/^Model name:[[:space:]]*//p' | head -n 1)
+            mem=$(free -g | awk '/^Mem:/ { print $2 }')
+          fi
+          line="$cpu, $(nproc) logical CPUs, $mem GB of memory"
+          echo "$line"
+          echo "**Runner ($RUNNER_OS)**: $line" >> "$GITHUB_STEP_SUMMARY"
       # Windows: `target` is a junction to a trusted Dev Drive (ReFS, which the antivirus leaves alone),
       # faster for the many small files a build writes. Before the caches: their post steps run first
       - uses: samypr100/setup-dev-drive@v4
