@@ -61,16 +61,6 @@ jobs:
             echo "Only text or workflows changed: nothing to test."
             echo "code=false" >> "$GITHUB_OUTPUT"
           fi
-      # the end-to-end tests' Redis server on Windows, whose Docker runs no Linux containers: Debian's, in
-      # WSL (`cargo xtask e2e` starts it there; on Linux, it uses Docker). In the background, during the
-      # build and the tests, until the `wait-all` before the end-to-end tests
-      - name: Install Redis in WSL
-        if: env.CODE && runner.os == 'Windows'
-        background: true
-        uses: Vampire/setup-wsl@v7
-        with:
-          distribution: Debian-13
-          additional-packages: redis-server
       # the runner's CPU and memory, in the log and the run's summary: a slow run may just be a weaker machine
       - name: Runner
         if: env.CODE
@@ -151,6 +141,16 @@ jobs:
       - name: Dependencies
         if: env.CODE && runner.os == 'Linux'
         run: cargo deny check
+      # the end-to-end tests' Redis server on Windows, whose Docker runs no Linux containers: Debian's, in
+      # WSL (`cargo xtask e2e` starts it there; on Linux, it uses Docker). In the background, during the
+      # build (after the setup, whose disk work it would slow), until the `wait-all` before the end-to-end tests
+      - name: Install Redis in WSL
+        if: env.CODE && runner.os == 'Windows'
+        background: true
+        uses: Vampire/setup-wsl@v7
+        with:
+          distribution: Debian-13
+          additional-packages: redis-server
       # --timings + `report-build`: what was built, for the summary job
       - name: Clippy
         if: env.CODE
