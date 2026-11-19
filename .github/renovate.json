@@ -19,12 +19,28 @@
     "enabled": true,
     "schedule": ["* 0-11 * * 1"]
   },
+  "customManagers": [
+    {
+      "description": "The Rust toolchain of rust-toolchain.toml, from Rust's releases",
+      "customType": "regex",
+      "managerFilePatterns": ["/^rust-toolchain\\.toml$/"],
+      "matchStrings": ["channel = \"(?<currentValue>\\d+\\.\\d+\\.\\d+)\""],
+      "depNameTemplate": "rust",
+      "packageNameTemplate": "rust-lang/rust",
+      "datasourceTemplate": "github-releases"
+    }
+  ],
   "packageRules": [
     {
       "description": "The stable line: the week's updates in one pull request",
       "matchBaseBranches": ["main"],
       "matchUpdateTypes": ["minor", "patch", "pin", "digest"],
       "groupName": "dependencies"
+    },
+    {
+      "description": "Rust in a pull request of its own: new lints that fail its checks hold up nothing else",
+      "matchDepNames": ["rust"],
+      "groupName": "rust toolchain"
     },
     {
       "description": "The stable line takes no major update: they go to next",

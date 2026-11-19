@@ -1,0 +1,7 @@
+# The Rust every build uses (CI, releases, here): updated by Renovate (.github/renovate.json),
+# so a new runner image or a new release never changes it, nor the caches' keys, unannounced.
+# Minimal: no offline docs, whose thousands of files are slow to unpack (Windows above all)
+[toolchain]
+channel = "1.100.0"
+profile = "minimal"
+components = ["rustfmt", "clippy"]

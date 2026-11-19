@@ -22,7 +22,7 @@ OS keyring, Redisql query language. UI text is English + French.
 - `crates/installer-test/` stand-in app to try the MSI installer quickly.
 - `resources/` icons, desktop entry, MSI, fonts, `lang/` (`cachemire.pot`, `fr/…/cachemire.po`, `app.yml`).
 - `docs/` `releasing.md` (branch model, `cargo ship`), `slint-fork.md` (the Slint fork, upgrades), `README.fr.md`.
-- Default members: `cachemire` + `cachemire-core`. Edition 2024, resolver 3, no pinned toolchain.
+- Default members: `cachemire` + `cachemire-core`. Edition 2024, resolver 3, Rust pinned in `rust-toolchain.toml` (Renovate bumps it).
 
 ## Commands
 

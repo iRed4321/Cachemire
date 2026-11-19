@@ -75,9 +75,9 @@ jobs:
           line="$cpu, $(nproc) logical CPUs, $mem GB of memory"
           echo "$line"
           echo "**Runner ($RUNNER_OS)**: $line" >> "$GITHUB_STEP_SUMMARY"
-      # Windows: CARGO_HOME on a trusted Dev Drive (ReFS, which the antivirus leaves alone), faster for the
-      # many small files of the crates. Before the caches: their post steps run first. Not `target`: as a
-      # junction, the cache keeps the link, not what it holds. The tools installed later go to its bin
+      # Windows: CARGO_HOME and RUSTUP_HOME on a trusted Dev Drive (ReFS, which the antivirus leaves alone),
+      # faster for the many small files of crates and Rust. Before the caches: their post steps run first.
+      # Not `target`: as a junction, the cache keeps the link only. Tools installed later go to CARGO_HOME
       - uses: samypr100/setup-dev-drive@v4
         if: env.CODE && runner.os == 'Windows'
         with:
@@ -85,12 +85,17 @@ jobs:
           trusted-dev-drive: true
           env-mapping: |
             CARGO_HOME,{{ DEV_DRIVE }}/.cargo
+            RUSTUP_HOME,{{ DEV_DRIVE }}/.rustup
       - name: Cargo's home on the Dev Drive
         if: env.CODE && runner.os == 'Windows'
         shell: pwsh
         run: |
           New-Item -ItemType Directory -Path "$env:CARGO_HOME\bin" -Force | Out-Null
           Add-Content -Path $env:GITHUB_PATH -Value "$env:CARGO_HOME\bin"
+      # the Rust of rust-toolchain.toml, in a step of its own to time it; before the cache, whose key holds it
+      - name: Rust toolchain
+        if: env.CODE
+        run: rustup toolchain install
       # the compiled dependencies, kept between runs (one cache per OS); saved from main, which pull
       # requests start from, and next. cache-bin off: its cleanup deletes cargo, which the other
       # cache's post step still needs
