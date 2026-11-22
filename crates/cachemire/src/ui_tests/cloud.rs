@@ -20,9 +20,10 @@ fn form_ready() -> (Harness, Rc<crate::app::App>, tokio::runtime::Runtime, Event
         name: "orders".into(),
         connection_url: "rediss://orders.cache.amazonaws.com:6379".into(),
         username: String::new(),
-        password: String::new(),
+        password: Default::default(),
         ssh: None,
         profile_id: String::new(),
+        read_only: false,
     };
     app.state.connections.lock().set_cloud_connections(ACCOUNT, "eu-west-1", vec![orders]);
     (h, app, runtime, turn)
@@ -40,7 +41,11 @@ fn tunnel(host: &str, port: u16) -> CloudSsh {
 fn an_endpoint_left_to_its_account_says_what_it_inherits_and_can_take_a_tunnel_of_its_own() {
     let (mut h, app, _rt, _turn) = form_ready();
     let account = CloudScope::Account(ACCOUNT.into());
-    app.state.settings.lock().set_cloud_scope(&account, "dev", None, Some(tunnel("bastion", 2222))).unwrap();
+    app.state
+        .settings
+        .lock()
+        .set_cloud_scope(&account, "dev", None, Some(tunnel("bastion", 2222)), cachemire_core::secret_vault::SecretsPolicy::PlainText)
+        .unwrap();
 
     let form = h.window.global::<CloudSettings>();
     form.invoke_open_requested(1, ENDPOINT.into());
@@ -66,7 +71,11 @@ fn an_endpoint_left_to_its_account_says_what_it_inherits_and_can_take_a_tunnel_o
 fn the_account_form_opens_on_what_it_sets_and_needs_a_signed_in_account() {
     let (h, app, _rt, _turn) = form_ready();
     let account = CloudScope::Account(ACCOUNT.into());
-    app.state.settings.lock().set_cloud_scope(&account, "dev", None, Some(tunnel("bastion", 2222))).unwrap();
+    app.state
+        .settings
+        .lock()
+        .set_cloud_scope(&account, "dev", None, Some(tunnel("bastion", 2222)), cachemire_core::secret_vault::SecretsPolicy::PlainText)
+        .unwrap();
     let form = h.window.global::<CloudSettings>();
     form.invoke_open_requested(0, "".into());
     assert_eq!((form.get_scope_name().as_str(), form.get_scope_detail().as_str()), ("dev", ACCOUNT));
@@ -108,4 +117,46 @@ fn a_form_that_cant_be_saved_says_why_and_saves_nothing() {
     assert!(wait_for(&mut h, |h| !h.window.global::<CloudSettings>().get_error().is_empty()));
     assert!(h.window.global::<CloudSettings>().get_open());
     assert!(app.state.settings.lock().cloud_settings(&endpoint_scope()).ssh.is_none());
+}
+
+/// The chip shown picked over the list, and the profiles the list shows, by name.
+fn listed(h: &Harness) -> (String, Vec<String>) {
+    let account = h.window.global::<AwsAccount>();
+    let mut names: Vec<String> = account.get_profiles().iter().map(|row| row.name.to_string()).collect();
+    names.sort();
+    (account.get_chip().to_string(), names)
+}
+
+#[test]
+fn the_picked_chip_stays_when_the_list_opens_again_and_waits_while_it_is_missing() {
+    let h = Harness::new();
+    let (app, _rt, _turn) = install_app(&h, &test_state());
+    crate::cloud::init(&app, &h.window);
+    let profiles = ["dev", "ops"].map(cachemire_core::aws::Profile::named).to_vec();
+    app.cloud.borrow_mut().set_profiles(profiles);
+    // dev's account is known (no connection profile), ops' isn't yet: a chip each
+    app.state.settings.lock().remember_cloud_profile("dev", ACCOUNT, "eu-west-1").unwrap();
+    let account = h.window.global::<AwsAccount>();
+
+    account.invoke_list_requested("".into());
+    assert_eq!(listed(&h), ("".into(), vec!["dev".into(), "ops".into()]));
+
+    account.invoke_chip_picked("unknown".into());
+    account.invoke_list_requested("".into());
+    assert_eq!(listed(&h), ("unknown".into(), vec!["ops".into()]));
+    assert_eq!(app.state.settings.lock().cloud_chip(), "unknown", "saved for the next start");
+
+    // the list opened again, even with the chip cleared on screen, keeps it
+    account.set_chip("".into());
+    account.invoke_list_requested("".into());
+    assert_eq!(listed(&h), ("unknown".into(), vec!["ops".into()]));
+
+    // its profiles all known now: no chip to pick, all shown, the choice kept for when it's back
+    app.state.settings.lock().remember_cloud_profile("ops", ACCOUNT, "eu-west-1").unwrap();
+    account.invoke_list_requested("".into());
+    assert_eq!(listed(&h), ("".into(), vec!["dev".into(), "ops".into()]));
+    assert_eq!(app.state.settings.lock().cloud_chip(), "unknown");
+
+    account.invoke_chip_picked("".into());
+    assert_eq!(app.state.settings.lock().cloud_chip(), "", "All picked");
 }

@@ -1,9 +1,9 @@
 import { Theme } from "theme.slint";
 import { HDivider, HResizeHandle, VScrollBar, WheelScroller } from "widgets.slint";
-import { KeyScroll, AllValuesRowData } from "key-detail-types.slint";
+import { KeyScroll, AllValuesRowData, ExportPrefs } from "key-detail-types.slint";
 import { AllValuesRow, RowHeader } from "key-detail-row.slint";
 import { IconSortTriangle } from "icons.slint";
-import { ScrollTopButton } from "key-detail-widgets.slint";
+import { ScrollTopButton, FormatPicker } from "key-detail-widgets.slint";
 
 export component AllValuesTable inherits Rectangle {
     in property <int> field-chars: 8;
@@ -86,7 +86,7 @@ export component AllValuesTable inherits Rectangle {
     property <int> stuck-index: -1;
     property <string> stuck-field: "";
     property <string> stuck-find-query: "";
-    property <bool> stuck-escaped: false;
+    property <int> stuck-format: 0;
     property <string> stuck-find-label: "";
     property <int> stuck-find-count: 0;
     property <length> stuck-limit: 0px;
@@ -135,9 +135,7 @@ export component AllValuesTable inherits Rectangle {
         let local = abs-y - all-values-flick.absolute-position.y;
         let margin = Theme.px(40px);
         if local < margin || local > all-values-flick.height - margin {
-            let scroll-range = max(0px, all-values-flick.content-height - all-values-flick.height);
-            all-values-flick.content-y = max(-scroll-range, min(0px,
-                all-values-flick.content-y - (local - all-values-flick.height / 3)));
+            all-values-flick.scroll-to({ x: 0px, y: -all-values-flick.content-y + local - all-values-flick.height / 3 }, ScrollBehavior.instant);
         }
     }
 
@@ -166,8 +164,7 @@ export component AllValuesTable inherits Rectangle {
         running: KeyScroll.restore-all-pending;
         triggered => {
             KeyScroll.restore-all-pending = false;
-            let range = max(0px, all-values-flick.content-height - all-values-flick.height);
-            all-values-flick.content-y = max(-range, KeyScroll.restore-all-y);
+            all-values-flick.scroll-to({ x: 0px, y: -KeyScroll.restore-all-y }, ScrollBehavior.instant);
         }
     }
 
@@ -247,8 +244,7 @@ export component AllValuesTable inherits Rectangle {
                             if delta > 0px {
                                 root.check-near-start();
                             }
-                            let scroll-range = max(0px, all-values-flick.content-height - all-values-flick.height);
-                            all-values-flick.content-y = max(-scroll-range, min(0px, all-values-flick.content-y + delta));
+                            all-values-flick.scroll-to({ x: 0px, y: -all-values-flick.content-y - delta }, ScrollBehavior.instant);
                         }
                     }
                     VerticalLayout {
@@ -263,8 +259,7 @@ export component AllValuesTable inherits Rectangle {
                         Rectangle {
                             background: Theme.bg-elevated;
                             border-radius: Theme.radius-sm;
-                            // column titles (the search bar above the filter bar does the
-                            // filtering now — see KeyDetail.filter-badges)
+                            // column titles, the Value one with the format every row shows
                             HorizontalLayout {
                                 padding-top: Theme.px(4px);
                                 padding-bottom: Theme.px(4px);
@@ -278,7 +273,7 @@ export component AllValuesTable inherits Rectangle {
                                         spacing: Theme.px(2px);
                                         Text {
                                             text: @tr("Field");
-                                            font-size: Theme.pt(10.5px);
+                                            font-size: Theme.pt(12px);
                                             font-weight: 700;
                                             color: Theme.text-secondary;
                                             vertical-alignment: center;
@@ -309,23 +304,33 @@ export component AllValuesTable inherits Rectangle {
                                 Text {
                                     text: @tr("Value");
                                     horizontal-stretch: 1;
-                                    font-size: Theme.pt(10.5px);
+                                    font-size: Theme.pt(12px);
                                     font-weight: 700;
                                     color: Theme.text-secondary;
                                     vertical-alignment: center;
                                     overflow: elide;
                                 }
+                                // picking one sets every row's, open or not (see AllValuesRow.format)
+                                FormatPicker {
+                                    format: ExportPrefs.format;
+                                    picked(format) => {
+                                        ExportPrefs.format = format;
+                                        ExportPrefs.rows-tick += 1;
+                                    }
+                                }
                             }
                         }
                         HDivider { }
-                        // a VerticalLayout wrapper because a Rectangle wouldn't
-                        // auto-size to a conditional child
+                        // a wrapper as tall as its conditional child, or empty
                         for row[i] in rows: VerticalLayout {
                             if i < rendered-count: AllValuesRow {
                                 index: i;
                                 field: row.field;
                                 value-compact: row.value-compact;
                                 value-compact-escaped: row.value-compact-escaped;
+                                value-compact-yaml: row.value-compact-yaml;
+                                value-compact-xml: row.value-compact-xml;
+                                value-compact-text: row.value-compact-text;
                                 too-long: row.too-long;
                                 loading: row.loading;
                                 initial-expanded: row.initial-expanded;
@@ -336,17 +341,17 @@ export component AllValuesTable inherits Rectangle {
                                 visible: self.in-paint-window;
                                 view-top: root.view-top;
                                 stuck-find-query: root.stuck-find-query;
-                                stuck-escaped: root.stuck-escaped;
+                                stuck-format: root.stuck-format;
                                 command-index: root.stuck-index;
                                 command-kind: root.command-kind;
                                 command-tick: root.command-tick;
                                 overlay-focused: root.overlay-focused;
-                                stuck-changed(active, field, query, label, count, limit, escaped) => {
+                                stuck-changed(active, field, query, label, count, limit, format) => {
                                     if active {
                                         root.stuck-index = i;
                                         root.stuck-field = field;
                                         root.stuck-find-query = query;
-                                        root.stuck-escaped = escaped;
+                                        root.stuck-format = format;
                                         root.stuck-find-label = label;
                                         root.stuck-find-count = count;
                                         root.stuck-limit = limit;
@@ -401,7 +406,7 @@ export component AllValuesTable inherits Rectangle {
                     hairline: true;
                     field: root.stuck-field;
                     find-query <=> root.stuck-find-query;
-                    escaped <=> root.stuck-escaped;
+                    format <=> root.stuck-format;
                     find-label: root.stuck-find-label;
                     find-count: root.stuck-find-count;
                     focus-tick: root.overlay-focus-tick;
@@ -428,9 +433,7 @@ export component AllValuesTable inherits Rectangle {
                 interval: 16ms;
                 running: selection-dragging && selection-scroll-dir != 0;
                 triggered => {
-                    let scroll-range = max(0px, all-values-flick.content-height - all-values-flick.height);
-                    all-values-flick.content-y = max(-scroll-range, min(0px,
-                        all-values-flick.content-y - selection-scroll-dir * selection-scroll-step));
+                    all-values-flick.scroll-to({ x: 0px, y: -all-values-flick.content-y + selection-scroll-dir * selection-scroll-step }, ScrollBehavior.instant);
                 }
             }
         }

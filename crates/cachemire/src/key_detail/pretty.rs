@@ -11,8 +11,9 @@ use slint::{ComponentHandle, ModelRc, VecModel};
 use crate::{FindResult, KeyPanel, LineSelection, MainWindow, ValueLine};
 
 use super::Ctx;
+use super::formats::{ShowFormat, paragraphs_for};
 use super::highlight::window_highlights;
-use super::pretty_text::{ColoredParagraph, paragraphs_for};
+use super::pretty_text::ColoredParagraph;
 use super::value_lines::{LineMemos, Lines, VisualLine};
 
 /// Pokes every row to check whether its own field's pretty text has landed
@@ -40,13 +41,13 @@ pub(super) fn init(window: &MainWindow, ctx: &Ctx) {
     let cached_or_compute = {
         let content = shared.content.clone();
         let pretty_cache = shared.pretty_cache.clone();
-        move |name: &str, escaped: bool| -> Option<Arc<Vec<ColoredParagraph>>> {
-            if let Some(cached) = pretty_cache.lock().get(name, escaped) {
+        move |name: &str, format: ShowFormat| -> Option<Arc<Vec<ColoredParagraph>>> {
+            if let Some(cached) = pretty_cache.lock().get(name, format) {
                 return Some(cached.clone());
             }
             let field = content.lock().field(name)?;
-            let paragraphs = Arc::new(paragraphs_for(&field.value(), escaped));
-            pretty_cache.lock().insert(name.to_string(), escaped, paragraphs.clone());
+            let paragraphs = Arc::new(paragraphs_for(&field, format));
+            pretty_cache.lock().insert(name.to_string(), format, paragraphs.clone());
             Some(paragraphs)
         }
     };
@@ -55,9 +56,9 @@ pub(super) fn init(window: &MainWindow, ctx: &Ctx) {
     let with_lines = {
         let memos = memos.clone();
         let cached_or_compute = cached_or_compute.clone();
-        move |name: &str, escaped: bool, columns: i32| -> Option<TextLines> {
-            let paragraphs = cached_or_compute(name, escaped)?;
-            let layout = memos.borrow_mut().layout(name, escaped, &paragraphs, columns.max(1) as usize);
+        move |name: &str, format: ShowFormat, columns: i32| -> Option<TextLines> {
+            let paragraphs = cached_or_compute(name, format)?;
+            let layout = memos.borrow_mut().layout(name, format, &paragraphs, columns.max(1) as usize);
             Some((paragraphs, layout))
         }
     };
@@ -67,22 +68,30 @@ pub(super) fn init(window: &MainWindow, ctx: &Ctx) {
     // (see that property's doc comment) instead of being told which field it was
     window.global::<KeyPanel>().on_pretty_is_ready({
         let pretty_cache = shared.pretty_cache.clone();
-        move |field, escaped| pretty_cache.lock().contains(&field, escaped)
+        move |field, format| pretty_cache.lock().contains(&field, ShowFormat::from_index(format))
+    });
+
+    window.global::<KeyPanel>().on_is_binary({
+        let content = shared.content.clone();
+        move |field| content.lock().field(&field).is_some_and(|f| f.is_binary())
     });
 
     window.global::<KeyPanel>().on_value_line_count({
         let with_lines = with_lines.clone();
-        move |field, escaped, columns| with_lines(&field, escaped, columns).map_or(0, |(_, layout)| layout.len() as i32)
+        move |field, format, columns| {
+            with_lines(&field, ShowFormat::from_index(format), columns).map_or(0, |(_, layout)| layout.len() as i32)
+        }
     });
 
     window.global::<KeyPanel>().on_request_value_lines({
         let with_lines = with_lines.clone();
         let memos = memos.clone();
         let content = shared.content.clone();
-        move |field, query, current, escaped, columns, first, count| {
-            let Some((paragraphs, layout)) = with_lines(&field, escaped, columns) else { return ModelRc::default() };
+        move |field, query, current, format, columns, first, count| {
+            let format = ShowFormat::from_index(format);
+            let Some((paragraphs, layout)) = with_lines(&field, format, columns) else { return ModelRc::default() };
             let query = query.trim().to_lowercase();
-            let finds = memos.borrow_mut().finds(&field, escaped, &paragraphs, &query);
+            let finds = memos.borrow_mut().finds(&field, format, &paragraphs, &query);
             let filter = content.lock().search.clone();
             let needles = filter.highlight_needles();
             let lines = Lines { paragraphs: &paragraphs, layout: &layout };
@@ -98,10 +107,11 @@ pub(super) fn init(window: &MainWindow, ctx: &Ctx) {
     window.global::<KeyPanel>().on_find_in_value({
         let with_lines = with_lines.clone();
         let memos = memos.clone();
-        move |field, query, current_match, escaped, columns| {
+        move |field, query, current_match, format, columns| {
+            let format = ShowFormat::from_index(format);
             let query = query.trim().to_lowercase();
-            let Some((paragraphs, layout)) = with_lines(&field, escaped, columns) else { return FindResult::default() };
-            let matches = memos.borrow_mut().finds(&field, escaped, &paragraphs, &query);
+            let Some((paragraphs, layout)) = with_lines(&field, format, columns) else { return FindResult::default() };
+            let matches = memos.borrow_mut().finds(&field, format, &paragraphs, &query);
             if matches.is_empty() {
                 return FindResult { count: 0, index: 0, line: 0, label: if query.is_empty() { "" } else { "0" }.into() };
             }
@@ -115,8 +125,9 @@ pub(super) fn init(window: &MainWindow, ctx: &Ctx) {
 
     window.global::<KeyPanel>().on_value_offset_at({
         let with_lines = with_lines.clone();
-        move |field, escaped, columns, line, column| {
-            let Some((paragraphs, layout)) = with_lines(&field, escaped, columns) else { return 0 };
+        move |field, format, columns, line, column| {
+            let format = ShowFormat::from_index(format);
+            let Some((paragraphs, layout)) = with_lines(&field, format, columns) else { return 0 };
             let (line, column) = position(line, column);
             Lines { paragraphs: &paragraphs, layout: &layout }.offset_at(line, column) as i32
         }
@@ -125,9 +136,10 @@ pub(super) fn init(window: &MainWindow, ctx: &Ctx) {
     // double click: the word under the click is selected; triple click: the whole value
     window.global::<KeyPanel>().on_value_selection({
         let with_lines = with_lines.clone();
-        move |field, escaped, columns, line, offset, whole| {
+        move |field, format, columns, line, offset, whole| {
+            let format = ShowFormat::from_index(format);
             let none = LineSelection { start_line: -1, start_offset: 0, end_line: -1, end_offset: 0 };
-            let Some((paragraphs, layout)) = with_lines(&field, escaped, columns) else { return none };
+            let Some((paragraphs, layout)) = with_lines(&field, format, columns) else { return none };
             let lines = Lines { paragraphs: &paragraphs, layout: &layout };
             let range = if whole { Some(((0, 0), lines.end())) } else { lines.word_at(line.max(0) as usize, offset.max(0) as usize) };
             match range {
@@ -141,8 +153,9 @@ pub(super) fn init(window: &MainWindow, ctx: &Ctx) {
 
     window.global::<KeyPanel>().on_value_selected_text({
         let with_lines = with_lines.clone();
-        move |field, escaped, columns, selection| {
-            let Some((paragraphs, layout)) = with_lines(&field, escaped, columns) else { return Default::default() };
+        move |field, format, columns, selection| {
+            let format = ShowFormat::from_index(format);
+            let Some((paragraphs, layout)) = with_lines(&field, format, columns) else { return Default::default() };
             let from = position(selection.start_line, selection.start_offset);
             let to = position(selection.end_line, selection.end_offset);
             Lines { paragraphs: &paragraphs, layout: &layout }.selected_text(from, to).into()
@@ -154,10 +167,11 @@ pub(super) fn init(window: &MainWindow, ctx: &Ctx) {
     // time by a row's hover dwell timer (only after the pointer lingers).
     window.global::<KeyPanel>().on_request_pretty_value_async({
         let ctx = ctx.clone();
-        move |name, escaped| {
+        move |name, format| {
+            let format = ShowFormat::from_index(format);
             let name = name.to_string();
             let shared = &ctx.shared;
-            if shared.pretty_cache.lock().contains(&name, escaped) {
+            if shared.pretty_cache.lock().contains(&name, format) {
                 if let Some(window) = ctx.weak.upgrade() {
                     signal_pretty_ready(&window);
                 }
@@ -172,13 +186,13 @@ pub(super) fn init(window: &MainWindow, ctx: &Ctx) {
             let pretty_cache = shared.pretty_cache.clone();
             let weak = ctx.weak.clone();
             ctx.rt.spawn_blocking(move || {
-                let paragraphs = Arc::new(paragraphs_for(&field.value(), escaped));
+                let paragraphs = Arc::new(paragraphs_for(&field, format));
                 // held while inserting, so the contents can't be replaced in between
                 let content = content.lock();
                 if content.epoch != epoch {
                     return;
                 }
-                pretty_cache.lock().insert(name, escaped, paragraphs);
+                pretty_cache.lock().insert(name, format, paragraphs);
                 drop(content);
                 let _ = weak.upgrade_in_event_loop(move |window| {
                     signal_pretty_ready(&window);

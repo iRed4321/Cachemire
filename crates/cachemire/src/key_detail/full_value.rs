@@ -3,7 +3,7 @@
 
 use std::sync::Arc;
 
-use rust_i18n::t;
+use crate::t;
 use slint::{ComponentHandle, Model};
 
 use crate::error::{Error, Localize};
@@ -50,7 +50,7 @@ impl Ctx {
             let read = explorer::hash_full_values(&state, Some(&asked), &name, std::slice::from_ref(&field)).await;
             // parsing a big value would hold up the runtime's thread
             tokio::task::spawn_blocking(move || -> Result<Option<Arc<Field>>, Error> {
-                Ok(read?.into_iter().next().flatten().map(|raw| Arc::new(Field::hash_value(field, raw))))
+                Ok(read?.into_iter().next().flatten().map(|(raw, binary)| Arc::new(Field::hash_value(field, raw, binary))))
             })
             .await
             .map_err(Error::from)

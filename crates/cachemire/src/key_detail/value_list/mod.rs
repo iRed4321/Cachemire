@@ -5,8 +5,8 @@
 use rustc_hash::FxHashSet;
 use std::sync::Arc;
 
+use crate::t;
 use rayon::prelude::*;
-use rust_i18n::t;
 use serde_json::Value;
 
 use crate::AllValuesRowData;
@@ -14,7 +14,8 @@ use cachemire_core::json_path::{self, JsonPath};
 use cachemire_core::redis_value_type::RedisValueType;
 
 use super::field::{Field, Fields};
-use super::highlight::compact_styled_texts_for;
+use super::formats::EditKind;
+use super::highlight::{compact_raw_text_for, compact_styled_texts_for};
 use super::search_filter::SearchFilter;
 
 // ---------------------------------------------------------------------------
@@ -162,6 +163,10 @@ pub(super) fn build_all_values_table(
                 Some(_) => Default::default(),
                 None => compact_styled_texts_for(f.value(), &needles, filter.case_sensitive),
             };
+            let raw_compact = |kind| match f.too_long {
+                Some(_) => Default::default(),
+                None => compact_raw_text_for(&f.raw, kind, &needles, filter.case_sensitive),
+            };
             let too_long = f.too_long.map(|size| cachemire_core::server_info::format_bytes(size as i64)).unwrap_or_default();
             // a value left out for its size has nothing to open: its row never starts open
             let initial_expanded = f.too_long.is_none() && expanded.contains(&f.name);
@@ -169,6 +174,9 @@ pub(super) fn build_all_values_table(
                 field: f.name.as_str().into(),
                 value_compact,
                 value_compact_escaped,
+                value_compact_yaml: raw_compact(EditKind::Yaml),
+                value_compact_xml: raw_compact(EditKind::Xml),
+                value_compact_text: raw_compact(EditKind::Text),
                 too_long: too_long.into(),
                 loading: false,
                 initial_expanded,

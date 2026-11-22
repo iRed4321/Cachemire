@@ -20,7 +20,7 @@ fn overlay_splits_base_spans_around_highlights() {
     let spans: Vec<Range<usize>> = out[0].1.iter().map(|(r, _)| r.clone()).collect();
     assert_eq!(spans, vec![0..2, 2..6, 6..8]);
     // the marked text is drawn in the dark color, on the highlight's background
-    assert_eq!(out[0].1[1].1, HIGHLIGHT_TEXT);
+    assert_eq!(out[0].1[1].1, paint().mark_text);
     assert_eq!(out[0].2, vec![(2..6, c("#333333"))]);
 }
 

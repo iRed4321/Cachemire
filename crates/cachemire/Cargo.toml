@@ -12,10 +12,16 @@ cachemire-core = { path = "../cachemire-core" }
 tokio.workspace = true
 serde.workspace = true
 serde_json = { workspace = true, features = ["preserve_order"] }
+# YAML and XML values: read to check them and to lay them out as a table, YAML written from JSON
+serde_norway = "0.9"
+roxmltree = "0.21"
+icu_normalizer = { version = "2", default-features = false, features = ["compiled_data"] }
+fontique = "0.12"
+skrifa = "0.44"
 uuid.workspace = true
 arboard = { version = "3", default-features = false, features = ["wayland-data-control"] }
 # only the portal: dialogs are never attached to a parent window, so no Wayland support is needed
-rfd = { version = "0.17", default-features = false, features = ["xdg-portal"] }
+rfd = { version = "0.18", default-features = false, features = ["xdg-portal"] }
 dirs.workspace = true
 rustc-hash.workspace = true
 parking_lot.workspace = true
@@ -23,9 +29,9 @@ rayon.workspace = true
 natord = "1"
 open.workspace = true
 semver.workspace = true
-# the fork's patched/1.18.1 branch at a fixed commit (also for slint-build): move both `rev`s to update
-slint = { git = "https://github.com/iRed4321/SlintFork.git", rev = "8212a4db5a7d6acb8252f93955319e782cc4f733", default-features = false, features = ["std", "backend-winit", "renderer-software", "compat-1-2", "unstable-winit-030"] }
-rust-i18n = "4"
+# the fork's patched/1.19.0 branch at a fixed commit (also for slint-build): move both `rev`s to update
+# what the fork changes and how to move to a newer Slint: docs/slint-fork.md
+slint = { git = "https://github.com/iRed4321/SlintFork.git", rev = "83de1d91f49ada0f7a17e999a48cbe88095f9efb", default-features = false, features = ["std", "backend-winit", "renderer-software", "compat-1-2", "unstable-winit-030"] }
 thiserror.workspace = true
 # the log: a daily file in the data directory (see logging.rs), and stderr in debug builds
 tracing.workspace = true
@@ -38,11 +44,13 @@ cachemire-core = { path = "../cachemire-core", features = ["test-support"] }
 russh.workspace = true
 
 [build-dependencies]
-slint-build = { git = "https://github.com/iRed4321/SlintFork.git", rev = "8212a4db5a7d6acb8252f93955319e782cc4f733" }
+# app.yml read into the table of the `t!` messages (see build.rs, src/i18n)
+serde_norway = "0.9"
+slint-build = { git = "https://github.com/iRed4321/SlintFork.git", rev = "83de1d91f49ada0f7a17e999a48cbe88095f9efb" }
 
 # a message to the window that clears winit's drag latch (see drag_latch.rs)
 [target.'cfg(windows)'.dependencies]
-windows-sys = { version = "0.52", features = ["Win32_Foundation", "Win32_UI_WindowsAndMessaging"] }
+windows-sys = { version = "0.61", features = ["Win32_Foundation", "Win32_UI_WindowsAndMessaging"] }
 
 # embeds resources/icon.ico (+ version info) into the Windows executable
 [target.'cfg(windows)'.build-dependencies]
@@ -61,3 +69,6 @@ assets = [
     ["../../resources/icon.svg", "usr/share/icons/hicolor/scalable/apps/cachemire.svg", "644"],
     ["../../resources/icon.png", "usr/share/icons/hicolor/256x256/apps/cachemire.png", "644"],
 ]
+
+[lints]
+workspace = true

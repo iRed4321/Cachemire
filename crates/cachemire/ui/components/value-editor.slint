@@ -1,9 +1,11 @@
 import { Theme } from "theme.slint";
-import { ModalButton, TextMenuPopup } from "widgets.slint";
+import { ModalButton, TextMenuPopup, BackdropArea } from "widgets.slint";
 import { ConnectionModalField } from "connection-picker.slint";
+import { Shortcuts } from "../globals.slint";
+import { FormatPicker } from "key-detail-widgets.slint";
 
-// The value editor: a field's value as pretty JSON to change, written back to its key once
-// it is valid JSON. Rust fills it in and answers its callbacks (see src/key_detail/edit.rs).
+// The value editor: a field's value to change as JSON, YAML, XML or raw text, written back to its
+// key once it is valid. Rust fills it in and answers its callbacks (see src/key_detail/edit/mod.rs).
 export global ValueEditor {
     in-out property <bool> open: false;
     // what is edited: the key's name as shown, and the field's ("" for a string key's value)
@@ -20,15 +22,24 @@ export global ValueEditor {
     // a save under way, and why the last one failed ("" when it didn't)
     in property <bool> saving: false;
     in property <string> error: "";
-    // `text` colored as JSON, and why it isn't valid JSON ("" when it is)
-    pure callback highlight(text: string) -> styled-text;
-    pure callback check(text: string) -> string;
+    // what Redis holds changed since the editor opened ("" when it didn't, else the
+    // message): the choice is to leave it (Cancel), take it (`reload`) or write over it
+    in-out property <string> conflict: "";
+    callback reload();
+    callback overwrite(text: string, name: string);
+    // what the text is taken as (an index of `kinds`); picking another has Rust turn the text into it
+    in property <int> kind: 0;
+    callback kind-picked(kind: int, text: string);
+    out property <[string]> kinds: [@tr("JSON"), @tr("YAML"), @tr("XML"), @tr("Raw text")];
+    // `text` colored as a kind, and why it isn't valid as that kind ("" when it is)
+    pure callback highlight(text: string, kind: int) -> styled-text;
+    pure callback check(text: string, kind: int) -> string;
     // whether `text` wrapped to `columns` characters takes at most `max-lines` lines
     pure callback fits(text: string, columns: int, max-lines: int) -> bool;
     // `text` without the `\r` a paste brings, which would shift the colored copy's lines
     pure callback sanitize(text: string) -> string;
-    // `text` pretty-printed (as it is when it isn't valid JSON)
-    pure callback format(text: string) -> string;
+    // `text` laid out again as a kind (as it is when it isn't valid as that kind)
+    pure callback format(text: string, kind: int) -> string;
     // the lines of `text`, to number them: Rust keeps them in step through `text-changed`
     in property <[string]> lines;
     callback text-changed(text: string);
@@ -42,11 +53,11 @@ export component ValueEditorModal inherits Rectangle {
     in property <float> device-scale: 1.0;
     callback clipboard-has-text() -> bool;
 
-    property <string> json-problem: ValueEditor.check(ValueEditor.text);
+    property <string> json-problem: ValueEditor.check(ValueEditor.text, ValueEditor.kind);
     property <string> name-problem: ValueEditor.is-field ? ValueEditor.check-name(ValueEditor.name) : "";
     property <string> problem: name-problem != "" ? name-problem : json-problem;
     function save() {
-        if problem == "" && !ValueEditor.saving {
+        if problem == "" && !ValueEditor.saving && ValueEditor.conflict == "" {
             ValueEditor.save(ValueEditor.text, ValueEditor.name);
         }
     }
@@ -83,7 +94,7 @@ export component ValueEditorModal inherits Rectangle {
     }
 
     background: #000000aa;
-    TouchArea {
+    BackdropArea {
         clicked => { ValueEditor.open = false; }
     }
 
@@ -103,20 +114,22 @@ export component ValueEditorModal inherits Rectangle {
         // swallow clicks so they don't reach the backdrop's close
         TouchArea { }
 
-        // Esc closes, Ctrl+Enter or Ctrl+S saves, from either box
+        // Esc closes, the save shortcut (Ctrl+Enter or Ctrl+S by default) saves, from either box
         FocusScope {
             focus-on-click: false;
             key-pressed(event) => {
                 if event.text == Key.Escape {
-                    ValueEditor.open = false;
-                    return accept;
-                }
-                if (event.text == Key.Return || event.text == "s") && event.modifiers.control {
-                    root.save();
+                    if ValueEditor.conflict != "" {
+                        ValueEditor.conflict = "";
+                    } else {
+                        ValueEditor.open = false;
+                    }
                     return accept;
                 }
                 return reject;
             }
+            KeyBinding { keys: Shortcuts.save-value; activated => { root.save(); } }
+            KeyBinding { keys: Shortcuts.save-value-2; activated => { root.save(); } }
             VerticalLayout {
                 padding: Theme.px(18px);
                 spacing: Theme.px(12px);
@@ -151,13 +164,21 @@ export component ValueEditorModal inherits Rectangle {
                 VerticalLayout {
                     vertical-stretch: 1;
                     spacing: Theme.px(4px);
-                    Text {
-                        text: @tr("Value");
-                        height: Theme.pt(15px);
-                        font-size: Theme.pt(10.5px);
-                        font-weight: 600;
-                        color: Theme.text-secondary;
-                        vertical-alignment: center;
+                    HorizontalLayout {
+                        Text {
+                            horizontal-stretch: 1;
+                            text: @tr("Value");
+                            font-size: Theme.pt(10.5px);
+                            font-weight: 600;
+                            color: Theme.text-secondary;
+                            vertical-alignment: center;
+                        }
+                        FormatPicker {
+                            label: @tr("Edit as");
+                            names: ValueEditor.kinds;
+                            format: ValueEditor.kind;
+                            picked(kind) => { ValueEditor.kind-picked(kind, ValueEditor.text); }
+                        }
                     }
                     box := Rectangle {
                         vertical-stretch: 1;
@@ -196,7 +217,7 @@ export component ValueEditorModal inherits Rectangle {
                             x: 0px;
                             y: 0px;
                             width: Theme.px(40px);
-                            text: ValueEditor.highlight(ten-rows + "\n" + ten-rows + "\n" + ten-rows + "\n" + ten-rows + "\n" + ten-rows + "\n" + ten-rows + "\n" + ten-rows + "\n" + ten-rows + "\n" + ten-rows + "\n" + ten-rows);
+                            text: ValueEditor.highlight(ten-rows + "\n" + ten-rows + "\n" + ten-rows + "\n" + ten-rows + "\n" + ten-rows + "\n" + ten-rows + "\n" + ten-rows + "\n" + ten-rows + "\n" + ten-rows + "\n" + ten-rows, 0);
                             default-font-family: Theme.font-mono;
                             default-font-size: Theme.pt(12px);
                             opacity: 0;
@@ -235,7 +256,7 @@ export component ValueEditorModal inherits Rectangle {
                                         x: 0px;
                                         y: 0px;
                                         width: box.text-w;
-                                        text: ValueEditor.highlight(line);
+                                        text: ValueEditor.highlight(line, ValueEditor.kind);
                                         default-font-family: Theme.font-mono;
                                         default-font-size: Theme.pt(12px);
                                         opacity: 0;
@@ -259,7 +280,7 @@ export component ValueEditorModal inherits Rectangle {
                                 x: flick.text-dx;
                                 y: 0px;
                                 width: box.text-w;
-                                text: ValueEditor.highlight(ValueEditor.text);
+                                text: ValueEditor.highlight(ValueEditor.text, ValueEditor.kind);
                                 default-color: Theme.text-primary;
                                 default-font-family: Theme.font-mono;
                                 default-font-size: Theme.pt(12px);
@@ -277,7 +298,7 @@ export component ValueEditorModal inherits Rectangle {
                                     if event.button == PointerEventButton.right && event.kind == PointerEventKind.down {
                                         input.focus();
                                         root.show-menu(self.absolute-position.x + self.mouse-x, self.absolute-position.y + self.mouse-y,
-                                            input.anchor-position-byte-offset != input.cursor-position-byte-offset);
+                                            input.has-selection);
                                     }
                                 }
                                 property <int> menu-tick: root.menu-tick;
@@ -321,12 +342,7 @@ export component ValueEditorModal inherits Rectangle {
                                         caret.x = flick.text-dx + position.x;
                                         caret.y = position.y;
                                         caret-blink-on = true;
-                                        // keeps the caret in view
-                                        if position.y + flick.content-y < 0px {
-                                            flick.content-y = -position.y;
-                                        } else if position.y + box.line-h + flick.content-y > flick.height {
-                                            flick.content-y = -(position.y + box.line-h - flick.height);
-                                        }
+                                        // (the input scrolls its Flickable itself to keep the caret in view)
                                     }
                                 }
                             }
@@ -344,7 +360,7 @@ export component ValueEditorModal inherits Rectangle {
                                 width: input.text-cursor-width;
                                 height: box.line-h;
                                 background: Theme.text-primary;
-                                visible: input.has-focus && caret-blink-on && input.anchor-position-byte-offset == input.cursor-position-byte-offset;
+                                visible: input.has-focus && caret-blink-on && !input.has-selection;
                             }
                         }
                     }
@@ -354,13 +370,27 @@ export component ValueEditorModal inherits Rectangle {
                     spacing: Theme.px(8px);
                     Text {
                         horizontal-stretch: 1;
-                        text: ValueEditor.error != "" ? ValueEditor.error : root.problem;
+                        text: ValueEditor.conflict != "" ? ValueEditor.conflict : (ValueEditor.error != "" ? ValueEditor.error : root.problem);
                         font-size: Theme.pt(12px);
-                        color: Theme.accent-red;
+                        color: ValueEditor.conflict != "" ? Theme.accent-orange : Theme.accent-red;
                         vertical-alignment: center;
                         overflow: elide;
                     }
-                    if ValueEditor.is-field && !ValueEditor.creating: ModalButton {
+                    if ValueEditor.conflict != "": ModalButton {
+                        text: @tr("Cancel");
+                        clicked => { ValueEditor.conflict = ""; }
+                    }
+                    if ValueEditor.conflict != "": ModalButton {
+                        text: @tr("Reload");
+                        clicked => { ValueEditor.reload(); }
+                    }
+                    if ValueEditor.conflict != "": ModalButton {
+                        text: ValueEditor.saving ? @tr("Saving...") : @tr("Overwrite");
+                        danger: true;
+                        enabled: !ValueEditor.saving;
+                        clicked => { ValueEditor.overwrite(ValueEditor.text, ValueEditor.name); }
+                    }
+                    if ValueEditor.conflict == "" && ValueEditor.is-field && !ValueEditor.creating: ModalButton {
                         text: root.confirming-delete ? @tr("Click again to delete") : @tr("Delete");
                         danger: true;
                         armed: root.confirming-delete;
@@ -373,16 +403,16 @@ export component ValueEditorModal inherits Rectangle {
                             }
                         }
                     }
-                    ModalButton {
+                    if ValueEditor.conflict == "": ModalButton {
                         text: @tr("Cancel");
                         clicked => { ValueEditor.open = false; }
                     }
-                    ModalButton {
-                        text: @tr("Format JSON");
+                    if ValueEditor.conflict == "" && ValueEditor.kind != 3: ModalButton {
+                        text: ValueEditor.kind == 0 ? @tr("Format JSON") : (ValueEditor.kind == 1 ? @tr("Format YAML") : @tr("Format XML"));
                         enabled: root.json-problem == "" && !ValueEditor.saving;
-                        clicked => { ValueEditor.text = ValueEditor.format(ValueEditor.text); }
+                        clicked => { ValueEditor.text = ValueEditor.format(ValueEditor.text, ValueEditor.kind); }
                     }
-                    ModalButton {
+                    if ValueEditor.conflict == "": ModalButton {
                         text: ValueEditor.saving ? @tr("Saving...") : @tr("Save");
                         primary: true;
                         enabled: root.problem == "" && !ValueEditor.saving;

@@ -7,6 +7,7 @@ use slint::winit_030::winit::dpi::PhysicalPosition;
 use slint::winit_030::winit::event::{ElementState, MouseButton, WindowEvent};
 use slint::winit_030::winit::raw_window_handle::{HasWindowHandle, RawWindowHandle};
 use slint::winit_030::winit::window::Window;
+use windows_sys::Win32::Foundation::HWND;
 use windows_sys::Win32::UI::WindowsAndMessaging::{SendMessageW, WM_EXITSIZEMOVE};
 
 /// main.slint's `resize-border-width` while the window isn't maximized, in logical pixels.
@@ -17,7 +18,7 @@ pub fn clear(window: &Window) {
     let Ok(handle) = window.window_handle() else { return };
     if let RawWindowHandle::Win32(win32) = handle.as_raw() {
         // SAFETY: a message to this thread's own window, which winit handles synchronously
-        unsafe { SendMessageW(win32.hwnd.get(), WM_EXITSIZEMOVE, 0, 0) };
+        unsafe { SendMessageW(win32.hwnd.get() as HWND, WM_EXITSIZEMOVE, 0, 0) };
     }
 }
 

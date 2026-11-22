@@ -1,12 +1,12 @@
 //! The import / export window for connections: reads and writes a JSON file (`exportedAtUtc`,
 //! `includesPasswords`, `count`, `connections`), plus an `ssh` object on
-//! a connection with a tunnel. Importing never activates, overwrites or merges with a saved one.
+//! a connection with a tunnel and its own `readOnly` flag. Importing never activates, overwrites or merges with a saved one.
 
 use rustc_hash::FxHashSet;
 use std::path::Path;
 use std::rc::Rc;
 
-use rust_i18n::t;
+use crate::t;
 use serde_json::{Value, json};
 use slint::{ComponentHandle, Model, ModelRc, VecModel};
 
@@ -15,7 +15,8 @@ use crate::error::{Error, Localize};
 use crate::{ConnectionTransfer, MainWindow, TransferRow};
 use cachemire_core::connection::ConnectionPayloadInput;
 use cachemire_core::connection::store::build_connection_string;
-use cachemire_core::secret_vault::staged;
+use cachemire_core::secret::Secret;
+use cachemire_core::secret_vault::{SecretsPolicy, staged};
 use cachemire_core::state::AppState;
 use cachemire_core::{now_ms, persist};
 
@@ -25,8 +26,8 @@ struct SshDraft {
     port: u16,
     username: String,
     private_key: String,
-    password: Option<String>,
-    passphrase: Option<String>,
+    password: Option<Secret>,
+    passphrase: Option<Secret>,
 }
 
 /// One connection of an import file.
@@ -34,8 +35,9 @@ struct Draft {
     name: String,
     connection_url: String,
     username: String,
-    password: Option<String>,
+    password: Option<Secret>,
     ssh: Option<SshDraft>,
+    read_only: bool,
 }
 
 /// What the import list shows, and the saved connection behind each row of the export list.
@@ -48,7 +50,7 @@ pub struct TransferLists {
 fn ssh_draft_of(item: &Value) -> Option<SshDraft> {
     let ssh = item.get("ssh").filter(|ssh| ssh.is_object())?;
     let text = |key: &str| ssh.get(key).and_then(Value::as_str).unwrap_or_default().trim().to_string();
-    let secret = |key: &str| ssh.get(key).and_then(Value::as_str).filter(|s| !s.is_empty()).map(str::to_string);
+    let secret = |key: &str| ssh.get(key).and_then(Value::as_str).filter(|s| !s.is_empty()).map(Secret::from);
     let host = text("host");
     let port = ssh.get("port").and_then(Value::as_u64).and_then(|p| u16::try_from(p).ok()).filter(|p| *p > 0).unwrap_or(22);
     (!host.is_empty()).then(|| SshDraft {
@@ -69,13 +71,15 @@ fn draft_of(item: &Value) -> Option<Draft> {
     }
     let port = item.get("port").and_then(Value::as_u64).and_then(|p| u16::try_from(p).ok()).filter(|p| *p > 0).unwrap_or(6379);
     let db = item.get("db").and_then(Value::as_u64).and_then(|d| u32::try_from(d).ok()).unwrap_or(0);
-    let connection_url = if connection_url.is_empty() { build_connection_string(&host, port, db, "", "") } else { connection_url };
+    let connection_url =
+        if connection_url.is_empty() { build_connection_string(&host, port, db, "", &Secret::default()) } else { connection_url };
     Some(Draft {
         name,
         connection_url,
         username: text("username"),
-        password: item.get("password").and_then(Value::as_str).map(str::to_string),
+        password: item.get("password").and_then(Value::as_str).map(Secret::from),
         ssh: ssh_draft_of(item),
+        read_only: item.get("readOnly").and_then(Value::as_bool).unwrap_or(false),
     })
 }
 
@@ -281,6 +285,7 @@ impl Draft {
             ssh_private_key: ssh.map(|s| s.private_key.clone()),
             ssh_password: ssh.and_then(|s| s.password.clone()),
             ssh_passphrase: ssh.and_then(|s| s.passphrase.clone()),
+            read_only: Some(self.read_only),
             ..Default::default()
         }
     }
@@ -296,7 +301,14 @@ fn run_import(app: &Rc<App>, window: &MainWindow) {
         return;
     }
     global.set_busy(true);
+    import_drafts(app, chosen, SecretsPolicy::VaultOrFail);
+}
+
+/// Saves `chosen` as new connections, all or none; if the keyring is unavailable, the user is
+/// asked what to do with the passwords.
+fn import_drafts(app: &Rc<App>, chosen: Vec<ConnectionPayloadInput>, policy: SecretsPolicy) {
     let state = app.state.clone();
+    let retry_with = chosen.clone();
     let import = move || {
         // the names are chosen once, so the rehearsal and the real run save the same thing
         let mut taken: FxHashSet<String> =
@@ -308,12 +320,11 @@ fn run_import(app: &Rc<App>, window: &MainWindow) {
                 (uuid::Uuid::new_v4().to_string(), payload)
             })
             .collect();
-        let result =
-            staged(&state.connections, |store| items.iter().try_for_each(|(id, payload)| store.import_with_id(id, payload.clone())));
+        let result = staged(&state.connections, |store| store.import_all(&items, policy));
         tracing::info!(count = items.len(), ok = result.is_ok(), "imported connections");
         result.map(|()| items.len())
     };
-    crate::app::spawn_blocking(&app.rt, import, |app, window, imported| {
+    crate::app::spawn_blocking(&app.rt, import, move |app, window, imported| {
         window.global::<ConnectionTransfer>().set_busy(false);
         match imported.map_err(Error::from).and_then(|done| done.map_err(Error::from)) {
             Ok(count) => {
@@ -324,6 +335,13 @@ fn run_import(app: &Rc<App>, window: &MainWindow) {
                 refresh_counts(window);
                 crate::connections::refresh(app, window);
                 set_message(window, t!("Imported %{count} connection(s).", count = count).into_owned(), true);
+            }
+            Err(Error::Core(e)) if crate::keyring_dialogs::is_unavailable(&e) => {
+                let retry = Box::new(move |app: &Rc<App>, window: &MainWindow, policy| {
+                    window.global::<ConnectionTransfer>().set_busy(true);
+                    import_drafts(app, retry_with, policy);
+                });
+                crate::keyring_dialogs::ask_keyring(app, window, true, retry);
             }
             Err(e) => set_message(window, e.localized(), false),
         }
@@ -390,12 +408,12 @@ fn write_export(state: &AppState, ids: &[String], passwords: bool, now: i64, pat
         ids.iter()
             .filter_map(|id| store.get(id))
             .map(|c| {
-                let secret = |text: String| if passwords { Value::String(text) } else { Value::Null };
+                let secret = |text: Secret| if passwords { Value::String(text.expose().to_string()) } else { Value::Null };
                 // host, port and db as well, for a version that reads them
                 let (host, port, db) = c.endpoint().map_or((String::new(), 6379, 0), |e| (e.host, e.port, e.db));
                 let mut item = json!({
                     "id": c.id, "name": c.name, "connectionUrl": c.connection_url, "host": host, "port": port,
-                    "db": db, "username": c.username, "password": secret(c.password),
+                    "db": db, "username": c.username, "password": secret(c.password), "readOnly": c.read_only,
                 });
                 if let Some(ssh) = c.ssh {
                     item["ssh"] = json!({

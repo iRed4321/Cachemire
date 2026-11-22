@@ -8,7 +8,7 @@ use std::io;
 use std::ops::Range;
 use std::rc::Rc;
 
-use rust_i18n::t;
+use crate::t;
 use serde::Serialize;
 use serde_json::ser::{CharEscape, Formatter};
 use slint::Color;
@@ -361,12 +361,6 @@ pub(super) fn escaped_paragraphs(paragraphs: Vec<ColoredParagraph>) -> Vec<Color
     }
     quote(&mut out, &mut spans);
     vec![(out, spans)]
-}
-
-/// A value's paragraphs as a row shows them open: indented, or (`escaped`) as the one
-/// line of its compact JSON escaped into a string.
-pub(super) fn paragraphs_for(value: &impl Serialize, escaped: bool) -> Vec<ColoredParagraph> {
-    if escaped { escaped_paragraphs(colored_paragraphs_for(value, false, usize::MAX)) } else { pretty_paragraphs_for(value) }
 }
 
 /// Pretty (indented) paragraphs for a value — the unit the pretty cache

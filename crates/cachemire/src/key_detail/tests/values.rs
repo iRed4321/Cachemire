@@ -56,12 +56,13 @@ fn the_header_of_an_open_row_stays_fixed_while_its_text_scrolls() {
     show_values(&h.window, &fields, None, &FxHashSet::from_iter(["row1".to_string()]));
     h.settle();
 
-    // the badge's box (bg-elevated) in the header's band, under the key's header: its top edge
-    let elevated = {
-        let (r, g, b) = (0x22_u16, 0x22_u16, 0x26_u16);
+    // the fixed header's hairline (Theme.border) under the key's header, the header's
+    // 32px ending on it: its top edge
+    let border = {
+        let (r, g, b) = (0x2d_u16, 0x2d_u16, 0x30_u16);
         ((r >> 3) << 11) | ((g >> 2) << 5) | (b >> 3)
     };
-    let badge_top = |h: &Harness| -> Option<usize> { (LIST_TOP_Y..HEIGHT).find(|y| h.buffer[y * WIDTH + 380].0 == elevated) };
+    let badge_top = |h: &Harness| -> Option<usize> { (LIST_TOP_Y..HEIGHT).find(|y| h.buffer[y * WIDTH + 380].0 == border).map(|y| y - 31) };
     let scroll_to = |h: &mut Harness, y: f32| {
         arm_all_scroll(&h.window, ScrollPos { all_y: y, ..Default::default() });
         h.settle();

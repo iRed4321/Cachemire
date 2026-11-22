@@ -20,6 +20,14 @@ export enum TreeRowKind {
     other,
 }
 
+// a theme or a syntax theme the settings list: its name in the settings file, the one
+// shown, and the colors of its swatches
+export struct ThemeChoice {
+    id: string,
+    name: string,
+    colors: [color],
+}
+
 // how a value or the ticked rows are exported
 export enum ExportFormat {
     // the JSON, pretty-printed
@@ -43,6 +51,13 @@ export enum KeyView {
     fields,
     // one row per field, one column per top-level key
     table,
+}
+
+// the view a key's new tab starts on: one of the two, or the one last picked
+export enum OpeningView {
+    fields,
+    table,
+    last,
 }
 
 // the two views of the left panel, chosen by the tabs at its top
@@ -83,14 +98,77 @@ export enum LanguageSetting {
     french,
 }
 
+// the page of the settings window shown next to its list of categories
+export enum SettingsCategory {
+    general,
+    display,
+    key-bindings,
+    ssh-profiles,
+    conn-profiles,
+    experimental,
+    // the version, the repository and the updates
+    about,
+}
+
+// an action of the app a keyboard shortcut starts, whose keys can be changed in Settings
+export enum ShortcutAction {
+    zoom-in,
+    zoom-out,
+    zoom-reset,
+    search,
+    close-tab,
+    run-statement,
+    run-script,
+    suggest,
+    history-previous,
+    history-next,
+    save-value,
+}
+
+// one line of the Key bindings page, named by Rust in the interface language: its keys as shown,
+// `custom` when they aren't the default ones, `group-title` on the first line of a group
+export struct ShortcutRow {
+    action: ShortcutAction,
+    title: string,
+    keys: [string],
+    custom: bool,
+    group-title: string,
+}
+
 // The rows and forms Rust and the UI exchange, shared by the components and
 // globals.slint (which the components import, so these can live in neither).
+
+// one local AWS profile in the title bar's list: `section` names the group it starts ("" for
+// none), `sections-above` counts those up to it; `known`: its account (and settings) is known
+export struct AwsProfileRow {
+    name: string,
+    section: string,
+    sections-above: int,
+    when: string,
+    known: bool,
+    has-tint: bool,
+    tint: ProfileTint,
+    profile-label: string,
+    ssh-label: string,
+}
+
+// a chip over the AWS profiles: all of them (key ""), those using one connection profile,
+// those with none, or those whose account isn't known yet; and how many there are
+export struct AwsChip {
+    key: string,
+    label: string,
+    has-tint: bool,
+    tint: ProfileTint,
+    count: int,
+}
 
 // one connection profile, as the settings window and the connection form list it
 export struct ConnProfileRowData {
     id: string,
     name: string,
     tint: ProfileTint,
+    read-only: bool,
+    light-tint: bool,
 }
 
 export struct ConnectionRowData {
@@ -112,6 +190,8 @@ export struct ConnectionRowData {
     profile-id: string,
     profile-name: string,
     profile-tint: ProfileTint,
+    // the connection's own read-only setting (its profile may make it read-only too)
+    read-only: bool,
 }
 
 // what the add/edit form holds when it's saved
@@ -129,6 +209,7 @@ export struct ConnectionForm {
     ssh-key: string,
     ssh-passphrase: string,
     profile-id: string, // "" for none
+    read-only: bool, // the connection's own setting
 }
 
 // one SSH profile as the settings window lists it: never its password
@@ -152,6 +233,8 @@ export struct ConnProfileForm {
     id: string, // empty for a new profile
     name: string,
     tint: ProfileTint,
+    read-only: bool,
+    light-tint: bool, // only the connection pill takes the tint
 }
 
 export struct KeyspaceRowData {

@@ -9,6 +9,12 @@ on:
     # a push touching only text or the workflows has nothing to build; a pull request runs its
     # checks anyway (`main` requires them), each step skipped then (see "Anything to test")
     paths-ignore: ["**.md", "docs/**", "LICENSE", ".github/**"]
+  # by hand (`gh workflow run ci.yml --ref next`): everything runs, whatever the commit touches
+  workflow_dispatch:
+
+# nothing beyond reading the repository, unless a job asks for more
+permissions:
+  contents: read
 
 concurrency:
   group: ci-${{ github.ref }}
@@ -26,19 +32,24 @@ defaults:
     shell: bash
 
 jobs:
+  # each OS twice, in parallel: `lint` (format, dependencies, Clippy) and `test` (the tests and their
+  # coverage); each its own runner and cache. `main` requires the four checks (`cargo ship setup`)
   test:
-    name: Test (${{ matrix.os }})
+    name: ${{ matrix.task == 'lint' && 'Lint' || 'Test' }} (${{ matrix.os }})
     runs-on: ${{ matrix.os }}
+    timeout-minutes: 60
     strategy:
       fail-fast: false
       matrix:
         os: [ubuntu-latest, windows-latest]
+        task: [lint, test]
     outputs:
       code: ${{ steps.scope.outputs.code }}
     steps:
       # with the merge commit's parent, the base the pull request is compared with
       - uses: actions/checkout@v7
         with:
+          persist-credentials: false
           fetch-depth: 2
       # CODE set when there's something to test: always on a push, on a pull request a file
       # other than text or the workflows (the steps below check it)
@@ -53,65 +64,147 @@ jobs:
             echo "Only text or workflows changed: nothing to test."
             echo "code=false" >> "$GITHUB_OUTPUT"
           fi
-      # the compiled dependencies, kept between runs (one cache per OS); saved from main, which pull
-      # requests start from, and next. cache-bin off: its cleanup deletes cargo, which the other
-      # cache's post step still needs
-      - uses: Swatinem/rust-cache@v2
+      # the runner's CPU and memory, in the log and the run's summary: a slow run may just be a weaker
+      # machine. In the background: it only tells
+      - name: Runner
         if: env.CODE
-        with:
-          cache-bin: false
-          save-if: ${{ github.ref == 'refs/heads/main' || github.ref == 'refs/heads/next' }}
-      # xtask's own build (target/xtask), shared by every job of the OS, in both workflows
-      - uses: Swatinem/rust-cache@v2
-        if: env.CODE
-        with:
-          cache-bin: false
-          shared-key: xtask
-          workspaces: ". -> target/xtask"
-          save-if: ${{ github.ref == 'refs/heads/main' }}
-      # quiet: the build log then lists what gets compiled, not each crate downloaded
-      - name: Fetch crates
-        if: env.CODE
-        run: cargo fetch --locked --quiet
-      # the same on every OS: checked once, before anything is built
-      - name: Format
-        if: env.CODE && runner.os == 'Linux'
-        run: cargo fmt --all --check
-      - name: Install Linux libraries
-        if: env.CODE && runner.os == 'Linux'
+        background: true
         run: |
-          sudo apt-get update
-          sudo apt-get install -y pkg-config libfontconfig1-dev libfreetype6-dev \
-            libxkbcommon-dev libxkbcommon-x11-dev libwayland-dev libx11-dev libxcb1-dev
-      # nextest runs the tests, cargo-llvm-cov measures their coverage with rustup's LLVM tools
-      - name: Install cargo-nextest and cargo-llvm-cov
+          if [[ "$RUNNER_OS" == Windows ]]; then
+            cpu=$(powershell -NoProfile -Command "(Get-CimInstance Win32_Processor | Select-Object -First 1).Name.Trim()" | tr -d '\r')
+            mem=$(powershell -NoProfile -Command "[math]::Round((Get-CimInstance Win32_ComputerSystem).TotalPhysicalMemory / 1GB)" | tr -d '\r')
+          else
+            cpu=$(lscpu | sed -n 's/^Model name:[[:space:]]*//p' | head -n 1)
+            mem=$(free -g | awk '/^Mem:/ { print $2 }')
+          fi
+          line="$cpu, $(nproc) logical CPUs, $mem GB of memory"
+          echo "$line"
+          echo "**Runner ($RUNNER_OS, $TASK)**: $line" >> "$GITHUB_STEP_SUMMARY"
+        env:
+          TASK: ${{ matrix.task }}
+      # Windows: CARGO_HOME and RUSTUP_HOME on a trusted Dev Drive (ReFS, which the antivirus leaves alone),
+      # faster for the many small files of crates and Rust. Before the caches: their post steps run first.
+      # Not `target`: as a junction, the cache keeps the link only. Tools installed later go to CARGO_HOME
+      - uses: samypr100/setup-dev-drive@v4
+        if: env.CODE && runner.os == 'Windows'
+        with:
+          drive-size: 20GB
+          trusted-dev-drive: true
+          env-mapping: |
+            CARGO_HOME,{{ DEV_DRIVE }}/.cargo
+            RUSTUP_HOME,{{ DEV_DRIVE }}/.rustup
+      - name: Cargo's home on the Dev Drive
+        if: env.CODE && runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Path "$env:CARGO_HOME\bin" -Force | Out-Null
+          Add-Content -Path $env:GITHUB_PATH -Value "$env:CARGO_HOME\bin"
+      # the Rust of rust-toolchain.toml, in a step of its own to time it; before the cache, whose key holds it
+      - name: Rust toolchain
         if: env.CODE
+        run: rustup toolchain install
+      # nextest runs the tests, cargo-llvm-cov measures their coverage with rustup's LLVM tools: installed
+      # in the background, during the cache and the crates, until the wait before the tests' build
+      - name: Install cargo-nextest and cargo-llvm-cov
+        if: env.CODE && matrix.task == 'test'
+        background: true
         uses: taiki-e/install-action@v2
         with:
           tool: cargo-nextest,cargo-llvm-cov
       - name: Install the LLVM tools
-        if: env.CODE
+        if: env.CODE && matrix.task == 'test'
+        background: true
         run: rustup component add llvm-tools-preview
+      # the compiled dependencies, kept between runs (one cache per OS and task); saved from main, which
+      # pull requests start from, and next. cache-bin off: its cleanup deletes cargo, which the other
+      # cache's post step still needs
+      - uses: Swatinem/rust-cache@v2
+        if: env.CODE
+        with:
+          key: ${{ matrix.task }}
+          cache-bin: false
+          save-if: ${{ github.ref == 'refs/heads/main' || github.ref == 'refs/heads/next' }}
+      # the xtask binary, built once per version of its sources (every job of the OS, in all workflows)
+      - uses: ./.github/actions/xtask
+        if: env.CODE
+      # quiet: the build log then lists what gets compiled, not each crate downloaded
+      - name: Fetch crates
+        if: env.CODE
+        run: cargo fetch --locked --quiet
+      # the packages' files kept in a cache: a hit skips apt (its index and downloads) altogether.
+      # `version` names the cache: change it to start a new one (a new runner image, say)
+      - name: Install Linux libraries
+        if: env.CODE && runner.os == 'Linux'
+        uses: awalsh128/cache-apt-pkgs-action@v1
+        with:
+          packages: pkg-config libfontconfig1-dev libfreetype6-dev libxkbcommon-dev libxkbcommon-x11-dev libwayland-dev libx11-dev libxcb1-dev
+          version: 1
+
+      # lint: the same on every OS, so checked on Linux only
+      - name: Format
+        if: env.CODE && matrix.task == 'lint' && runner.os == 'Linux'
+        run: cargo fmt --all --check
+      # advisories, licenses and sources of the dependencies (deny.toml)
+      - name: Install cargo-deny
+        if: env.CODE && matrix.task == 'lint' && runner.os == 'Linux'
+        uses: taiki-e/install-action@v2
+        with:
+          tool: cargo-deny
+      - name: Dependencies
+        if: env.CODE && matrix.task == 'lint' && runner.os == 'Linux'
+        run: cargo deny check
       # --timings + `report-build`: what was built, for the summary job
       - name: Clippy
-        if: env.CODE
+        if: env.CODE && matrix.task == 'lint'
+        timeout-minutes: 30
         run: cargo clippy --all-targets --timings -- -D warnings
       - name: Save the report (clippy)
-        if: env.CODE
-        run: cargo xtask report-build Clippy
+        if: env.CODE && matrix.task == 'lint'
+        run: xtask report-build Clippy
+
+      # test: the tools installed in the background above (and the runner's description)
+      - name: Wait for the tools
+        wait-all:
+      # the e2e tests' Redis on Windows (no Linux containers there): Debian's, in WSL, where `cargo xtask e2e`
+      # starts it. In the background during the tests' build (after the disk-heavy setup it would slow);
+      # timeouts here and on the builds, so a hang (seen once, beside Clippy) fails fast
+      - name: Install Redis in WSL
+        if: env.CODE && matrix.task == 'test' && runner.os == 'Windows'
+        background: true
+        timeout-minutes: 10
+        uses: Vampire/setup-wsl@v7
+        with:
+          distribution: Debian-13
+          additional-packages: redis-server
       # the test steps load cargo-llvm-cov's environment: it instruments the workspace's crates
       # alone, their dependencies are built as usual. cachemire and cachemire-core are always
-      # built here: the cache never holds them, and clippy only checks them
+      # built here: the cache never holds them
       - name: Build the tests
-        if: env.CODE
+        if: env.CODE && matrix.task == 'test'
         id: build
+        timeout-minutes: 30
         run: |
           eval "$(cargo llvm-cov show-env --sh)"
           cargo nextest run --no-run --timings
+      # WSL's install (none on Linux, where this returns at once)
+      - name: Wait for WSL
+        wait-all:
+      # the tests the "Tests" step skips, against a Redis server started for them, in the background
+      # beside the others: they mostly wait on Redis. Their own nextest profile, so their own JUnit file
+      - name: End-to-end tests
+        if: ${{ !cancelled() && steps.build.outcome == 'success' }}
+        background: true
+        run: |
+          eval "$(cargo llvm-cov show-env --sh)"
+          mkdir -p target/test-output
+          rm -f target/nextest/ci-e2e/junit.xml
+          xtask e2e -- --profile ci-e2e || failed=1
+          if [[ -f target/nextest/ci-e2e/junit.xml ]]; then cp target/nextest/ci-e2e/junit.xml target/test-output/e2e.xml; fi
+          exit ${failed:-0}
       # every test, the headless UI ones (the real window on Slint's software renderer) included;
       # the JUnit file is kept for the report, which still goes on when a test fails
       - name: Tests
-        if: env.CODE
+        if: ${{ !cancelled() && steps.build.outcome == 'success' }}
         run: |
           eval "$(cargo llvm-cov show-env --sh)"
           mkdir -p target/test-output
@@ -119,20 +212,22 @@ jobs:
           cargo nextest run --profile ci || failed=1
           if [[ -f target/nextest/ci/junit.xml ]]; then cp target/nextest/ci/junit.xml target/test-output/tests.xml; fi
           exit ${failed:-0}
-      # the tests' coverage, the test-only files left out
+      - name: Wait for the end-to-end tests
+        wait-all:
+      # the tests' coverage (the end-to-end ones' included), the test-only files left out
       - name: Coverage
         if: ${{ !cancelled() && steps.build.outcome == 'success' }}
         run: |
           eval "$(cargo llvm-cov show-env --sh)"
-          cargo llvm-cov report --json --summary-only --ignore-filename-regex 'test_support|ui_tests|[/\\]tests([/\\]|\.rs$)' --output-path target/test-output/coverage.json
+          cargo llvm-cov report --json --summary-only --ignore-filename-regex 'test_support|ui_tests|[/\\]e2e[/\\]|[/\\]tests([/\\]|\.rs$)' --output-path target/test-output/coverage.json
       - name: Save the report (tests)
         if: ${{ !cancelled() && steps.build.outcome == 'success' }}
         run: |
-          cargo xtask report-build Tests --coverage target/test-output/coverage.json --tests "Tests=target/test-output/tests.xml"
+          xtask report-build Tests --coverage target/test-output/coverage.json --tests "Tests=target/test-output/tests.xml" --tests "End-to-end=target/test-output/e2e.xml"
       - uses: actions/upload-artifact@v7
         if: ${{ !cancelled() && env.CODE }}
         with:
-          name: report-${{ matrix.os }}
+          name: report-${{ matrix.task }}-${{ matrix.os }}
           path: target/reports/
           retention-days: 5
 
@@ -142,15 +237,12 @@ jobs:
     needs: [test]
     if: ${{ always() && needs.test.outputs.code != 'false' }}
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@v7
-      # xtask's own build (target/xtask), shared by every job of the OS, in both workflows
-      - uses: Swatinem/rust-cache@v2
         with:
-          cache-bin: false
-          shared-key: xtask
-          workspaces: ". -> target/xtask"
-          save-if: ${{ github.ref == 'refs/heads/main' }}
+          persist-credentials: false
+      - uses: ./.github/actions/xtask
       - uses: actions/download-artifact@v8
         with:
           pattern: report-*
@@ -161,4 +253,4 @@ jobs:
           PR: ${{ github.event.pull_request.number }}
         run: |
           if [[ -n "$PR" ]]; then title="🔍 Pull request #$PR"; else title="🔍 ${GITHUB_REF_NAME} at ${GITHUB_SHA::7}"; fi
-          cargo xtask report "$title" --dir reports
+          xtask report "$title" --dir reports

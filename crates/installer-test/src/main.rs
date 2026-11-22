@@ -1,6 +1,6 @@
 //! A stand-in for Cachemire, packed in the real MSI to try installing, updating and removing it:
 //! a message box with the app's icon and the version it was built as, and a file in the app's
-//! data folder, for the uninstaller's "delete my data" checkbox.
+//! data folder, for the uninstaller's "delete my data" checkbox. It shows the link it was opened with.
 #![cfg_attr(windows, windows_subsystem = "windows")]
 
 const VERSION: &str = match option_env!("CACHEMIRE_VERSION") {
@@ -13,8 +13,10 @@ fn main() {
         let dir = std::path::Path::new(&app_data).join("Cachemire");
         let _ = std::fs::create_dir_all(&dir).and_then(|_| std::fs::write(dir.join("installer-test.txt"), VERSION));
     }
+    // a cachemire:// link clicked, through the scheme the installer registers
+    let opened = std::env::args().nth(1).map(|link| format!("\n\nOpened with: {link}")).unwrap_or_default();
     let text = format!(
-        "Installer test build of Cachemire {VERSION}.\n\nThis is not the real app: it only stands in for it, to try the installer."
+        "Installer test build of Cachemire {VERSION}.\n\nThis is not the real app: it only stands in for it, to try the installer.{opened}"
     );
     show(&text);
 }

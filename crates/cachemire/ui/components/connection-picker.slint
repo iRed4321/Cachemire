@@ -1,5 +1,5 @@
 import { Theme } from "theme.slint";
-import { HDivider, VScrollBar, IconButton, CheckRow, ModalButton } from "widgets.slint";
+import { HDivider, VScrollBar, IconButton, CheckRow, ModalButton, BackdropArea } from "widgets.slint";
 import { IconPlus, IconPencil, IconCloud } from "icons.slint";
 import { PastePopup } from "widgets.slint";
 import { ProfileTint, ConnProfileRowData, ConnectionRowData, ConnectionForm } from "types.slint";
@@ -153,9 +153,8 @@ export component ConnectionDropdown inherits Rectangle {
     drop-shadow-color: Theme.shadow-color;
     drop-shadow-blur: Theme.shadow-blur;
     drop-shadow-offset-y: Theme.shadow-offset-y;
-    // No `clip: true` on purpose: with the border-radius it'd render this
-    // whole panel offscreen and blit it at a fractional position, blurring
-    // every row's text. Corners stay round via matching radii + padding instead.
+    // the rows' square backgrounds are cut to the panel's rounded corners
+    clip: true;
     property <length> row-stride: Theme.px(30px);
     property <length> list-max-height: Theme.px(280px);
     // scrolling only kicks in once the list is actually taller than the
@@ -179,7 +178,6 @@ export component ConnectionDropdown inherits Rectangle {
             // the new-connection button, then the one for importing and exporting
             Rectangle {
                 width: (root.width - Theme.px(1px)) / 2;
-                border-top-left-radius: root.border-radius;
                 // opaque at rest, like ConnectionRow's background
                 background: new-area.has-hover ? Theme.bg-hover-elevated : Theme.bg-elevated;
                 new-area := TouchArea {
@@ -203,7 +201,6 @@ export component ConnectionDropdown inherits Rectangle {
             Rectangle { width: Theme.px(1px); background: Theme.border-soft; }
             Rectangle {
                 width: (root.width - Theme.px(1px)) / 2;
-                border-top-right-radius: root.border-radius;
                 background: transfer-area.has-hover ? Theme.bg-hover-elevated : Theme.bg-elevated;
                 transfer-area := TouchArea {
                     mouse-cursor: pointer;
@@ -292,9 +289,6 @@ export component ConnectionDropdown inherits Rectangle {
                 content-y <=> list-flick.content-y;
             }
         }
-        // keeps the last row's square hover background clear of the panel's
-        // rounded bottom corners (see the clip note above)
-        Rectangle { height: root.border-radius; }
     }
 }
 
@@ -408,17 +402,23 @@ export component ConnectionModalField inherits Rectangle {
     }
 }
 
-// The connection profiles to pick one from, in the connection form: a radio
-// row per profile in a box that scrolls past three and a half of them.
+// The connection profiles to pick one from: a radio row per profile in a box that scrolls past
+// three and a half of them, or with `grows`, as tall as its rows unless its layout runs out of
+// room (it then shrinks, down to three and a half rows, and scrolls).
 export component ProfileChoiceList inherits Rectangle {
     in property <[ConnProfileRowData]> profiles: [];
     in-out property <string> selected: "";
+    in property <bool> grows: false;
 
     property <length> row-height: Theme.px(28px);
     property <length> list-max-height: row-height * 3.5;
-    property <bool> needs-scrollbar: profiles.length * row-height > list-max-height;
+    property <length> full-height: profiles.length * row-height + Theme.px(2px);
+    property <length> capped-height: min(profiles.length * row-height, list-max-height) + Theme.px(2px);
 
-    height: min(profiles.length * row-height, list-max-height) + Theme.px(2px);
+    min-height: capped-height;
+    preferred-height: grows ? full-height : capped-height;
+    max-height: grows ? full-height : capped-height;
+    vertical-stretch: grows ? 1 : 0;
     background: Theme.bg-sunken;
     border-radius: Theme.radius-md;
     border-width: 1px;
@@ -474,7 +474,8 @@ export component ProfileChoiceList inherits Rectangle {
                 }
             }
         }
-        if root.needs-scrollbar: VScrollBar {
+        // (it shows only while the rows don't fit)
+        VScrollBar {
             content-height: choice-flick.content-height;
             content-y <=> choice-flick.content-y;
         }
@@ -603,6 +604,9 @@ export component ConnectionModal inherits Rectangle {
     // "Add a connection profile" is ticked, and the one chosen
     in-out property <bool> field-profile-enabled <=> ConnectionEditor.profile-enabled;
     in-out property <string> field-profile-id <=> ConnectionEditor.profile-id;
+    // the connection's own read-only setting, and whether the profile chosen is read-only
+    in-out property <bool> field-read-only <=> ConnectionEditor.read-only;
+    property <bool> profile-read-only: field-profile-enabled && ConnectionEditor.profile-read-only(field-profile-id);
     callback save();
     save => { ConnectionEditor.saved(ConnectionEditor.form()); }
     callback cancel();
@@ -623,7 +627,7 @@ export component ConnectionModal inherits Rectangle {
 
     background: #000000aa;
 
-    TouchArea {
+    BackdropArea {
         clicked => { root.cancel(); }
     }
 
@@ -719,6 +723,22 @@ export component ConnectionModal inherits Rectangle {
                 }
                 if root.field-profile-enabled && root.profiles.length == 0: Text {
                     text: @tr("No connection profiles yet: create one in Settings.");
+                    font-size: Theme.pt(10.5px);
+                    color: Theme.text-tertiary;
+                    wrap: word-wrap;
+                }
+
+                // ticked and greyed out while the chosen profile is read-only; the connection's own
+                // setting is kept underneath
+                CheckRow {
+                    text: @tr("Read-only");
+                    bold: true;
+                    enabled: !root.profile-read-only;
+                    checked: root.field-read-only || root.profile-read-only;
+                    toggled => { root.field-read-only = !root.field-read-only; }
+                }
+                Text {
+                    text: root.profile-read-only ? @tr("Its profile is read-only.") : @tr("No key or value can be changed through this connection.");
                     font-size: Theme.pt(10.5px);
                     color: Theme.text-tertiary;
                     wrap: word-wrap;

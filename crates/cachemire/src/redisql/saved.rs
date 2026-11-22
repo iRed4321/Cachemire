@@ -1,6 +1,6 @@
 //! The Query view of the left panel: the saved Redisql queries (the connection's
 //! own, then the global ones) filtered by the box above them. Clicking one opens it
-//! in a new tab and runs it (see `tabs/mod.rs`); its × removes it.
+//! in a new tab, not run yet (see `tabs/mod.rs`); its × removes it.
 
 use std::sync::Arc;
 

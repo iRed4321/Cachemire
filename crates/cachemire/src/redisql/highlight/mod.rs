@@ -4,21 +4,13 @@
 
 use std::ops::Range;
 
-use crate::theme_colors;
+use crate::styled_text::StyledText;
+use crate::theme::paint;
 use cachemire_core::redisql::variable_ranges;
 use slint::Color;
-use slint::private_unstable_api::re_exports::StyledText;
 
 const KEYWORDS: &[&str] = &["from", "join", "where", "select", "limit", "as", "on", "and", "in", "key", "var"];
 const BOOLEANS: &[&str] = &["true", "false"];
-
-const KEYWORD_COLOR: Color = theme_colors::ACCENT_BLUE;
-const STRING_COLOR: Color = theme_colors::JSON_STRING;
-const NUMBER_COLOR: Color = theme_colors::JSON_NUMBER;
-const BOOL_COLOR: Color = theme_colors::JSON_BOOL;
-const PUNCT_COLOR: Color = theme_colors::JSON_PUNCT;
-const VAR_COLOR: Color = theme_colors::QUERY_VARIABLE;
-const COMMENT_COLOR: Color = theme_colors::TEXT_TERTIARY;
 
 fn is_ident_start(c: char) -> bool {
     c.is_alphabetic() || c == '_'
@@ -30,12 +22,13 @@ fn is_ident_char(c: char) -> bool {
 
 /// One line's color spans: byte ranges into that line's own text.
 fn highlight_line(line: &str) -> Vec<(Range<usize>, Color)> {
+    let paint = paint();
     let mut spans = Vec::new();
     let mut chars = line.char_indices().peekable();
     while let Some(&(i, c)) = chars.peek() {
         // a `--` comment runs to the end of the line
         if c == '-' && line[i + 1..].starts_with('-') {
-            spans.push((i..line.len(), COMMENT_COLOR));
+            spans.push((i..line.len(), paint.comment));
             break;
         }
         if c == '\'' || c == '"' {
@@ -53,11 +46,11 @@ fn highlight_line(line: &str) -> Vec<(Range<usize>, Color)> {
             let mut pos = i;
             for range in variable_ranges(&line[i + 1..inner_end]) {
                 let (from, to) = (i + 1 + range.start, i + 1 + range.end);
-                spans.push((pos..from, STRING_COLOR));
-                spans.push((from..to, VAR_COLOR));
+                spans.push((pos..from, paint.string));
+                spans.push((from..to, paint.variable));
                 pos = to;
             }
-            spans.push((pos..end, STRING_COLOR));
+            spans.push((pos..end, paint.string));
             continue;
         }
         if c.is_ascii_digit() {
@@ -70,7 +63,7 @@ fn highlight_line(line: &str) -> Vec<(Range<usize>, Color)> {
                 end = j + cc.len_utf8();
                 chars.next();
             }
-            spans.push((i..end, NUMBER_COLOR));
+            spans.push((i..end, paint.number));
             continue;
         }
         if is_ident_start(c) {
@@ -85,14 +78,14 @@ fn highlight_line(line: &str) -> Vec<(Range<usize>, Color)> {
             }
             let word = &line[i..end];
             if KEYWORDS.iter().any(|k| k.eq_ignore_ascii_case(word)) {
-                spans.push((i..end, KEYWORD_COLOR));
+                spans.push((i..end, paint.keyword));
             } else if BOOLEANS.iter().any(|k| k.eq_ignore_ascii_case(word)) {
-                spans.push((i..end, BOOL_COLOR));
+                spans.push((i..end, paint.bool));
             }
             continue;
         }
         if matches!(c, '.' | ',' | ';' | '=' | '[' | ']' | '(' | ')' | '*') {
-            spans.push((i..i + c.len_utf8(), PUNCT_COLOR));
+            spans.push((i..i + c.len_utf8(), paint.punct));
         }
         chars.next();
     }
@@ -123,7 +116,7 @@ fn highlighted_lines(text: &str, error: Option<Range<usize>>) -> Vec<Highlighted
 /// `error` marked.
 pub fn highlight_query(text: &str, error: Option<Range<usize>>) -> StyledText {
     // translucent, behind the text where the last run's error is
-    let error_background = theme_colors::ACCENT_RED.with_alpha(0.4);
+    let error_background = paint().error.with_alpha(0.4);
     StyledText::from_highlighted_paragraphs(
         highlighted_lines(text, error)
             .into_iter()

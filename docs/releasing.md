@@ -40,9 +40,9 @@ next      ●──β1──●──β2───┴─merge──●──β3�
 
 - **Versions only exist as tags** (`v3.2.0-beta.3`, `v3.1.1`). `crates/cachemire/Cargo.toml` always says `0.0.0-dev`: the release build writes the real version into its own checkout and never commits it.
 - **`cargo ship` does the git and GitHub work**: it makes the branches, pushes them, opens the pull requests, labels them and turns their auto-merge on, through git and the [GitHub CLI](https://cli.github.com) (`gh`, signed in with `gh auth login`). There's nothing to do on github.com.
-- **The Release workflow publishes**: it works out the version from the tags, runs the tests, builds the Windows and Linux packages as that version, and only if everything passed, tags the commit and publishes the GitHub release. A beta starts it by a pushed `release/<request>` branch; a fix or a stable release by its pull request being merged into `main` with the `release` label.
+- **The Release workflow publishes**: it works out the version from the tags, runs the tests, builds the Windows and Linux packages as that version, and only if everything passed, tags the commit and publishes the GitHub release, with a `SHA256SUMS` file of its packages and a build provenance attestation for each (`gh attestation verify <package> --repo iRed4321/Cachemire`). A beta starts it by a pushed `release/<request>` branch; a fix or a stable release by its pull request being merged into `main` with the `release` label.
 - **Betas are pre-releases** with automatic notes. **Stable releases and fixes** get hand-written notes from [`CHANGELOG.md`](../CHANGELOG.md).
-- **The app updates itself from these releases**: the stable channel only sees stable releases, the beta channel sees both. On Windows the update installs in one click; on Linux the app opens the release page. The app looks when asked (the info window's button), or at each start once **Check for Updates at startup** is on in Settings.
+- **The app updates itself from these releases**: the stable channel only sees stable releases, the beta channel sees both. On Windows the update installs in one click; on Linux the app opens the release page. The app looks when asked (**Check for updates** on the About page of Settings, which the title bar's i button opens), or at each start once **Check for Updates at startup** is on in Settings.
 
 ## Setting up
 
@@ -67,7 +67,7 @@ It sets up, on GitHub:
 - the repository's **auto-merge**, and the **deletion of merged branches** (`fix/*`, `stable/*`);
 - the **`release` label**, which tells the Release workflow to publish a merged pull request;
 - the **`next` branch**, from `main`;
-- the **rules of `main`** (a ruleset named `cargo ship: main`): changed by pull requests only, which must pass the CI's `Test (ubuntu-latest)` and `Test (windows-latest)` checks and be up to date with `main`; no force-push, no deletion;
+- the **rules of `main`** (a ruleset named `cargo ship: main`): changed by pull requests only, which must pass the CI's `Lint (…)` and `Test (…)` checks on `ubuntu-latest` and `windows-latest` and be up to date with `main`; no force-push, no deletion;
 - the **rules of `next`** (`cargo ship: next`): no force-push, no deletion;
 - **Dependabot alerts**, which Renovate reads to fix the advisories of indirect dependencies (its own OSV check only covers direct ones).
 
@@ -204,9 +204,10 @@ A try build counts as a beta for the app's updates.
 |---|---|---|---|
 | fixing a security advisory (RustSec, through OSV and Dependabot alerts) | the next night | `main` | as a fix, that night |
 | minor and patch, in one pull request, and the refresh of `Cargo.lock` | Monday night | `main` | as a fix, Monday |
+| Rust (`rust-toolchain.toml`), in a pull request of its own | Monday night | `main` | as a fix, Monday |
 | major, and minor of a `0.x` crate (`0.12` → `0.13`, breaking for Cargo) | Monday night | `next` | with the next beta |
 
-The Slint fork is left alone: it's pinned to a commit on purpose. The config is [`.github/renovate.json`](../.github/renovate.json).
+A new version is only taken 3 days after its release (Renovate opens no branch before), in case it gets yanked or is found to be hijacked; a security fix doesn't wait. Rust's own pull request is apart so that new lints failing its checks hold up nothing else. The Slint fork is left alone: it's pinned to a commit on purpose (see [the Slint fork](slint-fork.md)). The config is [`.github/renovate.json`](../.github/renovate.json).
 
 **What happens, each night** (scheduled at 01:00 UTC: 2am in Paris in winter, 3am in summer; GitHub often starts it a few hours later):
 
@@ -292,7 +293,7 @@ To see what a request would release without pushing anything: `cargo xtask next-
 
 ### CI
 
-[`.github/workflows/ci.yml`](../.github/workflows/ci.yml): on every pull request, and every push to `main` and `next`. Formatting, Clippy, the tests on Ubuntu and Windows with their coverage, and a summary. Its `Test (ubuntu-latest)` and `Test (windows-latest)` jobs are the checks `main`'s rules require.
+[`.github/workflows/ci.yml`](../.github/workflows/ci.yml): on every pull request, and every push to `main` and `next`. Each OS runs two jobs side by side. `Lint (…)`: formatting and `cargo deny check` on Ubuntu (the advisories, licenses and sources of the dependencies, per `deny.toml`; an advisory accepted for good is recorded there as an `ignore` entry with its reason), and Clippy. `Test (…)`: the tests (the end-to-end ones against a Redis server in Docker, or in WSL on Windows, run beside the others) with their coverage. Then a summary. The four `Lint` and `Test` jobs are the checks `main`'s rules require: after changing them, run `cargo ship setup` again.
 
 ### Dependencies
 
@@ -320,12 +321,15 @@ A pull request closed without being merged, or without the label, releases nothi
 | Job | Runs on | Does |
 |---|---|---|
 | Version | Ubuntu | works out what's released and its version from the tags, once for all the jobs; checks a beta is on `next` |
-| Tests | Ubuntu, Windows | `cargo test` (skipped by a try build: its pull request's checks run them) |
-| Windows | Windows | builds the MSI and the portable zip as that version |
-| Linux | Ubuntu | takes a stable release's notes from `CHANGELOG.md` (failing early if they're missing), builds the .deb and the AppImage |
+| xtask (Windows) | Windows | builds `xtask` for the Windows jobs, next to Version, which does it for the Linux ones; both upload it as an artifact (see [xtask in the workflows](#xtask-in-the-workflows)) |
+| Clippy, Tests | Ubuntu, Windows | side by side on each OS: Clippy; the tests with nextest, the end-to-end ones beside the others (both skipped by a try build: its pull request's checks run them) |
+| Windows | Windows | builds the MSI and the portable zip as that version (a beta or a try build without LTO: `--fast`, stripped) |
+| Linux | Ubuntu | takes a stable release's notes from `CHANGELOG.md` (failing early if they're missing), builds the .deb and the AppImage (a beta or a try build without LTO, like Windows) |
 | GitHub release | Ubuntu | tags the commit, creates the release with the 4 files: a pre-release for a beta, the changelog notes for a stable release or a fix (not for a try build) |
 | Remove the release request | Ubuntu | for a beta: deletes the `release/*` branch, whatever happened, so the same request can be pushed again |
 | Summary | Ubuntu | a report of what was built and how long it took, on the run's page |
+
+On Windows, the jobs build on a Dev Drive (`CARGO_HOME`, `RUSTUP_HOME` and `target`), faster for the many files of a build; tools (nextest, WiX, cargo-deb, WSL) install in background steps while other steps run.
 
 Only one release runs at a time; try builds run beside them, one per branch at a time. The tag is created only once everything passed, so a failed run leaves no tag and no release behind.
 
@@ -337,6 +341,15 @@ Cachemire-Portable-3.1.1-x64.zip   Windows portable exe
 cachemire_3.1.1-1_amd64.deb        Debian / Ubuntu package
 Cachemire-3.1.1-x86_64.AppImage    Linux, any distribution
 ```
+
+### xtask in the workflows
+
+The workflows run `xtask <task>` (what `cargo xtask <task>` is locally), the executable built once rather than compiled by each job:
+
+- **CI, Dependencies, Installer test**: the [`xtask` action](../.github/actions/xtask/action.yml) caches the executable alone, under the hash of its sources and `Cargo.lock`, and builds it on a miss.
+- **Release**: a branch can only read its own caches and `main`'s, never those of `next`, so `release/*` would miss the CI's. Version (Linux) and xtask (Windows) build it and upload it as an artifact; the other jobs download it ([`xtask-download`](../.github/actions/xtask-download/action.yml)).
+- **Betas and try builds** (a version with a suffix) pass `--fast` with `--as-version`: the `fast` profile, without LTO, stripped like a release. Stable releases and fixes build the full `release` profile.
+- The release build keeps no cache of the app's dependencies: only `main`'s would be readable, and it would be stale.
 
 ## Command reference
 
@@ -377,7 +390,7 @@ The same builds the workflow runs, for trying a package before releasing it. Eac
 | `cargo xtask build-windows` | exe, MSI, portable zip | `target/windows/` | Windows, the WiX CLI (installed as a .NET tool if missing, needs the .NET SDK) |
 | `cargo xtask build-linux` | .deb and AppImage, from one build | `target/debian/`, `target/appimage/` | Linux, `cargo-deb` (installed if missing) |
 | `cargo xtask build-deb` | .deb only | `target/debian/` | Linux, `cargo-deb` |
-| `cargo xtask build-appimage` | AppImage only | `target/appimage/` | Linux; `appimagetool` is downloaded into `target/tools/` if missing |
+| `cargo xtask build-appimage` | AppImage only | `target/appimage/` | Linux; `appimagetool` (a pinned release, its SHA-256 checked) is downloaded into `target/tools/` if missing |
 
 **What gets built**, by default: the latest release tag, checked out for the build, then HEAD is put back. If HEAD is on a release tag, that one. The working tree must be clean.
 

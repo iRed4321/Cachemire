@@ -1,5 +1,5 @@
 import { Theme } from "theme.slint";
-import { ModalButton } from "widgets.slint";
+import { ModalButton, BackdropArea } from "widgets.slint";
 import { ConnectionModalField } from "connection-picker.slint";
 
 // What the name dialog is for: a new key, or a new name for a key or a folder.
@@ -36,7 +36,7 @@ export component KeyNameModal inherits Rectangle {
     changed edited => { KeyNameDialog.error = ""; }
 
     background: #000000aa;
-    TouchArea {
+    BackdropArea {
         clicked => { KeyNameDialog.open = false; }
     }
 

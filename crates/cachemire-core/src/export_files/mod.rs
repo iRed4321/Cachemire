@@ -2,7 +2,6 @@
 //! its items streamed in), and one per lone key (`redis-key-*.json`), or per parent folder when grouping.
 
 use std::collections::BTreeMap;
-use std::fs::File;
 use std::io::{BufWriter, Write};
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -129,21 +128,83 @@ fn io_error(e: std::io::Error) -> Error {
 
 /// The key as the `{key, type, ttl, value}` object a file holds.
 fn item(key: &str, read: &ExportedKey) -> Value {
-    let mut item =
-        json!({ "key": KeyName::from_id(key).to_string_lossy(), "type": read.key_type.as_str(), "ttl": read.ttl, "value": read.value });
+    let mut item = json!({ "key": KeyName::display_id(key), "type": read.key_type.as_str(), "ttl": read.ttl, "value": read.value });
     if read.truncated {
         item["truncated"] = Value::Bool(true);
     }
     item
 }
 
-/// Creates `path` and writes the start of `output`'s file into it.
-fn start_file(path: &Path, output: &Output) -> Result<BufWriter<File>, Error> {
-    let mut writer = BufWriter::new(File::create(path).map_err(io_error)?);
-    if let Output::Items { prefix, .. } = output {
-        write!(writer, "{{\n  \"prefix\": {},\n  \"items\": [", Value::from(prefix.as_str())).map_err(io_error)?;
+/// How many chunks wait for the file's thread before the export waits for it.
+const SINK_QUEUE: usize = 32;
+
+/// A file written on a blocking thread, fed chunks through a bounded channel; the
+/// thread creates the file, appends what it is sent, and stops at the first error.
+struct Sink {
+    sender: Option<tokio::sync::mpsc::Sender<Vec<u8>>>,
+    thread: Option<tokio::task::JoinHandle<std::io::Result<()>>>,
+    // set once the thread has the file open, so `discard` never removes one it didn't make
+    created: std::sync::Arc<AtomicBool>,
+}
+
+impl Sink {
+    fn start(path: &Path) -> Self {
+        let (sender, mut receiver) = tokio::sync::mpsc::channel::<Vec<u8>>(SINK_QUEUE);
+        let path = path.to_path_buf();
+        let created = std::sync::Arc::new(AtomicBool::new(false));
+        let opened = created.clone();
+        let thread = tokio::task::spawn_blocking(move || {
+            let mut file = BufWriter::new(crate::persist::create_private(&path)?);
+            opened.store(true, Ordering::Relaxed);
+            while let Some(chunk) = receiver.blocking_recv() {
+                file.write_all(&chunk)?;
+            }
+            file.flush()
+        });
+        Self { sender: Some(sender), thread: Some(thread), created }
     }
-    Ok(writer)
+
+    /// Hands `chunk` to the thread; the error that stopped it if it has stopped.
+    async fn write(&mut self, chunk: Vec<u8>) -> Result<(), Error> {
+        if let Some(sender) = &self.sender
+            && sender.send(chunk).await.is_ok()
+        {
+            return Ok(());
+        }
+        self.join().await?;
+        Err(io_error(std::io::ErrorKind::BrokenPipe.into()))
+    }
+
+    /// Waits for the thread to end: after the last chunk is flushed, or with the error it met.
+    async fn join(&mut self) -> Result<(), Error> {
+        match self.thread.take() {
+            Some(thread) => Ok(thread.await?.map_err(io_error)?),
+            None => Ok(()),
+        }
+    }
+
+    /// Writes what is queued, flushes and closes the file.
+    async fn finish(&mut self) -> Result<(), Error> {
+        self.sender = None;
+        self.join().await
+    }
+
+    /// Stops the thread and removes the file it made.
+    async fn discard(mut self, path: &Path) {
+        self.sender = None;
+        let _ = self.join().await;
+        if self.created.load(Ordering::Relaxed) {
+            let _ = tokio::fs::remove_file(path).await;
+        }
+    }
+}
+
+/// The start of `output`'s file: its prefix and the opening of its items, none for a lone key.
+fn file_head(output: &Output) -> Option<Vec<u8>> {
+    match output {
+        Output::Items { prefix, .. } => Some(format!("{{\n  \"prefix\": {},\n  \"items\": [", Value::from(prefix.as_str())).into_bytes()),
+        Output::Single { .. } => None,
+    }
 }
 
 /// Writes `plan`'s files into `dir`, reading each key off `connection_id`'s server; `progress` gets
@@ -160,7 +221,7 @@ pub async fn run(
 ) -> Result<Outcome, Error> {
     let total = plan.total();
     let mut session = Session::open_background(state, Some(connection_id)).await?;
-    std::fs::create_dir_all(dir).map_err(io_error)?;
+    tokio::fs::create_dir_all(dir).await.map_err(io_error)?;
     let (mut done, mut skipped) = (0, 0);
     let sole = plan.sole_file().and(file_name);
     for output in outputs(plan) {
@@ -173,59 +234,70 @@ pub async fn run(
             Some(name) => dir.join(name),
             None => free_path(dir, file),
         };
-        let mut writer: Option<BufWriter<File>> = None;
+        let mut writer: Option<Sink> = None;
         let mut written = 0;
-        for key in keys {
-            if cancel.load(Ordering::Relaxed) {
-                if writer.take().is_some() {
-                    let _ = std::fs::remove_file(&path);
+        // whether the export was cancelled, or why it failed; the file is removed in both cases
+        let result: Result<bool, Error> = async {
+            for key in keys {
+                if cancel.load(Ordering::Relaxed) {
+                    return Ok(true);
                 }
-                return Ok(Outcome { keys: done, cancelled: true, skipped });
-            }
-            let read = match explorer::read_for_export(&mut session, &KeyName::from_id(key)).await {
-                Ok(read) => read,
-                Err(e) if matches!(e.kind(), ErrorKind::Redis | ErrorKind::Denied) => {
-                    tracing::warn!(key = %KeyName::display_id(key), "key couldn't be read ({e}); left out");
-                    skipped += 1;
-                    done += 1;
-                    progress(done, total);
-                    continue;
-                }
-                Err(e) => {
-                    // no half-written file is left behind
-                    if writer.take().is_some() {
-                        let _ = std::fs::remove_file(&path);
+                let read = match explorer::read_for_export(&mut session, &KeyName::from_id(key)).await {
+                    Ok(read) => read,
+                    Err(e) if matches!(e.kind(), ErrorKind::Redis | ErrorKind::Denied) => {
+                        tracing::warn!(key = %KeyName::display_id(key), "key couldn't be read ({e}); left out");
+                        skipped += 1;
+                        done += 1;
+                        progress(done, total);
+                        continue;
                     }
-                    return Err(e);
-                }
-            };
-            match read {
-                Some(read) => {
-                    let writer = match &mut writer {
-                        Some(writer) => writer,
-                        None => writer.insert(start_file(&path, &output)?),
-                    };
-                    let json = item(key, &read);
-                    if matches!(output, Output::Single { .. }) {
-                        serde_json::to_writer_pretty(&mut *writer, &json).map_err(FileError::from)?;
-                    } else {
-                        let text = serde_json::to_string_pretty(&json).map_err(FileError::from)?;
-                        writer.write_all(if written == 0 { b"\n    " } else { b",\n    " }).map_err(io_error)?;
-                        writer.write_all(text.replace('\n', "\n    ").as_bytes()).map_err(io_error)?;
+                    Err(e) => return Err(e),
+                };
+                match read {
+                    Some(read) => {
+                        let writer = match &mut writer {
+                            Some(writer) => writer,
+                            None => {
+                                let sink = writer.insert(Sink::start(&path));
+                                if let Some(head) = file_head(&output) {
+                                    sink.write(head).await?;
+                                }
+                                sink
+                            }
+                        };
+                        let json = item(key, &read);
+                        if matches!(output, Output::Single { .. }) {
+                            writer.write(serde_json::to_vec_pretty(&json).map_err(FileError::from)?).await?;
+                        } else {
+                            let text = serde_json::to_string_pretty(&json).map_err(FileError::from)?;
+                            writer.write(if written == 0 { b"\n    ".to_vec() } else { b",\n    ".to_vec() }).await?;
+                            writer.write(text.replace('\n', "\n    ").into_bytes()).await?;
+                        }
+                        written += 1;
                     }
-                    written += 1;
+                    None => tracing::warn!(key = %KeyName::display_id(key), "key gone before it could be exported; left out"),
                 }
-                None => tracing::warn!(key = %KeyName::display_id(key), "key gone before it could be exported; left out"),
+                done += 1;
+                progress(done, total);
             }
-            done += 1;
-            progress(done, total);
+            // no file at all when every key of it was gone
+            if let Some(writer) = &mut writer {
+                if matches!(output, Output::Items { .. }) {
+                    writer.write(format!("\n  ],\n  \"totalKeys\": {written}\n}}").into_bytes()).await?;
+                }
+                writer.finish().await?;
+            }
+            Ok(false)
         }
-        // no file at all when every key of it was gone
-        if let Some(mut writer) = writer {
-            if matches!(output, Output::Items { .. }) {
-                write!(writer, "\n  ],\n  \"totalKeys\": {written}\n}}").map_err(io_error)?;
+        .await;
+        match result {
+            Ok(false) => {}
+            Ok(true) | Err(_) => {
+                if let Some(writer) = writer.take() {
+                    writer.discard(&path).await;
+                }
+                return result.map(|_| Outcome { keys: done, cancelled: true, skipped });
             }
-            writer.flush().map_err(io_error)?;
         }
     }
     Ok(Outcome { keys: done, cancelled: false, skipped })

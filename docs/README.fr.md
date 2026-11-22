@@ -47,13 +47,13 @@ Pensé pour les hashs Redis remplis de JSON : lisez chaque valeur en JSON color�
 
 ### Filtrer et afficher en tableau
 
-Saisissez un chemin JSON dans la barre de filtre, puis appuyez sur <kbd>Entrée</kbd> :
+Saisissez un chemin JSON commençant par `$` dans la boîte de recherche de la clé, puis appuyez sur <kbd>Entrée</kbd> :
 
 ```
-records                 une clé
-records.*.name          le nom de chaque enregistrement
-records[0].address.city un indice de tableau
-..label                 une clé à n'importe quelle profondeur
+$.records               une clé
+$.records.*.name        le nom de chaque enregistrement
+$.records[0].address.city un indice de tableau
+$..label                une clé à n'importe quelle profondeur
 ```
 
 Le chemin est complété à partir des valeurs chargées. Affichez le résultat sous forme de **liste champ/valeur** ou de **tableau** aux colonnes redimensionnables, copiez les lignes cochées dans un tableau JSON, ou exportez-les en CSV.
@@ -73,6 +73,11 @@ Le chemin est complété à partir des valeurs chargées. Affichez le résultat 
 
   L'éditeur signale les erreurs à l'endroit exact où elles se trouvent, complète les mots-clés, les clés et les `alias.champ`, conserve l'historique des exécutions et permet d'enregistrer des requêtes nommées. Le résultat s'ouvre comme n'importe quelle clé : vues, filtres et exports s'appliquent directement.
 
+### Modifier
+
+- ✏️ **Éditeur de valeurs** : le crayon d'une ligne ouvre sa valeur en JSON, avec numéros de ligne et couleurs, et l'enregistre dans Redis dès qu'elle est valide. Une clé de type chaîne est réécrite en entier, son TTL conservé ; les champs d'un hash peuvent être ajoutés, renommés et supprimés depuis la même fenêtre.
+- 🗂️ **Clés et dossiers** : un clic droit dans l'arbre permet d'ajouter une clé, ou de renommer ou supprimer une clé ou tout un dossier.
+
 ### Onglets
 
 Les clés, les recherches et les requêtes s'ouvrent dans des onglets que vous pouvez réorganiser par glisser-déposer. Chaque onglet conserve ses filtres et sa position de défilement, et chaque connexion garde son propre ensemble d'onglets.
@@ -80,31 +85,40 @@ Les clés, les recherches et les requêtes s'ouvrent dans des onglets que vous p
 ### Se connecter
 
 - **URL de connexion** : `redis://user:pass@host:6379/0`, ou `rediss://` pour le TLS. Testez-la avant de l'enregistrer.
-- 🔐 **Tunnels SSH** par mot de passe, par clé privée, ou les deux. La clé d'hôte est mémorisée à la première connexion, puis refusée si elle change. Les profils SSH permettent de partager un même identifiant entre plusieurs tunnels.
+- 🔐 **Tunnels SSH** par mot de passe, par clé privée, ou les deux. La clé d'hôte est présentée pour approbation la première fois (ou reprise de `~/.ssh/known_hosts`), puis refusée si elle change. Les profils SSH permettent de partager un même identifiant entre plusieurs tunnels.
 - 🎛️ **Profils de connexion** : un nom et une couleur qui teinte l'application pendant la connexion, pour toujours savoir si vous êtes sur `Production`.
 - ☁️ **AWS** : connectez-vous avec vos profils locaux `~/.aws` (SSO compris) et listez les points de terminaison ElastiCache de chacun.
 - 📥 **Import / export** de vos connexions au format JSON, avec ou sans les mots de passe.
+- 🔗 **Liens partageables** : le bouton de lien à côté du nom d'une clé copie un lien `cachemire://` vers la clé, avec son filtre ou l'un de ses champs, sans jamais contenir d'identifiant ni de mot de passe. L'ouvrir mène à cette clé sur la connexion enregistrée ou le point de terminaison AWS correspondant. L'installeur Windows et le .deb enregistrent ces liens ; un AppImage ne le fait qu'une fois intégré au bureau.
 
 > Le mode cluster n'est pas encore pris en charge : un serveur de ce type est refusé avec un message explicite.
 
 ### Sûr par défaut
 
-- 🛡️ Les mots de passe sont stockés dans le trousseau du système (Gestionnaire d'identification ou Secret Service).
-- Rien n'est jamais écrit dans Redis : Cachemire est un explorateur en lecture seule.
+- 🛡️ Les mots de passe sont stockés dans le trousseau du système (Gestionnaire d'identification ou Secret Service). S'il est indisponible, Cachemire demande avant de garder un mot de passe dans son fichier de données, et peut à la place enregistrer sans lui et le demander à la connexion.
+- 🔑 La clé d'hôte d'un serveur SSH n'est jamais approuvée en silence : son empreinte vous est présentée d'abord, les clés de `~/.ssh/known_hosts` sont respectées, et une clé qui change est refusée.
+- 🔒 **Profils et connexions en lecture seule** : cochez *Lecture seule* sur un profil de connexion, ou sur une seule connexion, et rien ne peut être écrit dans Redis par ce biais. Le profil `Production` par défaut est en lecture seule.
+- La suppression d'un dossier demande d'abord confirmation, en indiquant le nombre de clés qui seront supprimées.
+- Une valeur qui a changé dans Redis pendant que vous la modifiiez n'est jamais écrasée silencieusement : vous choisissez d'annuler, de la recharger ou de l'écraser.
 
 ### Finitions
 
-Zoomez avec <kbd>Ctrl</kbd>+<kbd>+</kbd>/<kbd>-</kbd>/<kbd>0</kbd> ou <kbd>Ctrl</kbd>+molette. 🌍 **Anglais et français**, selon la langue du système ou votre choix dans les **Paramètres**, avec changement à la volée, sans redémarrage.
+Zoomez avec <kbd>Ctrl</kbd>+<kbd>+</kbd>/<kbd>-</kbd>/<kbd>0</kbd> ou <kbd>Ctrl</kbd>+molette. ⌨️ **Raccourcis clavier configurables**. 🌍 **Anglais et français**, selon la langue du système ou votre choix dans les **Paramètres**, avec changement à la volée, sans redémarrage.
 
-## Prévu
+## Installer
 
-- ✏️ **Édition** des clés et des valeurs
-- 🗝️ Prise en charge de **Valkey**
-- 🎨 **Thèmes**
-- ⌨️ **Raccourcis clavier avancés**
-- 🖍️ **Coloration syntaxique** des valeurs dans d'autres langages que le JSON
+Téléchargez le fichier correspondant à votre système sur la [page des versions](https://github.com/iRed4321/Cachemire/releases/latest) :
 
-## Démarrer
+| Système | Fichier | Description |
+|---|---|---|
+| Windows | `Cachemire-<version>-x64.msi` | l'installeur : entrée du menu Démarrer, liens `cachemire://`, mises à jour |
+| Windows | `Cachemire-Portable-<version>-x64.zip` | l'exécutable portable : décompressez-le et lancez-le |
+| Linux (Debian, Ubuntu) | `cachemire_<version>-1_amd64.deb` | à installer avec `sudo apt install ./cachemire_<version>-1_amd64.deb` |
+| Linux (toute distribution) | `Cachemire-<version>-x86_64.AppImage` | rendez-le exécutable (`chmod +x`) puis lancez-le |
+
+**Mises à jour** : sous Windows, **Paramètres › À propos** cherche une nouvelle version, puis télécharge et lance son installeur. Sous Linux, il ouvre la page de la version, d'où vous téléchargez le nouveau fichier.
+
+## Compiler depuis les sources
 
 Il vous faut un **Rust** stable récent. Sous Linux, il faut également un Secret Service actif et Wayland ou X11.
 
@@ -120,13 +134,15 @@ Ajoutez une connexion depuis la barre de titre (**Nouvelle connexion…**), sél
 | `cargo run --profile fast` | optimisé, sans LTO : recompile en quelques secondes, idéal pour essayer l'application réelle |
 | `cargo run --release` | avec LTO, sans symboles : la version à distribuer |
 
+`cargo test` lance les tests unitaires et ceux de l'interface sans fenêtre. `cargo xtask e2e` lance les tests de bout en bout : l'application et son cœur face à un serveur Redis jetable, un `redis-server` (ou `valkey-server`) local s'il y en a un, sinon le `redis:7.4` de Docker, sinon sous Windows le `redis-server` de WSL. Chaque test prend une base vidée rien que pour lui.
+
 Les installeurs se construisent avec `cargo xtask build-windows` (MSI et zip portable), `cargo xtask build-deb` et `cargo xtask build-appimage` (ou les deux à partir d'une seule compilation avec `cargo xtask build-linux`).
 
 Pour essayer le MSI seul, `cargo xtask build-installer-test --version 1.2.0` y met une application factice, rapide à compiler, à la version voulue ; sur GitHub, lancez le workflow *Installer test* et téléchargez son artefact.
 
 ## Vos données
 
-Elles sont enregistrées dans le dossier de données de l'utilisateur (`%APPDATA%\Cachemire` ou `~/.local/share/Cachemire`) : connexions, réglages, requêtes enregistrées, clés d'hôte SSH et historique des requêtes.
+Elles sont enregistrées dans le dossier de données de l'utilisateur (`%APPDATA%\Cachemire` ou `~/.local/share/Cachemire`) : connexions, réglages, requêtes enregistrées, clés d'hôte SSH et historique des requêtes. Le zip portable de Windows garde tout dans un dossier `data` à côté de l'exécutable.
 
 ## À propos du projet
 

@@ -17,7 +17,7 @@ fn tunnel(host: &str, password: &str) -> CloudSsh {
         username: "ec2-user".into(),
         private_key: String::new(),
         password: password.into(),
-        passphrase: String::new(),
+        passphrase: Default::default(),
         in_vault: false,
     }
 }
@@ -49,11 +49,13 @@ fn effective(store: &SettingsStore, name: &str) -> (String, Option<String>) {
 #[test]
 fn an_endpoint_inherits_its_accounts_settings_until_it_sets_its_own() {
     let (mut store, _, _) = new_store();
-    let staging = store.create_connection_profile("Staging", ProfileColor::Green).unwrap();
+    let staging = store.create_connection_profile("Staging", ProfileColor::Green, false, false).unwrap();
     let prod = store.connection_profiles()[0].id.clone();
-    store.set_cloud_scope(&account(), "Main", Some(staging.clone()), Some(tunnel("account-bastion", ""))).unwrap();
-    store.set_cloud_scope(&endpoint("orders"), "orders", Some(prod.clone()), None).unwrap();
-    store.set_cloud_scope(&endpoint("cache"), "cache", None, Some(tunnel("own-bastion", ""))).unwrap();
+    store
+        .set_cloud_scope(&account(), "Main", Some(staging.clone()), Some(tunnel("account-bastion", "")), SecretsPolicy::PlainText)
+        .unwrap();
+    store.set_cloud_scope(&endpoint("orders"), "orders", Some(prod.clone()), None, SecretsPolicy::PlainText).unwrap();
+    store.set_cloud_scope(&endpoint("cache"), "cache", None, Some(tunnel("own-bastion", "")), SecretsPolicy::PlainText).unwrap();
 
     assert_eq!(effective(&store, "orders"), (prod, Some("account-bastion".into())));
     assert_eq!(effective(&store, "cache"), (staging.clone(), Some("own-bastion".into())));
@@ -64,16 +66,16 @@ fn an_endpoint_inherits_its_accounts_settings_until_it_sets_its_own() {
 fn an_endpoint_can_turn_off_what_its_account_sets() {
     let (mut store, _, _) = new_store();
     let prod = store.connection_profiles()[0].id.clone();
-    store.set_cloud_scope(&account(), "", Some(prod), Some(tunnel("bastion", ""))).unwrap();
-    store.set_cloud_scope(&endpoint("direct"), "", Some(String::new()), Some(CloudSsh::none())).unwrap();
+    store.set_cloud_scope(&account(), "", Some(prod), Some(tunnel("bastion", "")), SecretsPolicy::PlainText).unwrap();
+    store.set_cloud_scope(&endpoint("direct"), "", Some(String::new()), Some(CloudSsh::none()), SecretsPolicy::PlainText).unwrap();
     assert_eq!(effective(&store, "direct"), (String::new(), None));
 }
 
 #[test]
 fn a_deleted_connection_profile_counts_as_none() {
     let (mut store, _, _) = new_store();
-    let staging = store.create_connection_profile("Staging", ProfileColor::Green).unwrap();
-    store.set_cloud_scope(&account(), "", Some(staging.clone()), None).unwrap();
+    let staging = store.create_connection_profile("Staging", ProfileColor::Green, false, false).unwrap();
+    store.set_cloud_scope(&account(), "", Some(staging.clone()), None, SecretsPolicy::PlainText).unwrap();
     store.remove_connection_profile(&staging).unwrap();
     assert_eq!(effective(&store, "any").0, "");
 }
@@ -81,35 +83,36 @@ fn a_deleted_connection_profile_counts_as_none() {
 #[test]
 fn settings_that_cant_be_used_are_refused() {
     let (mut store, _, _) = new_store();
-    assert!(store.set_cloud_scope(&account(), "", Some("no-such-profile".into()), None).is_err());
-    assert!(store.set_cloud_scope(&account(), "", None, Some(tunnel("  ", ""))).is_err());
+    assert!(store.set_cloud_scope(&account(), "", Some("no-such-profile".into()), None, SecretsPolicy::PlainText).is_err());
+    assert!(store.set_cloud_scope(&account(), "", None, Some(tunnel("  ", "")), SecretsPolicy::PlainText).is_err());
     let mut no_port = tunnel("bastion", "");
     no_port.port = 0;
-    assert!(store.set_cloud_scope(&account(), "", None, Some(no_port)).is_err());
+    assert!(store.set_cloud_scope(&account(), "", None, Some(no_port), SecretsPolicy::PlainText).is_err());
     let mut off = tunnel("", "");
     off.enabled = false;
-    assert!(store.set_cloud_scope(&account(), "", None, Some(off)).is_ok(), "a tunnel turned off needs no host");
+    assert!(store.set_cloud_scope(&account(), "", None, Some(off), SecretsPolicy::PlainText).is_ok(), "a tunnel turned off needs no host");
 }
 
 #[test]
 fn listed_endpoints_get_their_settings_without_secrets_until_asked() {
     let (mut store, _, _) = new_store();
-    store.set_cloud_scope(&account(), "", None, Some(tunnel("bastion", "pw"))).unwrap();
+    store.set_cloud_scope(&account(), "", None, Some(tunnel("bastion", "pw")), SecretsPolicy::PlainText).unwrap();
     let mut items = vec![ConnectionItem {
         id: "x".into(),
         name: "orders".into(),
         connection_url: "redis://h:6379".into(),
         username: String::new(),
-        password: String::new(),
+        password: Default::default(),
         ssh: None,
         profile_id: String::new(),
+        read_only: false,
     }];
     store.apply_cloud("111", "eu-west-1", &mut items);
     let mut ssh = items[0].ssh.clone().unwrap();
-    assert_eq!((ssh.host.as_str(), ssh.password.as_str()), ("bastion", ""));
+    assert_eq!((ssh.host.as_str(), ssh.password.expose()), ("bastion", ""));
     store.fill_cloud_secrets(&key("orders"), &mut ssh);
-    assert_eq!(ssh.password, "pw");
-    assert_eq!(store.cloud_settings(&account()).ssh.unwrap().password, "", "what the settings show holds no secret");
+    assert_eq!(ssh.password.expose(), "pw");
+    assert_eq!(store.cloud_settings(&account()).ssh.unwrap().password.expose(), "", "what the settings show holds no secret");
 
     store.apply_cloud("222", "eu-west-1", &mut items);
     assert!(items[0].ssh.is_none(), "another account's endpoint has nothing set");
@@ -118,77 +121,81 @@ fn listed_endpoints_get_their_settings_without_secrets_until_asked() {
 #[test]
 fn tunnel_secrets_live_in_the_vault_and_come_back_after_a_restart() {
     let (mut store, vault, file) = new_store();
-    store.set_cloud_scope(&endpoint("orders"), "", None, Some(tunnel("bastion", "s3cret"))).unwrap();
+    store.set_cloud_scope(&endpoint("orders"), "", None, Some(tunnel("bastion", "s3cret")), SecretsPolicy::PlainText).unwrap();
     assert!(!std::fs::read_to_string(&file).unwrap().contains("s3cret"));
-    assert_eq!(vault.entries.lock()[&cloud_vault_key(&endpoint("orders"))].ssh_password, "s3cret");
+    assert_eq!(vault.entries.lock()[&cloud_vault_key(&endpoint("orders"))].ssh_password.expose(), "s3cret");
 
     let mut reopened = store_in(&file, &vault);
     let mut ssh = SshSettings {
         host: String::new(),
         port: 22,
         username: String::new(),
-        password: String::new(),
+        password: Default::default(),
         private_key: String::new(),
-        passphrase: String::new(),
+        passphrase: Default::default(),
     };
     reopened.fill_cloud_secrets(&key("orders"), &mut ssh);
-    assert_eq!(ssh.password, "", "nothing is read from the vault before it's needed");
+    assert_eq!(ssh.password.expose(), "", "nothing is read from the vault before it's needed");
     reopened.unlock_cloud(&key("orders")).unwrap();
     reopened.fill_cloud_secrets(&key("orders"), &mut ssh);
-    assert_eq!(ssh.password, "s3cret");
+    assert_eq!(ssh.password.expose(), "s3cret");
 }
 
 #[test]
 fn a_blank_password_keeps_the_stored_one() {
     let (mut store, vault, file) = new_store();
-    store.set_cloud_scope(&account(), "", None, Some(tunnel("bastion", "s3cret"))).unwrap();
+    store.set_cloud_scope(&account(), "", None, Some(tunnel("bastion", "s3cret")), SecretsPolicy::PlainText).unwrap();
     // a new run edits the tunnel's host without retyping the password
     let mut reopened = store_in(&file, &vault);
-    reopened.set_cloud_scope(&account(), "", None, Some(tunnel("new-bastion", ""))).unwrap();
+    reopened.set_cloud_scope(&account(), "", None, Some(tunnel("new-bastion", "")), SecretsPolicy::PlainText).unwrap();
     reopened.unlock_cloud(&key("any")).unwrap();
     let mut ssh = SshSettings {
         host: String::new(),
         port: 22,
         username: String::new(),
-        password: String::new(),
+        password: Default::default(),
         private_key: String::new(),
-        passphrase: String::new(),
+        passphrase: Default::default(),
     };
     reopened.fill_cloud_secrets(&key("any"), &mut ssh);
-    assert_eq!(ssh.password, "s3cret");
+    assert_eq!(ssh.password.expose(), "s3cret");
     assert_eq!(effective(&reopened, "any").1.as_deref(), Some("new-bastion"));
 }
 
 #[test]
 fn turning_a_tunnel_off_hands_back_the_clean_up_of_its_secrets() {
     let (mut store, vault, _) = new_store();
-    store.set_cloud_scope(&account(), "", None, Some(tunnel("bastion", "s3cret"))).unwrap();
-    let cleanup = store.set_cloud_scope(&account(), "", None, Some(CloudSsh::none())).unwrap().expect("a clean-up");
+    store.set_cloud_scope(&account(), "", None, Some(tunnel("bastion", "s3cret")), SecretsPolicy::PlainText).unwrap();
+    let cleanup =
+        store.set_cloud_scope(&account(), "", None, Some(CloudSsh::none()), SecretsPolicy::PlainText).unwrap().expect("a clean-up");
     cleanup.run();
     assert!(vault.entries.lock().is_empty());
 
-    store.set_cloud_scope(&account(), "", None, Some(tunnel("bastion", "again"))).unwrap();
-    assert!(store.set_cloud_scope(&account(), "", None, None).unwrap().is_some(), "back to inheriting clears it too");
+    store.set_cloud_scope(&account(), "", None, Some(tunnel("bastion", "again")), SecretsPolicy::PlainText).unwrap();
+    assert!(
+        store.set_cloud_scope(&account(), "", None, None, SecretsPolicy::PlainText).unwrap().is_some(),
+        "back to inheriting clears it too"
+    );
 }
 
 #[test]
 fn inheriting_everything_again_forgets_the_entry_but_a_label_is_kept_while_it_lives() {
     let (mut store, _, _) = new_store();
     let prod = store.connection_profiles()[0].id.clone();
-    store.set_cloud_scope(&endpoint("orders"), "Orders cache", Some(prod.clone()), None).unwrap();
-    store.set_cloud_scope(&endpoint("orders"), "", Some(prod), None).unwrap();
+    store.set_cloud_scope(&endpoint("orders"), "Orders cache", Some(prod.clone()), None, SecretsPolicy::PlainText).unwrap();
+    store.set_cloud_scope(&endpoint("orders"), "", Some(prod), None, SecretsPolicy::PlainText).unwrap();
     assert_eq!(store.cloud_settings(&endpoint("orders")).label, "Orders cache");
-    store.set_cloud_scope(&endpoint("orders"), "", None, None).unwrap();
+    store.set_cloud_scope(&endpoint("orders"), "", None, None, SecretsPolicy::PlainText).unwrap();
     assert!(store.cloud_entry(&endpoint("orders")).is_none());
 }
 
 #[test]
 fn an_endpoint_missing_from_three_listings_in_a_row_loses_its_settings() {
     let (mut store, vault, file) = new_store();
-    store.set_cloud_scope(&endpoint("gone"), "", None, Some(tunnel("bastion", "s3cret"))).unwrap();
-    store.set_cloud_scope(&endpoint("flaky"), "", None, Some(tunnel("bastion", ""))).unwrap();
+    store.set_cloud_scope(&endpoint("gone"), "", None, Some(tunnel("bastion", "s3cret")), SecretsPolicy::PlainText).unwrap();
+    store.set_cloud_scope(&endpoint("flaky"), "", None, Some(tunnel("bastion", "")), SecretsPolicy::PlainText).unwrap();
     let other_region = CloudScope::Endpoint(CloudKey { account: "111".into(), region: "us-east-1".into(), name: "gone".into() });
-    store.set_cloud_scope(&other_region, "", None, Some(tunnel("bastion", ""))).unwrap();
+    store.set_cloud_scope(&other_region, "", None, Some(tunnel("bastion", "")), SecretsPolicy::PlainText).unwrap();
 
     let listed = |names: &[&str]| names.iter().map(|n| n.to_string()).collect::<FxHashSet<String>>();
     assert!(store.observe_cloud_listing("111", "eu-west-1", &listed(&[])).unwrap().is_empty());
@@ -201,4 +208,32 @@ fn an_endpoint_missing_from_three_listings_in_a_row_loses_its_settings() {
     cleanups.into_iter().for_each(SecretsCleanup::run);
     assert!(!vault.entries.lock().contains_key(&cloud_vault_key(&endpoint("gone"))));
     assert!(store_in(&file, &vault).cloud_entry(&endpoint("gone")).is_none(), "the pruning is saved");
+}
+
+#[test]
+fn each_profile_is_remembered_with_the_account_and_region_it_lists() {
+    let (mut store, vault, file) = new_store();
+    store.remember_cloud_profile("dev", "111", "eu-west-1").unwrap();
+    store.remember_cloud_profile("prod", "222", "eu-west-1").unwrap();
+    store.remember_cloud_profile("ops", "111", "eu-west-1").unwrap();
+    assert_eq!(store.cloud_profiles_of("111", "eu-west-1"), ["dev", "ops"]);
+    assert!(store.cloud_profiles_of("111", "us-east-1").is_empty());
+
+    // a profile moved to another account forgets the first one; it all lasts across runs
+    store.remember_cloud_profile("ops", "333", "us-east-1").unwrap();
+    let store = store_in(&file, &vault);
+    assert_eq!(store.cloud_profiles_of("111", "eu-west-1"), ["dev"]);
+    assert_eq!(store.cloud_profiles_of("333", "us-east-1"), ["ops"]);
+}
+
+#[test]
+fn the_picked_chip_is_kept_across_runs_until_another_is_picked() {
+    let (mut store, vault, file) = new_store();
+    assert_eq!(store.cloud_chip(), "", "all the profiles at first");
+    store.set_cloud_chip("profile:dev").unwrap();
+    let mut store = store_in(&file, &vault);
+    assert_eq!(store.cloud_chip(), "profile:dev");
+
+    store.set_cloud_chip("").unwrap();
+    assert_eq!(store_in(&file, &vault).cloud_chip(), "");
 }

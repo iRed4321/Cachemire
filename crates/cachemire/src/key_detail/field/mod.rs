@@ -3,14 +3,17 @@
 //! `search_filter` (`SearchFilter`/`SearchTerm`).
 
 use parking_lot::Mutex;
-use rustc_hash::FxHashMap;
+use rustc_hash::{FxHashMap, FxHashSet};
+use std::borrow::Cow;
 use std::sync::{Arc, OnceLock};
 
+use crate::t;
 use rayon::prelude::*;
-use rust_i18n::t;
 use serde::Serialize;
 use serde_json::Value;
 
+use super::fold::{fold, unescaped_json};
+use super::formats::{ShowFormat, structured_value};
 use super::pretty_text::ColoredParagraph;
 
 /// A field's value as shown and exported: the parsed JSON when its raw text
@@ -40,16 +43,29 @@ pub(super) struct Field {
     // the value's size in bytes when it was too big to be read with the others
     // (`raw` is then empty, until it's read)
     pub(super) too_long: Option<usize>,
-    // lowercased on first use by a case-insensitive search, then kept for
-    // every later keystroke/badge — `raw` especially can be a large JSON
-    // blob, not worth re-lowering on every pass over the fields
-    lower_name: OnceLock<String>,
-    lower_raw: OnceLock<String>,
+    // the value isn't UTF-8 text: `raw` writes its other bytes as `\xNN`, and it is never edited
+    pub(super) binary: bool,
+    // `name` and `raw` as the search reads them (`fold`), case kept then not, made on first
+    // use and kept for every later badge (`None`: the text itself); `raw` can be a large blob
+    folded: [[OnceLock<Option<String>>; 2]; 2],
+    // its JSON's `\uXXXX` escapes written out, then folded, case kept then not (`None`: no escape)
+    unescaped: [OnceLock<Option<String>>; 2],
+    // the object or array a YAML or XML value stands for, read on first use by the table
+    structured: OnceLock<Option<Value>>,
 }
 
 impl Field {
     pub(super) fn new(name: String, raw: String, json: Option<Value>) -> Field {
-        Field { name, raw, json, too_long: None, lower_name: OnceLock::new(), lower_raw: OnceLock::new() }
+        Field {
+            name,
+            raw,
+            json,
+            too_long: None,
+            binary: false,
+            folded: Default::default(),
+            unescaped: Default::default(),
+            structured: OnceLock::new(),
+        }
     }
 
     /// A hash field whose value, `size` bytes long, was left out for its size.
@@ -58,9 +74,14 @@ impl Field {
     }
 
     /// A hash field read as `raw`, parsed when it is JSON.
-    pub(super) fn hash_value(name: String, raw: String) -> Field {
+    pub(super) fn hash_value(name: String, raw: String, binary: bool) -> Field {
         let json = serde_json::from_str::<Value>(&raw).ok();
-        Field::new(name, raw, json)
+        Field { binary, ..Field::new(name, raw, json) }
+    }
+
+    /// Whether the field can't be written: its value or its name isn't UTF-8 text.
+    pub(super) fn is_binary(&self) -> bool {
+        self.binary || !cachemire_core::key_name::is_text_field(&self.name)
     }
 
     /// A field holding `value`: a string stays plain text (shown as a JSON
@@ -82,13 +103,42 @@ impl Field {
         }
     }
 
-    pub(super) fn lower_name(&self) -> &str {
-        self.lower_name.get_or_init(|| self.name.to_lowercase())
+    /// What the table reads the field's columns from: its JSON, else the object or array
+    /// its YAML or XML text stands for.
+    pub(super) fn table_value(&self) -> Option<&Value> {
+        self.json.as_ref().or_else(|| self.structured.get_or_init(|| structured_value(&self.raw)).as_ref())
     }
 
-    pub(super) fn lower_raw(&self) -> &str {
-        self.lower_raw.get_or_init(|| self.raw.to_lowercase())
+    /// The field's name as a search matching case or not reads it.
+    pub(super) fn searched_name(&self, case_sensitive: bool) -> &str {
+        folded_once(&self.folded[0][usize::from(case_sensitive)], &self.name, case_sensitive)
     }
+
+    /// The field's raw value as a search matching case or not reads it.
+    pub(super) fn searched_raw(&self, case_sensitive: bool) -> &str {
+        folded_once(&self.folded[1][usize::from(case_sensitive)], &self.raw, case_sensitive)
+    }
+
+    /// The field's JSON value with its `\uXXXX` escapes written out, as a search reads it:
+    /// `None` when its raw text holds none.
+    pub(super) fn searched_unescaped(&self, case_sensitive: bool) -> Option<&str> {
+        self.unescaped[usize::from(case_sensitive)]
+            .get_or_init(|| {
+                let text = unescaped_json(&self.raw, self.json.as_ref()?)?;
+                Some(fold(&text, case_sensitive).into_owned())
+            })
+            .as_deref()
+    }
+}
+
+/// `text` folded, kept in `cell` the first time when that differs from `text`.
+fn folded_once<'a>(cell: &'a OnceLock<Option<String>>, text: &'a str, case_sensitive: bool) -> &'a str {
+    cell.get_or_init(|| match fold(text, case_sensitive) {
+        Cow::Borrowed(_) => None,
+        Cow::Owned(folded) => Some(folded),
+    })
+    .as_deref()
+    .unwrap_or(text)
 }
 
 /// The loaded key's fields in display order. Each sits behind an `Arc` so a
@@ -99,7 +149,12 @@ pub(super) type Fields = Vec<Arc<Field>>;
 /// A page of hash fields in the order of `names`: each read value JSON-parsed when
 /// possible (spread across cores, names/strings moved rather than cloned), each one
 /// in `oversized` by its size; a name in neither is gone from the server.
-pub(super) fn build_fields(details_value: Value, mut oversized: FxHashMap<String, usize>, names: &[String]) -> Fields {
+pub(super) fn build_fields(
+    details_value: Value,
+    mut oversized: FxHashMap<String, usize>,
+    binary: &FxHashSet<String>,
+    names: &[String],
+) -> Fields {
     let Value::Object(map) = details_value else { return Vec::new() };
     let mut values: FxHashMap<String, Value> = map.into_iter().collect();
     names
@@ -116,7 +171,8 @@ pub(super) fn build_fields(details_value: Value, mut oversized: FxHashMap<String
                     Value::String(s) => s,
                     other => other.to_string(),
                 };
-                Arc::new(Field::hash_value(name, raw))
+                let binary = binary.contains(&name);
+                Arc::new(Field::hash_value(name, raw, binary))
             }
             Err(size) => Arc::new(Field::too_long(name, size)),
         })
@@ -124,8 +180,12 @@ pub(super) fn build_fields(details_value: Value, mut oversized: FxHashMap<String
 }
 
 /// The single "(value)" field standing for a non-hash key's whole value.
-pub(super) fn single_value_field(value: Value) -> Field {
+pub(super) fn single_value_field(value: Value, binary: bool) -> Field {
     let name = t!("(value)").into_owned();
+    Field { binary, ..single_field(name, value) }
+}
+
+fn single_field(name: String, value: Value) -> Field {
     match value {
         // a string key holding a JSON object or array is shown, and can be
         // filtered, as that JSON — like a hash field's value is
@@ -137,28 +197,28 @@ pub(super) fn single_value_field(value: Value) -> Field {
     }
 }
 
-/// Open-row renderings by field name, plain and escaped apart, so a lookup by `&str`
+/// Open-row renderings by field name, each format's apart, so a lookup by `&str`
 /// allocates nothing. `Arc` per entry so serving one is a cheap clone.
 #[derive(Default)]
-pub(super) struct PrettyRenderings([FxHashMap<String, Arc<Vec<ColoredParagraph>>>; 2]);
+pub(super) struct PrettyRenderings([FxHashMap<String, Arc<Vec<ColoredParagraph>>>; ShowFormat::COUNT]);
 
 impl PrettyRenderings {
-    pub(super) fn get(&self, name: &str, escaped: bool) -> Option<&Arc<Vec<ColoredParagraph>>> {
-        self.0[usize::from(escaped)].get(name)
+    pub(super) fn get(&self, name: &str, format: ShowFormat) -> Option<&Arc<Vec<ColoredParagraph>>> {
+        self.0[format.index()].get(name)
     }
 
-    pub(super) fn contains(&self, name: &str, escaped: bool) -> bool {
-        self.0[usize::from(escaped)].contains_key(name)
+    pub(super) fn contains(&self, name: &str, format: ShowFormat) -> bool {
+        self.0[format.index()].contains_key(name)
     }
 
-    pub(super) fn insert(&mut self, name: String, escaped: bool, paragraphs: Arc<Vec<ColoredParagraph>>) {
-        self.0[usize::from(escaped)].insert(name, paragraphs);
+    pub(super) fn insert(&mut self, name: String, format: ShowFormat, paragraphs: Arc<Vec<ColoredParagraph>>) {
+        self.0[format.index()].insert(name, paragraphs);
     }
 
-    /// Makes the plain rendering of `name` with `render`, unless there is one already.
-    pub(super) fn plain_or_insert_with(&mut self, name: &str, render: impl FnOnce() -> Vec<ColoredParagraph>) {
-        if !self.contains(name, false) {
-            self.insert(name.to_string(), false, Arc::new(render()));
+    /// Makes the rendering of `name` in `format` with `render`, unless there is one already.
+    pub(super) fn get_or_insert_with(&mut self, name: &str, format: ShowFormat, render: impl FnOnce() -> Vec<ColoredParagraph>) {
+        if !self.contains(name, format) {
+            self.insert(name.to_string(), format, Arc::new(render()));
         }
     }
 

@@ -3,6 +3,7 @@
 //! Passwords live in the OS credential store.
 
 use rustc_hash::FxHashSet;
+use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
@@ -11,7 +12,7 @@ use serde::{Deserialize, Serialize};
 use crate::error::{Error, Invalid};
 use crate::i18n::Language;
 use crate::persist;
-use crate::secret_vault::{OsVault, Secrets, Vault, VaultBacked};
+use crate::secret_vault::{OsVault, SecretsPolicy, Vault, VaultBacked, Vaulting};
 use crate::updates::Channel;
 
 mod cloud;
@@ -32,6 +33,21 @@ use ssh_profiles::StoredProfile;
 pub const SEARCH_DEPTHS: [u32; 3] = [60, 200, 1000];
 
 pub const DEFAULT_SEARCH_DEPTH: u32 = 1000;
+/// The interface zoom bounds and default, in percent.
+pub const ZOOM_RANGE: std::ops::RangeInclusive<u32> = 60..=200;
+pub const DEFAULT_ZOOM: u32 = 100;
+
+/// The view a key's new tab starts on: the fields, the table, or the one last picked.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub enum OpeningView {
+    Table,
+    Last,
+    // also what a value this version doesn't know reads as
+    #[default]
+    #[serde(other)]
+    Fields,
+}
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -47,6 +63,12 @@ struct StoredSettings {
     // whether the export buttons start on escaped JSON rather than plain JSON
     #[serde(default)]
     export_escaped: bool,
+    // the view a key's new tab starts on
+    #[serde(default)]
+    opening_view: OpeningView,
+    // whether the view last picked in a key's tab is the table
+    #[serde(default)]
+    last_view_table: bool,
     // the release channel the update check follows ("" until one is picked: the running build's)
     #[serde(default)]
     update_channel: String,
@@ -56,12 +78,31 @@ struct StoredSettings {
     // whether the app reopens the last connection with its tabs and open folders
     #[serde(default)]
     restore_session: bool,
+    // whether an SSH server's host key seen for the first time is trusted without asking
+    #[serde(default)]
+    accept_new_ssh_host_keys: bool,
     // experimental: the global search filters inside Redis, with a script
     #[serde(default)]
     server_search: bool,
     // how many entries of each key the global search reads (0: not chosen yet)
     #[serde(default)]
     search_depth: u32,
+    // the interface zoom the app starts at, in percent (0: not chosen yet)
+    #[serde(default)]
+    zoom: u32,
+    // the theme and the syntax theme, by the names the app gives them ("": its default ones)
+    #[serde(default)]
+    theme: String,
+    #[serde(default)]
+    syntax_theme: String,
+    // the fonts of the interface and of values and queries, by family name ("": the app's own)
+    #[serde(default)]
+    ui_font: String,
+    #[serde(default)]
+    mono_font: String,
+    // the keyboard shortcuts changed from their defaults: an action's name, and its keys
+    #[serde(default)]
+    shortcuts: BTreeMap<String, Vec<String>>,
     #[serde(default)]
     connection_profiles: Vec<StoredConnectionProfile>,
     // Redisql queries saved from a query tab, oldest first
@@ -71,6 +112,10 @@ struct StoredSettings {
     // once, so deleting it sticks
     #[serde(default)]
     connection_profiles_seeded: bool,
+    // the default "Production" profile has been made read-only: done once, so
+    // unticking it sticks
+    #[serde(default)]
+    default_profile_read_only_set: bool,
     // what is set for AWS accounts and their endpoints (none of the endpoints themselves)
     #[serde(default)]
     cloud: StoredCloud,
@@ -123,7 +168,15 @@ impl SettingsStore {
                 id: DEFAULT_PROFILE_ID.to_string(),
                 name: "Production".to_string(),
                 color: ProfileColor::Red.code().to_string(),
+                read_only: true,
+                light_tint: false,
             });
+        }
+        if !state.default_profile_read_only_set {
+            state.default_profile_read_only_set = true;
+            if let Some(profile) = state.connection_profiles.iter_mut().find(|p| p.id == DEFAULT_PROFILE_ID) {
+                profile.read_only = true;
+            }
         }
         let mut unloaded: FxHashSet<String> = state.ssh_profiles.iter().filter(|p| p.in_vault).map(|p| p.id.clone()).collect();
         unloaded.extend(cloud_entries(&mut state.cloud).filter(|(_, e)| e.ssh.as_ref().is_some_and(|s| s.in_vault)).map(|(key, _)| key));
@@ -151,6 +204,62 @@ impl SettingsStore {
         }
         let mut next = self.state.clone();
         next.search_depth = depth;
+        self.commit(next, false)
+    }
+
+    /// The interface zoom the app starts at, in percent within [`ZOOM_RANGE`].
+    pub fn zoom(&self) -> u32 {
+        Some(self.state.zoom).filter(|zoom| ZOOM_RANGE.contains(zoom)).unwrap_or(DEFAULT_ZOOM)
+    }
+
+    /// Saves the starting zoom, kept within [`ZOOM_RANGE`].
+    pub fn set_zoom(&mut self, percent: u32) -> Result<(), Error> {
+        let mut next = self.state.clone();
+        next.zoom = percent.clamp(*ZOOM_RANGE.start(), *ZOOM_RANGE.end());
+        self.commit(next, false)
+    }
+
+    /// The theme picked, by the name the app gives it ("" until one is).
+    pub fn theme(&self) -> &str {
+        &self.state.theme
+    }
+
+    pub fn set_theme(&mut self, theme: &str) -> Result<(), Error> {
+        let mut next = self.state.clone();
+        next.theme = theme.to_string();
+        self.commit(next, false)
+    }
+
+    /// The syntax theme picked, by the name the app gives it ("" until one is).
+    pub fn syntax_theme(&self) -> &str {
+        &self.state.syntax_theme
+    }
+
+    pub fn set_syntax_theme(&mut self, theme: &str) -> Result<(), Error> {
+        let mut next = self.state.clone();
+        next.syntax_theme = theme.to_string();
+        self.commit(next, false)
+    }
+
+    /// The interface's font family, as picked ("" for the app's own).
+    pub fn ui_font(&self) -> &str {
+        &self.state.ui_font
+    }
+
+    pub fn set_ui_font(&mut self, family: &str) -> Result<(), Error> {
+        let mut next = self.state.clone();
+        next.ui_font = family.to_string();
+        self.commit(next, false)
+    }
+
+    /// The font family of values and queries, as picked ("" for the app's own).
+    pub fn mono_font(&self) -> &str {
+        &self.state.mono_font
+    }
+
+    pub fn set_mono_font(&mut self, family: &str) -> Result<(), Error> {
+        let mut next = self.state.clone();
+        next.mono_font = family.to_string();
         self.commit(next, false)
     }
 
@@ -198,6 +307,33 @@ impl SettingsStore {
         self.commit(next, false)
     }
 
+    /// Whether a new SSH host key is trusted and remembered without asking the user.
+    pub fn accept_new_ssh_host_keys(&self) -> bool {
+        self.state.accept_new_ssh_host_keys
+    }
+
+    pub fn set_accept_new_ssh_host_keys(&mut self, accept: bool) -> Result<(), Error> {
+        let mut next = self.state.clone();
+        next.accept_new_ssh_host_keys = accept;
+        self.commit(next, false)
+    }
+
+    /// The keys picked for `action` in place of its default ones, if any: the
+    /// parts of a key combination (modifiers, then the key), as the UI wrote them.
+    pub fn shortcut(&self, action: &str) -> Option<&[String]> {
+        self.state.shortcuts.get(action).map(Vec::as_slice)
+    }
+
+    /// Binds `action` to `keys`, or back to its default keys with `None`.
+    pub fn set_shortcut(&mut self, action: &str, keys: Option<Vec<String>>) -> Result<(), Error> {
+        let mut next = self.state.clone();
+        match keys {
+            Some(keys) => next.shortcuts.insert(action.to_string(), keys),
+            None => next.shortcuts.remove(action),
+        };
+        self.commit(next, false)
+    }
+
     pub fn export_escaped(&self) -> bool {
         self.state.export_escaped
     }
@@ -208,6 +344,30 @@ impl SettingsStore {
         self.commit(next, false)
     }
 
+    pub fn opening_view(&self) -> OpeningView {
+        self.state.opening_view
+    }
+
+    pub fn set_opening_view(&mut self, view: OpeningView) -> Result<(), Error> {
+        let mut next = self.state.clone();
+        next.opening_view = view;
+        self.commit(next, false)
+    }
+
+    pub fn last_view_table(&self) -> bool {
+        self.state.last_view_table
+    }
+
+    /// Keeps whether the view last picked is the table; nothing is saved when it is unchanged.
+    pub fn set_last_view_table(&mut self, table: bool) -> Result<(), Error> {
+        if self.state.last_view_table == table {
+            return Ok(());
+        }
+        let mut next = self.state.clone();
+        next.last_view_table = table;
+        self.commit(next, false)
+    }
+
     pub fn set_language(&mut self, language: Language) -> Result<(), Error> {
         let mut next = self.state.clone();
         next.language = language.code().to_string();
@@ -215,28 +375,20 @@ impl SettingsStore {
     }
 
     /// Puts the passwords that changed (or aren't in the vault yet) into it and
-    /// marks them as living there. One that can't be stored stays in the file; one
-    /// that isn't loaded is left alone.
-    fn vault_secrets(&mut self, next: &mut StoredSettings) {
-        self.vault_cloud_secrets(next);
-        self.vault_profile_secrets(next);
+    /// marks them as living there. The one `vaulting` names is stored as `policy` says;
+    /// another that can't be stored stays in the file. One that isn't loaded is left alone.
+    fn vault_secrets(&mut self, next: &mut StoredSettings, vaulting: Vaulting<'_>, policy: SecretsPolicy) -> Result<(), Error> {
+        self.vault_cloud_secrets(next, vaulting, policy)?;
+        self.vault_profile_secrets(next, vaulting, policy)
     }
 
-    /// Stores `secrets` under `key` while the vault is usable: the first failure makes
-    /// it unusable for the rest of the run. Whether they are stored.
-    fn store_secret(&mut self, key: &str, secrets: &Secrets) -> bool {
-        if self.vault_usable
-            && let Err(e) = self.vault.set(key, secrets)
-        {
-            tracing::warn!("the system keyring can't store passwords ({e}); they stay in the settings file this run");
-            self.vault_usable = false;
-        }
-        self.vault_usable
+    fn commit(&mut self, next: StoredSettings, store_secrets: bool) -> Result<(), Error> {
+        self.commit_with(next, if store_secrets { Vaulting::Quietly } else { Vaulting::Untouched }, SecretsPolicy::PlainText)
     }
 
-    fn commit(&mut self, mut next: StoredSettings, store_secrets: bool) -> Result<(), Error> {
-        if store_secrets {
-            self.vault_secrets(&mut next);
+    fn commit_with(&mut self, mut next: StoredSettings, vaulting: Vaulting<'_>, policy: SecretsPolicy) -> Result<(), Error> {
+        if vaulting != Vaulting::Untouched {
+            self.vault_secrets(&mut next, vaulting, policy)?;
         }
         let mut on_disk = next.clone();
         for profile in on_disk.ssh_profiles.iter_mut().filter(|p| p.in_vault) {

@@ -9,8 +9,8 @@ use crate::connection::{CloudKey, ConnectionItem, ConnectionPayloadInput, Connec
 use crate::error::{Error, Invalid, NotFound};
 use crate::now_ms;
 use crate::persist;
-use crate::secret_vault::KeyringError;
-use crate::secret_vault::{OsVault, Secrets, SecretsCleanup, Vault, VaultBacked};
+use crate::secret::Secret;
+use crate::secret_vault::{KeyringError, LeftOut, OsVault, Secrets, SecretsCleanup, SecretsPolicy, Vault, VaultBacked, Vaulting, place};
 
 fn default_ssh_port() -> u16 {
     22
@@ -31,7 +31,7 @@ struct StoredConnection {
     #[serde(default, skip_serializing)]
     db: Option<u32>,
     username: String,
-    password: String,
+    password: Secret,
     last_connected_at: Option<i64>,
     // (`default`s: connections saved before SSH tunnels existed have none of these)
     #[serde(default)]
@@ -43,17 +43,23 @@ struct StoredConnection {
     #[serde(default)]
     ssh_username: String,
     #[serde(default)]
-    ssh_password: String,
+    ssh_password: Secret,
     #[serde(default)]
     ssh_private_key: String,
     #[serde(default)]
-    ssh_passphrase: String,
+    ssh_passphrase: Secret,
     // the connection profile it uses ("" for none)
     #[serde(default)]
     profile_id: String,
+    // no write to Redis is made through this connection
+    #[serde(default)]
+    read_only: bool,
     // the passwords and passphrase are in the credential store, not in this file
     #[serde(default)]
     in_vault: bool,
+    // the secrets saved nowhere: asked for when connecting, held in memory for the run
+    #[serde(default, skip_serializing_if = "LeftOut::is_empty")]
+    left_out: LeftOut,
     // what a newer version wrote that this one doesn't know: saved back as it was
     #[serde(flatten)]
     extra: serde_json::Map<String, serde_json::Value>,
@@ -81,17 +87,19 @@ impl Default for StoredConnection {
             port: None,
             db: None,
             username: String::new(),
-            password: String::new(),
+            password: Secret::default(),
             last_connected_at: None,
             ssh_enabled: false,
             ssh_host: String::new(),
             ssh_port: default_ssh_port(),
             ssh_username: String::new(),
-            ssh_password: String::new(),
+            ssh_password: Secret::default(),
             ssh_private_key: String::new(),
-            ssh_passphrase: String::new(),
+            ssh_passphrase: Secret::default(),
             profile_id: String::new(),
+            read_only: false,
             in_vault: false,
+            left_out: LeftOut::default(),
             extra: Default::default(),
         }
     }
@@ -149,7 +157,7 @@ fn without_password(url: &str) -> Option<String> {
 }
 
 /// `url` with the saved username and password added where the URL has none.
-fn with_credentials(url: &str, username: &str, password: &str) -> String {
+fn with_credentials(url: &str, username: &str, password: &Secret) -> String {
     let Some(mut parsed) = (if url.contains("://") { url::Url::parse(url) } else { url::Url::parse(&format!("redis://{url}")) }).ok()
     else {
         return url.to_string();
@@ -158,7 +166,7 @@ fn with_credentials(url: &str, username: &str, password: &str) -> String {
     if parsed.username().is_empty() && !username.is_empty() && parsed.set_username(username).is_ok() {
         changed = true;
     }
-    if parsed.password().is_none() && !password.is_empty() && parsed.set_password(Some(password)).is_ok() {
+    if parsed.password().is_none() && !password.is_empty() && parsed.set_password(Some(password.expose())).is_ok() {
         changed = true;
     }
     if changed { parsed.to_string() } else { url.to_string() }
@@ -166,7 +174,7 @@ fn with_credentials(url: &str, username: &str, password: &str) -> String {
 
 /// `redis://[user[:password]@]host:port[/db]`, with user and password
 /// percent-encoded (via `url`) and IPv6 hosts bracketed; db 0 is left out.
-pub fn build_connection_string(host: &str, port: u16, db: u32, username: &str, password: &str) -> String {
+pub fn build_connection_string(host: &str, port: u16, db: u32, username: &str, password: &Secret) -> String {
     let host = if host.contains(':') && !host.starts_with('[') { format!("[{host}]") } else { host.to_string() };
     let mut base = format!("redis://{host}:{port}");
     if db != 0 {
@@ -177,7 +185,7 @@ pub fn build_connection_string(host: &str, port: u16, db: u32, username: &str, p
         let _ = url.set_username(username);
     }
     if !password.is_empty() {
-        let _ = url.set_password(Some(password));
+        let _ = url.set_password(Some(password.expose()));
     }
     url.to_string()
 }
@@ -197,6 +205,7 @@ fn apply_payload(conn: &mut StoredConnection, payload: ConnectionPayloadInput) {
     }
     if let Some(password) = payload.password {
         conn.password = password;
+        conn.left_out.password = false;
     }
     if let Some(enabled) = payload.ssh_enabled {
         conn.ssh_enabled = enabled;
@@ -212,15 +221,20 @@ fn apply_payload(conn: &mut StoredConnection, payload: ConnectionPayloadInput) {
     }
     if let Some(password) = payload.ssh_password {
         conn.ssh_password = password;
+        conn.left_out.ssh_password = false;
     }
     if let Some(key) = payload.ssh_private_key {
         conn.ssh_private_key = trimmed(key);
     }
     if let Some(passphrase) = payload.ssh_passphrase {
         conn.ssh_passphrase = passphrase;
+        conn.left_out.ssh_passphrase = false;
     }
     if let Some(profile_id) = payload.profile_id {
         conn.profile_id = profile_id;
+    }
+    if let Some(read_only) = payload.read_only {
+        conn.read_only = read_only;
     }
 }
 
@@ -234,7 +248,7 @@ fn finish(conn: &mut StoredConnection, secrets_loaded: bool) -> Result<(), Error
     if conn.connection_url.is_empty() {
         return Err(Invalid::ConnectionUrl.into());
     }
-    let parts = super::url::parse(&conn.connection_url).ok_or(Invalid::UnreadableUrl)?;
+    let parts = super::url::parse(&conn.connection_url)?;
     if parts.host.is_empty() {
         return Err(Invalid::UrlWithoutHost.into());
     }
@@ -256,7 +270,12 @@ fn finish(conn: &mut StoredConnection, secrets_loaded: bool) -> Result<(), Error
         }
         // no username: the active SSH profile (see Settings) logs in, which
         // can't be known here, so there is nothing more to require
-        if !conn.ssh_username.is_empty() && secrets_loaded && conn.ssh_password.is_empty() && conn.ssh_private_key.is_empty() {
+        if !conn.ssh_username.is_empty()
+            && secrets_loaded
+            && conn.ssh_password.is_empty()
+            && !conn.left_out.ssh_password
+            && conn.ssh_private_key.is_empty()
+        {
             return Err(Invalid::SshLogin.into());
         }
     }
@@ -284,7 +303,7 @@ fn initial_state() -> StoredState {
             port: std::env::var("REDIS_PORT").ok().and_then(|v| v.parse().ok()),
             db: std::env::var("REDIS_DB").ok().and_then(|v| v.parse().ok()),
             username: std::env::var("REDIS_USERNAME").unwrap_or_default(),
-            password: std::env::var("REDIS_PASSWORD").unwrap_or_default(),
+            password: std::env::var("REDIS_PASSWORD").unwrap_or_default().into(),
             ..Default::default()
         }],
         extra: Default::default(),
@@ -296,7 +315,7 @@ fn initial_state() -> StoredState {
 /// Builds a URL for each connection that has only a host, port and database.
 fn give_urls(state: &mut StoredState) {
     for conn in state.connections.iter_mut().filter(|c| c.connection_url.trim().is_empty() && !c.host.is_empty()) {
-        conn.connection_url = build_connection_string(&conn.host, conn.port.unwrap_or(6379), conn.db.unwrap_or(0), "", "");
+        conn.connection_url = build_connection_string(&conn.host, conn.port.unwrap_or(6379), conn.db.unwrap_or(0), "", &Secret::default());
     }
 }
 
@@ -316,6 +335,7 @@ fn to_item(stored: &StoredConnection) -> ConnectionItem {
             passphrase: stored.ssh_passphrase.clone(),
         }),
         profile_id: stored.profile_id.clone(),
+        read_only: stored.read_only,
     }
 }
 
@@ -328,6 +348,12 @@ impl ConnectionStore {
     #[cfg(any(test, feature = "test-support"))]
     pub fn in_memory(file_path: PathBuf) -> Self {
         Self::with_vault(file_path, Arc::new(crate::secret_vault::MemoryVault::default()))
+    }
+
+    /// A store whose secrets go to `vault`, which the tests can make fail like a missing keyring.
+    #[cfg(any(test, feature = "test-support"))]
+    pub fn with_memory_vault(file_path: PathBuf, vault: crate::secret_vault::MemoryVault) -> Self {
+        Self::with_vault(file_path, Arc::new(vault))
     }
 
     pub(crate) fn with_vault(file_path: PathBuf, vault: Arc<dyn Vault>) -> Self {
@@ -384,52 +410,63 @@ impl ConnectionStore {
             self.unloaded.remove(id);
         } else {
             let conn = &self.state.connections[position];
-            if !conn.in_vault && !conn.secrets().is_empty() && self.vault_usable {
+            if !conn.in_vault && !conn.secrets().without(conn.left_out).is_empty() && self.vault_usable {
                 return self.commit(self.state.clone(), true);
             }
         }
         Ok(())
     }
 
-    /// Puts `next`'s connections' secrets into the vault where needed. One
-    /// whose secrets aren't loaded is left alone, as is one that can't be
-    /// stored — its secrets stay in the file.
-    fn vault_secrets(&mut self, next: &mut StoredState) {
+    /// Puts `next`'s connections' secrets into the vault where needed, never those left out
+    /// or not loaded. The ones `vaulting` names follow `policy`; the others are moved quietly
+    /// and stay in the file if they can't be stored.
+    fn vault_secrets(&mut self, next: &mut StoredState, vaulting: Vaulting<'_>, policy: SecretsPolicy) -> Result<(), Error> {
         for conn in &mut next.connections {
             if self.unloaded.contains(&conn.id) {
                 continue;
             }
-            let secrets = conn.secrets();
+            let saving = matches!(vaulting, Vaulting::Saving(ids) if ids.contains(&conn.id.as_str()));
+            if saving && policy == SecretsPolicy::LeaveOut {
+                let set = conn.secrets().set_ones();
+                conn.left_out = LeftOut {
+                    password: conn.left_out.password || set.password,
+                    ssh_password: conn.left_out.ssh_password || set.ssh_password,
+                    ssh_passphrase: conn.left_out.ssh_passphrase || set.ssh_passphrase,
+                };
+            }
+            let secrets = conn.secrets().without(conn.left_out);
             if secrets.is_empty() {
                 conn.in_vault = false;
                 continue;
             }
-            let unchanged = conn.in_vault && self.state.connections.iter().any(|c| c.id == conn.id && c.in_vault && c.secrets() == secrets);
+            let before = self.state.connections.iter().find(|c| c.id == conn.id);
+            let unchanged = conn.in_vault && before.is_some_and(|c| c.in_vault && c.secrets().without(c.left_out) == secrets);
             if unchanged {
                 continue;
             }
-            conn.in_vault = self.vault_usable
-                && match self.vault.set(&conn.id, &secrets) {
-                    Ok(()) => true,
-                    Err(e) => {
-                        tracing::warn!("the system keyring can't store passwords ({e}); they stay in the data file this run");
-                        self.vault_usable = false;
-                        false
-                    }
-                };
+            // what the file holds already is no new exposure: it isn't asked about again
+            let in_file_already = before.is_some_and(|c| !c.in_vault && c.secrets().without(c.left_out) == secrets);
+            let policy = if saving && !in_file_already { policy } else { SecretsPolicy::PlainText };
+            conn.in_vault = place(&*self.vault, &conn.id, &secrets, policy, &mut self.vault_usable)?;
         }
+        Ok(())
     }
 
     /// Persists `next` and only then makes it current, so a failed write
     /// leaves memory and disk agreeing on the old state. With
     /// `store_secrets`, changed secrets are vaulted first; without it, untouched.
-    fn commit(&mut self, mut next: StoredState, store_secrets: bool) -> Result<(), Error> {
-        if store_secrets {
-            self.vault_secrets(&mut next);
+    fn commit(&mut self, next: StoredState, store_secrets: bool) -> Result<(), Error> {
+        self.commit_with(next, if store_secrets { Vaulting::Quietly } else { Vaulting::Untouched }, SecretsPolicy::PlainText)
+    }
+
+    fn commit_with(&mut self, mut next: StoredState, vaulting: Vaulting<'_>, policy: SecretsPolicy) -> Result<(), Error> {
+        if vaulting != Vaulting::Untouched {
+            self.vault_secrets(&mut next, vaulting, policy)?;
         }
         let mut on_disk = next.clone();
-        for conn in on_disk.connections.iter_mut().filter(|c| c.in_vault) {
-            conn.set_secrets(Secrets::default());
+        for conn in on_disk.connections.iter_mut() {
+            let kept = if conn.in_vault { Secrets::default() } else { conn.secrets().without(conn.left_out) };
+            conn.set_secrets(kept);
         }
         if !self.dry_run {
             persist::save(&self.file_path, &on_disk)?;
@@ -484,28 +521,37 @@ impl ConnectionStore {
 
     #[cfg(test)]
     pub fn create(&mut self, payload: ConnectionPayloadInput) -> Result<(), Error> {
-        self.create_with_id(&Uuid::new_v4().to_string(), payload)
+        self.create_with_id(&Uuid::new_v4().to_string(), payload, SecretsPolicy::PlainText)
     }
 
-    /// `create`, under an id chosen by the caller.
-    pub fn create_with_id(&mut self, id: &str, payload: ConnectionPayloadInput) -> Result<(), Error> {
-        self.add(id, payload, true)
+    /// `create`, under an id chosen by the caller; `policy` says what to do with secrets
+    /// the credential store won't take.
+    pub fn create_with_id(&mut self, id: &str, payload: ConnectionPayloadInput, policy: SecretsPolicy) -> Result<(), Error> {
+        self.add(id, payload, policy)
     }
 
     /// Adds a connection without making it the active one (an import). Its tunnel may come
     /// with a username and no password or key, as a file made without the passwords has it.
-    pub fn import_with_id(&mut self, id: &str, payload: ConnectionPayloadInput) -> Result<(), Error> {
-        self.add(id, payload, false)
+    pub fn import_with_id(&mut self, id: &str, payload: ConnectionPayloadInput, policy: SecretsPolicy) -> Result<(), Error> {
+        self.import_all(&[(id.to_string(), payload)], policy)
     }
 
-    fn add(&mut self, id: &str, payload: ConnectionPayloadInput, from_form: bool) -> Result<(), Error> {
-        let conn = StoredConnection { id: id.to_string(), ..connection_from_payload(payload, from_form)? };
+    /// `import_with_id` for several at once: all are saved, or none.
+    pub fn import_all(&mut self, items: &[(String, ConnectionPayloadInput)], policy: SecretsPolicy) -> Result<(), Error> {
         let mut next = self.state.clone();
-        if from_form {
-            next.active_connection_id = conn.id.clone();
+        for (id, payload) in items {
+            next.connections.push(StoredConnection { id: id.clone(), ..connection_from_payload(payload.clone(), false)? });
         }
+        let ids: Vec<&str> = items.iter().map(|(id, _)| id.as_str()).collect();
+        self.commit_with(next, Vaulting::Saving(&ids), policy)
+    }
+
+    fn add(&mut self, id: &str, payload: ConnectionPayloadInput, policy: SecretsPolicy) -> Result<(), Error> {
+        let conn = StoredConnection { id: id.to_string(), ..connection_from_payload(payload, true)? };
+        let mut next = self.state.clone();
+        next.active_connection_id = conn.id.clone();
         next.connections.push(conn);
-        self.commit(next, true)
+        self.commit_with(next, Vaulting::Saving(&[id]), policy)
     }
 
     /// The connection `payload` describes as it would be saved, without saving it: an edit
@@ -520,7 +566,7 @@ impl ConnectionStore {
         Ok(to_item(&conn))
     }
 
-    pub fn update(&mut self, id: &str, payload: ConnectionPayloadInput) -> Result<(), Error> {
+    pub fn update(&mut self, id: &str, payload: ConnectionPayloadInput, policy: SecretsPolicy) -> Result<(), Error> {
         // the secrets are kept in one entry: changing one needs the others
         if payload.password.is_some() || payload.ssh_password.is_some() || payload.ssh_passphrase.is_some() {
             self.unlock_secrets(id)?;
@@ -529,7 +575,29 @@ impl ConnectionStore {
         let existing = next.connections.iter_mut().find(|c| c.id == id).ok_or(NotFound::Connection)?;
         apply_payload(existing, payload);
         finish(existing, !self.unloaded.contains(id))?;
-        self.commit(next, true)
+        self.commit_with(next, Vaulting::Saving(&[id]), policy)
+    }
+
+    /// The secrets of connection `id` that were saved nowhere and aren't known yet this run.
+    pub fn missing_secrets(&self, id: &str) -> LeftOut {
+        self.state.connections.iter().find(|c| c.id == id).map_or_else(LeftOut::default, |c| c.secrets().missing(c.left_out))
+    }
+
+    /// Gives connection `id` the secrets asked of the user, for this run only: they are
+    /// never written (a field of `secrets` left empty keeps what the connection has).
+    pub fn provide_secrets(&mut self, id: &str, secrets: Secrets) {
+        let Some(conn) = self.state.connections.iter_mut().find(|c| c.id == id) else { return };
+        let mut known = conn.secrets();
+        for (mine, given) in [
+            (&mut known.password, secrets.password),
+            (&mut known.ssh_password, secrets.ssh_password),
+            (&mut known.ssh_passphrase, secrets.ssh_passphrase),
+        ] {
+            if !given.is_empty() {
+                *mine = given;
+            }
+        }
+        conn.set_secrets(known);
     }
 
     pub fn set_active(&mut self, id: &str) -> Result<(), Error> {

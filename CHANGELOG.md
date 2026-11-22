@@ -4,6 +4,41 @@ Every stable release of Cachemire; `Unreleased` is what the next one brings. Bet
 
 ## Unreleased
 
+## 3.3.0 - 2026-11-22
+
+### Added
+
+- **Settings**: categories on the side, a search across every setting, and an About page (the title bar's **i**)
+- **Appearance** (Settings, Display): dark and light themes (Nord, Dracula, Catppuccin, Gruvbox, Solarized...), their own syntax colors, any installed font for the interface and the values, and the zoom the app starts at
+- **Key bindings** (Settings): every shortcut listed, and the app's own can be given other keys
+- **Key header**: one row with a single search box for fields and values (Tab or `f:` / `v:` picks where, `$` or `.` filters the JSON), searches kept as colored pills, and an **Export…** menu
+- **YAML, XML and raw text**: values can be shown, edited and formatted as YAML, XML or raw text, and the table view makes columns from them
+- **Links**: copy a `cachemire://` link to a key or one of its fields; opening it goes there, on the right connection
+- **SSH host keys**: a new server's key is shown with its fingerprint to trust or refuse, and `~/.ssh/known_hosts` is used
+- **Read-only**: a connection or a connection profile can block every write to Redis (the default Production profile does)
+- **Light theming**: a connection profile can tint only the connection bar instead of the whole window
+- **Safer edits**: deleting a folder asks first, and saving a value that changed in Redis meanwhile offers to reload or overwrite
+- **Passwords without a keyring**: Cachemire asks before saving one in clear text, or asks for it at each connection instead
+- **Also**: new tabs can open in the table view, the tree's menu copies a key's name, and the Windows portable zip keeps its data next to the exe
+
+### Changed
+
+- **AWS**: one title bar button to sign in and pick a profile, with a filter, recent and pinned profiles, a remembered filter by connection profile, and a reload of the AWS config. ElastiCache clusters in cluster mode are no longer listed
+- **Text selection**: a double click selects a word, a triple click a paragraph, and Shift+click extends the selection
+- **TLS**: `rediss://` connections also trust the certificate authorities installed on your computer
+
+### Fixes
+
+- **Connection**: `valkey://` URLs are accepted, and a TLS server behind an SSH tunnel is checked against its real name
+- **Dialogs**: scrolling over a dialog or an open menu no longer scrolls the view behind it
+- **Export**: a failed export no longer leaves a half-written file, and non-UTF-8 key names are kept exactly
+- **Performance**: big queries and key exports no longer slow the rest of the app down
+- **Query**: a string over 16 MB is refused with a clear message instead of being read whole
+- **Search**: accented letters are found however they're stored, in key and instance searches
+- **Security**: SSO ignores refusals from other sign-ins, exported keys are private, secrets are wiped and kept out of logs
+- **Tabs**: search and query tabs no longer ignore Enter or Run after a while
+- **Values**: binary values show their bytes as `\xNN` and an edit can no longer damage them
+
 ## 3.2.2 - 2026-11-16
 
 ### Fixes

@@ -122,8 +122,8 @@ fn each_connection_gets_its_own_tabs_back_and_a_new_one_starts_with_none() {
         connection_url: Some("redis://localhost:6379".into()),
         ..Default::default()
     };
-    app.state.connections.lock().create_with_id("a", payload("A")).unwrap();
-    app.state.connections.lock().create_with_id("b", payload("B")).unwrap();
+    app.state.connections.lock().create_with_id("a", payload("A"), cachemire_core::secret_vault::SecretsPolicy::PlainText).unwrap();
+    app.state.connections.lock().create_with_id("b", payload("B"), cachemire_core::secret_vault::SecretsPolicy::PlainText).unwrap();
     crate::tabs::open_query(&app, "on a".into());
     h.window.global::<QueryTab>().set_text("on a, edited".into());
     let on_a = strip(&h);
@@ -146,4 +146,27 @@ fn a_deleted_connection_leaves_no_tabs_behind() {
     connect_to(&h, "b");
     connect_to(&h, "a");
     assert_eq!(strip(&h), (Vec::new(), None));
+}
+
+#[test]
+fn saving_the_session_leaves_the_search_or_query_tab_shown_working() {
+    let (h, app, _rt, _turn) = tabs_ready();
+    crate::search::init(&app, &h.window);
+    crate::redisql::init(&app, &h.window);
+    app.state.settings.lock().set_restore_session(true).unwrap();
+
+    crate::tabs::open_search(&app);
+    let search = strip(&h).1.unwrap();
+    h.window.global::<SearchTab>().set_query("ada".into());
+    crate::last_session::save(&app, &h.window);
+    assert_eq!(app.searches.borrow().query(&search), Some("ada"), "the box is saved");
+    h.window.global::<SearchTab>().invoke_submitted("ada".into());
+    assert!(h.window.global::<SearchTab>().get_searched(), "Enter still searches");
+    assert!(h.window.global::<SearchTab>().get_loading());
+
+    crate::tabs::open_query(&app, String::new());
+    crate::last_session::save(&app, &h.window);
+    h.window.global::<QueryTab>().invoke_run_requested("".into(), 0, 0, false);
+    assert!(h.window.global::<QueryTab>().get_ran(), "Run still runs");
+    assert_eq!(h.window.global::<QueryTab>().get_status(), "The query is empty.");
 }

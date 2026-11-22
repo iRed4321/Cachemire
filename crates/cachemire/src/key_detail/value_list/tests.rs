@@ -46,12 +46,12 @@ fn filtering_replaces_each_fields_value_with_what_the_path_matches() {
 #[test]
 fn a_string_key_holding_json_can_be_filtered_like_a_hash_field() {
     use super::super::field::single_value_field;
-    let field = single_value_field(Value::String(r#"{"a": [{"b": 1}, {"b": 2}]}"#.to_string()));
+    let field = single_value_field(Value::String(r#"{"a": [{"b": 1}, {"b": 2}]}"#.to_string()), false);
     assert!(field.json.is_some());
     assert_eq!(field.name, "(value)");
-    let plain = single_value_field(Value::String("just text".to_string()));
+    let plain = single_value_field(Value::String("just text".to_string()), false);
     assert!(plain.json.is_none());
-    let number_text = single_value_field(Value::String("123".to_string()));
+    let number_text = single_value_field(Value::String("123".to_string()), false);
     assert!(number_text.json.is_none(), "a bare number stays text");
     let (kept, matches) = filter_fields(&[Arc::new(field)], parse_filter("a.*.b").unwrap().as_ref());
     assert_eq!((kept[0].json.clone(), matches), (Some(json!([1, 2])), 2));

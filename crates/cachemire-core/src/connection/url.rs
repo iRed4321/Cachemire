@@ -1,36 +1,48 @@
+use crate::error::Invalid;
+use crate::secret::Secret;
 use percent_encoding::percent_decode_str;
 
-/// What a `redis://[user[:password]@]host[:port][/db]` URL spells out; the
-/// scheme is optional (`host:port` alone works), `rediss://` means TLS. Fields
-/// the URL doesn't say are left for the caller to default.
+/// What a `redis://[user[:password]@]host[:port][/db]` URL spells out; the scheme
+/// is optional (`host:port` alone works), `rediss://` and `valkeys://` mean TLS
+/// (`valkey://` is `redis://`). Fields the URL doesn't say are left for the caller.
 pub struct UrlParts {
     pub tls: bool,
     pub host: String,
     pub port: Option<u16>,
     pub db: Option<i64>,
     pub username: String,
-    pub password: String,
+    pub password: Secret,
 }
 
-pub fn parse(value: &str) -> Option<UrlParts> {
+pub fn parse(value: &str) -> Result<UrlParts, Invalid> {
     let value = value.trim();
     if value.is_empty() {
-        return None;
+        return Err(Invalid::UnreadableUrl);
     }
-    let uri = if value.contains("://") { url::Url::parse(value) } else { url::Url::parse(&format!("redis://{value}")) }.ok()?;
+    let uri = if value.contains("://") { url::Url::parse(value) } else { url::Url::parse(&format!("redis://{value}")) }
+        .map_err(|_| Invalid::UnreadableUrl)?;
+    let tls = match uri.scheme() {
+        "redis" | "valkey" => false,
+        "rediss" | "valkeys" => true,
+        other => return Err(Invalid::UnknownScheme(other.to_string())),
+    };
+    let db = match uri.path().trim_matches('/').parse::<i64>() {
+        Ok(db) if db < 0 => return Err(Invalid::InvalidDatabase),
+        parsed => parsed.ok(),
+    };
 
     let decode = |s: &str| percent_decode_str(s).decode_utf8_lossy().into_owned();
-    Some(UrlParts {
-        tls: uri.scheme().eq_ignore_ascii_case("rediss"),
+    Ok(UrlParts {
+        tls,
         // an IPv6 address without the brackets the URL writes it in
         host: match uri.host() {
             Some(url::Host::Ipv6(address)) => address.to_string(),
             _ => uri.host_str().unwrap_or_default().to_string(),
         },
         port: uri.port(),
-        db: uri.path().trim_matches('/').parse().ok(),
+        db,
         username: decode(uri.username()),
-        password: uri.password().map(decode).unwrap_or_default(),
+        password: uri.password().map(decode).map(Secret::new).unwrap_or_default(),
     })
 }
 
@@ -39,8 +51,8 @@ mod tests {
     use super::*;
 
     fn parts(url: &str) -> (bool, String, Option<u16>, Option<i64>, String, String) {
-        let p = parse(url).unwrap_or_else(|| panic!("{url} wasn't understood"));
-        (p.tls, p.host, p.port, p.db, p.username, p.password)
+        let p = parse(url).unwrap_or_else(|error| panic!("{url} wasn't understood: {error}"));
+        (p.tls, p.host, p.port, p.db, p.username, p.password.expose().to_string())
     }
 
     #[test]
@@ -88,7 +100,7 @@ mod tests {
     #[test]
     fn what_cant_be_a_url_is_refused() {
         for url in ["", "   ", "redis://h:99999", "redis://h:port"] {
-            assert!(parse(url).is_none(), "{url:?} was understood");
+            assert!(matches!(parse(url), Err(Invalid::UnreadableUrl)), "{url:?} was understood");
         }
     }
 }

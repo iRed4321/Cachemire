@@ -3,6 +3,8 @@
 //! take in each page the walk brings, and a search filters the index.
 
 use crate::app::App;
+use crate::error::Localize;
+use crate::t;
 use parking_lot::Mutex;
 use rustc_hash::FxHashMap;
 use std::rc::Rc;
@@ -557,6 +559,13 @@ pub fn init(app: &Rc<App>, window: &MainWindow) {
     window.global::<KeyTree>().on_focus_key({
         let app = app.clone();
         move |full_name| focus_key(&app.keyspace.0, full_name.to_string())
+    });
+    // the row menu's Copy: the key's name (a folder's prefix), as the tree shows it
+    window.global::<KeyTree>().on_copy_requested(|name| {
+        crate::app::with(|_, window| match crate::value_actions::copy_to_clipboard(&KeyName::display_id(&name)) {
+            Ok(()) => crate::toast::show_copied(window),
+            Err(e) => crate::toast::show(window, &t!("Copying failed: %{error}", error = e.localized())),
+        })
     });
     window.global::<KeyTree>().on_search_submitted({
         let app = app.clone();

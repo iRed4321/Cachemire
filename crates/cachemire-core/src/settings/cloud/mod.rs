@@ -9,8 +9,9 @@ use serde::{Deserialize, Serialize};
 use super::{SettingsStore, StoredSettings};
 use crate::connection::{CloudKey, ConnectionItem, SshSettings};
 use crate::error::{Error, Invalid, NotFound};
+use crate::secret::Secret;
 use crate::secret_vault::KeyringError;
-use crate::secret_vault::{Secrets, SecretsCleanup};
+use crate::secret_vault::{Secrets, SecretsCleanup, SecretsPolicy, Vaulting, place};
 
 /// An SSH tunnel set for cloud endpoints, as `settings.json` keeps it.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -24,9 +25,9 @@ pub struct CloudSsh {
     pub private_key: String,
     // only while they aren't in the credential store
     #[serde(default)]
-    pub password: String,
+    pub password: Secret,
     #[serde(default)]
-    pub passphrase: String,
+    pub passphrase: Secret,
     #[serde(default)]
     pub in_vault: bool,
 }
@@ -40,8 +41,8 @@ impl CloudSsh {
             port: 22,
             username: String::new(),
             private_key: String::new(),
-            password: String::new(),
-            passphrase: String::new(),
+            password: Secret::default(),
+            passphrase: Secret::default(),
             in_vault: false,
         }
     }
@@ -83,6 +84,18 @@ pub(super) struct StoredCloud {
     // by `account/region/name`
     #[serde(default)]
     pub(super) endpoints: BTreeMap<String, CloudEntry>,
+    // the `account/region` each local AWS profile last listed, by profile name
+    #[serde(default)]
+    pub(super) profiles: BTreeMap<String, String>,
+    // when each local AWS profile last listed its endpoints (Unix ms), by profile name
+    #[serde(default)]
+    pub(super) used: BTreeMap<String, i64>,
+    // the local AWS profiles pinned at the top of the list, in the order they were pinned
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub(super) pinned: Vec<String>,
+    // the connection profile chip picked over the list of profiles ("" for all of them)
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub(super) chip: String,
 }
 
 /// Which cloud settings are meant: an account's, or one endpoint's.
@@ -154,6 +167,11 @@ impl SettingsStore {
         (profile, ssh.filter(|(_, ssh)| ssh.enabled))
     }
 
+    /// The connection profile an endpoint ends up with ("" for none).
+    pub fn cloud_profile_id(&self, key: &CloudKey) -> String {
+        self.cloud_effective(key).0
+    }
+
     /// Gives each of `items`, listed from `account` and `region`, the connection profile and
     /// tunnel set for it (without the secrets: see `fill_cloud_secrets`).
     pub fn apply_cloud(&self, account: &str, region: &str, items: &mut [ConnectionItem]) {
@@ -165,9 +183,9 @@ impl SettingsStore {
                 host: ssh.host.clone(),
                 port: ssh.port,
                 username: ssh.username.clone(),
-                password: String::new(),
+                password: Secret::default(),
                 private_key: ssh.private_key.clone(),
-                passphrase: String::new(),
+                passphrase: Secret::default(),
             });
         }
     }
@@ -217,6 +235,7 @@ impl SettingsStore {
         label: &str,
         profile: Option<String>,
         ssh: Option<CloudSsh>,
+        policy: SecretsPolicy,
     ) -> Result<Option<SecretsCleanup>, Error> {
         if profile.as_ref().is_some_and(|id| !id.is_empty() && !self.state.connection_profiles.iter().any(|p| &p.id == id)) {
             return Err(NotFound::ConnectionProfile.into());
@@ -264,7 +283,7 @@ impl SettingsStore {
         } else {
             map.insert(id, entry);
         }
-        self.commit(next, true)?;
+        self.commit_with(next, Vaulting::Saving(&[&vault_key]), policy)?;
         self.unloaded.remove(&vault_key);
         let now_in_vault = self.cloud_entry(scope).and_then(|e| e.ssh.as_ref()).is_some_and(|s| s.in_vault);
         Ok((was_in_vault && !now_in_vault).then(|| SecretsCleanup::new(self.vault.clone(), &vault_key)))
@@ -308,9 +327,73 @@ impl SettingsStore {
         Ok(cleanups)
     }
 
+    /// Notes that `profile` lists the endpoints of `account` and `region` (for the links to
+    /// them), and that it was used now.
+    pub fn remember_cloud_profile(&mut self, profile: &str, account: &str, region: &str) -> Result<(), Error> {
+        let mut next = self.state.clone();
+        next.cloud.profiles.insert(profile.to_string(), format!("{account}/{region}"));
+        next.cloud.used.insert(profile.to_string(), crate::now_ms());
+        self.commit(next, false)
+    }
+
+    /// The account `profile` last listed the endpoints of, if it ever did.
+    pub fn cloud_profile_account(&self, profile: &str) -> Option<String> {
+        let place = self.state.cloud.profiles.get(profile)?;
+        place.split_once('/').map(|(account, _)| account.to_string())
+    }
+
+    /// When `profile` last listed its endpoints (Unix ms), if it ever did.
+    pub fn cloud_profile_used(&self, profile: &str) -> Option<i64> {
+        self.state.cloud.used.get(profile).copied()
+    }
+
+    /// The local AWS profiles pinned at the top of the list, in the order they were pinned.
+    pub fn cloud_pinned(&self) -> &[String] {
+        &self.state.cloud.pinned
+    }
+
+    /// Pins `profile` at the end of the pinned ones, or unpins it.
+    pub fn set_cloud_pinned(&mut self, profile: &str, pinned: bool) -> Result<(), Error> {
+        if self.state.cloud.pinned.iter().any(|p| p == profile) == pinned {
+            return Ok(());
+        }
+        let mut next = self.state.clone();
+        next.cloud.pinned.retain(|p| p != profile);
+        if pinned {
+            next.cloud.pinned.push(profile.to_string());
+        }
+        self.commit(next, false)
+    }
+
+    /// The chip picked over the list of local AWS profiles, "" for none.
+    pub fn cloud_chip(&self) -> &str {
+        &self.state.cloud.chip
+    }
+
+    /// Keeps `chip` picked over the list of local AWS profiles ("" for none).
+    pub fn set_cloud_chip(&mut self, chip: &str) -> Result<(), Error> {
+        if self.state.cloud.chip == chip {
+            return Ok(());
+        }
+        let mut next = self.state.clone();
+        next.cloud.chip = chip.to_string();
+        self.commit(next, false)
+    }
+
+    /// The profiles last seen listing the endpoints of `account` and `region`, by name.
+    pub fn cloud_profiles_of(&self, account: &str, region: &str) -> Vec<String> {
+        let place = format!("{account}/{region}");
+        self.state.cloud.profiles.iter().filter(|(_, p)| **p == place).map(|(name, _)| name.clone()).collect()
+    }
+
     /// Vaults the cloud tunnels' secrets that changed (see `vault_secrets`).
-    pub(super) fn vault_cloud_secrets(&mut self, next: &mut StoredSettings) {
-        let mut before: FxHashMap<String, (String, String, bool)> = FxHashMap::default();
+    pub(super) fn vault_cloud_secrets(
+        &mut self,
+        next: &mut StoredSettings,
+        vaulting: Vaulting<'_>,
+        policy: SecretsPolicy,
+    ) -> Result<(), Error> {
+        let mut before: FxHashMap<String, (Secret, Secret, bool)> = FxHashMap::default();
         for (key, entry) in cloud_entries(&mut self.state.cloud.clone()) {
             if let Some(ssh) = entry.ssh.as_ref() {
                 before.insert(key, (ssh.password.clone(), ssh.passphrase.clone(), ssh.in_vault));
@@ -333,8 +416,10 @@ impl SettingsStore {
                 continue;
             }
             let secrets = Secrets { ssh_password: ssh.password.clone(), ssh_passphrase: ssh.passphrase.clone(), ..Default::default() };
-            ssh.in_vault = self.store_secret(&key, &secrets);
+            let policy = if vaulting == Vaulting::Saving(&[&key]) { policy } else { SecretsPolicy::PlainText };
+            ssh.in_vault = place(&*self.vault, &key, &secrets, policy, &mut self.vault_usable)?;
         }
+        Ok(())
     }
 }
 

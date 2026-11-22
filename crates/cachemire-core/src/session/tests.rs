@@ -45,8 +45,8 @@ fn an_odd_flat_reply_drops_its_unpaired_last_item() {
 }
 
 #[test]
-fn values_that_arent_utf8_are_read_lossily() {
-    assert_eq!(entries("string", Value::BulkString(b"ok\xff".to_vec())), pairs_of(&[("", "ok\u{fffd}")]));
+fn values_that_arent_utf8_are_read_with_their_bytes_written_out() {
+    assert_eq!(entries("string", Value::BulkString(b"ok\xff".to_vec())), pairs_of(&[("", "ok\\xff")]));
 }
 
 #[test]

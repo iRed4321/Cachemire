@@ -45,13 +45,13 @@ Made for Redis hashes full of JSON: read each value as colored JSON, filter them
 
 ### Filter and tabulate
 
-Type a JSON path in the filter bar and press <kbd>Enter</kbd>:
+Type a JSON path starting with `$` in the key's search box and press <kbd>Enter</kbd>:
 
 ```
-records                 one key
-records.*.name          the name of every record
-records[0].address.city an array index
-..label                 a key at any depth
+$.records               one key
+$.records.*.name        the name of every record
+$.records[0].address.city an array index
+$..label                a key at any depth
 ```
 
 The path is completed from the loaded values. Show the result as a **field/value list** or a **table** with resizable columns, copy selected rows as a JSON array, or export to CSV.
@@ -71,6 +71,11 @@ The path is completed from the loaded values. Show the result as a **field/value
 
   The editor marks errors in place, completes keywords, keys and `alias.field`, keeps your run history, and lets you save named queries. Results open like any key, so filters, views and exports all work on them.
 
+### Edit
+
+- ✏️ **Value editor**: a row's pencil opens its value as JSON, with line numbers and colors, and saves it back to Redis once it is valid. A string key is rewritten whole, its TTL kept; hash fields can be added, renamed and deleted from the same window.
+- 🗂️ **Keys and folders**: right-click the tree to add a key, or to rename or delete a key or a whole folder.
+
 ### Tabs
 
 Open keys, searches and queries in tabs. Drag them around; each remembers its filters and scroll position, and each connection keeps its own set.
@@ -78,31 +83,40 @@ Open keys, searches and queries in tabs. Drag them around; each remembers its fi
 ### Connect
 
 - **Connection URL**: `redis://user:pass@host:6379/0`, or `rediss://` for TLS. Test it before saving.
-- 🔐 **SSH tunnels** with a password, a private key, or both. Host keys are remembered on first use and refused if they change. SSH profiles let you share one login across tunnels.
+- 🔐 **SSH tunnels** with a password, a private key, or both. A server's host key is shown for you to trust the first time (or trusted from `~/.ssh/known_hosts`), then refused if it changes. SSH profiles let you share one login across tunnels.
 - 🎛️ **Connection profiles**: a name and a color that tints the app while connected, so you always know you're on `Production`.
 - ☁️ **AWS**: sign in with your local `~/.aws` profiles (SSO included) and list their ElastiCache endpoints.
 - 📥 **Import / Export** your connections as JSON, with or without passwords.
+- 🔗 **Shareable links**: the link button beside a key's name copies a `cachemire://` link to the key, with its filter or one of its fields, and never a login or password. Opening it goes to that key on the matching saved connection or AWS endpoint. The Windows installer and the .deb register these links; an AppImage only does once it is integrated into the desktop.
 
 > Cluster mode isn't supported yet: such a server is refused with a clear message.
 
 ### Safe by default
 
-- 🛡️ Passwords go to the OS credential store (Credential Manager or Secret Service).
-- Nothing is ever written to Redis: this is a read-only explorer.
+- 🛡️ Passwords go to the OS credential store (Credential Manager or Secret Service). If it is unavailable, Cachemire asks before keeping a password in its data file, and can instead save without it and ask for it when you connect.
+- 🔑 An SSH server's host key is never trusted silently: you see its fingerprint first, keys in `~/.ssh/known_hosts` are honoured, and a key that changes is refused.
+- 🔒 **Read-only profiles and connections**: tick *Read-only* on a connection profile, or on a single connection, and nothing can be written to Redis through it. The default `Production` profile is read-only.
+- Deleting a folder asks first, with the number of keys it will remove.
+- A value that changed in Redis while you were editing it is never overwritten silently: you choose to cancel, reload it or overwrite it.
 
 ### Polish
 
-Zoom with <kbd>Ctrl</kbd>+<kbd>+</kbd>/<kbd>-</kbd>/<kbd>0</kbd> or <kbd>Ctrl</kbd>+scroll. 🌍 **English and French**, following your system or chosen in **Settings**, switched without a restart.
+Zoom with <kbd>Ctrl</kbd>+<kbd>+</kbd>/<kbd>-</kbd>/<kbd>0</kbd> or <kbd>Ctrl</kbd>+scroll. ⌨️ **Configurable key bindings**. 🌍 **English and French**, following your system or chosen in **Settings**, switched without a restart.
 
-## Planned
+## Install
 
-- ✏️ **Editing** keys and values
-- 🗝️ **Valkey** support
-- 🎨 **Themes**
-- ⌨️ **Advanced key bindings**
-- 🖍️ **Syntax highlighting** for values in other languages than JSON
+Download the file for your system from the [releases page](https://github.com/iRed4321/Cachemire/releases/latest):
 
-## Getting started
+| System | File | What it is |
+|---|---|---|
+| Windows | `Cachemire-<version>-x64.msi` | the installer: Start menu entry, `cachemire://` links, updates |
+| Windows | `Cachemire-Portable-<version>-x64.zip` | the portable exe: unzip it and run it |
+| Linux (Debian, Ubuntu) | `cachemire_<version>-1_amd64.deb` | install it with `sudo apt install ./cachemire_<version>-1_amd64.deb` |
+| Linux (any distribution) | `Cachemire-<version>-x86_64.AppImage` | make it executable (`chmod +x`) and run it |
+
+**Updates**: on Windows, **Settings › About** checks for a new version, then downloads and runs its installer. On Linux, it opens the release page, from where you download the new file.
+
+## Build from source
 
 You need a recent stable **Rust**. On Linux, you also need a running Secret Service and Wayland or X11.
 
@@ -118,13 +132,15 @@ Add a connection from the title bar (**New connection…**), pick it, and browse
 | `cargo run --profile fast` | optimized, no LTO: rebuilds in seconds, good for trying the real thing |
 | `cargo run --release` | LTO, stripped: the one to ship |
 
+`cargo test` runs the unit tests and the headless UI ones. `cargo xtask e2e` runs the end-to-end tests: the app and its core against a throwaway Redis server, a local `redis-server` (or `valkey-server`) if there is one, else Docker's `redis:7.4`, else on Windows the `redis-server` of WSL. Each test takes an emptied database of its own.
+
 Installers are built with `cargo xtask build-windows` (MSI and portable zip), `cargo xtask build-deb` and `cargo xtask build-appimage` (or both from one build with `cargo xtask build-linux`).
 
 To try the MSI alone, `cargo xtask build-installer-test --version 1.2.0` packs a stand-in app, quick to build, as any version; on GitHub, run the *Installer test* workflow and download its artifact.
 
 ## Your data
 
-Saved in your user data folder (`%APPDATA%\Cachemire` or `~/.local/share/Cachemire`): your connections, settings, saved queries, SSH host keys and query history.
+Saved in your user data folder (`%APPDATA%\Cachemire` or `~/.local/share/Cachemire`): your connections, settings, saved queries, SSH host keys and query history. The portable Windows zip keeps everything in a `data` folder beside the executable instead.
 
 ## About this project
 

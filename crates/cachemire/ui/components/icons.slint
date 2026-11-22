@@ -161,20 +161,23 @@ export component IconQuery inherits Rectangle {
     }
 }
 
+// a plus: adding something
 export component IconPlus inherits Rectangle {
     in property <color> tint: Theme.text-secondary;
     in property <length> size: 14px;
     width: size;
     height: size;
-    Rectangle {
-        width: parent.size * 0.78;
-        height: 1.4px;
-        background: tint;
-    }
-    Rectangle {
-        width: 1.4px;
-        height: parent.size * 0.78;
-        background: tint;
+
+    Path {
+        width: 100%;
+        height: 100%;
+        viewbox-width: 24;
+        viewbox-height: 24;
+        commands: "M12 4 V20 M4 12 H20";
+        fill: transparent;
+        stroke: tint;
+        stroke-width: 1.8px;
+        stroke-line-cap: round;
     }
 }
 
@@ -262,6 +265,27 @@ export component IconPencil inherits Rectangle {
         fill: transparent;
         stroke: tint;
         stroke-width: 1.6px;
+        stroke-line-cap: round;
+        stroke-line-join: round;
+    }
+}
+
+// two chain links: a link to share
+export component IconLink inherits Rectangle {
+    in property <color> tint: Theme.text-secondary;
+    in property <length> size: 14px;
+    width: size;
+    height: size;
+
+    Path {
+        width: 100%;
+        height: 100%;
+        viewbox-width: 24;
+        viewbox-height: 24;
+        commands: "M10 13 a5 5 0 0 0 7.54 0.54 l3 -3 a5 5 0 0 0 -7.07 -7.07 l-1.72 1.71 M14 11 a5 5 0 0 0 -7.54 -0.54 l-3 3 a5 5 0 0 0 7.07 7.07 l1.71 -1.71";
+        fill: transparent;
+        stroke: tint;
+        stroke-width: 1.8px;
         stroke-line-cap: round;
         stroke-line-join: round;
     }
@@ -501,6 +525,27 @@ export component IconCloud inherits Rectangle {
     }
 }
 
+// a five-pointed star, outlined, or filled for a pinned profile
+export component IconStar inherits Rectangle {
+    in property <color> tint: Theme.text-secondary;
+    in property <length> size: 14px;
+    in property <bool> filled: false;
+    width: size;
+    height: size;
+
+    Path {
+        width: 100%;
+        height: 100%;
+        viewbox-width: 24;
+        viewbox-height: 24;
+        commands: "M 12 3.5 L 14.6 8.8 L 20.5 9.7 L 16.2 13.8 L 17.2 19.6 L 12 16.9 L 6.8 19.6 L 7.8 13.8 L 3.5 9.7 L 9.4 8.8 Z";
+        fill: root.filled ? tint : transparent;
+        stroke: tint;
+        stroke-width: 1.6px;
+        stroke-line-join: round;
+    }
+}
+
 // an arrow turning back: undo, and its mirror image, redo
 export component IconUndo inherits Rectangle {
     in property <color> tint: Theme.text-secondary;
@@ -584,6 +629,69 @@ export component IconSidebar inherits Rectangle {
     }
 }
 
+// a flask: what's experimental
+export component IconFlask inherits Rectangle {
+    in property <color> tint: Theme.text-secondary;
+    in property <length> size: 14px;
+    width: size;
+    height: size;
+
+    Path {
+        width: 100%;
+        height: 100%;
+        viewbox-width: 24;
+        viewbox-height: 24;
+        commands: "M9 3 H15 M10 3 V9 L4.6 18.5 A1.7 1.7 0 0 0 6.1 21 H17.9 A1.7 1.7 0 0 0 19.4 18.5 L14 9 V3 M7.2 15 H16.8";
+        fill: transparent;
+        stroke: tint;
+        stroke-width: 1.6px;
+        stroke-line-cap: round;
+        stroke-line-join: round;
+    }
+}
+
+// an "i" in a circle: about the app
+export component IconInfo inherits Rectangle {
+    in property <color> tint: Theme.text-secondary;
+    in property <length> size: 14px;
+    width: size;
+    height: size;
+
+    Path {
+        width: 100%;
+        height: 100%;
+        viewbox-width: 24;
+        viewbox-height: 24;
+        commands: "M12 3 A9 9 0 1 0 12 21 A9 9 0 1 0 12 3 Z M12 11 V16.5 M12 7.6 V7.7";
+        fill: transparent;
+        stroke: tint;
+        stroke-width: 1.8px;
+        stroke-line-cap: round;
+        stroke-line-join: round;
+    }
+}
+
+// a painter's palette: the color tints of the connection profiles
+export component IconPalette inherits Rectangle {
+    in property <color> tint: Theme.text-secondary;
+    in property <length> size: 14px;
+    width: size;
+    height: size;
+
+    Path {
+        width: 100%;
+        height: 100%;
+        viewbox-width: 24;
+        viewbox-height: 24;
+        commands: "M12 3 A9 9 0 1 0 12 21 C13.4 21 14 20.1 13.5 19 C12.9 17.6 13.8 16 15.4 16 H17.5 A3.5 3.5 0 0 0 21 12.5 C21 7.3 17 3 12 3 Z M7.5 12.5 A1 1 0 1 0 7.5 10.5 A1 1 0 1 0 7.5 12.5 Z M10 8.5 A1 1 0 1 0 10 6.5 A1 1 0 1 0 10 8.5 Z M15 8.5 A1 1 0 1 0 15 6.5 A1 1 0 1 0 15 8.5 Z";
+        fill: transparent;
+        stroke: tint;
+        stroke-width: 1.6px;
+        stroke-line-cap: round;
+        stroke-line-join: round;
+    }
+}
+
 // Small filled triangle, pointing up or down: the sort direction of a column.
 // Two paths rather than a rotation (the software renderer ignores `transform-rotation`).
 export component IconSortTriangle inherits Rectangle {
@@ -604,6 +712,86 @@ export component IconSortTriangle inherits Rectangle {
         fill: filled ? tint : transparent;
         stroke: tint;
         stroke-width: 1.5px;
+        stroke-line-join: round;
+    }
+}
+
+// a keyboard: the key bindings
+export component IconKeyboard inherits Rectangle {
+    in property <color> tint: Theme.text-secondary;
+    in property <length> size: 14px;
+    width: size;
+    height: size;
+
+    Path {
+        width: 100%;
+        height: 100%;
+        viewbox-width: 24;
+        viewbox-height: 24;
+        commands: "M4 6 H20 A2 2 0 0 1 22 8 V16 A2 2 0 0 1 20 18 H4 A2 2 0 0 1 2 16 V8 A2 2 0 0 1 4 6 Z M6 10 H6.01 M10 10 H10.01 M14 10 H14.01 M18 10 H18.01 M8 14 H16";
+        fill: transparent;
+        stroke: tint;
+        stroke-width: 1.6px;
+        stroke-line-cap: round;
+        stroke-line-join: round;
+    }
+}
+
+// a screen on its stand: the display settings
+export component IconDisplay inherits Rectangle {
+    in property <color> tint: Theme.text-secondary;
+    in property <length> size: 14px;
+    width: size;
+    height: size;
+
+    Path {
+        width: 100%;
+        height: 100%;
+        viewbox-width: 24;
+        viewbox-height: 24;
+        commands: "M4 4 H20 A2 2 0 0 1 22 6 V14 A2 2 0 0 1 20 16 H4 A2 2 0 0 1 2 14 V6 A2 2 0 0 1 4 4 Z M8 20 H16 M12 16 V20";
+        fill: transparent;
+        stroke: tint;
+        stroke-width: 1.6px;
+        stroke-line-cap: round;
+        stroke-line-join: round;
+    }
+}
+
+// three dots in a row: a menu of more actions
+export component IconMore inherits Rectangle {
+    in property <color> tint: Theme.text-secondary;
+    in property <length> size: 14px;
+    width: size;
+    height: size;
+
+    Path {
+        width: 100%;
+        height: 100%;
+        viewbox-width: 24;
+        viewbox-height: 24;
+        commands: "M5 10.4 a1.6 1.6 0 1 0 0 3.2 a1.6 1.6 0 1 0 0 -3.2 Z M12 10.4 a1.6 1.6 0 1 0 0 3.2 a1.6 1.6 0 1 0 0 -3.2 Z M19 10.4 a1.6 1.6 0 1 0 0 3.2 a1.6 1.6 0 1 0 0 -3.2 Z";
+        fill: tint;
+    }
+}
+
+// a tick: the choice made in a list
+export component IconCheck inherits Rectangle {
+    in property <color> tint: Theme.text-secondary;
+    in property <length> size: 14px;
+    width: size;
+    height: size;
+
+    Path {
+        width: 100%;
+        height: 100%;
+        viewbox-width: 24;
+        viewbox-height: 24;
+        commands: "M5 12.5 L10 17.5 L19 7";
+        fill: transparent;
+        stroke: tint;
+        stroke-width: 2px;
+        stroke-line-cap: round;
         stroke-line-join: round;
     }
 }

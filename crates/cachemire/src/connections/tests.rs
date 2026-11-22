@@ -15,6 +15,7 @@ fn form() -> ConnectionForm {
         ssh_key: "~/.ssh/id_ed25519".into(),
         ssh_passphrase: "".into(),
         profile_id: "production".into(),
+        read_only: false,
     }
 }
 
@@ -34,7 +35,11 @@ fn a_blank_password_box_keeps_the_stored_password_and_everything_else_is_taken_a
     let typed = payload_from_form(&ConnectionForm { password: "a".into(), ssh_password: "b".into(), ssh_passphrase: "c".into(), ..form() })
         .unwrap();
     assert_eq!(
-        (typed.password.as_deref(), typed.ssh_password.as_deref(), typed.ssh_passphrase.as_deref()),
+        (
+            typed.password.as_ref().map(cachemire_core::secret::Secret::expose),
+            typed.ssh_password.as_ref().map(cachemire_core::secret::Secret::expose),
+            typed.ssh_passphrase.as_ref().map(cachemire_core::secret::Secret::expose)
+        ),
         (Some("a"), Some("b"), Some("c"))
     );
 }

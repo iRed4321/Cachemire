@@ -5,12 +5,13 @@ use std::rc::Rc;
 use std::sync::Arc;
 use std::sync::atomic::Ordering;
 
-use rust_i18n::t;
+use crate::t;
 use slint::ComponentHandle;
 use tokio::runtime::Handle;
 
 use crate::app::App;
 use crate::error::Localize;
+use crate::host_key_dialog::Answered;
 use crate::{ConnectionState, ConnectionStatus, ConnectionView, MainWindow};
 use cachemire_core::connection::SshSettings;
 use cachemire_core::error::ErrorKind;
@@ -23,7 +24,8 @@ pub(crate) fn connect_to(window: &MainWindow, state: Arc<AppState>, rt: &Handle,
     connect_then(window, state, rt, connection_id, announce, || {});
 }
 
-/// [`connect_to`], with `then` run on the UI thread once connected.
+/// [`connect_to`], with `then` run on the UI thread once connected. A connection saved
+/// without some of its passwords asks for them first.
 fn connect_then(
     window: &MainWindow,
     state: Arc<AppState>,
@@ -32,6 +34,18 @@ fn connect_then(
     announce: bool,
     then: impl FnOnce() + Send + 'static,
 ) {
+    let (missing, name) = {
+        let store = state.connections.lock();
+        (store.missing_secrets(&connection_id), store.get(&connection_id).map(|c| c.name).unwrap_or_default())
+    };
+    if !missing.is_empty() {
+        let asked_id = connection_id.clone();
+        let resume = Box::new(move |app: &Rc<App>, window: &MainWindow| {
+            connect_then(window, state, &app.rt, connection_id.clone(), announce, then);
+        });
+        crate::app::with(|app, window| crate::keyring_dialogs::ask_secrets(app, window, &asked_id, &name, missing, resume));
+        return;
+    }
     let attempt = state.connect_attempt.fetch_add(1, Ordering::SeqCst) + 1;
     crate::app::with(|app, _| connection_id.clone_into(&mut app.picked.borrow_mut()));
     let connection = window.global::<ConnectionState>();
@@ -52,6 +66,34 @@ fn connect_then(
             return;
         }
         let (outcome, ssh_via) = done.unwrap_or_else(|e| (Err(e), String::new()));
+        // a server not seen before: the user decides, and a trusted key retries the attempt
+        if let Err(e) = &outcome
+            && let Some(server) = crate::host_key_dialog::unknown(e)
+        {
+            let server = server.clone();
+            let answer = Box::new(move |app: &Rc<App>, window: &MainWindow, answered: Answered| {
+                if state.connect_attempt.load(Ordering::SeqCst) != attempt {
+                    return;
+                }
+                match answered {
+                    Answered::Trusted => connect_then(window, state, &app.rt, connection_id, announce, then),
+                    Answered::Cancelled => {
+                        show(
+                            app,
+                            window,
+                            ConnectionView { status: ConnectionStatus::Disconnected, ssh_via: ssh_via.into(), ..Default::default() },
+                        );
+                        crate::tabs::follow_connection(app, window);
+                    }
+                    Answered::NotSaved(e) => {
+                        show(app, window, failed_view(&connection_id, &e, ssh_via));
+                        crate::tabs::follow_connection(app, window);
+                    }
+                }
+            });
+            crate::host_key_dialog::ask(app, window, server, answer);
+            return;
+        }
         let outcome = outcome.and_then(|c| {
             state.connections.lock().set_active(&connection_id)?;
             Ok(c)
@@ -71,16 +113,7 @@ fn connect_then(
                     ..Default::default()
                 }
             }
-            Err(e) => {
-                tracing::warn!(connection = %connection_id, kind = ?e.kind(), "couldn't connect: {e}");
-                ConnectionView {
-                    status: ConnectionStatus::Disconnected,
-                    status_detail: e.localized().into(),
-                    ssh_failed: e.kind() == ErrorKind::Tunnel,
-                    ssh_via: ssh_via.into(),
-                    ..Default::default()
-                }
-            }
+            Err(e) => failed_view(&connection_id, &e, ssh_via),
         };
         let connected = view.connected;
         show(app, window, view);
@@ -92,6 +125,19 @@ fn connect_then(
         }
         crate::tabs::follow_connection(app, window);
     });
+}
+
+/// The title bar's view of a connection that couldn't be made. `ssh_failed` marks the SSH
+/// tunnel itself as the failure (not the Redis endpoint past it): the SSH badge colors red.
+fn failed_view(connection_id: &str, error: &cachemire_core::error::Error, ssh_via: String) -> ConnectionView {
+    tracing::warn!(connection = %connection_id, kind = ?error.kind(), "couldn't connect: {error}");
+    ConnectionView {
+        status: ConnectionStatus::Disconnected,
+        status_detail: error.localized().into(),
+        ssh_failed: error.kind() == ErrorKind::Tunnel,
+        ssh_via: ssh_via.into(),
+        ..Default::default()
+    }
 }
 
 /// Puts `view` in the title bar. With no connection in it, none stays active in the

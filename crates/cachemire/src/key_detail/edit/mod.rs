@@ -1,27 +1,26 @@
-//! Editing a value: an open row's field as pretty JSON in the value editor, colored as
-//! it's typed, then written back to its hash field or string key once it's valid JSON;
-//! or a new field of a hash, written once it has a name and a value.
+//! Editing a value: an open row's field in the value editor as JSON, YAML, XML or raw
+//! text, colored as it's typed, then written back to its hash field or string key once
+//! it's valid; or a new field of a hash, written once it has a name and a value.
 
+use parking_lot::Mutex;
 use std::cell::RefCell;
-use std::ops::Range;
 use std::rc::Rc;
 use std::sync::Arc;
 
-use rust_i18n::t;
+use crate::styled_text::StyledText;
+use crate::t;
 use serde_json::Value;
-use slint::private_unstable_api::re_exports::StyledText;
 use slint::{ComponentHandle, Model, ModelRc, SharedString, VecModel};
 
 use crate::error::Localize;
 use crate::{KeyPanel, MainWindow, ValueEditor};
-use cachemire_core::explorer;
+use cachemire_core::explorer::{self, Checked};
 use cachemire_core::key_name::KeyName;
 use cachemire_core::state::AppState;
 
 use super::Ctx;
-use super::color::color_for_kind;
+use super::formats::{EditKind, ShowFormat, check, colored_lines, edit_kind_for, format_xml, format_yaml, to_yaml, yaml_document};
 use super::load::LoadRequest;
-use super::pretty_text::{ColorSpans, ColoredParagraph};
 use super::scroll::{current_scroll, set_field_expanded};
 
 /// What the editor writes to: a key of a connection, and the hash field (`None`
@@ -32,12 +31,19 @@ struct EditTarget {
     key: String,
     field: Option<String>,
     creating: bool,
+    /// what the text is edited and checked as; only JSON is rewritten on save
+    kind: EditKind,
     /// the text the editor opened with; saving it unchanged writes nothing
     shown: String,
     /// the value was text, shown as a JSON string: a string saved is written as its text
     as_text: bool,
     /// the value's JSON was laid out on several lines, and is written back as typed
     multiline: bool,
+    /// the value as Redis held it when the editor opened (`None` for a new field): a save
+    /// finding another one stops, unless it overwrites
+    opened: Option<String>,
+    /// what a save that found another value saw: `Some(None)` when it is gone
+    seen: Arc<Mutex<Option<Option<String>>>>,
 }
 
 /// What a write did to the field the editor was open on.
@@ -48,86 +54,17 @@ enum Written {
     Added(String),
 }
 
-/// Why a write didn't happen: the server refused it, or it failed.
+/// Why a write didn't happen: the server refused it, the value in Redis is not the one
+/// the editor opened on (`None`: it is gone), or it failed.
 enum WriteError {
     Refused(String),
+    Changed(Option<String>),
     Failed(cachemire_core::error::Error),
 }
 
 impl From<cachemire_core::error::Error> for WriteError {
     fn from(error: cachemire_core::error::Error) -> Self {
         WriteError::Failed(error)
-    }
-}
-
-/// The end of the number starting at `at`.
-fn number_end(bytes: &[u8], at: usize) -> usize {
-    at + bytes[at..].iter().take_while(|b| b.is_ascii_digit() || matches!(b, b'-' | b'+' | b'.' | b'e' | b'E')).count()
-}
-
-/// The end of the string whose opening quote is at `at`: past its closing quote, or
-/// at the end of its line when it isn't closed there.
-fn string_end(bytes: &[u8], at: usize) -> usize {
-    let mut i = at + 1;
-    while i < bytes.len() && bytes[i] != b'"' && bytes[i] != b'\n' {
-        i += if bytes[i] == b'\\' && bytes.get(i + 1).is_some_and(|b| *b != b'\n') { 2 } else { 1 };
-    }
-    if bytes.get(i) == Some(&b'"') { i + 1 } else { i.min(bytes.len()) }
-}
-
-/// The colored runs of `text`, JSON that may not be valid yet: strings (a key when a
-/// `:` follows), numbers, `true`/`false`, and punctuation; anything else is left plain.
-fn tokens(text: &str) -> Vec<(Range<usize>, &'static str)> {
-    let bytes = text.as_bytes();
-    let mut out = Vec::new();
-    let mut i = 0;
-    while i < bytes.len() {
-        let (end, kind) = match bytes[i] {
-            b'"' => {
-                let end = string_end(bytes, i);
-                let key = text[end..].trim_start().starts_with(':');
-                (end, if key { "key" } else { "string" })
-            }
-            b'-' | b'0'..=b'9' => (number_end(bytes, i), "number"),
-            b'{' | b'}' | b'[' | b']' | b',' | b':' => (i + 1, "punct"),
-            _ if bytes[i..].starts_with(b"true") => (i + 4, "bool"),
-            _ if bytes[i..].starts_with(b"false") => (i + 5, "bool"),
-            _ => {
-                i += 1;
-                continue;
-            }
-        };
-        out.push((i..end, kind));
-        i = end;
-    }
-    out
-}
-
-/// `text` colored the way the value view colors JSON, a paragraph per line.
-fn highlight(text: &str) -> StyledText {
-    let mut runs = tokens(text).into_iter().peekable();
-    let mut paragraphs: Vec<ColoredParagraph> = Vec::new();
-    let mut start = 0;
-    for line in text.split('\n') {
-        let end = start + line.len();
-        let mut spans = ColorSpans::new();
-        // no run crosses a line: strings stop at the end of theirs
-        while let Some((range, kind)) = runs.next_if(|(range, _)| range.start < end) {
-            if let Some(color) = color_for_kind(kind) {
-                spans.push((range.start - start..range.end.min(end) - start, color));
-            }
-        }
-        paragraphs.push((line.to_string(), spans));
-        start = end + 1;
-    }
-    StyledText::from_colored_paragraphs(paragraphs)
-}
-
-/// Why `text` isn't valid JSON, "" when it is.
-fn check(text: &str) -> String {
-    match serde_json::from_str::<Value>(text) {
-        Ok(_) => String::new(),
-        Err(e) => t!("Not valid JSON: line %{line}, column %{column}", line = e.line(), column = e.column()).into_owned(),
     }
 }
 
@@ -183,12 +120,16 @@ fn relayout(json: &str, pretty: bool) -> String {
     out
 }
 
-/// `text` pretty-printed when it's valid JSON, as it is otherwise.
-fn format(text: &str) -> String {
-    match serde_json::from_str::<Value>(text) {
-        Ok(_) => relayout(text, true),
-        Err(_) => text.to_string(),
-    }
+/// `text` laid out as `kind` (see [`format_yaml`] and [`format_xml`]); as it is when it
+/// isn't valid, or is raw text.
+fn format(text: &str, kind: EditKind) -> String {
+    let formatted = match kind {
+        EditKind::Json => serde_json::from_str::<Value>(text).ok().map(|_| relayout(text, true)),
+        EditKind::Yaml => format_yaml(text),
+        EditKind::Xml => format_xml(text),
+        EditKind::Text => None,
+    };
+    formatted.unwrap_or_else(|| text.to_string())
 }
 
 /// Makes `lines` the lines of `text`, changing only the rows between the lines they
@@ -223,9 +164,31 @@ fn fits(text: &str, columns: i32, max_lines: i32) -> bool {
     lines <= max_lines.max(0) as usize
 }
 
+/// What the editor shows of the stored value `raw` as `kind`: [`editor_view`] for JSON,
+/// the value's own text otherwise.
+fn view_as(raw: &str, hash: bool, kind: EditKind) -> (String, bool, bool) {
+    match kind {
+        EditKind::Json => editor_view(raw, hash),
+        _ => (raw.replace('\r', ""), false, false),
+    }
+}
+
+/// What the editor shows for the stored value `raw`: its text (pretty JSON), whether the
+/// value is plain text shown as a JSON string, and whether its JSON spans several lines.
+fn editor_view(raw: &str, hash: bool) -> (String, bool, bool) {
+    // (a hash field is JSON when it parses; a string key only when it is an object or array)
+    let json = match serde_json::from_str::<Value>(raw) {
+        Ok(Value::Object(_) | Value::Array(_)) => true,
+        Ok(_) => hash,
+        Err(_) => false,
+    };
+    let text = if json { relayout(raw, true) } else { serde_json::to_string_pretty(raw).unwrap_or_default() };
+    (text, !json, json && raw.contains('\n'))
+}
+
 impl Ctx {
-    /// Opens the editor on field `name` of the shown key, as pretty JSON.
-    fn edit_value(&self, name: &str, target: &RefCell<Option<EditTarget>>) {
+    /// Opens the editor on field `name` of the shown key, as the kind its row's `format` gives.
+    fn edit_value(&self, name: &str, format: ShowFormat, target: &RefCell<Option<EditTarget>>) {
         let Some(window) = self.weak.upgrade() else { return };
         let panel = window.global::<KeyPanel>();
         if !panel.get_editable() {
@@ -233,24 +196,25 @@ impl Ctx {
         }
         let field = self.shared.content.lock().loaded.iter().find(|f| f.name == name && f.too_long.is_none()).cloned();
         let Some(field) = field else { return };
-        // what wasn't UTF-8 was read with replacement characters: saving would write those
-        if field.raw.contains(char::REPLACEMENT_CHARACTER) || name.contains(char::REPLACEMENT_CHARACTER) {
+        // what isn't UTF-8 is shown with its bytes written out: saving would write those
+        if field.is_binary() {
             crate::toast::show(&window, &t!("This value isn't UTF-8 text: it can't be edited here"));
             return;
         }
         let hash = self.shared.content.lock().is_hash();
-        let text = match field.json {
-            Some(_) => relayout(&field.raw, true),
-            None => serde_json::to_string_pretty(&field.raw).unwrap_or_default(),
-        };
+        let kind = edit_kind_for(&field, format);
+        let (text, as_text, multiline) = view_as(&field.raw, hash, kind);
         *target.borrow_mut() = Some(EditTarget {
             connection: window.connection_id().to_string(),
             key: panel.get_key_id().to_string(),
             field: hash.then(|| name.to_string()),
             creating: false,
+            kind,
             shown: text.clone(),
-            as_text: field.json.is_none(),
-            multiline: field.json.is_some() && field.raw.contains('\n'),
+            as_text,
+            multiline,
+            opened: Some(field.raw.clone()),
+            seen: Arc::default(),
         });
         let editor = window.global::<ValueEditor>();
         editor.set_creating(false);
@@ -258,8 +222,10 @@ impl Ctx {
         editor.set_field(if hash { name.into() } else { Default::default() });
         editor.set_is_field(hash);
         editor.set_name(name.into());
+        editor.set_kind(kind.index());
         editor.set_text(text.into());
         editor.set_error(Default::default());
+        editor.set_conflict(Default::default());
         editor.set_saving(false);
         editor.set_open(true);
     }
@@ -276,9 +242,12 @@ impl Ctx {
             key: panel.get_key_id().to_string(),
             field: None,
             creating: true,
+            kind: EditKind::Json,
             shown: String::new(),
             as_text: true,
             multiline: false,
+            opened: None,
+            seen: Arc::default(),
         });
         let editor = window.global::<ValueEditor>();
         editor.set_creating(true);
@@ -286,8 +255,10 @@ impl Ctx {
         editor.set_field(Default::default());
         editor.set_is_field(true);
         editor.set_name(Default::default());
+        editor.set_kind(EditKind::Json.index());
         editor.set_text("\"\"".into());
         editor.set_error(Default::default());
+        editor.set_conflict(Default::default());
         editor.set_saving(false);
         editor.set_open(true);
     }
@@ -313,12 +284,52 @@ impl Ctx {
         if taken { t!("This hash already has a field with this name").into_owned() } else { String::new() }
     }
 
-    /// Writes `text` (valid JSON) to what the editor is open on, under the field name
-    /// `name` for a hash: a string as its text when the value was text, anything else as
-    /// JSON (as typed when it was on several lines, else on one); nothing when unchanged.
-    fn save_value(&self, text: &str, name: &str, target: &RefCell<Option<EditTarget>>) {
-        let Ok(value) = serde_json::from_str::<Value>(text) else { return };
+    /// Makes the editor take its `text` as `kind`. Text shown as a JSON string turns into
+    /// that text and back; a JSON object or array turns into YAML, and such YAML into JSON:
+    /// a save then writes the converted value.
+    fn set_kind(&self, kind: EditKind, text: &str, target: &RefCell<Option<EditTarget>>) {
+        let Some(window) = self.weak.upgrade() else { return };
+        let mut target = target.borrow_mut();
+        let Some(target) = target.as_mut() else { return };
+        let hash = target.field.is_some() || target.creating;
+        let json = serde_json::from_str::<Value>(text).ok();
+        // (the text as `kind`, whether it is the same value shown another way)
+        let (new, same) = match (target.kind, kind, json) {
+            (from, to, _) if from == to => return,
+            (EditKind::Json, _, Some(Value::String(plain))) if target.as_text => (plain, true),
+            (EditKind::Json, EditKind::Yaml, Some(json @ (Value::Object(_) | Value::Array(_)))) => match to_yaml(&json) {
+                Some(yaml) => (yaml, false),
+                None => (text.to_string(), true),
+            },
+            (EditKind::Yaml, EditKind::Json, None) if yaml_document(text).is_some() => {
+                let json = yaml_document(text).and_then(|value| serde_json::to_string_pretty(&value).ok()).unwrap_or_default();
+                (target.as_text, target.multiline) = (false, false);
+                (json, false)
+            }
+            (_, EditKind::Json, _) => {
+                let (json, as_text, multiline) = editor_view(text, hash);
+                (target.as_text, target.multiline) = (as_text, multiline);
+                (json, true)
+            }
+            _ => (text.to_string(), true),
+        };
+        if same && text == target.shown {
+            target.shown = new.clone();
+        }
+        target.kind = kind;
+        let editor = window.global::<ValueEditor>();
+        editor.set_kind(kind.index());
+        editor.set_text(new.into());
+    }
+
+    /// Writes `text` (valid as the editor's kind) to what the editor is on, as field `name` of a
+    /// hash; nothing when unchanged. JSON goes on one line (as typed when it was on several), text
+    /// shown as a string as that text. Unless `overwrite`, a value changed in Redis is not written over.
+    fn save_value(&self, text: &str, name: &str, overwrite: bool, target: &RefCell<Option<EditTarget>>) {
         let Some(target) = target.borrow().clone() else { return };
+        if !check(text, target.kind).is_empty() {
+            return;
+        }
         let renamed = target.field.as_deref().filter(|field| *field != name).map(|_| name.to_string());
         if !target.creating && renamed.is_none() && text == target.shown {
             if let Some(window) = self.weak.upgrade() {
@@ -326,12 +337,14 @@ impl Ctx {
             }
             return;
         }
-        let raw = match value {
-            Value::String(text) if target.as_text => text,
+        let raw = match serde_json::from_str::<Value>(text) {
+            _ if target.kind != EditKind::Json => text.to_string(),
+            Ok(Value::String(text)) if target.as_text => text,
             _ if target.multiline => text.to_string(),
             _ => relayout(text, false),
         };
         let added = target.creating.then(|| name.to_string());
+        let expected = target.opened.clone().filter(|_| !overwrite && !target.creating);
         self.run_write(target, t!("Saved").into_owned(), move |state, connection, key, field| async move {
             let connection = Some(connection.as_str());
             if let Some(name) = added {
@@ -341,17 +354,47 @@ impl Ctx {
                 };
             }
             let written: Result<Written, WriteError> = match (field, renamed) {
-                (Some(from), Some(to)) => match explorer::rename_hash_field(&state, connection, &key, &from, &to, &raw).await? {
-                    true => Ok(Written::Renamed(to)),
-                    false => Err(WriteError::Refused(t!("This hash already has a field with this name").into_owned())),
-                },
-                (field, _) => {
-                    explorer::write_value(&state, connection, &key, field.as_deref(), &raw).await?;
-                    Ok(Written::Value)
+                (Some(from), Some(to)) => {
+                    match explorer::rename_hash_field(&state, connection, &key, &from, &to, &raw, expected.as_deref()).await? {
+                        Checked::Done => Ok(Written::Renamed(to)),
+                        Checked::Taken => Err(WriteError::Refused(t!("This hash already has a field with this name").into_owned())),
+                        Checked::Changed(current) => Err(WriteError::Changed(current)),
+                    }
                 }
+                (field, _) => match explorer::write_value(&state, connection, &key, field.as_deref(), &raw, expected.as_deref()).await? {
+                    Checked::Changed(current) => Err(WriteError::Changed(current)),
+                    Checked::Done | Checked::Taken => Ok(Written::Value),
+                },
             };
             written
         });
+    }
+
+    /// "Reload" after a save found another value: the editor takes the value now in Redis,
+    /// which becomes what a save is checked against; if it is gone, the editor closes.
+    fn reload(&self, target: &RefCell<Option<EditTarget>>) {
+        let Some(window) = self.weak.upgrade() else { return };
+        let editor = window.global::<ValueEditor>();
+        let Some(seen) = target.borrow().as_ref().and_then(|t| t.seen.lock().take()) else { return };
+        editor.set_conflict(Default::default());
+        editor.set_error(Default::default());
+        match seen {
+            Some(raw) => {
+                let mut target = target.borrow_mut();
+                let Some(target) = target.as_mut() else { return };
+                let (text, as_text, multiline) = view_as(&raw, target.field.is_some(), target.kind);
+                (target.opened, target.shown, target.as_text, target.multiline) = (Some(raw), text.clone(), as_text, multiline);
+                if let Some(field) = &target.field {
+                    editor.set_name(field.as_str().into());
+                }
+                editor.set_text(text.into());
+            }
+            None => {
+                let Some(target) = target.borrow().clone() else { return };
+                editor.set_open(false);
+                self.show_written(&window, &target, Written::Deleted);
+            }
+        }
     }
 
     /// Removes the hash field the editor is open on.
@@ -375,6 +418,7 @@ impl Ctx {
     {
         let Some(window) = self.weak.upgrade() else { return };
         window.global::<ValueEditor>().set_saving(true);
+        window.global::<ValueEditor>().set_conflict(Default::default());
         let (connection, key, field) = (target.connection.clone(), KeyName::from_id(&target.key), target.field.clone());
         let written = write(self.state.clone(), connection, key, field);
         let ctx = self.clone();
@@ -388,6 +432,15 @@ impl Ctx {
                     ctx.show_written(window, &target, written);
                 }
                 Err(WriteError::Refused(why)) => editor.set_error(why.into()),
+                Err(WriteError::Changed(current)) => {
+                    let why = match (&current, &target.field) {
+                        (Some(_), _) => t!("This value changed in Redis since you opened it."),
+                        (None, Some(_)) => t!("This field no longer exists in Redis."),
+                        (None, None) => t!("This key no longer exists in Redis."),
+                    };
+                    *target.seen.lock() = Some(current);
+                    editor.set_conflict(why.as_ref().into());
+                }
                 Err(WriteError::Failed(e)) => editor.set_error(t!("Saving failed: %{error}", error = e.localized()).as_ref().into()),
             }
         });
@@ -437,11 +490,15 @@ impl Ctx {
 pub(super) fn init(window: &MainWindow, ctx: &Ctx) {
     let target: Rc<RefCell<Option<EditTarget>>> = Rc::default();
     let editor = window.global::<ValueEditor>();
-    editor.on_highlight(|text| highlight(&text));
-    editor.on_check(|text| check(&text).into());
+    editor.on_highlight(|text, kind| StyledText::from_colored_paragraphs(colored_lines(&text, EditKind::from_index(kind))));
+    editor.on_check(|text, kind| check(&text, EditKind::from_index(kind)).into());
+    editor.on_kind_picked({
+        let (ctx, target) = (ctx.clone(), target.clone());
+        move |kind, text| ctx.set_kind(EditKind::from_index(kind), &text, &target)
+    });
     editor.on_fits(|text, columns, max_lines| fits(&text, columns, max_lines));
     editor.on_sanitize(|text| if text.contains('\r') { text.replace('\r', "").into() } else { text });
-    editor.on_format(|text| format(&text).into());
+    editor.on_format(|text, kind| format(&text, EditKind::from_index(kind)).into());
     let lines = Rc::new(VecModel::<SharedString>::default());
     editor.set_lines(ModelRc::from(lines.clone()));
     editor.on_text_changed(move |text| update_lines(&lines, &text));
@@ -451,7 +508,15 @@ pub(super) fn init(window: &MainWindow, ctx: &Ctx) {
     });
     editor.on_save({
         let (ctx, target) = (ctx.clone(), target.clone());
-        move |text, name| ctx.save_value(&text, &name, &target)
+        move |text, name| ctx.save_value(&text, &name, false, &target)
+    });
+    editor.on_overwrite({
+        let (ctx, target) = (ctx.clone(), target.clone());
+        move |text, name| ctx.save_value(&text, &name, true, &target)
+    });
+    editor.on_reload({
+        let (ctx, target) = (ctx.clone(), target.clone());
+        move || ctx.reload(&target)
     });
     editor.on_delete({
         let (ctx, target) = (ctx.clone(), target.clone());
@@ -463,6 +528,9 @@ pub(super) fn init(window: &MainWindow, ctx: &Ctx) {
     });
     window.global::<KeyPanel>().on_edit_value({
         let ctx = ctx.clone();
-        move |field| ctx.edit_value(&field, &target)
+        move |field, format| ctx.edit_value(&field, ShowFormat::from_index(format), &target)
     });
 }
+
+#[cfg(test)]
+mod tests;

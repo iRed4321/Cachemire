@@ -2,9 +2,15 @@ use std::path::PathBuf;
 use std::sync::Arc;
 
 use super::*;
+use cachemire_core::connection::ssh_tunnel::UnknownHostKey;
 
 fn io() -> std::io::Error {
     std::io::Error::other("disk full")
+}
+
+fn host_key() -> russh::keys::PublicKey {
+    use russh::keys::ssh_key::public::{Ed25519PublicKey, KeyData};
+    russh::keys::PublicKey::new(KeyData::Ed25519(Ed25519PublicKey([1; 32])), "")
 }
 
 fn json() -> serde_json::Error {
@@ -33,6 +39,8 @@ fn core_errors() -> Vec<CoreError> {
         Invalid::ConnectionUrl,
         Invalid::UnreadableUrl,
         Invalid::UrlWithoutHost,
+        Invalid::UnknownScheme("http".into()),
+        Invalid::InvalidDatabase,
         Invalid::SshHost,
         Invalid::SshPort,
         Invalid::SshLogin,
@@ -55,6 +63,7 @@ fn core_errors() -> Vec<CoreError> {
     ];
     let tunnel = [
         TunnelError::HostKeyNotSaved { file: file(), source: russh::keys::Error::CouldNotReadKey },
+        TunnelError::UnknownHostKey(Box::new(UnknownHostKey::new("bastion", 22, &host_key()))),
         TunnelError::HostKeyChanged { line: 3, file: file() },
         TunnelError::HostKeyUnchecked(russh::keys::Error::CouldNotReadKey),
         TunnelError::KeyPassphrase { file: file() },
@@ -66,6 +75,7 @@ fn core_errors() -> Vec<CoreError> {
         TunnelError::Connect { host: "bastion".into(), port: 22, source: russh::Error::KexInit },
         TunnelError::Timeout { host: "bastion".into(), port: 22 },
         TunnelError::Unreachable { host: "cache".into(), port: 6379, source: russh::Error::KexInit },
+        TunnelError::Tls { host: "cache".into(), source: io() },
         TunnelError::LocalPort(io()),
         TunnelError::Ssh(russh::Error::KexInit),
     ];
@@ -112,6 +122,7 @@ fn core_errors() -> Vec<CoreError> {
         QueryError::FieldJson { key: "users".into(), field: "u1".into(), source: json() },
         QueryError::NonObjectValue { key: "users".into(), kind: "number" },
         QueryError::ValueJson { key: "users".into(), source: json() },
+        QueryError::StringTooBig { key: "users".into(), size: 20_000_000 },
     ];
     let json_path = [
         ParseError::ExpectedKey(Found::Char { c: '.', position: 4 }),
@@ -126,6 +137,7 @@ fn core_errors() -> Vec<CoreError> {
         KeyringError::ConnectionPasswords(VaultError::Json(Arc::new(json()))),
         KeyringError::SshProfilePassword(VaultError::Unavailable),
         KeyringError::TunnelSecrets(VaultError::Unavailable),
+        KeyringError::CantStore(VaultError::Unavailable),
     ];
 
     let mut errors: Vec<CoreError> = Vec::new();
@@ -143,6 +155,8 @@ fn core_errors() -> Vec<CoreError> {
         FileError::NoFileName(PathBuf::from("/")).into(),
         CoreError::from(join_error()),
         CoreError::ClusterMode,
+        CoreError::ReadOnly,
+        CoreError::BinaryData,
     ]);
     errors
 }
@@ -151,7 +165,7 @@ fn core_errors() -> Vec<CoreError> {
 /// text differs from its error's `Display` would lose that message's translation.
 #[test]
 fn every_error_reads_in_english_as_its_display() {
-    assert_eq!(&*rust_i18n::locale(), "en", "the tests run in English");
+    assert_eq!(crate::i18n::locale(), "en", "the tests run in English");
     for error in core_errors() {
         assert_eq!(error.localized(), error.to_string(), "{error:?}");
     }

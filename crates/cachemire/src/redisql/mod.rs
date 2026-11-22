@@ -11,6 +11,7 @@ use std::sync::atomic::{AtomicU64, Ordering};
 use crate::app::App;
 use crate::error::Localize;
 use crate::key_detail::ScrollPos;
+use crate::t;
 use crate::{CompletionEdit, HistoryRow, MainWindow, QueryTab, SuggestionRow};
 use cachemire_core::error::Error;
 use cachemire_core::now_ms;
@@ -18,7 +19,6 @@ use cachemire_core::redisql::complete::{Caches, Completion, complete};
 use cachemire_core::redisql::history::HistoryEntry;
 use cachemire_core::redisql::{QueryOutput, is_declaration, run_script, split_statements};
 use cachemire_core::state::AppState;
-use rust_i18n::t;
 use serde_json::{Map, Value};
 use slint::ComponentHandle;
 use slint::{ModelRc, VecModel};
@@ -123,10 +123,15 @@ impl QueryTabs {
     /// The tab is being left: keeps what was typed in its box (its last result is
     /// already kept, from when the run that produced it landed).
     pub fn leave(&mut self, window: &MainWindow, id: &str) {
+        self.keep_box(window, id);
+        self.drop_active(id);
+    }
+
+    /// Copies what the shown box holds into tab `id`, which stays shown.
+    pub fn keep_box(&mut self, window: &MainWindow, id: &str) {
         if let Some(tab) = self.tabs.get_mut(id) {
             tab.text = window.global::<QueryTab>().get_text().to_string();
         }
-        self.drop_active(id);
     }
 
     /// The tab is closed: its query stops (if still running) and its result goes.
@@ -323,7 +328,7 @@ struct Navigation {
 }
 
 /// How long ago `then` was, as the history shows it.
-fn ago(now: i64, then: i64) -> String {
+pub(crate) fn ago(now: i64, then: i64) -> String {
     let minutes = ((now - then).max(0) / 60_000) as u64;
     match minutes {
         0 => t!("just now").into_owned(),
@@ -453,6 +458,7 @@ fn suggest(app: &App, caches: &Arc<Caches>, text: String, cursor: usize, force: 
                             before: item[..hit.start].into(),
                             matched: item[hit.clone()].into(),
                             after: item[hit.end..].into(),
+                            ..Default::default()
                         })
                         .collect()
                 })
@@ -498,7 +504,7 @@ pub fn init(app: &Rc<App>, window: &MainWindow) {
 
     // recomputed on every edit — see highlight's own doc comment for
     // why that's cheap enough to need no caching
-    window.global::<QueryTab>().on_highlight(|text, start, end, error_text| {
+    window.global::<QueryTab>().on_highlight(|text, start, end, error_text, _paint_tick| {
         let error = (start >= 0 && end > start && text == error_text).then_some(start as usize..end as usize);
         crate::redisql::highlight::highlight_query(&text, error)
     });

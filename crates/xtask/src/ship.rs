@@ -29,8 +29,8 @@ const TOKEN: &str = "RENOVATE_TOKEN";
 const REQUEST: &str = "release/";
 /// The label of a pull request the Release workflow publishes once it's merged.
 const LABEL: &str = "release";
-/// The checks a pull request into main must pass: the CI's tests.
-const CHECKS: [&str; 2] = ["Test (ubuntu-latest)", "Test (windows-latest)"];
+/// The checks a pull request into main must pass: the CI's lint and tests, on each OS.
+const CHECKS: [&str; 4] = ["Lint (ubuntu-latest)", "Lint (windows-latest)", "Test (ubuntu-latest)", "Test (windows-latest)"];
 
 #[derive(clap::Subcommand)]
 pub enum Ship {

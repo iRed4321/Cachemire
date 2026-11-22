@@ -1,6 +1,6 @@
-//! Headless input/render tests against the real window, on Slint's software renderer, by
-//! area: [`table`], [`values`], [`header`], [`app`], [`dialogs`], [`connections`], [`cloud`] and [`tabs`].
-//! Each test builds its own [`Harness`] (thread-local Slint context).
+//! Headless input/render tests against the real window, on Slint's software renderer, by area: [`app`],
+//! [`dialogs`], [`export`], [`connections`], [`cloud`], [`links`], [`shortcuts`], [`smart_box`], [`tabs`] and
+//! [`e2e`] (against a real Redis server). Each test builds its own [`Harness`] (thread-local Slint context).
 
 use crate::{KeyPanel, MainWindow, QueryTab, SavedQueries, SearchTab, TabStrip};
 use slint::platform::software_renderer::{MinimalSoftwareWindow, RepaintBufferType, Rgb565Pixel};
@@ -14,7 +14,14 @@ mod app;
 mod cloud;
 mod connections;
 mod dialogs;
+mod e2e;
+mod export;
+mod formats;
+mod links;
+mod shortcuts;
+mod smart_box;
 mod tabs;
+mod themes;
 
 /// What other threads hand to the UI thread (`invoke_from_event_loop`). Slint keeps one proxy
 /// for the whole process, so this queue is shared by every test; see [`EventLoopTurn`].
@@ -142,6 +149,20 @@ pub(crate) fn wait_out_double_click(h: &mut Harness) {
     h.frame();
 }
 
+/// Runs the background work until a text holding `marker` went to the clipboard or an editor:
+/// where it went, and the text. Other tests hand theirs out alongside, with their own markers.
+fn handed_out(h: &mut Harness, rt: &tokio::runtime::Runtime, marker: &str) -> (String, String) {
+    for _ in 0..500 {
+        rt.block_on(async { tokio::time::sleep(std::time::Duration::from_millis(2)).await });
+        h.frame();
+        let mut handed = crate::value_actions::HANDED.lock();
+        if let Some(i) = handed.iter().position(|(_, text)| text.contains(marker)) {
+            return handed.remove(i);
+        }
+    }
+    panic!("nothing holding {marker} was handed out");
+}
+
 /// An app state in a directory of its own, its secrets in memory.
 fn test_state() -> std::sync::Arc<cachemire_core::state::AppState> {
     std::sync::Arc::new(cachemire_core::state::AppState::for_tests(&cachemire_core::test_support::temp_dir("headless")))
@@ -168,6 +189,7 @@ fn install_app(
         queries: Default::default(),
         transfer: Default::default(),
         cloud: Default::default(),
+        asked: Default::default(),
     });
     (app, runtime, turn)
 }

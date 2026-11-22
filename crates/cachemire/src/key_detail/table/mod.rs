@@ -4,10 +4,10 @@
 use std::cmp::Ordering;
 use std::sync::Arc;
 
+use crate::styled_text::StyledText;
+use crate::t;
 use rayon::prelude::*;
-use rust_i18n::t;
 use serde_json::Value;
-use slint::private_unstable_api::re_exports::StyledText;
 use slint::{Model, ModelRc, SharedString, VecModel};
 
 use crate::table_text::{cell_chars, cell_text, column_width, push_csv_row, uncapped_column_width};
@@ -73,7 +73,7 @@ pub(super) fn table_fields(fields: &[Arc<Field>], filter: &SearchFilter) -> Fiel
 }
 
 /// One table row before its cells exist: the field it came from, and the value
-/// its cells are read from — `None` for a field that isn't JSON.
+/// its cells are read from — `None` for a field that is neither JSON, YAML nor XML.
 type TableSourceRow<'a> = (&'a Field, Option<&'a Value>);
 
 /// The rows of a table over `fields`: one per field, except that a field whose
@@ -82,11 +82,11 @@ type TableSourceRow<'a> = (&'a Field, Option<&'a Value>);
 fn table_source_rows(fields: &[Arc<Field>]) -> Vec<TableSourceRow<'_>> {
     let mut rows = Vec::new();
     for field in fields {
-        match &field.json {
+        match field.table_value() {
             Some(Value::Array(items)) if !items.is_empty() => {
                 rows.extend(items.iter().map(|item| (field.as_ref(), Some(item))));
             }
-            json => rows.push((field.as_ref(), json.as_ref())),
+            value => rows.push((field.as_ref(), value)),
         }
     }
     rows
@@ -357,7 +357,7 @@ pub(super) fn table_csv(fields: &[Arc<Field>], full: &[Arc<Field>], only: Option
 fn with_full_rows<'a>(mut rows: Vec<TableSourceRow<'a>>, shown: &'a [Arc<Field>], full: &'a [Arc<Field>]) -> Vec<TableSourceRow<'a>> {
     for row in rows.iter_mut().filter(|(field, _)| field.too_long.is_some()) {
         if let Some(field) = shown.iter().position(|f| std::ptr::eq(&**f, row.0)).and_then(|i| full.get(i)) {
-            *row = (field, field.json.as_ref());
+            *row = (field, field.table_value());
         }
     }
     rows

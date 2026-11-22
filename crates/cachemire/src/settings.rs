@@ -1,17 +1,20 @@
-//! Wires the settings window (SSH profiles) to `cachemire_core::settings`,
-//! which handles persistence and the credential store. This is UI glue:
-//! keep the list in sync, switch/save/remove a profile.
+//! Wires the Settings window to `cachemire_core::settings`: the preferences (language, views, search,
+//! startup, updates, host keys, session restore) and the SSH profiles. UI glue only:
+//! persistence and the credential store stay in core.
 
 use crate::error::Localize;
 use cachemire_core::error::Error;
-use cachemire_core::secret_vault::staged;
+use cachemire_core::secret_vault::{SecretsPolicy, staged};
+use std::rc::Rc;
 use std::sync::Arc;
 
 use slint::{ComponentHandle, ModelRc, VecModel};
 use tokio::runtime::Handle;
 
-use crate::{ExportPrefs, LanguageSetting, MainWindow, Preferences, SshProfileForm, SshProfileRowData};
+use crate::app::App;
+use crate::{ExportPrefs, KeyView, LanguageSetting, MainWindow, OpeningView, Preferences, SshProfileForm, SshProfileRowData, Theme};
 use cachemire_core::i18n::Language;
+use cachemire_core::settings::OpeningView as StoredView;
 use cachemire_core::state::AppState;
 
 /// The UI's enum for a language setting, and back: matches, so a language added
@@ -45,16 +48,40 @@ fn refresh(window: &MainWindow, state: &Arc<AppState>) {
 
 /// Adds the profile the form holds, or changes the one it names: a blank
 /// password box on an existing profile keeps its password.
-fn save_profile(state: &AppState, form: &SshProfileForm) -> Result<(), Error> {
+fn save_profile(state: &AppState, form: &SshProfileForm, policy: SecretsPolicy) -> Result<(), Error> {
     let new_id = uuid::Uuid::new_v4().to_string();
     staged(&state.settings, |settings| {
         if form.id.is_empty() {
-            settings.create_ssh_profile_with_id(&new_id, &form.name, &form.username, &form.password).map(|_| ())
+            settings.create_ssh_profile_with_id(&new_id, &form.name, &form.username, &form.password, policy).map(|_| ())
         } else {
             let password = (!form.password.is_empty()).then_some(form.password.as_str());
-            settings.update_ssh_profile(&form.id, &form.name, &form.username, password)
+            settings.update_ssh_profile(&form.id, &form.name, &form.username, password, policy)
         }
     })
+}
+
+/// [`save_profile`] off the UI thread: storing the password can wait on the OS credential
+/// store (a first-time setup, an unlock prompt). If the keyring is unavailable, the user is
+/// asked whether to keep the password in the settings file.
+fn save_profile_off_thread(app: &Rc<App>, form: SshProfileForm, policy: SecretsPolicy) {
+    let state = app.state.clone();
+    app.rt.spawn_blocking(move || {
+        let result = save_profile(&state, &form, policy);
+        if result.is_ok() {
+            drop_profile_pools(&state);
+        }
+        crate::app::later(move |app, window| match result {
+            Ok(()) => {
+                window.global::<Preferences>().set_ssh_profile_editing(false);
+                refresh(window, &app.state);
+            }
+            Err(e) if crate::keyring_dialogs::is_unavailable(&e) => {
+                let retry = Box::new(move |app: &Rc<App>, _: &MainWindow, policy| save_profile_off_thread(app, form, policy));
+                crate::keyring_dialogs::ask_keyring(app, window, false, retry);
+            }
+            Err(e) => window.global::<Preferences>().set_error(e.localized().into()),
+        });
+    });
 }
 
 /// Drops the open pools of the connections whose SSH tunnel logs in with the
@@ -78,15 +105,63 @@ fn saved(window: &MainWindow, result: Result<(), Error>, apply: impl FnOnce(&Mai
     }
 }
 
+/// Whether the settings' search finds `text`: every word of `query` is in it, whatever
+/// their case and accents.
+pub fn found(query: &str, text: &str) -> bool {
+    let text = fold(text);
+    fold(query).split_whitespace().all(|word| text.contains(word))
+}
+
+fn fold(text: &str) -> String {
+    text.to_lowercase()
+        .chars()
+        .map(|c| match c {
+            'à' | 'á' | 'â' | 'ä' => 'a',
+            'ç' => 'c',
+            'è' | 'é' | 'ê' | 'ë' => 'e',
+            'ì' | 'í' | 'î' | 'ï' => 'i',
+            'ò' | 'ó' | 'ô' | 'ö' => 'o',
+            'ù' | 'ú' | 'û' | 'ü' => 'u',
+            'ÿ' => 'y',
+            c => c,
+        })
+        .collect()
+}
+
+/// Gives the window the colors of the theme and syntax theme the settings hold.
+fn apply_theme(window: &MainWindow, state: &AppState) {
+    let settings = state.settings.lock();
+    crate::theme::apply(window, settings.theme(), settings.syntax_theme());
+}
+
+/// Gives the interface and the values the fonts the settings hold.
+fn apply_fonts(window: &MainWindow, state: &AppState) {
+    let settings = state.settings.lock();
+    crate::fonts::apply(window, settings.ui_font(), settings.mono_font());
+}
+
+/// [`apply_theme`], then the shown tab again so the text Rust colored takes the new colors.
+fn repaint(window: &MainWindow, state: &AppState) {
+    apply_theme(window, state);
+    crate::app::with(|app, window| crate::tabs::repaint(app, window));
+}
+
 pub fn init(window: &MainWindow, state: Arc<AppState>, rt: Handle) {
     refresh(window, &state);
+    window.global::<Preferences>().on_search_matches(|query, text| found(&query, &text));
     window.global::<Preferences>().set_language(to_setting(state.settings.lock().language()));
+    let zoom = state.settings.lock().zoom();
+    window.global::<Preferences>().set_zoom(zoom as i32);
+    window.global::<Theme>().set_zoom(zoom as f32 / 100.0);
+    crate::theme::init(window);
+    apply_theme(window, &state);
+    apply_fonts(window, &state);
     window.global::<Preferences>().set_server_search(state.settings.lock().server_search());
     window.global::<Preferences>().set_check_updates_at_startup(state.settings.lock().check_updates_at_startup());
     window.global::<Preferences>().set_restore_session(state.settings.lock().restore_session());
     let export_escaped = state.settings.lock().export_escaped();
     window.global::<Preferences>().set_export_escaped(export_escaped);
-    window.global::<ExportPrefs>().set_escaped(export_escaped);
+    window.global::<ExportPrefs>().set_format(i32::from(export_escaped));
     window.global::<ExportPrefs>().set_header_escaped(export_escaped);
 
     // the export format buttons: saved as what new tabs start with; open tabs keep their own
@@ -97,6 +172,45 @@ pub fn init(window: &MainWindow, state: Arc<AppState>, rt: Handle) {
             let Some(window) = weak.upgrade() else { return };
             let result = state.settings.lock().set_export_escaped(escaped);
             saved(&window, result, |window| window.global::<Preferences>().set_export_escaped(escaped));
+        }
+    });
+    let (opening, last_table) = {
+        let settings = state.settings.lock();
+        (settings.opening_view(), settings.last_view_table())
+    };
+    window.global::<Preferences>().set_opening_view(match opening {
+        StoredView::Fields => OpeningView::Fields,
+        StoredView::Table => OpeningView::Table,
+        StoredView::Last => OpeningView::Last,
+    });
+    window.global::<Preferences>().set_last_view(if last_table { KeyView::Table } else { KeyView::Fields });
+
+    // the view new key tabs start on: saved, and used by the next tab opened
+    window.global::<Preferences>().on_opening_view_selected({
+        let weak = window.as_weak();
+        let state = state.clone();
+        move |view| {
+            let Some(window) = weak.upgrade() else { return };
+            let stored = match view {
+                OpeningView::Fields => StoredView::Fields,
+                OpeningView::Table => StoredView::Table,
+                OpeningView::Last => StoredView::Last,
+            };
+            let result = state.settings.lock().set_opening_view(stored);
+            saved(&window, result, |window| window.global::<Preferences>().set_opening_view(view));
+        }
+    });
+
+    // a view picked in a key's tab: kept, for new tabs to start on when the setting says so
+    window.global::<Preferences>().on_view_picked({
+        let weak = window.as_weak();
+        let state = state.clone();
+        move |view| {
+            let Some(window) = weak.upgrade() else { return };
+            window.global::<Preferences>().set_last_view(view);
+            if let Err(e) = state.settings.lock().set_last_view_table(view == KeyView::Table) {
+                tracing::warn!("the last view picked can't be saved: {e}");
+            }
         }
     });
     window.global::<Preferences>().set_search_depth(state.settings.lock().search_depth() as i32);
@@ -134,6 +248,17 @@ pub fn init(window: &MainWindow, state: Arc<AppState>, rt: Handle) {
         }
     });
 
+    window.global::<Preferences>().set_accept_new_ssh_host_keys(state.settings.lock().accept_new_ssh_host_keys());
+    window.global::<Preferences>().on_accept_new_ssh_host_keys_toggled({
+        let weak = window.as_weak();
+        let state = state.clone();
+        move |enabled| {
+            let Some(window) = weak.upgrade() else { return };
+            let result = state.set_accept_new_ssh_host_keys(enabled);
+            saved(&window, result, |window| window.global::<Preferences>().set_accept_new_ssh_host_keys(enabled));
+        }
+    });
+
     // reopening the last connection at startup: saved; turned off, what was kept of it goes
     window.global::<Preferences>().on_restore_session_toggled({
         let weak = window.as_weak();
@@ -148,6 +273,69 @@ pub fn init(window: &MainWindow, state: Arc<AppState>, rt: Handle) {
         }
     });
 
+    // the theme and syntax theme lists: saved, and applied at once to all that is shown
+    window.global::<Preferences>().on_theme_selected({
+        let weak = window.as_weak();
+        let state = state.clone();
+        move |id| {
+            let Some(window) = weak.upgrade() else { return };
+            let result = state.settings.lock().set_theme(&id);
+            saved(&window, result, |window| repaint(window, &state));
+        }
+    });
+    window.global::<Preferences>().on_syntax_theme_selected({
+        let weak = window.as_weak();
+        let state = state.clone();
+        move |id| {
+            let Some(window) = weak.upgrade() else { return };
+            let result = state.settings.lock().set_syntax_theme(&id);
+            saved(&window, result, |window| repaint(window, &state));
+        }
+    });
+
+    // the two font menus: their lists, and the font picked, saved and applied at once
+    window.global::<Preferences>().on_fonts_requested({
+        let weak = window.as_weak();
+        move |mono, filter| {
+            let Some(window) = weak.upgrade() else { return };
+            crate::fonts::request(&window, mono, filter.to_string());
+        }
+    });
+    window.global::<Preferences>().on_fonts_shown(crate::fonts::prepare);
+    window.global::<Preferences>().on_ui_font_selected({
+        let weak = window.as_weak();
+        let state = state.clone();
+        move |family| {
+            let Some(window) = weak.upgrade() else { return };
+            let result = state.settings.lock().set_ui_font(&family);
+            saved(&window, result, |window| apply_fonts(window, &state));
+        }
+    });
+    window.global::<Preferences>().on_mono_font_selected({
+        let weak = window.as_weak();
+        let state = state.clone();
+        move |family| {
+            let Some(window) = weak.upgrade() else { return };
+            let result = state.settings.lock().set_mono_font(&family);
+            saved(&window, result, |window| apply_fonts(window, &state));
+        }
+    });
+
+    // the zoom slider: saved, and applied at once
+    window.global::<Preferences>().on_zoom_selected({
+        let weak = window.as_weak();
+        let state = state.clone();
+        move |percent| {
+            let Some(window) = weak.upgrade() else { return };
+            let result = state.settings.lock().set_zoom(percent.max(0) as u32);
+            saved(&window, result, |window| {
+                let zoom = state.settings.lock().zoom();
+                window.global::<Preferences>().set_zoom(zoom as i32);
+                window.global::<Theme>().set_zoom(zoom as f32 / 100.0);
+            });
+        }
+    });
+
     // the language buttons: saved, and switched to at once
     window.global::<Preferences>().on_language_selected({
         let weak = window.as_weak();
@@ -159,6 +347,7 @@ pub fn init(window: &MainWindow, state: Arc<AppState>, rt: Handle) {
             saved(&window, result, |window| {
                 window.global::<Preferences>().set_language(setting);
                 crate::i18n::apply(language);
+                crate::shortcuts::refresh(window, &state);
             });
         }
     });
@@ -182,31 +371,11 @@ pub fn init(window: &MainWindow, state: Arc<AppState>, rt: Handle) {
         }
     });
 
-    window.global::<Preferences>().on_ssh_profile_saved({
-        let weak = window.as_weak();
-        let state = state.clone();
-        let rt = rt.clone();
-        move |form| {
-            let Some(window) = weak.upgrade() else { return };
+    window.global::<Preferences>().on_ssh_profile_saved(|form| {
+        crate::app::with(|app, window| {
             window.global::<Preferences>().set_error("".into());
-            // off the UI thread: storing the password can wait on the OS
-            // credential store (a first-time setup, an unlock prompt)
-            let weak = weak.clone();
-            let state = state.clone();
-            rt.spawn_blocking(move || {
-                let result = save_profile(&state, &form);
-                if result.is_ok() {
-                    drop_profile_pools(&state);
-                }
-                let _ = weak.upgrade_in_event_loop(move |window| match result {
-                    Ok(()) => {
-                        window.global::<Preferences>().set_ssh_profile_editing(false);
-                        refresh(&window, &state);
-                    }
-                    Err(e) => window.global::<Preferences>().set_error(e.localized().into()),
-                });
-            });
-        }
+            save_profile_off_thread(app, form, SecretsPolicy::VaultOrFail);
+        });
     });
 
     window.global::<Preferences>().on_ssh_profile_deleted({

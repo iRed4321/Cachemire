@@ -5,7 +5,7 @@ use crate::error::Localize;
 use std::sync::Arc;
 use std::sync::atomic::Ordering;
 
-use rust_i18n::t;
+use crate::t;
 use slint::{ComponentHandle, ModelRc, VecModel};
 
 use crate::{AllValuesRowData, KeyPanel, KeyTree};
@@ -15,8 +15,8 @@ use cachemire_core::key_name::KeyName;
 use cachemire_core::redis_value_type::RedisValueType;
 
 use super::field::{Fields, PrettyRenderings, build_fields, single_value_field};
+use super::formats::{ShowFormat, paragraphs_for};
 use super::paging::holds_field;
-use super::pretty_text::paragraphs_for;
 use super::scroll::{ScrollPos, arm_all_scroll, current_expanded_fields, disarm_scroll};
 use super::table::clear_table;
 use super::value_list::{build_all_values_table, filter_fields, filter_status, meta_text, parse_filter};
@@ -60,7 +60,7 @@ impl Ctx {
         // read on the UI thread, before spawning: on a tab switch `tabs/mod.rs`
         // writes the target tab's saved filter/expanded fields into these
         // properties just before calling us, so this is that tab's own state.
-        let (filter, path, expanded) = weak
+        let (filter, path, expanded, format) = weak
             .upgrade()
             .map(|window| {
                 // flags this key as in flight so the keyspace tree can spin its
@@ -82,7 +82,8 @@ impl Ctx {
                         None
                     }
                 };
-                (current_search_filter(&window), path, current_expanded_fields(&window))
+                let format = ShowFormat::from_index(window.global::<crate::ExportPrefs>().get_format());
+                (current_search_filter(&window), path, current_expanded_fields(&window), format)
             })
             .unwrap_or_default();
         content.lock().search = filter.clone();
@@ -129,7 +130,7 @@ impl Ctx {
                     // restored row doesn't flash "Formatting..." then grow
                     let mut renderings = PrettyRenderings::default();
                     for f in shown.iter().filter(|f| expanded.contains(&f.name)) {
-                        renderings.plain_or_insert_with(&f.name, || paragraphs_for(&f.value(), false));
+                        renderings.get_or_insert_with(&f.name, format, || paragraphs_for(f, format));
                     }
                     let (av_field_chars, av_rows) = build_all_values_table(&shown, &filter, &expanded);
 
@@ -155,7 +156,7 @@ impl Ctx {
                 Ok((key_type, meta, fields, editable, shown, matches, status, av_field_chars, av_rows, renderings)) => {
                     let badge = key_type.as_ref().map(|t| t.as_str().to_uppercase()).unwrap_or_default();
                     window.global::<KeyPanel>().set_badge(badge.into());
-                    window.global::<KeyPanel>().set_editable(editable);
+                    window.global::<KeyPanel>().set_editable(editable && !window.global::<crate::ConnectionState>().get_read_only());
                     window.global::<KeyPanel>().set_loaded(true);
                     show_key_name(window, &key);
                     window.global::<KeyPanel>().set_meta(meta.into());
@@ -222,9 +223,9 @@ fn fetched_key(details: KeyDetails, descending: bool) -> FetchedKey {
     let fields: Fields = if details.key_type == RedisValueType::Hash {
         let names = details.all_field_names.as_deref().unwrap_or_default();
         let page = &names[details.page_start.min(names.len())..(details.page_start + HASH_PAGE_SIZE).min(names.len())];
-        build_fields(details.value, details.oversized, page)
+        build_fields(details.value, details.oversized, &details.binary_fields, page)
     } else {
-        vec![Arc::new(single_value_field(details.value))]
+        vec![Arc::new(single_value_field(details.value, details.binary_value))]
     };
     // a hash's true field count is known from the start (`HLEN`), so
     // it's never marked truncated: the rest just hasn't been paged in yet

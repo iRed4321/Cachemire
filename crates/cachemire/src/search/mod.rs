@@ -9,13 +9,13 @@ use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::time::{Duration, Instant};
 
+use crate::t;
 use rayon::prelude::*;
-use rust_i18n::t;
 use slint::{ModelRc, SharedString, VecModel};
 use tokio::sync::watch;
 
 use crate::app::App;
-use crate::key_detail::{search_plain_text, search_value_text};
+use crate::key_detail::{contains_folded, fold, search_plain_text, search_value_text, unescaped_json};
 use crate::{MainWindow, SearchRowData, SearchTab};
 use cachemire_core::explorer::{self, EntriesBatch, KeyEntries};
 use cachemire_core::key_name::KeyName;
@@ -134,13 +134,20 @@ impl SearchTabs {
     /// if it is still running — whatever is opened next (a key, from a hit, say) gets
     /// Redis to itself, and the search is resumed from the tab when wanted.
     pub fn leave(&mut self, window: &MainWindow, id: &str) {
-        if let Some(tab) = self.tabs.get_mut(id) {
-            tab.query = window.global::<SearchTab>().get_query().to_string();
-            if tab.loading {
-                tab.paused.send_replace(true);
-            }
+        self.keep_box(window, id);
+        if let Some(tab) = self.tabs.get_mut(id)
+            && tab.loading
+        {
+            tab.paused.send_replace(true);
         }
         self.drop_active(id);
+    }
+
+    /// Copies what the shown box holds into tab `id`, which stays shown and keeps searching.
+    pub fn keep_box(&mut self, window: &MainWindow, id: &str) {
+        if let Some(tab) = self.tabs.get_mut(id) {
+            tab.query = window.global::<SearchTab>().get_query().to_string();
+        }
     }
 
     /// The tab is closed: its search stops and its hits go.
@@ -181,7 +188,23 @@ fn target_field(key_type: &RedisValueType, field: &str) -> String {
     }
 }
 
-/// What one key holds that matches `needle` (lowercase): every matching entry,
+/// Whether `needle` (folded) is in `text`, read as the key panel's search reads it (`fold`).
+fn hit(text: &str, needle: &str) -> bool {
+    contains_folded(&fold(text, false), needle)
+}
+
+/// Whether `needle` (folded) is in a JSON object or array `value` read with its `\uXXXX`
+/// escapes written out, as its row shows it.
+fn unescaped_hit(value: &str, needle: &str) -> bool {
+    value.contains("\\u")
+        && serde_json::from_str::<serde_json::Value>(value)
+            .ok()
+            .filter(|json| json.is_object() || json.is_array())
+            .and_then(|json| unescaped_json(value, &json))
+            .is_some_and(|text| hit(&text, needle))
+}
+
+/// What one key holds that matches `needle` (folded): every matching entry,
 /// or the key alone when only its name matches. Independent per key, so a
 /// batch's keys can be scanned across cores.
 fn hits_in_key(KeyEntries { key, key_type, entries }: KeyEntries, needle: &str) -> (Vec<SearchRowData>, Longest) {
@@ -191,8 +214,8 @@ fn hits_in_key(KeyEntries { key, key_type, entries }: KeyEntries, needle: &str) 
     let mut rows = Vec::new();
     let mut longest = Longest::default();
     for (field, value) in &entries {
-        let field_hit = !field.is_empty() && field.to_lowercase().contains(needle);
-        let value_hit = value.to_lowercase().contains(needle);
+        let field_hit = !field.is_empty() && hit(field, needle);
+        let value_hit = hit(value, needle) || unescaped_hit(value, needle);
         if field_hit || value_hit {
             longest.key = longest.key.max(key.chars().count());
             longest.field = longest.field.max(field.chars().count());
@@ -205,7 +228,7 @@ fn hits_in_key(KeyEntries { key, key_type, entries }: KeyEntries, needle: &str) 
             });
         }
     }
-    if rows.is_empty() && key.to_lowercase().contains(needle) {
+    if rows.is_empty() && hit(&key, needle) {
         longest.key = longest.key.max(key.chars().count());
         rows.push(SearchRowData {
             key: search_plain_text(&key, needle),
@@ -218,7 +241,7 @@ fn hits_in_key(KeyEntries { key, key_type, entries }: KeyEntries, needle: &str) 
     (rows, longest)
 }
 
-/// What a page of keys holds that matches `needle` (lowercase): a row per matching
+/// What a page of keys holds that matches `needle` (folded): a row per matching
 /// entry, or one for the key alone when only its name matches. A key already in
 /// `keys_with_hits` (SCAN can give one twice) is skipped; keys are scanned across cores.
 fn hits_in(
@@ -353,7 +376,7 @@ fn submit(app: &App, window: &MainWindow, query: &str) {
         let settings = state.settings.lock();
         (settings.server_search(), settings.search_depth() as usize)
     };
-    let (state, needle) = (state.clone(), query.to_lowercase());
+    let (state, needle) = (state.clone(), fold(&query, false).into_owned());
     let failed_id = id.clone();
     let search = async move {
         let mut found = 0usize;

@@ -132,7 +132,6 @@ fn every_message_built_in_rust_is_translated() {
 
 #[test]
 fn english_is_what_a_missing_translation_shows() {
-    use rust_i18n::t;
     assert_eq!(t!("Copied", locale = "fr"), "Copié");
     assert_eq!(t!("Copied", locale = "en"), "Copied");
     assert_eq!(t!("%{count} keys scanned", locale = "fr", count = 3), "3 clés analysées");

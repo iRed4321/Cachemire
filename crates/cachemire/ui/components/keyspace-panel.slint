@@ -127,7 +127,7 @@ component ExportCheck inherits Rectangle {
         viewbox-height: 24;
         commands: state == 1 ? "M6 12.5 L10.5 17 L18 8" : "M7 12 L17 12";
         fill: transparent;
-        stroke: #ffffff;
+        stroke: Theme.accent-text;
         stroke-width: 2.4px;
         stroke-line-cap: round;
         stroke-line-join: round;
@@ -166,7 +166,7 @@ component BarButton inherits Rectangle {
         text: root.text;
         font-size: Theme.pt(11.5px);
         font-weight: 600;
-        color: !enabled ? Theme.text-tertiary : (primary ? #ffffff : Theme.text-primary);
+        color: !enabled ? Theme.text-tertiary : (primary ? Theme.accent-text : Theme.text-primary);
     }
 }
 
@@ -484,11 +484,10 @@ export component KeyspacePanel inherits FloatingCard {
             let top = scroll-row * row-stride;
             let bottom = top + row-stride;
             let view-top = -content-y-snapshot;
-            let scroll-range = max(0px, tree-flick.content-height - tree-flick.height);
             if top < view-top {
-                tree-flick.content-y = max(-scroll-range, -top);
+                tree-flick.scroll-to({ x: -tree-flick.content-x, y: top }, ScrollBehavior.instant);
             } else if bottom > view-top + flick-height-snapshot {
-                tree-flick.content-y = max(-scroll-range, -(bottom - flick-height-snapshot));
+                tree-flick.scroll-to({ x: -tree-flick.content-x, y: bottom - flick-height-snapshot }, ScrollBehavior.instant);
             }
         }
     }
@@ -704,8 +703,7 @@ export component KeyspacePanel inherits FloatingCard {
                             width: root.tree-content-width;
                             height: root.flick-height-snapshot;
                             scroll-by(delta) => {
-                                let scroll-range = max(0px, tree-flick.content-height - tree-flick.height);
-                                tree-flick.content-y = max(-scroll-range, min(0px, tree-flick.content-y + delta));
+                                tree-flick.scroll-to({ x: -tree-flick.content-x, y: -tree-flick.content-y - delta }, ScrollBehavior.instant);
                             }
                             // the rows lie on top: this is the space past them
                             context-requested(x, y) => { root.row-context-requested("", x, y); }
@@ -802,10 +800,10 @@ export component KeyspacePanel inherits FloatingCard {
                     HorizontalLayout {
                         alignment: center;
                         spacing: Theme.px(6px);
-                        IconPlus { size: Theme.icon-sm; tint: #ffffff; y: (parent.height - self.height) / 2; }
+                        IconPlus { size: Theme.icon-sm; tint: Theme.accent-text; y: (parent.height - self.height) / 2; }
                         Text {
                             text: @tr("New query");
-                            color: #ffffff;
+                            color: Theme.accent-text;
                             font-size: Theme.pt(12px);
                             font-weight: 600;
                             vertical-alignment: center;
@@ -917,8 +915,7 @@ export component KeyspacePanel inherits FloatingCard {
                             width: root.tree-content-width;
                             height: root.queries-height-snapshot;
                             scroll-by(delta) => {
-                                let scroll-range = max(0px, queries-flick.content-height - queries-flick.height);
-                                queries-flick.content-y = max(-scroll-range, min(0px, queries-flick.content-y + delta));
+                                queries-flick.scroll-to({ x: -queries-flick.content-x, y: -queries-flick.content-y - delta }, ScrollBehavior.instant);
                             }
                         }
 

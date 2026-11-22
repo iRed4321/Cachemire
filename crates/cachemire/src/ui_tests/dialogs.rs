@@ -1,8 +1,8 @@
-//! The windows over the app: Settings, the info window (version and updates), and the
-//! connections' import and export.
+//! The windows over the app: Settings (with its About page: version and updates), the
+//! connections' import and export, and the question about an SSH server's unknown key.
 
 use super::*;
-use crate::{About, ConnectionTransfer, Preferences};
+use crate::{About, ConnectionTransfer, Preferences, SettingsCategory, SshProfileForm};
 use cachemire_core::connection::ConnectionPayloadInput;
 use cachemire_core::updates::{Channel, Release};
 
@@ -18,11 +18,12 @@ fn settings_open(state: &std::sync::Arc<cachemire_core::state::AppState>) -> (Ha
     (h, runtime)
 }
 
-/// Puts the Settings window back on its lists, open, after a click that left them.
+/// Puts the Settings window back open on its first page, after a click that left it.
 fn back_to_settings(h: &Harness) {
     let preferences = h.window.global::<Preferences>();
     preferences.set_ssh_profile_editing(false);
     preferences.set_conn_profile_editing(false);
+    preferences.set_category(crate::SettingsCategory::General);
     preferences.set_open(true);
 }
 
@@ -32,8 +33,14 @@ fn the_startup_update_check_box_saves_the_setting_both_ways() {
     let (mut h, _rt) = settings_open(&state);
     assert!(!h.window.global::<Preferences>().get_check_updates_at_startup(), "off by default");
 
+    let to_about = |h: &Harness| {
+        back_to_settings(h);
+        h.window.global::<Preferences>().set_category(crate::SettingsCategory::About);
+    };
+    to_about(&h);
+    h.frame();
     let on = |h: &Harness| h.window.global::<Preferences>().get_check_updates_at_startup();
-    let at = sweep(&mut h, 300..1000, 100..780, 6, back_to_settings, on).expect("the box was found and ticked");
+    let at = sweep(&mut h, 300..1000, 100..780, 6, to_about, on).expect("the box was found and ticked");
     assert!(state.settings.lock().check_updates_at_startup(), "ticking it saves it");
 
     h.click(at.0, at.1);
@@ -57,7 +64,7 @@ fn the_settings_window_starts_on_what_is_saved() {
     assert_eq!(preferences.get_search_depth(), 200);
     assert!(preferences.get_server_search());
     assert!(preferences.get_export_escaped());
-    assert!(h.window.global::<crate::ExportPrefs>().get_escaped(), "new tabs start on escaped JSON");
+    assert_eq!(h.window.global::<crate::ExportPrefs>().get_format(), 1, "new tabs start on escaped JSON");
 }
 
 #[test]
@@ -69,7 +76,153 @@ fn the_search_depth_buttons_save_the_depth_picked() {
     assert_eq!(state.settings.lock().search_depth(), 60);
 }
 
-/// The info window, its callbacks wired, and its link to the repository kept from opening a browser.
+/// The Settings window in a running app, for what it saves off the UI thread.
+fn settings_in_app() -> (Harness, Rc<crate::app::App>, tokio::runtime::Runtime, EventLoopTurn) {
+    let state = test_state();
+    let h = Harness::new();
+    let (app, runtime, turn) = install_app(&h, &state);
+    crate::settings::init(&h.window, state, runtime.handle().clone());
+    h.window.global::<Preferences>().on_language_selected(|_| {});
+    (h, app, runtime, turn)
+}
+
+/// The SSH profiles listed: (name, username, active).
+fn ssh_profiles(h: &Harness) -> Vec<(String, String, bool)> {
+    h.window.global::<Preferences>().get_ssh_profiles().iter().map(|p| (p.name.to_string(), p.username.to_string(), p.active)).collect()
+}
+
+/// What an SSH tunnel with no login of its own logs in with: the active profile's username and password.
+fn tunnel_login(state: &cachemire_core::state::AppState) -> Option<(String, String)> {
+    let mut ssh = cachemire_core::connection::SshSettings {
+        host: "bastion".into(),
+        port: 22,
+        username: String::new(),
+        password: Default::default(),
+        private_key: String::new(),
+        passphrase: Default::default(),
+    };
+    state.settings.lock().fill_ssh(&mut ssh).ok()?;
+    Some((ssh.username, ssh.password.expose().to_string()))
+}
+
+#[test]
+fn the_first_ssh_profile_added_is_the_one_tunnels_log_in_with_until_a_click_turns_it_off() {
+    let (mut h, app, _rt, _turn) = settings_in_app();
+    let preferences = h.window.global::<Preferences>();
+    preferences.set_ssh_profile_editing(true);
+    let form = SshProfileForm { id: "".into(), name: "Bastion".into(), username: "deploy".into(), password: "pw".into() };
+    preferences.invoke_ssh_profile_saved(form);
+    assert!(wait_for(&mut h, |h| !ssh_profiles(h).is_empty()), "the profile is saved");
+    assert_eq!(ssh_profiles(&h), [("Bastion".to_string(), "deploy".to_string(), true)]);
+    assert!(!h.window.global::<Preferences>().get_ssh_profile_editing(), "the form closes");
+    assert_eq!(tunnel_login(&app.state), Some(("deploy".to_string(), "pw".to_string())));
+
+    let id = h.window.global::<Preferences>().get_ssh_profiles().row_data(0).unwrap().id;
+    h.window.global::<Preferences>().invoke_ssh_profile_activated(id.clone());
+    assert!(!ssh_profiles(&h)[0].2, "a click on the active one leaves none active");
+    assert_eq!(tunnel_login(&app.state), None);
+    h.window.global::<Preferences>().invoke_ssh_profile_activated(id);
+    assert!(ssh_profiles(&h)[0].2, "and another makes it active again");
+
+    // a form that can't be saved says why and stays open
+    h.window.global::<Preferences>().set_ssh_profile_editing(true);
+    let unnamed = SshProfileForm { id: "".into(), name: " ".into(), username: "x".into(), password: "".into() };
+    h.window.global::<Preferences>().invoke_ssh_profile_saved(unnamed);
+    assert!(wait_for(&mut h, |h| !h.window.global::<Preferences>().get_error().is_empty()));
+    assert!(h.window.global::<Preferences>().get_ssh_profile_editing());
+    assert_eq!(ssh_profiles(&h).len(), 1);
+}
+
+#[test]
+fn an_ssh_profile_edited_with_a_blank_password_keeps_its_own_and_can_be_deleted() {
+    let (mut h, app, _rt, _turn) = settings_in_app();
+    let policy = cachemire_core::secret_vault::SecretsPolicy::PlainText;
+    let id = app.state.settings.lock().create_ssh_profile_with_id("p1", "Bastion", "deploy", "pw", policy).unwrap();
+    let preferences = h.window.global::<Preferences>();
+    let form = SshProfileForm { id: id.as_str().into(), name: "Jump host".into(), username: "ops".into(), password: "".into() };
+    preferences.invoke_ssh_profile_saved(form);
+    assert!(wait_for(&mut h, |h| ssh_profiles(h).first().is_some_and(|p| p.0 == "Jump host")));
+    assert_eq!(tunnel_login(&app.state), Some(("ops".to_string(), "pw".to_string())), "the password stays");
+
+    h.window.global::<Preferences>().set_ssh_profile_editing(true);
+    h.window.global::<Preferences>().invoke_ssh_profile_deleted(id.as_str().into());
+    assert!(ssh_profiles(&h).is_empty());
+    assert!(!h.window.global::<Preferences>().get_ssh_profile_editing(), "its form closes");
+    assert_eq!(tunnel_login(&app.state), None);
+}
+
+#[test]
+fn the_fonts_and_zoom_picked_are_saved_and_used_at_once() {
+    let (h, app, _rt, _turn) = settings_in_app();
+    let preferences = h.window.global::<Preferences>();
+    preferences.invoke_ui_font_selected("Noto Sans".into());
+    preferences.invoke_mono_font_selected("Fira Code".into());
+    let theme = h.window.global::<crate::Theme>();
+    assert_eq!((theme.get_font_ui().as_str(), theme.get_font_mono().as_str()), ("Noto Sans", "Fira Code"));
+    let settings = app.state.settings.lock();
+    assert_eq!((settings.ui_font(), settings.mono_font()), ("Noto Sans", "Fira Code"));
+    drop(settings);
+
+    preferences.invoke_ui_font_selected("".into());
+    assert_eq!(theme.get_font_ui(), "Roboto", "none picked: the app's own");
+
+    preferences.invoke_zoom_selected(150);
+    assert_eq!((preferences.get_zoom(), theme.get_zoom()), (150, 1.5));
+    preferences.invoke_zoom_selected(500);
+    assert_eq!(preferences.get_zoom(), 200, "kept within the slider's marks");
+    assert_eq!(app.state.settings.lock().zoom(), 200);
+}
+
+#[test]
+fn new_tabs_can_start_on_the_view_last_picked() {
+    let (h, app, _rt, _turn) = settings_in_app();
+    let preferences = h.window.global::<Preferences>();
+    preferences.invoke_opening_view_selected(crate::OpeningView::Last);
+    assert_eq!(preferences.get_opening_view(), crate::OpeningView::Last);
+    assert_eq!(app.state.settings.lock().opening_view(), cachemire_core::settings::OpeningView::Last);
+
+    preferences.invoke_view_picked(crate::KeyView::Table);
+    assert_eq!(preferences.get_last_view(), crate::KeyView::Table);
+    assert!(app.state.settings.lock().last_view_table(), "remembered for the next start");
+}
+
+#[test]
+fn turning_off_the_session_restore_forgets_the_session_kept() {
+    let (h, app, _rt, _turn) = settings_in_app();
+    let file = app.state.settings.lock().file_path().with_file_name("last_session.json");
+    let preferences = h.window.global::<Preferences>();
+    preferences.invoke_restore_session_toggled(true);
+    std::fs::write(&file, r#"{"connection": "e2e"}"#).unwrap();
+    assert!(preferences.get_restore_session());
+
+    preferences.invoke_restore_session_toggled(false);
+    assert!(!preferences.get_restore_session());
+    assert!(!app.state.settings.lock().restore_session());
+    assert!(!file.exists(), "nothing is left to reopen");
+}
+
+#[test]
+fn new_ssh_host_keys_can_be_accepted_without_asking() {
+    let (h, app, _rt, _turn) = settings_in_app();
+    let preferences = h.window.global::<Preferences>();
+    let before = app.state.settings.lock().accept_new_ssh_host_keys();
+    preferences.invoke_accept_new_ssh_host_keys_toggled(!before);
+    assert_eq!(preferences.get_accept_new_ssh_host_keys(), !before);
+    assert_eq!(app.state.settings.lock().accept_new_ssh_host_keys(), !before);
+}
+
+#[test]
+fn the_settings_search_ignores_case_and_accents_and_needs_every_word() {
+    let (h, _rt) = settings_open(&test_state());
+    let matches = |query: &str, text: &str| h.window.global::<Preferences>().invoke_search_matches(query.into(), text.into());
+    assert!(matches("DEMARRAGE", "Restaurer au démarrage"));
+    assert!(matches("dé", "Delete"), "an accent typed matches the plain letter too");
+    assert!(matches("zoom molette", "Molette de la souris : zoom"), "the words in any order");
+    assert!(!matches("zoom clavier", "Molette de la souris : zoom"), "every word must be there");
+    assert!(matches("", "anything"));
+}
+
+/// The About page, its callbacks wired, and its link to the repository kept from opening a browser.
 fn info_window(state: &std::sync::Arc<cachemire_core::state::AppState>) -> (Harness, tokio::runtime::Runtime, Rc<std::cell::Cell<usize>>) {
     let runtime = tokio::runtime::Builder::new_current_thread().enable_all().build().unwrap();
     let mut h = Harness::new();
@@ -81,13 +234,19 @@ fn info_window(state: &std::sync::Arc<cachemire_core::state::AppState>) -> (Harn
         let downloads = downloads.clone();
         move || downloads.set(downloads.get() + 1)
     });
-    about.set_open(true);
+    h.window.global::<Preferences>().invoke_show(SettingsCategory::About);
     h.frame();
     (h, runtime, downloads)
 }
 
 fn reopen_info(h: &Harness) {
-    h.window.global::<About>().set_open(true);
+    h.window.global::<Preferences>().invoke_show(SettingsCategory::About);
+}
+
+/// Whether the settings window is open on its About page.
+fn on_about(h: &Harness) -> bool {
+    let preferences = h.window.global::<Preferences>();
+    preferences.get_open() && preferences.get_category() == SettingsCategory::About
 }
 
 #[test]
@@ -110,32 +269,33 @@ fn the_channel_toggle_saves_the_channel_picked() {
     let (mut h, _rt, _) = info_window(&state);
     assert_eq!(h.window.global::<About>().get_channel(), 0, "a dev build follows the stable releases");
     let beta = |h: &Harness| h.window.global::<About>().get_channel() == 1;
-    sweep(&mut h, 500..800, 200..600, 4, reopen_info, beta).expect("the Beta segment");
+    sweep(&mut h, 500..800, 30..600, 4, reopen_info, beta).expect("the Beta segment");
     assert_eq!(state.settings.lock().update_channel(), Some(Channel::Beta));
 }
 
 #[test]
-fn an_update_found_at_startup_opens_the_info_window_with_its_button() {
+fn an_update_found_at_startup_opens_the_about_page_with_its_button() {
     let (mut h, _rt, downloads) = info_window(&test_state());
-    let about = h.window.global::<About>();
-    about.set_open(false);
+    let preferences = h.window.global::<Preferences>();
+    preferences.set_open(false);
+    preferences.set_category(SettingsCategory::General);
     let release = Release {
         version: semver::Version::new(9, 9, 9),
         page: "https://example.invalid/r".into(),
         installer: Some("https://example.invalid/i.msi".into()),
         installer_sha256: None,
     };
-    crate::updates::show_found(&about, release.clone(), true);
+    crate::updates::show_found(&h.window, release.clone(), true);
     h.frame();
     let about = h.window.global::<About>();
-    assert!(about.get_open(), "found at startup: the window opens by itself");
+    assert!(on_about(&h), "found at startup: the page opens by itself");
     assert!(about.get_status().contains("9.9.9"), "{}", about.get_status());
     let label = if cfg!(windows) { "Download and install" } else { "Open the release page" };
     assert_eq!(about.get_download_label(), label);
 
     // a click on Check or on the other channel takes the release back, as it should: it is
     // offered again after each miss
-    let offer_again = |h: &Harness| crate::updates::show_found(&h.window.global::<About>(), release.clone(), true);
+    let offer_again = |h: &Harness| crate::updates::show_found(&h.window, release.clone(), true);
     let clicked = |_: &Harness| downloads.get() > 0;
     sweep(&mut h, 500..800, 200..600, 4, offer_again, clicked).expect("the window shows the download button");
 }
@@ -143,12 +303,11 @@ fn an_update_found_at_startup_opens_the_info_window_with_its_button() {
 #[test]
 fn an_update_found_by_the_button_doesnt_open_a_closed_window() {
     let (h, _rt, _) = info_window(&test_state());
-    let about = h.window.global::<About>();
-    about.set_open(false);
+    h.window.global::<Preferences>().set_open(false);
     let release = Release { version: semver::Version::new(9, 9, 9), page: String::new(), installer: None, installer_sha256: None };
-    crate::updates::show_found(&about, release, false);
-    assert!(!about.get_open());
-    assert!(about.get_update_available(), "it is offered the next time the window opens");
+    crate::updates::show_found(&h.window, release, false);
+    assert!(!h.window.global::<Preferences>().get_open());
+    assert!(h.window.global::<About>().get_update_available(), "it is offered the next time the window opens");
 }
 
 /// The import and export window, open, over a state holding `names` as connections.
@@ -162,7 +321,7 @@ fn transfer_open(names: &[&str]) -> (Harness, Rc<crate::app::App>, (tokio::runti
                 connection_url: Some(format!("redis://h{i}:6379")),
                 ..Default::default()
             };
-            store.create_with_id(&format!("c{i}"), payload).unwrap();
+            store.create_with_id(&format!("c{i}"), payload, cachemire_core::secret_vault::SecretsPolicy::PlainText).unwrap();
         }
     }
     let h = Harness::new();
@@ -250,4 +409,69 @@ fn importing_saves_the_ticked_connections_under_free_names_and_says_so() {
     assert!(!names.contains(&"Skipped".to_string()), "an unticked row isn't imported");
     let listed = h.window.global::<crate::ConnectionState>().get_connections().row_count();
     assert_eq!(listed, names.len(), "the connection list shows them");
+}
+
+/// The answers the SSH host-key dialog handed back, in order.
+type Answers = Rc<RefCell<Vec<&'static str>>>;
+
+/// Asks about server `host`'s key as a connection would, keeping the answer in `answers`.
+fn ask_host_key(app: &Rc<crate::app::App>, h: &Harness, host: &str, answers: &Answers) {
+    use russh::keys::ssh_key::public::{Ed25519PublicKey, KeyData};
+    let key = russh::keys::PublicKey::new(KeyData::Ed25519(Ed25519PublicKey([7; 32])), "");
+    let server = cachemire_core::connection::ssh_tunnel::UnknownHostKey::new(host, 2222, &key);
+    let answers = answers.clone();
+    let answer = Box::new(move |_: &Rc<crate::app::App>, _: &crate::MainWindow, answered: crate::host_key_dialog::Answered| {
+        answers.borrow_mut().push(match answered {
+            crate::host_key_dialog::Answered::Trusted => "trusted",
+            crate::host_key_dialog::Answered::Cancelled => "cancelled",
+            crate::host_key_dialog::Answered::NotSaved(_) => "not saved",
+        });
+    });
+    crate::host_key_dialog::ask(app, &h.window, server, answer);
+}
+
+/// The app's own known-hosts file.
+fn known_hosts(app: &crate::app::App) -> std::path::PathBuf {
+    app.state.settings.lock().file_path().with_file_name("ssh_known_hosts")
+}
+
+#[test]
+fn an_ssh_server_trusted_in_the_dialog_is_remembered_and_the_attempt_goes_on() {
+    let state = test_state();
+    let h = Harness::new();
+    let (app, _rt, _turn) = install_app(&h, &state);
+    crate::host_key_dialog::init(&h.window);
+    let answers = Answers::default();
+    ask_host_key(&app, &h, "bastion.test", &answers);
+    let dialog = h.window.global::<crate::HostKeyDialog>();
+    assert!(dialog.get_open());
+    assert_eq!((dialog.get_server().as_str(), dialog.get_key_type().as_str()), ("bastion.test:2222", "ssh-ed25519"));
+    assert!(dialog.get_fingerprint().starts_with("SHA256:"), "{}", dialog.get_fingerprint());
+
+    dialog.invoke_trusted();
+    assert_eq!(*answers.borrow(), ["trusted"]);
+    let remembered = std::fs::read_to_string(known_hosts(&app)).unwrap();
+    assert!(remembered.contains("[bastion.test]:2222 ssh-ed25519"), "{remembered}");
+
+    dialog.invoke_trusted();
+    assert_eq!(answers.borrow().len(), 1, "a second click answers nothing more");
+}
+
+#[test]
+fn an_ssh_server_cancelled_or_that_cant_be_remembered_stops_the_attempt() {
+    let state = test_state();
+    let h = Harness::new();
+    let (app, _rt, _turn) = install_app(&h, &state);
+    crate::host_key_dialog::init(&h.window);
+    let answers = Answers::default();
+    ask_host_key(&app, &h, "bastion.test", &answers);
+    h.window.global::<crate::HostKeyDialog>().invoke_cancelled();
+    assert_eq!(*answers.borrow(), ["cancelled"]);
+    assert!(!known_hosts(&app).exists(), "nothing is remembered");
+
+    // a folder stands where the file should be written
+    std::fs::create_dir_all(known_hosts(&app)).unwrap();
+    ask_host_key(&app, &h, "other.test", &answers);
+    h.window.global::<crate::HostKeyDialog>().invoke_trusted();
+    assert_eq!(*answers.borrow(), ["cancelled", "not saved"]);
 }

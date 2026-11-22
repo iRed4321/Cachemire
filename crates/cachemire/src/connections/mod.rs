@@ -3,7 +3,8 @@
 //! module is UI glue: keep the list in sync, connect on click, save the form.
 
 use crate::app::App;
-use rust_i18n::t;
+use crate::host_key_dialog::Answered;
+use crate::t;
 use rustc_hash::FxHashMap;
 use std::rc::Rc;
 
@@ -15,7 +16,7 @@ use crate::error::Localize;
 use crate::{ConnectionEditor, ConnectionForm, ConnectionRowData, ConnectionState, ConnectionView, MainWindow, ProfileTint};
 use cachemire_core::connection::ConnectionPayloadInput;
 use cachemire_core::error::{Error, Invalid};
-use cachemire_core::secret_vault::staged;
+use cachemire_core::secret_vault::{LeftOut, SecretsPolicy, staged};
 use cachemire_core::settings::ConnectionProfile;
 
 mod connect;
@@ -61,6 +62,7 @@ pub(crate) fn refresh(app: &App, window: &MainWindow) {
                 profile_id: if profiles.contains_key(&c.profile_id) { c.profile_id.clone() } else { String::new() }.into(),
                 profile_name: profile_name.into(),
                 profile_tint,
+                read_only: c.read_only,
             }
         })
         .collect();
@@ -86,6 +88,7 @@ pub(crate) fn refresh(app: &App, window: &MainWindow) {
                 profile_id: "".into(),
                 profile_name: profile_name.into(),
                 profile_tint,
+                read_only: false,
             }
         })
         .collect();
@@ -204,6 +207,24 @@ fn test_form(app: &Rc<App>, window: &MainWindow, form: &ConnectionForm) {
             return;
         }
     };
+    // a connection saved without a password the form leaves blank asks for it first
+    if !form.id.is_empty() {
+        let (missing, name) = {
+            let store = app.state.connections.lock();
+            (store.missing_secrets(&form.id), form.name.to_string())
+        };
+        let needed = LeftOut {
+            password: missing.password && payload.password.is_none(),
+            ssh_password: missing.ssh_password && payload.ssh_password.is_none(),
+            ssh_passphrase: missing.ssh_passphrase && payload.ssh_passphrase.is_none(),
+        };
+        if !needed.is_empty() {
+            let (form, id) = (form.clone(), form.id.to_string());
+            let resume = Box::new(move |app: &Rc<App>, window: &MainWindow| test_form(app, window, &form));
+            crate::keyring_dialogs::ask_secrets(app, window, &id, &name, needed, resume);
+            return;
+        }
+    }
     editor.set_testing(true);
     let (state, id) = (app.state.clone(), form.id.to_string());
     let test = async move {
@@ -222,9 +243,27 @@ fn test_form(app: &Rc<App>, window: &MainWindow, form: &ConnectionForm) {
             Err(e) => Err(e),
         }
     };
-    crate::app::spawn(&app.rt, test, |_, window, outcome| {
+    let form = form.clone();
+    crate::app::spawn(&app.rt, test, move |app, window, outcome| {
         let outcome = outcome.flatten();
         let editor = window.global::<ConnectionEditor>();
+        // a server not seen before: the user decides, and a trusted key runs the test again
+        if let Err(e) = &outcome
+            && let Some(server) = crate::host_key_dialog::unknown(e)
+        {
+            let answer = Box::new(move |app: &Rc<App>, window: &MainWindow, answered: Answered| match answered {
+                Answered::Trusted => test_form(app, window, &form),
+                Answered::Cancelled => window.global::<ConnectionEditor>().set_testing(false),
+                Answered::NotSaved(e) => {
+                    let editor = window.global::<ConnectionEditor>();
+                    editor.set_testing(false);
+                    editor.set_test_ok(false);
+                    editor.set_test_status(e.localized().into());
+                }
+            });
+            crate::host_key_dialog::ask(app, window, server.clone(), answer);
+            return;
+        }
         editor.set_testing(false);
         editor.set_test_ok(outcome.is_ok());
         editor.set_test_status(outcome.map_or_else(|e| e.localized(), |()| t!("Connection successful.").into_owned()).into());
@@ -240,13 +279,19 @@ fn save_form(app: &Rc<App>, window: &MainWindow, form: &ConnectionForm) {
             return;
         }
     };
+    save_payload(app, form.id.to_string(), payload, SecretsPolicy::VaultOrFail);
+}
+
+/// Saves `payload` as the connection `id` (a new one when empty), as `policy` says for the
+/// secrets the keyring can't take. If it is unavailable, the user is asked what to do.
+fn save_payload(app: &Rc<App>, id: String, payload: ConnectionPayloadInput, policy: SecretsPolicy) {
     // off the UI thread: storing the secrets can wait on the OS credential
     // store (a first-time setup, an unlock prompt)
-    let (state, id) = (app.state.clone(), form.id.to_string());
+    let state = app.state.clone();
     app.rt.spawn_blocking(move || {
         let new_id = uuid::Uuid::new_v4().to_string();
         let result = staged(&state.connections, |store| {
-            if id.is_empty() { store.create_with_id(&new_id, payload.clone()) } else { store.update(&id, payload.clone()) }
+            if id.is_empty() { store.create_with_id(&new_id, payload.clone(), policy) } else { store.update(&id, payload.clone(), policy) }
         });
         // an open pool still reaches the server as it was before the edit
         if result.is_ok() && !id.is_empty() {
@@ -261,6 +306,12 @@ fn save_form(app: &Rc<App>, window: &MainWindow, form: &ConnectionForm) {
                 refresh(app, window);
                 // (the connection in use may be the one that was edited)
                 crate::connections::profiles::apply_tint(window, &app.state);
+                // a link that waited for a connection to its server
+                crate::links::retry_pending(app, window);
+            }
+            Err(e) if crate::keyring_dialogs::is_unavailable(&e) => {
+                let retry = Box::new(move |app: &Rc<App>, _: &MainWindow, policy| save_payload(app, id, payload, policy));
+                crate::keyring_dialogs::ask_keyring(app, window, true, retry);
             }
             Err(e) => window.global::<ConnectionEditor>().set_error(e.localized().into()),
         });
@@ -285,7 +336,7 @@ pub(crate) fn browse_ssh_key(rt: &Handle, weak: slint::Weak<MainWindow>, set: fn
 /// What the form's fields say, as a payload. A blank password box leaves the
 /// stored password alone (`None`); everything else is taken as typed.
 fn payload_from_form(form: &ConnectionForm) -> Result<ConnectionPayloadInput, Error> {
-    let keep_if_blank = |text: &slint::SharedString| if text.is_empty() { None } else { Some(text.to_string()) };
+    let keep_if_blank = |text: &slint::SharedString| if text.is_empty() { None } else { Some(text.as_str().into()) };
     let ssh_port = match form.ssh_port.trim() {
         "" => 22,
         text => text.parse::<u16>().ok().filter(|port| *port > 0).ok_or(Invalid::SshPort)?,
@@ -303,6 +354,7 @@ fn payload_from_form(form: &ConnectionForm) -> Result<ConnectionPayloadInput, Er
         ssh_private_key: Some(form.ssh_key.to_string()),
         ssh_passphrase: keep_if_blank(&form.ssh_passphrase),
         profile_id: Some(form.profile_id.to_string()),
+        read_only: Some(form.read_only),
     })
 }
 

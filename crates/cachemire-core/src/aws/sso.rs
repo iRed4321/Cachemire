@@ -19,6 +19,7 @@ use tokio::net::{TcpListener, TcpStream};
 
 use super::{AwsError, SsoSettings, anonymous_config, describe, incomplete};
 use crate::error::Error;
+use crate::secret::Secret;
 
 /// What the browser tab shows once the sign-in is over, in the interface language.
 pub struct SignInPage {
@@ -41,16 +42,16 @@ const EXPIRY_MARGIN: i64 = 60;
 struct CachedToken {
     start_url: String,
     region: String,
-    access_token: String,
+    access_token: Secret,
     expires_at: String,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     client_id: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    client_secret: Option<String>,
+    client_secret: Option<Secret>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     registration_expires_at: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    refresh_token: Option<String>,
+    refresh_token: Option<Secret>,
 }
 
 fn now() -> i64 {
@@ -96,7 +97,7 @@ fn write_cache(path: &Path, token: &CachedToken) -> std::io::Result<()> {
 
 /// An access token for `sso`'s start URL: the cached one, a refreshed one, or a new one the
 /// user grants in the browser, which then shows `page`. A new token goes to the cache.
-pub(super) async fn access_token(sso: &SsoSettings, page: &SignInPage) -> Result<String, Error> {
+pub(super) async fn access_token(sso: &SsoSettings, page: &SignInPage) -> Result<Secret, Error> {
     let path = cache_path(sso);
     let cached = path.as_deref().and_then(read_cache).filter(|c| c.start_url == sso.start_url && c.region == sso.region);
     if let Some(cached) = cached.as_ref().filter(|c| ahead(Some(&c.expires_at))) {
@@ -131,17 +132,17 @@ async fn refresh(client: &aws_sdk_ssooidc::Client, cached: CachedToken) -> Optio
     let renewed = client
         .create_token()
         .client_id(client_id)
-        .client_secret(client_secret)
+        .client_secret(client_secret.expose())
         .grant_type("refresh_token")
-        .refresh_token(refresh_token)
+        .refresh_token(refresh_token.expose())
         .send()
         .await
         .inspect_err(|error| tracing::info!("the AWS sign-in couldn't be refreshed: {}", describe_text(error)))
         .ok()?;
     Some(CachedToken {
-        access_token: renewed.access_token()?.to_string(),
+        access_token: renewed.access_token()?.into(),
         expires_at: timestamp(now() + i64::from(renewed.expires_in())),
-        refresh_token: renewed.refresh_token().map(str::to_string).or(cached.refresh_token.clone()),
+        refresh_token: renewed.refresh_token().map(Secret::from).or(cached.refresh_token.clone()),
         ..cached
     })
 }
@@ -172,7 +173,7 @@ async fn browser_sign_in(client: &aws_sdk_ssooidc::Client, sso: &SsoSettings, pa
         .await
         .map_err(describe)?;
     let client_id = incomplete(registration.client_id())?.to_string();
-    let client_secret = incomplete(registration.client_secret())?.to_string();
+    let client_secret = Secret::from(incomplete(registration.client_secret())?);
 
     let mut random = [0u8; 32];
     getrandom::fill(&mut random).map_err(|e| AwsError::Callback(std::io::Error::other(e)))?;
@@ -195,7 +196,7 @@ async fn browser_sign_in(client: &aws_sdk_ssooidc::Client, sso: &SsoSettings, pa
     let token = client
         .create_token()
         .client_id(&client_id)
-        .client_secret(&client_secret)
+        .client_secret(client_secret.expose())
         .grant_type("authorization_code")
         .redirect_uri(&redirect_uri)
         .code_verifier(&verifier)
@@ -206,16 +207,17 @@ async fn browser_sign_in(client: &aws_sdk_ssooidc::Client, sso: &SsoSettings, pa
     Ok(CachedToken {
         start_url: sso.start_url.clone(),
         region: sso.region.clone(),
-        access_token: incomplete(token.access_token())?.to_string(),
+        access_token: incomplete(token.access_token())?.into(),
         expires_at: timestamp(now() + i64::from(token.expires_in())),
         client_id: Some(client_id),
         client_secret: Some(client_secret),
         registration_expires_at: Some(timestamp(registration.client_secret_expires_at())),
-        refresh_token: token.refresh_token().map(str::to_string),
+        refresh_token: token.refresh_token().map(Secret::from),
     })
 }
 
-/// Answers the browser until it comes back with the code for `state`, or with a refusal.
+/// Answers the browser until it comes back with the code for `state`, or with a refusal
+/// carrying it; any answer with another state is turned down.
 async fn wait_for_code(listener: &TcpListener, state: &str, page: &SignInPage) -> Result<String, Error> {
     loop {
         let (mut socket, _) = listener.accept().await.map_err(AwsError::Callback)?;
@@ -224,13 +226,14 @@ async fn wait_for_code(listener: &TcpListener, state: &str, page: &SignInPage) -
             respond(&mut socket, "404 Not Found", "").await;
             continue;
         };
-        if let Some(error) = params.get("error") {
+        let ours = params.get("state").map(String::as_str) == Some(state);
+        if let Some(error) = params.get("error").filter(|_| ours) {
             respond(&mut socket, "200 OK", &html(&page.title, &page.refused)).await;
             let reason = params.get("error_description").unwrap_or(error);
             return Err(AwsError::SignInRefused(reason.clone()).into());
         }
         match params.get("code") {
-            Some(code) if params.get("state").map(String::as_str) == Some(state) => {
+            Some(code) if ours => {
                 respond(&mut socket, "200 OK", &html(&page.title, &page.signed_in)).await;
                 return Ok(code.clone());
             }
@@ -323,14 +326,14 @@ mod tests {
         )
         .unwrap();
         let from_cli = read_cache(&path).expect("the AWS CLI's own format");
-        assert_eq!((from_cli.access_token.as_str(), from_cli.refresh_token), ("abc", None));
+        assert_eq!((from_cli.access_token.expose(), from_cli.refresh_token.is_none()), ("abc", true));
 
         let token = CachedToken { refresh_token: Some("again".into()), client_id: Some("me".into()), ..from_cli };
         write_cache(&path, &token).unwrap();
         let written = std::fs::read_to_string(&path).unwrap();
         assert!(written.contains("\"refreshToken\"") && !written.contains("clientSecret"), "camelCase, the absent left out: {written}");
         let back = read_cache(&path).unwrap();
-        assert_eq!((back.refresh_token.as_deref(), back.client_id.as_deref()), (Some("again"), Some("me")));
+        assert_eq!((back.refresh_token.as_ref().map(Secret::expose), back.client_id.as_deref()), (Some("again"), Some("me")));
         assert!(!path.with_extension("json.tmp").exists(), "the temporary file is renamed over the cache");
         #[cfg(unix)]
         {
@@ -383,7 +386,7 @@ mod tests {
             let listener = TcpListener::bind(("127.0.0.1", 0)).await.unwrap();
             let port = listener.local_addr().unwrap().port();
             let page = page();
-            let browser = browse(port, "GET /oauth/callback?error=access_denied&error_description=User%20said%20no HTTP/1.1");
+            let browser = browse(port, "GET /oauth/callback?error=access_denied&error_description=User%20said%20no&state=s1 HTTP/1.1");
             let (result, answer) = tokio::join!(wait_for_code(&listener, "s1", &page), browser);
             assert!(matches!(result, Err(Error::Cloud(AwsError::SignInRefused(ref reason))) if reason == "User said no"), "{result:?}");
             assert!(answer.contains("Sign-in refused."), "{answer}");

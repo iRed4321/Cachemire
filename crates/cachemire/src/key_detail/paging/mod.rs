@@ -9,7 +9,7 @@ use serde_json::Value;
 use slint::{ComponentHandle, Model, ModelRc, VecModel};
 
 use crate::{AllValuesRowData, KeyPanel};
-use cachemire_core::explorer;
+use cachemire_core::explorer::{self, HashValues};
 use cachemire_core::key_name::KeyName;
 
 use super::field::{Fields, build_fields};
@@ -202,8 +202,8 @@ impl Ctx {
         };
         let (state, asked, name) = (self.state.clone(), connection.clone(), KeyName::from_id(&key));
         let page = async move {
-            let (values, oversized) = explorer::hash_field_page(&state, Some(&asked), &name, &names).await?;
-            Ok(tokio::task::spawn_blocking(move || build_fields(Value::Object(values), oversized, &names)).await?)
+            let HashValues { values, oversized, binary } = explorer::hash_field_page(&state, Some(&asked), &name, &names).await?;
+            Ok(tokio::task::spawn_blocking(move || build_fields(Value::Object(values), oversized, &binary, &names)).await?)
         };
         let ctx = self.clone();
         crate::app::spawn(&self.rt, page, move |_, _, page| match page.flatten() {

@@ -6,12 +6,12 @@ use crate::error::Localize;
 use std::cell::RefCell;
 use std::rc::Rc;
 
-use rust_i18n::t;
+use crate::t;
 use slint::{ComponentHandle, ModelRc, VecModel};
 
 use crate::app::App;
 use crate::{AwsAccount, CloudSettings, ConnProfileRowData, MainWindow};
-use cachemire_core::secret_vault::staged;
+use cachemire_core::secret_vault::{SecretsPolicy, staged};
 use cachemire_core::settings::{CloudScope, CloudSsh};
 use cachemire_core::state::AppState;
 
@@ -54,7 +54,7 @@ pub fn init(window: &MainWindow) {
         let open = open.clone();
         move |kind, id| {
             crate::app::with(|app, window| {
-                if let Some(opened) = open_form(&app.state, window, kind, &id) {
+                if let Some(opened) = open_form(app, window, kind, &id) {
                     *open.borrow_mut() = Some(opened);
                     window.global::<CloudSettings>().set_open(true);
                 }
@@ -75,25 +75,24 @@ pub fn init(window: &MainWindow) {
     });
 }
 
-/// What the form opens on for `kind` (0: the signed-in account; else the endpoint
-/// `id`), with the name and detail it shows; `None` when there is no such thing.
-fn scope_of(state: &AppState, window: &MainWindow, kind: i32, id: &str) -> Option<(CloudScope, String, String)> {
+/// What the form opens on for `kind` (0: the account of profile `id`, "" for the selected
+/// one; else the endpoint `id`), with the name and detail it shows; `None` when not known.
+fn scope_of(app: &App, window: &MainWindow, kind: i32, id: &str) -> Option<(CloudScope, String, String)> {
     if kind == 0 {
-        let account = state.connections.lock().cloud_account().0.to_string();
-        if account.is_empty() {
-            return None;
-        }
-        Some((CloudScope::Account(account.clone()), window.global::<AwsAccount>().get_profile().to_string(), account))
+        let profile = if id.is_empty() { window.global::<AwsAccount>().get_profile().to_string() } else { id.to_string() };
+        let account = crate::cloud::account_of(app, window, &profile).filter(|account| !account.is_empty())?;
+        Some((CloudScope::Account(account.clone()), profile, account))
     } else {
-        let key = state.connections.lock().cloud_key(id)?;
+        let key = app.state.connections.lock().cloud_key(id)?;
         let (name, detail) = (key.name.clone(), key.region.clone());
         Some((CloudScope::Endpoint(key), name, detail))
     }
 }
 
 /// Fills the form with what is stored for `kind`/`id` (see [`scope_of`]); what it is open on.
-fn open_form(state: &AppState, window: &MainWindow, kind: i32, id: &str) -> Option<Open> {
-    let (scope, name, detail) = scope_of(state, window, kind, id)?;
+fn open_form(app: &App, window: &MainWindow, kind: i32, id: &str) -> Option<Open> {
+    let state = &app.state;
+    let (scope, name, detail) = scope_of(app, window, kind, id)?;
     let endpoint = matches!(scope, CloudScope::Endpoint(_));
     let (entry, account_entry, profiles) = {
         let settings = state.settings.lock();
@@ -107,7 +106,13 @@ fn open_form(state: &AppState, window: &MainWindow, kind: i32, id: &str) -> Opti
     let global = window.global::<CloudSettings>();
     let rows: Vec<ConnProfileRowData> = profiles
         .into_iter()
-        .map(|p| ConnProfileRowData { id: p.id.into(), name: p.name.into(), tint: crate::connections::profiles::to_tint(p.color) })
+        .map(|p| ConnProfileRowData {
+            id: p.id.into(),
+            name: p.name.into(),
+            tint: crate::connections::profiles::to_tint(p.color),
+            read_only: p.read_only,
+            light_tint: p.light_tint,
+        })
         .collect();
     global.set_profiles(ModelRc::new(VecModel::from(rows)));
     global.set_scope_kind(kind);
@@ -173,8 +178,8 @@ fn form_values(global: &CloudSettings, endpoint: bool) -> Result<(Option<String>
                 port,
                 username: global.get_ssh_username().trim().to_string(),
                 private_key: global.get_ssh_key().trim().to_string(),
-                password: global.get_ssh_password().to_string(),
-                passphrase: global.get_ssh_passphrase().to_string(),
+                password: global.get_ssh_password().as_str().into(),
+                passphrase: global.get_ssh_passphrase().as_str().into(),
                 in_vault: false,
             })
         }
@@ -190,10 +195,16 @@ fn save(app: &Rc<App>, window: &MainWindow, Open { scope, label }: Open) {
         Ok(values) => values,
         Err(message) => return global.set_error(message.into()),
     };
+    save_values(app, scope, label, profile, ssh, SecretsPolicy::VaultOrFail);
+}
+
+/// Saves the values of the form; if the keyring is unavailable, asks whether to keep the
+/// tunnel's secrets in the settings file.
+fn save_values(app: &Rc<App>, scope: CloudScope, label: String, profile: Option<String>, ssh: Option<CloudSsh>, policy: SecretsPolicy) {
     // off the UI thread: the secrets go through the OS credential store
     let state = app.state.clone();
     app.rt.spawn_blocking(move || {
-        let saved = staged(&state.settings, |settings| settings.set_cloud_scope(&scope, &label, profile.clone(), ssh.clone()));
+        let saved = staged(&state.settings, |settings| settings.set_cloud_scope(&scope, &label, profile.clone(), ssh.clone(), policy));
         let result = saved.map(|cleanup| {
             if let Some(cleanup) = cleanup {
                 cleanup.run();
@@ -205,6 +216,10 @@ fn save(app: &Rc<App>, window: &MainWindow, Open { scope, label }: Open) {
                 Ok(()) => {
                     reapply(app, window);
                     global.set_open(false);
+                }
+                Err(e) if crate::keyring_dialogs::is_unavailable(&e) => {
+                    let retry = Box::new(move |app: &Rc<App>, _: &MainWindow, policy| save_values(app, scope, label, profile, ssh, policy));
+                    crate::keyring_dialogs::ask_keyring(app, window, false, retry);
                 }
                 Err(e) => global.set_error(e.localized().into()),
             }

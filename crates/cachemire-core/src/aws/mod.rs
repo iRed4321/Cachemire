@@ -18,6 +18,7 @@ use aws_types::os_shim_internal::{Env, Fs};
 use crate::connection::ConnectionItem;
 use crate::connection::store::build_connection_string;
 use crate::error::{Error, ErrorKind};
+use crate::secret::Secret;
 
 mod sso;
 
@@ -43,6 +44,19 @@ pub struct Profile {
     pub name: String,
     region: Option<String>,
     sso: Option<SsoSettings>,
+}
+
+impl Profile {
+    /// The account an SSO profile signs in to, as its settings say.
+    pub fn account_id(&self) -> Option<&str> {
+        self.sso.as_ref().map(|sso| sso.account_id.as_str())
+    }
+
+    /// A profile called `name` with no region nor SSO settings.
+    #[cfg(any(test, feature = "test-support"))]
+    pub fn named(name: &str) -> Self {
+        Self { name: name.to_string(), region: None, sso: None }
+    }
 }
 
 /// The `.aws` folder of the user, if there is one.
@@ -191,7 +205,7 @@ async fn sign_in(profile: &Profile, page: &SignInPage) -> Result<SdkConfig, Erro
         .get_role_credentials()
         .role_name(&sso.role_name)
         .account_id(&sso.account_id)
-        .access_token(access_token)
+        .access_token(access_token.expose())
         .send()
         .await
         .map_err(|e| AwsError::RoleRefused {
@@ -240,9 +254,14 @@ pub async fn login(page: &SignInPage) -> Result<(), Error> {
     Err(last_error.into())
 }
 
+/// The id of endpoint `name` as listed under `profile`.
+pub fn connection_id(profile: &str, name: &str) -> String {
+    format!("{ID_PREFIX}{profile}:{name}")
+}
+
 /// The URL of an ElastiCache endpoint: `rediss://` when it takes TLS.
 fn cloud_url(host: &str, port: u16, tls: bool) -> String {
-    let url = build_connection_string(host, port, 0, "", "");
+    let url = build_connection_string(host, port, 0, "", &crate::secret::Secret::default());
     if tls { url.replacen("redis://", "rediss://", 1) } else { url }
 }
 
@@ -254,7 +273,7 @@ pub struct Listing {
 }
 
 /// The ElastiCache Redis groups and standalone nodes that `profile` sees, as
-/// connections. Memcached (and Valkey) clusters are left out.
+/// connections. Memcached (and Valkey) clusters and cluster-mode groups are left out.
 pub async fn redis_connections(profile_name: &str, page: &SignInPage) -> Result<Listing, Error> {
     let profile =
         profiles().await.into_iter().find(|p| p.name == profile_name).ok_or_else(|| AwsError::ProfileNotFound(profile_name.to_string()))?;
@@ -276,13 +295,14 @@ pub async fn redis_connections(profile_name: &str, page: &SignInPage) -> Result<
     let item = |name: &str, endpoint: Option<&aws_sdk_elasticache::types::Endpoint>, tls: bool| {
         let endpoint = endpoint?;
         Some(ConnectionItem {
-            id: format!("{ID_PREFIX}{profile_name}:{name}"),
+            id: connection_id(profile_name, name),
             name: name.to_string(),
             connection_url: cloud_url(endpoint.address()?, endpoint.port().and_then(|p| u16::try_from(p).ok()).unwrap_or(6379), tls),
             username: String::new(),
-            password: String::new(),
+            password: Secret::default(),
             ssh: None,
             profile_id: String::new(),
+            read_only: false,
         })
     };
 
@@ -320,10 +340,11 @@ pub async fn redis_connections(profile_name: &str, page: &SignInPage) -> Result<
         let page = client.describe_replication_groups().set_marker(marker.take()).send().await.map_err(describe)?;
         for group in page.replication_groups() {
             let id = group.replication_group_id().unwrap_or_default();
-            if !groups.contains(id) {
+            // a group in cluster mode can't be connected to, so it isn't listed
+            if !groups.contains(id) || group.cluster_enabled() == Some(true) || group.configuration_endpoint().is_some() {
                 continue;
             }
-            let endpoint = group.configuration_endpoint().or_else(|| group.node_groups().first().and_then(|n| n.primary_endpoint()));
+            let endpoint = group.node_groups().first().and_then(|n| n.primary_endpoint());
             items.extend(item(id, endpoint, group.transit_encryption_enabled().unwrap_or(false)));
         }
         marker = page.marker().map(str::to_string);

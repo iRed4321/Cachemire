@@ -1,18 +1,16 @@
-//! The search bar (badges, case-sensitivity) and the filter bar's JSON path:
+//! The smart box's search (badges, case-sensitivity) and its JSON path filter:
 //! each re-renders what's loaded under them, off the UI thread.
 
 use crate::error::Localize;
 use std::sync::atomic::Ordering;
 
-use rust_i18n::t;
-use rustc_hash::FxHashSet;
+use crate::t;
 use slint::{ComponentHandle, Model, ModelRc, VecModel};
 
 use crate::{BadgeData, KeyPanel, SearchScope};
 
 use super::field::Fields;
 use super::scroll::{current_expanded_fields, disarm_scroll};
-use super::search_filter::tokenize;
 use super::value_list::{build_all_values_table, filter_fields, filter_status, parse_filter};
 use super::{AppliedPath, Ctx, MAX_BADGES, current_search_filter};
 
@@ -57,32 +55,28 @@ impl Ctx {
         self.kick_off_scan_if_active();
     }
 
-    /// Enter in the search bar: turns the typed text into badges (a quoted run is one,
-    /// otherwise each word) tagged with the picked scope, and clears the box. Duplicates
-    /// are dropped; if the rest exceeds [`MAX_BADGES`], none are added and the box says so.
-    pub(super) fn on_filter_query_submitted(&self) {
+    /// Adds a badge searching `scope` for `words` (one term, spaces included) and empties the
+    /// smart box; a badge already there isn't added twice, and past [`MAX_BADGES`] none is (said so).
+    pub(super) fn add_badge(&self, scope: SearchScope, words: &str) {
         let Some(window) = self.weak.upgrade() else { return };
-        let scope = window.global::<KeyPanel>().get_filter_scope();
-        let tokens = tokenize(&window.global::<KeyPanel>().get_filter_query());
-        if tokens.is_empty() {
+        let panel = window.global::<KeyPanel>();
+        let text = words.trim();
+        if text.is_empty() {
             return;
         }
-        let mut badges: Vec<BadgeData> = window.global::<KeyPanel>().get_filter_badges().iter().collect();
-        let already_active = |text: &str| badges.iter().any(|b| b.scope == scope && b.text.as_str() == text);
-        let mut seen = FxHashSet::default();
-        let new_tokens: Vec<String> = tokens.into_iter().filter(|t| !already_active(t) && seen.insert(t.clone())).collect();
-        if new_tokens.is_empty() {
-            window.global::<KeyPanel>().set_filter_query("".into());
+        let mut badges: Vec<BadgeData> = panel.get_filter_badges().iter().collect();
+        if badges.iter().any(|b| b.scope == scope && b.text.as_str() == text) {
+            panel.set_filter_query("".into());
             return;
         }
-        if badges.len() + new_tokens.len() > MAX_BADGES {
-            window.global::<KeyPanel>().set_filter_limit_message(t!("Remove a badge first (5 max)").as_ref().into());
+        if badges.len() >= MAX_BADGES {
+            panel.set_filter_limit_message(t!("Remove a badge first (5 max)").as_ref().into());
             return;
         }
-        badges.extend(new_tokens.into_iter().map(|text| BadgeData { text: text.into(), scope }));
-        window.global::<KeyPanel>().set_filter_badges(ModelRc::new(VecModel::from(badges)));
-        window.global::<KeyPanel>().set_filter_query("".into());
-        window.global::<KeyPanel>().set_filter_limit_message("".into());
+        panel.set_filter_query("".into());
+        badges.push(BadgeData { text: text.into(), scope });
+        panel.set_filter_badges(ModelRc::new(VecModel::from(badges)));
+        panel.set_filter_limit_message("".into());
         self.on_search_changed();
     }
 
@@ -96,9 +90,9 @@ impl Ctx {
         self.on_search_changed();
     }
 
-    /// Enter in the filter bar: applies its path to the loaded fields (off the UI
-    /// thread) and swaps what both views show. A path that doesn't parse is
-    /// reported next to the box and leaves the display as it was.
+    /// Applies `json-filter`'s path to the loaded fields (off the UI thread) and swaps
+    /// what both views show. A path that doesn't parse is reported under the header
+    /// and leaves the display as it was.
     pub(super) fn on_json_filter_submitted(&self) {
         let Some(window) = self.weak.upgrade() else { return };
         let path = match parse_filter(&window.global::<KeyPanel>().get_json_filter()) {

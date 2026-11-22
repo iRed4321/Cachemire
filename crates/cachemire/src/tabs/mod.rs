@@ -10,22 +10,20 @@ use crate::app::App;
 use crate::key_detail::{ScrollPos, current_expanded_fields, current_scroll, restore_expanded_fields};
 use crate::redisql;
 use crate::search;
+use crate::t;
 use crate::{
-    AllValuesRowData, BadgeData, ExportPrefs, KeyPanel, KeyTree, KeyView, MainWindow, Preferences, SavedQueries, SearchScope, SearchTab,
+    AllValuesRowData, BadgeData, ExportPrefs, KeyPanel, KeyTree, KeyView, MainWindow, OpeningView, Preferences, SavedQueries, SearchTab,
     TabData, TabStrip,
 };
 use cachemire_core::key_name::KeyName;
-use rust_i18n::t;
 
 /// Per-tab UI state outside the fetched key data: the search bar, scroll
 /// position, open value-list rows. Saved/restored on tab switch; a new tab
 /// always starts from `default()`, never the previous tab's state.
 #[derive(Clone, Default)]
 struct TabViewState {
-    // the search bar's active badges, currently-picked scope and
-    // case-sensitivity toggle (see KeyDetail.filter-badges)
+    // the smart box's search badges and case-sensitivity toggle (see KeyDetail.filter-badges)
     badges: Vec<BadgeData>,
-    scope: SearchScope,
     case_sensitive: bool,
     json_filter: String,
     // which of the key panel's views the tab was left on
@@ -36,8 +34,45 @@ struct TabViewState {
     expanded_fields: FxHashSet<String>,
     // whether a hash's fields are listed in descending order (see KeyPanel.sort-descending)
     descending: bool,
-    // the header's JSON / Escaped switch (see ExportPrefs.header-escaped)
+    // the formats: the rows' (the Value header's) and the key header's exports' (see ExportPrefs)
+    shown_format: i32,
     escaped: bool,
+    // a field to scroll to the next time the tab is shown (a link's)
+    reveal: Option<String>,
+}
+
+/// Where a link leads in a key: its tab, a hash's field opened and scrolled to, a filter.
+pub struct LinkTarget {
+    pub key: String,
+    pub field: Option<String>,
+    pub path: Option<String>,
+}
+
+impl TabViewState {
+    /// What a new tab starts on: a key's view and the export switch as the settings say,
+    /// a query's rows as a table.
+    fn new(window: &MainWindow, key: &str) -> Self {
+        let prefs = window.global::<Preferences>();
+        let view = match prefs.get_opening_view() {
+            _ if redisql::is_query_id(key) => KeyView::Table,
+            OpeningView::Fields => KeyView::Fields,
+            OpeningView::Table => KeyView::Table,
+            OpeningView::Last => prefs.get_last_view(),
+        };
+        let escaped = window.global::<Preferences>().get_export_escaped();
+        Self { view, shown_format: i32::from(escaped), escaped, ..Self::default() }
+    }
+
+    /// Shows what `target` leads to: its filter alone, and its field open in the list view.
+    fn aim(&mut self, target: &LinkTarget) {
+        self.badges.clear();
+        self.json_filter = target.path.clone().unwrap_or_default();
+        if let Some(field) = &target.field {
+            self.view = KeyView::Fields;
+            self.expanded_fields.insert(field.clone());
+        }
+        self.reveal.clone_from(&target.field);
+    }
 }
 
 /// Which special (non-key) tab kind an id names, if any: a search tab (see
@@ -123,6 +158,27 @@ impl Tabs {
     /// The next connection change drops the tabs of the one it leaves.
     pub fn discard_on_leave(&mut self) {
         self.discard_on_leave = true;
+    }
+
+    /// The key whose tab is active, if the active tab is a key's.
+    pub fn active_key(&self) -> Option<&str> {
+        self.active.as_deref().filter(|id| special_kind(id).is_none())
+    }
+
+    /// Adds `target`'s tab to those of `connection`, not the one shown, as the one it shows
+    /// once switched to. `fresh` is the state the tab starts from if it isn't open there yet.
+    fn park_target(&mut self, connection: &str, target: &LinkTarget, fresh: TabViewState) {
+        let parked = self.parked.entry(connection.to_string()).or_insert_with(|| ParkedTabs {
+            open: Vec::new(),
+            active: None,
+            view_state: FxHashMap::default(),
+        });
+        if !parked.open.contains(&target.key) {
+            parked.open.push(target.key.clone());
+        }
+        parked.active = Some(target.key.clone());
+        parked.view_state.entry(target.key.clone()).or_insert(fresh).aim(target);
+        self.parked_highlights.remove(connection);
     }
 
     /// Keeps `open` as the tabs of `connection`, shown once it is switched to.
@@ -232,7 +288,6 @@ fn clear_detail_view(window: &MainWindow) {
     window.global::<KeyPanel>().set_all_values_field_chars(8);
     window.global::<KeyPanel>().set_all_values_rows(ModelRc::new(VecModel::from(Vec::<AllValuesRowData>::new())));
     window.global::<KeyPanel>().set_filter_badges(ModelRc::new(VecModel::from(Vec::<BadgeData>::new())));
-    window.global::<KeyPanel>().set_filter_scope(SearchScope::default());
     window.global::<KeyPanel>().set_filter_case_sensitive(false);
     window.global::<KeyPanel>().set_filter_query("".into());
     window.global::<KeyPanel>().set_filter_limit_message("".into());
@@ -256,14 +311,15 @@ fn save_view_state(app: &App, window: &MainWindow, tabs: &mut Tabs, key: &str) {
         key.to_string(),
         TabViewState {
             badges: window.global::<KeyPanel>().get_filter_badges().iter().collect(),
-            scope: window.global::<KeyPanel>().get_filter_scope(),
             case_sensitive: window.global::<KeyPanel>().get_filter_case_sensitive(),
             json_filter: window.global::<KeyPanel>().get_json_filter().to_string(),
             view: window.global::<KeyPanel>().get_view(),
             scroll: current_scroll(window),
             expanded_fields: current_expanded_fields(window),
             descending: window.global::<KeyPanel>().get_sort_descending(),
+            shown_format: window.global::<ExportPrefs>().get_format(),
             escaped: window.global::<ExportPrefs>().get_header_escaped(),
+            reveal: None,
         },
     );
 }
@@ -275,15 +331,8 @@ fn restore_view_state(window: &MainWindow, tabs: &Tabs, key: &str) -> ScrollPos 
     if matches!(special_kind(key), Some(Special::Search)) {
         return ScrollPos::default();
     }
-    // a query tab's result starts as a table (a key's fields start as the list of fields),
-    // and a new tab's export switch as the settings say
-    let state = tabs.view_state.get(key).cloned().unwrap_or_else(|| TabViewState {
-        view: if redisql::is_query_id(key) { KeyView::Table } else { KeyView::default() },
-        escaped: window.global::<Preferences>().get_export_escaped(),
-        ..TabViewState::default()
-    });
+    let state = tabs.view_state.get(key).cloned().unwrap_or_else(|| TabViewState::new(window, key));
     window.global::<KeyPanel>().set_filter_badges(ModelRc::new(VecModel::from(state.badges)));
-    window.global::<KeyPanel>().set_filter_scope(state.scope);
     window.global::<KeyPanel>().set_filter_case_sensitive(state.case_sensitive);
     window.global::<KeyPanel>().set_filter_query("".into());
     window.global::<KeyPanel>().set_filter_limit_message("".into());
@@ -292,7 +341,7 @@ fn restore_view_state(window: &MainWindow, tabs: &Tabs, key: &str) -> ScrollPos 
     restore_expanded_fields(window, &state.expanded_fields);
     window.global::<KeyPanel>().set_sort_descending(state.descending);
     window.global::<ExportPrefs>().set_header_escaped(state.escaped);
-    window.global::<ExportPrefs>().set_escaped(state.escaped);
+    window.global::<ExportPrefs>().set_format(state.shown_format);
     state.scroll
 }
 
@@ -302,8 +351,53 @@ fn show_tab(app: &App, window: &MainWindow, key: String, scroll: ScrollPos, reus
     match special_kind(&key) {
         Some(Special::Search) => app.searches.borrow_mut().enter(window, &key),
         Some(Special::Query) => crate::redisql::enter(app, window, &key, scroll),
-        None => app.key_detail.load(key, scroll, reuse),
+        None => {
+            let reveal = app.tabs.borrow_mut().view_state.get_mut(&key).and_then(|state| state.reveal.take());
+            if let Some(field) = reveal {
+                reveal_field(window, field);
+            }
+            app.key_detail.load(key, scroll, reuse)
+        }
     }
+}
+
+/// Asks the key panel to bring `field`'s row into view once it has it ("" for none).
+fn reveal_field(window: &MainWindow, field: String) {
+    let scroll = window.global::<crate::KeyScroll>();
+    scroll.set_reveal_pending(!field.is_empty());
+    scroll.set_reveal_field(field.into());
+    scroll.set_reveal_index(-1);
+}
+
+/// Opens `target` on the connection shown: its key's tab opens or comes forward, with the
+/// link's filter, and its field open and scrolled to. A field the key lacks only opens the key.
+pub fn open_link(app: &App, window: &MainWindow, target: LinkTarget) {
+    if app.tabs.borrow().active.as_deref() == Some(target.key.as_str()) {
+        // the tab shown: its state is the window's, applied in place and read again
+        let panel = window.global::<KeyPanel>();
+        let mut state =
+            TabViewState { expanded_fields: current_expanded_fields(window), view: panel.get_view(), ..TabViewState::default() };
+        state.aim(&target);
+        panel.set_filter_badges(ModelRc::new(VecModel::from(Vec::<BadgeData>::new())));
+        panel.set_json_filter(state.json_filter.into());
+        panel.set_view(state.view);
+        restore_expanded_fields(window, &state.expanded_fields);
+        reveal_field(window, state.reveal.unwrap_or_default());
+        app.key_detail.load(target.key, ScrollPos::default(), true);
+        return;
+    }
+    {
+        let mut tabs = app.tabs.borrow_mut();
+        let fresh = TabViewState::new(window, &target.key);
+        tabs.view_state.entry(target.key.clone()).or_insert(fresh).aim(&target);
+    }
+    select_key(app, target.key);
+}
+
+/// Opens `target` once `connection`, not the one shown, is switched to: its tab waits there.
+pub fn park_link(app: &App, window: &MainWindow, connection: &str, target: &LinkTarget) {
+    let fresh = TabViewState::new(window, &target.key);
+    app.tabs.borrow_mut().park_target(connection, target, fresh);
 }
 
 /// Makes `id`, a tab just created, the open and active one, leaving the previous
@@ -360,12 +454,27 @@ pub fn select_key(app: &App, key: String) {
     show_tab(app, &window, key, scroll, reuse);
 }
 
+/// Shows the active tab again as it was fetched, where it was: the text Rust colored
+/// is made again, in the colors of the theme now in use.
+pub fn repaint(app: &App, window: &MainWindow) {
+    let (key, scroll) = {
+        let mut tabs = app.tabs.borrow_mut();
+        let Some(key) = tabs.active.clone() else { return };
+        save_view_state(app, window, &mut tabs, &key);
+        let scroll = restore_view_state(window, &tabs, &key);
+        (key, scroll)
+    };
+    show_tab(app, window, key, scroll, true);
+}
+
 /// The tabs of the connection shown, in order, and the active one; the box of a
 /// search or query tab shown is read into its tab first.
 pub fn open_tabs(app: &App, window: &MainWindow) -> (Vec<String>, Option<String>) {
     let tabs = app.tabs.borrow();
-    if let Some(active) = tabs.active.as_deref() {
-        leave_special(app, window, active);
+    match tabs.active.as_deref().map(|active| (active, special_kind(active))) {
+        Some((active, Some(Special::Search))) => app.searches.borrow_mut().keep_box(window, active),
+        Some((active, Some(Special::Query))) => app.queries.borrow_mut().keep_box(window, active),
+        _ => {}
     }
     (tabs.open.clone(), tabs.active.clone())
 }

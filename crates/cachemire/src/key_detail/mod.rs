@@ -2,6 +2,7 @@
 //! concern across submodules ([`field`], [`pretty_text`]/[`highlight`],
 //! [`table`]/[`value_list`], [`export`], [`scroll`]); this wires them together.
 
+use crate::t;
 use parking_lot::Mutex;
 use rustc_hash::{FxHashMap, FxHashSet};
 use std::sync::Arc;
@@ -22,6 +23,8 @@ mod edit;
 mod export;
 mod field;
 mod filtering;
+mod fold;
+mod formats;
 mod full_value;
 mod highlight;
 mod load;
@@ -30,6 +33,7 @@ mod pretty;
 mod pretty_text;
 mod scroll;
 mod search_filter;
+mod smart_search;
 mod suggest;
 mod table;
 #[cfg(test)]
@@ -40,7 +44,8 @@ mod value_lines;
 mod value_list;
 mod word;
 
-pub(crate) use highlight::{search_plain_text, search_value_text};
+pub(crate) use fold::{contains_folded, fold, unescaped_json};
+pub(crate) use highlight::{display_sample, search_plain_text, search_value_text};
 pub use scroll::{ScrollPos, current_expanded_fields, current_scroll, restore_expanded_fields};
 pub use table::clear_table;
 
@@ -61,9 +66,8 @@ const MAX_BADGES: usize = 5;
 /// search/filter looking further in) barely has to wait for the next page.
 const HASH_PAGE_SIZE: usize = 200;
 
-/// The search bar's current state, read from the window: its badges (the
-/// model Rust itself just wrote, so this never disagrees with what's shown)
-/// and the case-sensitivity toggle.
+/// The smart box's search, read from the window: its badges (the model Rust itself
+/// just wrote, so this never disagrees with what's shown) and the case-sensitivity toggle.
 fn current_search_filter(window: &MainWindow) -> SearchFilter {
     let terms =
         window.global::<KeyPanel>().get_filter_badges().iter().map(|b| SearchTerm { text: b.text.to_string(), scope: b.scope }).collect();
@@ -106,7 +110,7 @@ impl FetchedKey {
 /// fetching (`reuse`) and drops entries when their tab closes.
 type FetchedCache = Arc<Mutex<FxHashMap<(String, String), FetchedKey>>>;
 
-/// A search badge is active or the JSON path filter holds something: the signal to
+/// A search badge is applied or the JSON path filter holds something: the signal to
 /// keep paging through the rest of a hash without waiting for a scroll.
 fn search_or_filter_active(window: &MainWindow) -> bool {
     window.global::<KeyPanel>().get_filter_badges().row_count() > 0 || !window.global::<KeyPanel>().get_json_filter().is_empty()
@@ -295,9 +299,9 @@ impl Ctx {
 }
 
 impl Ctx {
-    /// The filter's completion list, from every loaded field's value (not what the
-    /// filter has left of them); whether it has any.
-    fn suggest(&self, text: &str, cursor: i32) -> bool {
+    /// The keys that can follow the path being typed, from every loaded field's value
+    /// (not what the filter has left of them); whether there are any.
+    fn suggest_path(&self, text: &str, cursor: i32) -> bool {
         let Some(window) = self.weak.upgrade() else { return false };
         let fields: Fields = self.shared.content.lock().loaded.clone();
         let completion = self.shared.suggester.complete(&fields, text, cursor.max(0) as usize);
@@ -306,11 +310,18 @@ impl Ctx {
             .flat_map(|completion| &completion.items)
             .map(|item| {
                 let (start, end) = item.matched;
-                SuggestionRow { before: item.key[..start].into(), matched: item.key[start..end].into(), after: item.key[end..].into() }
+                SuggestionRow {
+                    before: item.key[..start].into(),
+                    matched: item.key[start..end].into(),
+                    after: item.key[end..].into(),
+                    ..Default::default()
+                }
             })
             .collect();
         let any = !rows.is_empty();
         window.global::<KeyPanel>().set_suggestions(ModelRc::new(VecModel::from(rows)));
+        let footer = t!("Tab writes the first key, or the one picked with the arrows; Enter applies the filter as typed.");
+        window.global::<KeyPanel>().set_suggestion_footer(footer.as_ref().into());
         any
     }
 
@@ -384,9 +395,9 @@ impl KeyDetailShared {
         self.content.lock().epoch == epoch
     }
 
-    /// The filter's text once completion `index` of the list is taken, and where its
-    /// cursor goes; the text unchanged (cursor -1) when there is no such completion.
-    fn complete_suggestion(&self, text: slint::SharedString, cursor: i32, index: i32) -> CompletionEdit {
+    /// The path's text once key `index` of the list is taken, and where its cursor
+    /// goes; the text unchanged (cursor -1) when there is no such key.
+    fn complete_path(&self, text: slint::SharedString, cursor: i32, index: i32) -> CompletionEdit {
         let fields: Fields = self.content.lock().loaded.clone();
         let edit = self
             .suggester
@@ -454,12 +465,16 @@ pub fn init(window: &MainWindow, state: Arc<AppState>, rt: Handle) -> KeyDetail 
     };
 
     panel.on_json_filter_submitted(with_ctx(Ctx::on_json_filter_submitted));
-    // the search bar: Enter adds badges, a badge's × drops it, and flipping
-    // case-sensitivity re-renders under the same badges
+    // the smart box: Enter adds badges or applies a path, a badge's × drops it, and
+    // flipping case-sensitivity re-renders under the same badges
     panel.on_filter_query_submitted(with_ctx(Ctx::on_filter_query_submitted));
     panel.on_filter_badge_removed({
         let ctx = ctx.clone();
         move |text, scope| ctx.on_filter_badge_removed(&text, scope)
+    });
+    panel.on_filter_badge_edited({
+        let ctx = ctx.clone();
+        move |text, scope| ctx.on_filter_badge_edited(&text, scope)
     });
     panel.on_filter_case_sensitivity_changed(with_ctx(Ctx::on_search_changed));
     // the field list scrolled near the first loaded field: the page before it is added
@@ -471,9 +486,10 @@ pub fn init(window: &MainWindow, state: Arc<AppState>, rt: Handle) -> KeyDetail 
         let ctx = ctx.clone();
         move |text, cursor| ctx.suggest(&text, cursor)
     });
+    panel.on_is_words(|text| smart_search::is_words(&text));
     panel.on_complete_suggestion({
-        let shared = ctx.shared.clone();
-        move |text, cursor, index| shared.complete_suggestion(text, cursor, index)
+        let ctx = ctx.clone();
+        move |text, cursor, index| ctx.complete_suggestion(text, cursor, index)
     });
     panel.on_view_changed(with_ctx(Ctx::on_view_changed));
 
@@ -565,6 +581,25 @@ impl KeyDetail {
             },
         );
         ctx.load_key(LoadRequest { key: id, scroll, reuse: true, announce: false });
+    }
+
+    /// Keeps `fields` as hash `key` of `connection`, as if read whole from the server.
+    #[cfg(test)]
+    pub fn seed_hash(&self, connection: &str, key: &str, fields: &[(&str, serde_json::Value)]) {
+        let names: Vec<String> = fields.iter().map(|(name, _)| name.to_string()).collect();
+        let fetch = FetchedKey {
+            key_type: Some(cachemire_core::redis_value_type::RedisValueType::Hash),
+            meta: String::new(),
+            fields: fields.iter().map(|(name, value)| Arc::new(field::Field::from_value(name.to_string(), value.clone()))).collect(),
+            field_count: names.len(),
+            all_names: Some(Arc::new(names)),
+            start: 0,
+            ttl: -1,
+            names_cursor: None,
+            descending: false,
+            editable: true,
+        };
+        self.0.shared.fetched.lock().insert((connection.to_string(), key.to_string()), fetch);
     }
 
     /// Drops what was fetched for a connection's key (`Some`), or all its keys (`None`).

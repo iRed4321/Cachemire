@@ -1,21 +1,30 @@
 import { Theme } from "theme.slint";
 
 // The window's hover hint, drawn by main.slint: any component raises it here with its text and
-// where it goes (left edge at `x`; `anchor-y` is its bottom edge when `above`, its top otherwise).
+// where it goes (left edge at `x`; `anchor-y` is its bottom edge when `above`, its top otherwise),
+// and maybe a `footer` line under a separator ("" for none).
 export global Hint {
     out property <string> text;
+    out property <string> footer;
     out property <length> x;
     out property <length> anchor-y;
     out property <bool> above;
     out property <bool> visible;
     public function show-below(label: string, left: length, top: length) {
+        footer = "";
         text = label;
         x = left;
         anchor-y = top;
         above = false;
         visible = true;
     }
+    // `show-below`, with `note` on a line of its own under a separator
+    public function show-below-with(label: string, note: string, left: length, top: length) {
+        show-below(label, left, top);
+        footer = note;
+    }
     public function show-above(label: string, left: length, bottom: length) {
+        footer = "";
         text = label;
         x = left;
         anchor-y = bottom;
@@ -38,7 +47,7 @@ export component IconButton inherits Rectangle {
     border-radius: Theme.radius-sm;
     background: active ? Theme.bg-selected-soft : (area.has-hover ? Theme.bg-hover : transparent);
 
-    property <bool> hovered: area.has-hover;
+    out property <bool> hovered: area.has-hover;
     property <bool> pressed: area.pressed;
     property <bool> hint-shown: false;
     // a click means the user already knows what it does, so no hint until
@@ -323,15 +332,7 @@ export component VScrollBar inherits Rectangle {
         }
     }
 
-    // hover zone only: nothing else lives in this strip
-    track := Rectangle {
-        x: -root.strip;
-        width: root.strip;
-        height: root.height;
-        background: root.engaged ? Theme.bg-elevated.with-alpha(0.9) : Theme.bg-elevated.with-alpha(0);
-        animate background { duration: 130ms; }
-    }
-
+    // the strip that wakes the bar: nothing is drawn there but the thumb
     track-area := TouchArea {
         x: -root.strip;
         width: root.strip;
@@ -425,14 +426,7 @@ export component HScrollBar inherits Rectangle {
         }
     }
 
-    track := Rectangle {
-        y: -root.strip;
-        width: root.width;
-        height: root.strip;
-        background: root.engaged ? Theme.bg-elevated.with-alpha(0.9) : Theme.bg-elevated.with-alpha(0);
-        animate background { duration: 130ms; }
-    }
-
+    // the strip that wakes the bar: nothing is drawn there but the thumb
     track-area := TouchArea {
         y: -root.strip;
         width: root.width;
@@ -532,6 +526,17 @@ export component WheelScroller inherits TouchArea {
 // A button of the modal windows (connection form, settings): as wide as its
 // label needs (a translation can be longer than English), and never narrower
 // than a standard button.
+// A dialog's backdrop or a menu's outside: what it covers neither scrolls under the wheel
+// nor takes clicks; Ctrl+wheel goes on to the window's zoom
+export component BackdropArea inherits TouchArea {
+    scroll-event(event) => {
+        if event.modifiers.control {
+            return reject;
+        }
+        return accept;
+    }
+}
+
 export component ModalButton inherits Rectangle {
     in property <string> text;
     // the blue call to action, or the outlined neutral one
@@ -560,7 +565,7 @@ export component ModalButton inherits Rectangle {
     }
     label := Text {
         text: root.text;
-        color: primary ? #ffffff : (danger ? (armed ? #ffffff : Theme.accent-red) : Theme.text-secondary);
+        color: primary ? Theme.accent-text : (danger ? (armed ? #ffffff : Theme.accent-red) : Theme.text-secondary);
         font-weight: (primary || armed) ? 600 : 400;
         font-size: Theme.pt(12px);
         horizontal-alignment: center;
@@ -572,8 +577,7 @@ export component ModalButton inherits Rectangle {
 
 
 // A small joined choice between a few labels, the segments from `first` on: `current` is marked
-// and `picked` says which was clicked. Each segment rounds its own outer corners, as a clip
-// would render the text through an offscreen layer and blur it.
+// and `picked` says which was clicked. The segments are cut to the rounded corners.
 export component SegmentedToggle inherits Rectangle {
     in property <[string]> options;
     in property <int> current;
@@ -586,6 +590,7 @@ export component SegmentedToggle inherits Rectangle {
     border-radius: Theme.radius-sm;
     border-width: 1px;
     border-color: Theme.border-soft;
+    clip: true;
 
     HorizontalLayout {
         padding: 1px;
@@ -594,10 +599,6 @@ export component SegmentedToggle inherits Rectangle {
             property <bool> selected: i == root.current;
             visible: shown;
             width: shown ? root.segment-width : 0px;
-            border-top-left-radius: i == root.first ? Theme.radius-sm - 1px : 0px;
-            border-bottom-left-radius: i == root.first ? Theme.radius-sm - 1px : 0px;
-            border-top-right-radius: i == root.options.length - 1 ? Theme.radius-sm - 1px : 0px;
-            border-bottom-right-radius: i == root.options.length - 1 ? Theme.radius-sm - 1px : 0px;
             background: selected ? Theme.bg-selected-soft : (area.has-hover ? Theme.bg-hover : transparent);
             area := TouchArea {
                 mouse-cursor: pointer;
@@ -621,9 +622,12 @@ export component CheckRow inherits Rectangle {
     in property <bool> checked: false;
     // the label in bold, as a form's section switch
     in property <bool> bold: false;
+    // greyed out and not clickable
+    in property <bool> enabled: true;
     callback toggled();
 
     height: Theme.px(24px);
+    opacity: root.enabled ? 1 : 0.5;
 
     HorizontalLayout {
         spacing: Theme.px(8px);
@@ -639,7 +643,8 @@ export component CheckRow inherits Rectangle {
         Rectangle { horizontal-stretch: 1; }
     }
     TouchArea {
-        mouse-cursor: pointer;
+        enabled: root.enabled;
+        mouse-cursor: root.enabled ? pointer : default;
         clicked => { root.toggled(); }
     }
 }

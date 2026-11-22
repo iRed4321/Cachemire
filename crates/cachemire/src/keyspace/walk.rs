@@ -4,7 +4,7 @@
 use crate::error::Localize;
 use std::sync::atomic::Ordering;
 
-use rust_i18n::t;
+use crate::t;
 use slint::ComponentHandle;
 
 use super::index::Index;

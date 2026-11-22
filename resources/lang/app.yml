@@ -1,4 +1,4 @@
-# Messages built in Rust (`t!("...")`), compiled into the executable by rust-i18n.
+# Messages built in Rust (`t!("...")`), compiled into the executable by build.rs.
 # The key is the English text, which is also what is shown for a language that
 # has no entry. The messages in the .slint files are in */LC_MESSAGES/cachemire.po.
 _version: 2
@@ -16,6 +16,12 @@ _version: 2
 # the value editor
 "Not valid JSON: line %{line}, column %{column}":
   fr: "JSON invalide : ligne %{line}, colonne %{column}"
+"Not valid YAML: line %{line}, column %{column}":
+  fr: "YAML invalide : ligne %{line}, colonne %{column}"
+"Not valid YAML":
+  fr: "YAML invalide"
+"Not valid XML: line %{line}, column %{column}":
+  fr: "XML invalide : ligne %{line}, colonne %{column}"
 "Saving failed: %{error}":
   fr: "Échec de l'enregistrement : %{error}"
 "Saved":
@@ -26,6 +32,12 @@ _version: 2
   fr: "Un champ doit avoir un nom"
 "This hash already has a field with this name":
   fr: "Ce hash a déjà un champ de ce nom"
+"This value changed in Redis since you opened it.":
+  fr: "Cette valeur a changé dans Redis depuis l'ouverture de l'éditeur."
+"This field no longer exists in Redis.":
+  fr: "Ce champ n'existe plus dans Redis."
+"This key no longer exists in Redis.":
+  fr: "Cette clé n'existe plus dans Redis."
 "This value isn't UTF-8 text: it can't be edited here":
   fr: "Cette valeur n'est pas du texte UTF-8 : elle ne peut pas être modifiée ici"
 # the keyspace's right-click menu: a new key, renaming or deleting a key or a folder
@@ -45,6 +57,8 @@ _version: 2
   fr: "Échec du renommage : %{error}"
 "Deleting failed: %{error}":
   fr: "Échec de la suppression : %{error}"
+"Counting failed: %{error}":
+  fr: "Échec du comptage : %{error}"
 "Renamed":
   fr: "Renommé"
 "%{count} keys deleted":
@@ -95,6 +109,26 @@ _version: 2
   fr: "analyse..."
 "searching...":
   fr: "recherche..."
+# the smart box's list: "Search" then where (a pill: All, Fields or Value), or "Apply a" Filter;
+# a key of its own, the verb, apart from the search tab's "Search"
+"Search (smart box)":
+  en: "Search"
+  fr: "Chercher"
+"All":
+  fr: "Tout"
+"Fields":
+  fr: "Champs"
+"Value":
+  fr: "Valeur"
+"Apply a":
+  fr: "Appliquer un"
+"Filter":
+  fr: "Filtre"
+# under the smart box's list: how it works, for words, then for a path
+"Enter adds the search; all must match. Click one or press ← to edit it, Backspace removes the last one.":
+  fr: "Entrée ajoute la recherche ; toutes doivent correspondre. Cliquez-en une ou appuyez sur ← pour la modifier, Retour arrière ôte la dernière."
+"Tab writes the first key, or the one picked with the arrows; Enter applies the filter as typed.":
+  fr: "Tab écrit la première clé, ou celle choisie avec les flèches ; Entrée applique le filtre tel qu'il est saisi."
 "Remove a badge first (5 max)":
   fr: "Retirez un badge d'abord (5 max)"
 "search failed: %{error}":
@@ -169,6 +203,10 @@ _version: 2
   fr: "L'URL de connexion n'est pas valide."
 "The connection URL has no host.":
   fr: "L'URL de connexion n'a pas d'hôte."
+"The connection URL starts with %{scheme}://, which isn't supported: use redis://, rediss://, valkey:// or valkeys://.":
+  fr: "L'URL de connexion commence par %{scheme}://, ce qui n'est pas pris en charge : utilisez redis://, rediss://, valkey:// ou valkeys://."
+"The database in the connection URL must be a number, 0 or more.":
+  fr: "La base de données de l'URL de connexion doit être un nombre supérieur ou égal à 0."
 "SSH host is required.":
   fr: "L'hôte SSH est obligatoire."
 "Provide an SSH password or a private key.":
@@ -199,6 +237,8 @@ _version: 2
   fr: "Impossible de lire le mot de passe du profil SSH dans le trousseau du système : %{error}"
 "Couldn't read the SSH tunnel's secrets from the system keyring: %{error}":
   fr: "Impossible de lire les secrets du tunnel SSH dans le trousseau du système : %{error}"
+"The system keyring is unavailable, so the passwords can't be stored in it: %{error}":
+  fr: "Le trousseau du système est indisponible : les mots de passe ne peuvent pas y être enregistrés : %{error}"
 "This SSH connection has no username or password: fill them in, or make an SSH profile active in Settings.":
   fr: "Cette connexion SSH n'a ni utilisateur ni mot de passe : renseignez-les, ou activez un profil SSH dans les Paramètres."
 
@@ -213,6 +253,8 @@ _version: 2
   fr: "impossible de mémoriser la clé d'hôte du serveur SSH dans %{file} : %{error}"
 "the SSH server's host key has changed since it was first seen (recorded on line %{line} of %{file}). If the server was reinstalled, delete that line; otherwise someone may be impersonating it.":
   fr: "la clé d'hôte du serveur SSH a changé depuis sa première utilisation (enregistrée à la ligne %{line} de %{file}). Si le serveur a été réinstallé, supprimez cette ligne ; sinon, quelqu'un se fait peut-être passer pour lui."
+"the SSH server's host key isn't trusted yet: %{server}":
+  fr: "la clé d'hôte du serveur SSH n'est pas encore approuvée : %{server}"
 "couldn't check the SSH server's host key: %{error}":
   fr: "impossible de vérifier la clé d'hôte du serveur SSH : %{error}"
 "couldn't decrypt the SSH private key %{file}: wrong or missing passphrase?":
@@ -235,6 +277,8 @@ _version: 2
   fr: "délai dépassé pour la connexion au serveur SSH %{host}:%{port}"
 "the SSH server couldn't reach %{host}:%{port}: %{error}":
   fr: "le serveur SSH n'a pas pu joindre %{host}:%{port} : %{error}"
+"couldn't make a secure connection to %{host} through the SSH tunnel: %{error}":
+  fr: "impossible d'établir une connexion sécurisée avec %{host} via le tunnel SSH : %{error}"
 "couldn't open a local port for the SSH tunnel: %{error}":
   fr: "impossible d'ouvrir un port local pour le tunnel SSH : %{error}"
 
@@ -323,6 +367,8 @@ _version: 2
   fr: "%{key} contient du JSON, mais pas un objet ni un tableau d'objets : %{kind}"
 "Invalid JSON in %{key}: %{error}":
   fr: "JSON invalide dans %{key} : %{error}"
+"%{key} holds %{size} of text: Redisql reads strings up to 16 MB.":
+  fr: "%{key} contient %{size} de texte : Redisql lit les chaînes jusqu'à 16 Mo."
 "%{key} is a %{kind}: only a hash of JSON objects, or a string holding one, can be queried.":
   fr: "%{key} est un(e) %{kind} : seul un hash de valeurs JSON, ou une chaîne en contenant une, peut être interrogé."
 
@@ -357,6 +403,10 @@ _version: 2
   fr: "La connexion a expiré après %{seconds} secondes."
 "This server runs in cluster mode, which Cachemire doesn't support yet. Connect to a server or endpoint with cluster mode disabled.":
   fr: "Ce serveur fonctionne en mode cluster, que Cachemire ne prend pas encore en charge. Connectez-vous à un serveur ou un point de terminaison sans mode cluster."
+"This connection is read-only.":
+  fr: "Cette connexion est en lecture seule."
+"This data isn't UTF-8 text: it is read-only.":
+  fr: "Ces données ne sont pas du texte UTF-8 : elles sont en lecture seule."
 "A background task failed: %{error}":
   fr: "Une tâche en arrière-plan a échoué : %{error}"
 "Pick a connection profile.":
@@ -394,7 +444,7 @@ _version: 2
 "%{ago} · %{ms} ms":
   fr: "%{ago} · %{ms} ms"
 
-# the About window's update check
+# the About page's update check
 "Download and install":
   fr: "Télécharger et installer"
 "Open the release page":
@@ -413,3 +463,126 @@ _version: 2
   fr: "Téléchargement de la version %{version}..."
 "Couldn't download the update: %{error}":
   fr: "Impossible de télécharger la mise à jour : %{error}"
+# shareable links (cachemire://)
+"Link copied":
+  fr: "Lien copié"
+"This connection's address can't be put in a link.":
+  fr: "L'adresse de cette connexion ne peut pas être mise dans un lien."
+"This link can't be opened. %{why}":
+  fr: "Ce lien ne peut pas être ouvert. %{why}"
+"It was made by a newer version of Cachemire.":
+  fr: "Il a été créé par une version plus récente de Cachemire."
+"It is incomplete or damaged.":
+  fr: "Il est incomplet ou abîmé."
+"No saved connection reaches %{server}: save it to open the link.":
+  fr: "Aucune connexion enregistrée n'atteint %{server} : enregistrez-la pour ouvrir le lien."
+"Sign in to AWS with a profile that lists %{server} to open this link.":
+  fr: "Connectez-vous à AWS avec un profil qui liste %{server} pour ouvrir ce lien."
+"%{server} is no longer among the account's endpoints.":
+  fr: "%{server} ne fait plus partie des endpoints du compte."
+# the lines of the settings' Key bindings page
+"Window":
+  fr: "Fenêtre"
+"Query box":
+  fr: "Zone de requête"
+"Value editor":
+  fr: "Éditeur de valeur"
+"Zoom in":
+  fr: "Zoom avant"
+"Zoom out":
+  fr: "Zoom arrière"
+"Reset the zoom":
+  fr: "Rétablir le zoom"
+"Search the open key, or open a search tab":
+  fr: "Chercher dans la clé ouverte, ou ouvrir un onglet de recherche"
+"Close the tab":
+  fr: "Fermer l'onglet"
+"Run the statement at the caret":
+  fr: "Exécuter l'instruction au curseur"
+"Run the whole script":
+  fr: "Exécuter tout le script"
+"Show the suggestions":
+  fr: "Afficher les suggestions"
+"Previous query of the history":
+  fr: "Requête précédente de l'historique"
+"Next query of the history":
+  fr: "Requête suivante de l'historique"
+"Save the value":
+  fr: "Enregistrer la valeur"
+"Copy":
+  fr: "Copier"
+"Cut":
+  fr: "Couper"
+"Paste":
+  fr: "Coller"
+"Select all":
+  fr: "Tout sélectionner"
+"Undo":
+  fr: "Annuler"
+"Redo":
+  fr: "Rétablir"
+"Close a dialog or a menu, fold the value under the pointer":
+  fr: "Fermer une fenêtre ou un menu, replier la valeur sous le pointeur"
+"Move between a table's cells":
+  fr: "Passer d'une cellule à l'autre d'un tableau"
+"Pick a suggestion":
+  fr: "Choisir une suggestion"
+"Zoom":
+  fr: "Zoom"
+"Mouse wheel":
+  fr: "Molette"
+# the settings' Key bindings page: the names of keys, and why keys can't be bound
+"Shift":
+  fr: "Maj"
+"Enter":
+  fr: "Entrée"
+"Space":
+  fr: "Espace"
+"Backspace":
+  fr: "Retour arrière"
+"Delete":
+  fr: "Suppr"
+"Insert":
+  fr: "Inser"
+"Home":
+  fr: "Début"
+"End":
+  fr: "Fin"
+"Page Up":
+  fr: "Page préc."
+"Page Down":
+  fr: "Page suiv."
+"A shortcut needs Ctrl, unless it is a function key (F1 to F24).":
+  fr: "Un raccourci demande Ctrl, sauf avec une touche de fonction (F1 à F24)."
+"These keys keep their usual use (copy, paste, undo, Esc, Tab...).":
+  fr: "Ces touches gardent leur rôle habituel (copier, coller, annuler, Échap, Tab...)."
+"Another shortcut already uses these keys.":
+  fr: "Un autre raccourci utilise déjà ces touches."
+"now":
+  fr: "maintenant"
+"Recent":
+  fr: "Récents"
+"All profiles":
+  fr: "Tous les profils"
+"1 profile":
+  fr: "1 profil"
+"%{n} profiles":
+  fr: "%{n} profils"
+"%{shown} of %{total}":
+  fr: "%{shown} sur %{total}"
+"Account not known yet":
+  fr: "Compte pas encore connu"
+"No connection profile":
+  fr: "Aucun profil de connexion"
+"SSH %{host}":
+  fr: "SSH %{host}"
+"No SSH tunnel":
+  fr: "Aucun tunnel SSH"
+# the AWS profile list's chips, over the profiles using no connection profile or an unknown account
+"No profile":
+  fr: "Sans profil"
+"Unknown account":
+  fr: "Compte inconnu"
+# the AWS profile list's pinned profiles: their header
+"Pinned":
+  fr: "Épinglés"

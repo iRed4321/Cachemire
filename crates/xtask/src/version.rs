@@ -216,12 +216,12 @@ impl Drop for Restore<'_> {
 
 /// Runs `build` on a release, with its version written into the app's Cargo.toml meanwhile. `as_version` builds the
 /// working tree as that version (what the Release workflow does); otherwise the tag on HEAD if any, else the
-/// latest tag (the latest stable one with `stable`), checked out meanwhile. `fast` builds the working tree as is.
+/// latest tag (the latest stable one with `stable`), checked out meanwhile. `fast` alone builds the working tree as is.
 pub fn in_release(fast: bool, stable: bool, as_version: Option<&str>, build: impl FnOnce() -> Result<()>) -> Result<()> {
     let root = repo_root();
     if let Some(version) = as_version {
-        if fast || stable {
-            return Err("--as-version builds the working tree in the release profile: it can't go with --fast or --stable".into());
+        if stable {
+            return Err("--as-version builds the working tree as that version: it can't go with --stable".into());
         }
         let version = Version::parse(version).map_err(|e| format!("{version} is not a version: {e}"))?;
         let _stamped = Stamped::new(&root, &version)?;

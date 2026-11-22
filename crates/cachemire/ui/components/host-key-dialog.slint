@@ -1,0 +1,67 @@
+import { Theme } from "theme.slint";
+import { ModalButton } from "widgets.slint";
+import { DialogBackdrop } from "secrets-dialogs.slint";
+
+// Asked when an SSH server's host key is in no known-hosts file. Rust opens it and answers
+// `trusted` (the key is remembered, the connection goes on) or `cancelled` (see src/host_key_dialog.rs).
+export global HostKeyDialog {
+    in-out property <bool> open: false;
+    // the server as host:port, the key's type and its SHA-256 fingerprint
+    in property <string> server;
+    in property <string> key-type;
+    in property <string> fingerprint;
+    callback trusted();
+    callback cancelled();
+}
+
+export component HostKeyModal inherits DialogBackdrop {
+    escaped => { HostKeyDialog.open = false; HostKeyDialog.cancelled(); }
+
+    Text {
+        text: @tr("New SSH server");
+        font-size: Theme.pt(14px);
+        font-weight: 700;
+        color: Theme.text-primary;
+    }
+    Text {
+        text: @tr("The authenticity of this SSH server can't be established. Check the fingerprint against the server's before trusting it.");
+        font-size: Theme.pt(12px);
+        color: Theme.text-secondary;
+        wrap: word-wrap;
+    }
+    VerticalLayout {
+        spacing: Theme.px(2px);
+        Text {
+            text: HostKeyDialog.server;
+            font-size: Theme.pt(12px);
+            font-weight: 600;
+            color: Theme.text-primary;
+            overflow: elide;
+        }
+        Text {
+            text: HostKeyDialog.key-type;
+            font-size: Theme.pt(11px);
+            color: Theme.text-secondary;
+        }
+        Text {
+            text: HostKeyDialog.fingerprint;
+            font-size: Theme.pt(11px);
+            font-family: Theme.font-mono;
+            color: Theme.text-primary;
+            wrap: word-wrap;
+        }
+    }
+    HorizontalLayout {
+        spacing: Theme.px(8px);
+        alignment: end;
+        ModalButton {
+            text: @tr("Cancel");
+            clicked => { HostKeyDialog.open = false; HostKeyDialog.cancelled(); }
+        }
+        ModalButton {
+            text: @tr("Trust and connect");
+            primary: true;
+            clicked => { HostKeyDialog.open = false; HostKeyDialog.trusted(); }
+        }
+    }
+}

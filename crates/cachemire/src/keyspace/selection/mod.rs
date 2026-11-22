@@ -6,7 +6,7 @@ use std::rc::Rc;
 use std::sync::atomic::Ordering;
 use std::time::{Duration, Instant};
 
-use rust_i18n::t;
+use crate::t;
 use rustc_hash::{FxHashMap, FxHashSet};
 use slint::{ComponentHandle, Model};
 
@@ -228,19 +228,17 @@ impl Selection {
         }
     }
 
-    /// Ticks everything: the whole keyspace, or every key a search shows.
-    fn select_all(&mut self, shown: &Index, searching: bool) {
+    /// Ticks everything: the whole keyspace, or every key a search shows, as ticking each
+    /// would (a folder all of whose keys end up ticked is ticked itself).
+    fn select_all(&mut self, index: &Index, shown: &Index, searching: bool) {
         if !searching {
             self.keys.clear();
             self.folders.clear();
             self.folders.insert(String::new());
             return;
         }
-        let ids: Vec<String> = shown.keys().map(|(id, _)| id).collect();
-        for id in ids {
-            if !self.covered(&id) {
-                self.keys.insert(id);
-            }
+        for (id, _) in shown.keys() {
+            self.tick_key(&id, true, index);
         }
     }
 
@@ -464,7 +462,7 @@ pub(super) fn init(app: &Rc<App>, window: &MainWindow) {
             with_tree(&app, |window, tree| {
                 let Tree { export, index, search, .. } = &mut *tree;
                 let shown = search.as_ref().map_or(&*index, |s| &s.index);
-                export.select_all(shown, search.is_some());
+                export.select_all(index, shown, search.is_some());
                 refresh(window, tree);
             })
         }

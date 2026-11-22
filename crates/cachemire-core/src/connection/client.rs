@@ -3,9 +3,10 @@ use std::time::Duration;
 use redis::aio::{ConnectionManager, ConnectionManagerConfig};
 use redis::io::tcp::TcpSettings;
 use redis::io::tcp::socket2::TcpKeepalive;
+use rustls::pki_types::ServerName;
 
-use crate::connection::ConnectionItem;
-use crate::error::Error;
+use crate::connection::{ConnectionItem, tls};
+use crate::error::{Error, Invalid};
 
 /// Where the Redis server is, as the connection says (through an SSH tunnel,
 /// this is where the SSH server has to reach).
@@ -14,14 +15,27 @@ pub fn target_of(connection: &ConnectionItem) -> Result<(String, u16), Error> {
     Ok((endpoint.host, endpoint.port))
 }
 
-fn build_client(connection: &ConnectionItem, via_local_port: Option<u16>) -> Result<redis::Client, Error> {
+/// The name a `rediss://` endpoint's certificate has to match, when the connection is
+/// secured; through an SSH tunnel the tunnel does the TLS handshake with it.
+pub fn tls_name_of(connection: &ConnectionItem) -> Result<Option<ServerName<'static>>, Error> {
+    let endpoint = connection.endpoint()?;
+    if !endpoint.tls {
+        return Ok(None);
+    }
+    let name = ServerName::try_from(endpoint.host).map_err(|_| Invalid::UnreadableUrl)?;
+    Ok(Some(name))
+}
+
+pub(crate) fn build_client(connection: &ConnectionItem, via_local_port: Option<u16>) -> Result<redis::Client, Error> {
     use redis::IntoConnectionInfo;
 
     let mut endpoint = connection.endpoint()?;
-    // through an SSH tunnel, the server is the tunnel's end on this machine
+    // through an SSH tunnel, the server is the tunnel's end on this machine, in plain
+    // TCP: the tunnel does the TLS handshake with the endpoint's real host name
     if let Some(port) = via_local_port {
         endpoint.host = "127.0.0.1".to_string();
         endpoint.port = port;
+        endpoint.tls = false;
     }
 
     // RESP2 on purpose: every server speaks it (RESP3 needs Redis 6+), the replies are
@@ -32,10 +46,11 @@ fn build_client(connection: &ConnectionItem, via_local_port: Option<u16>) -> Res
         redis_settings = redis_settings.set_username(username);
     }
     if let Some(password) = endpoint.password {
-        redis_settings = redis_settings.set_password(password);
+        redis_settings = redis_settings.set_password(password.expose());
     }
 
-    let addr = if endpoint.tls {
+    let tls = endpoint.tls;
+    let addr = if tls {
         redis::ConnectionAddr::TcpTls { host: endpoint.host, port: endpoint.port, insecure: false, tls_params: None }
     } else {
         redis::ConnectionAddr::Tcp(endpoint.host, endpoint.port)
@@ -45,6 +60,12 @@ fn build_client(connection: &ConnectionItem, via_local_port: Option<u16>) -> Res
     let tcp = TcpSettings::default().set_nodelay(true).set_keepalive(keepalive);
     let info = addr.into_connection_info()?.set_redis_settings(redis_settings).set_tcp_settings(tcp);
 
+    if tls {
+        // trusts the bundled roots and the system's (the redis feature for the former
+        // stays on so redis-rs doesn't load the system store itself, and fail with it)
+        let certificates = redis::TlsCertificates { client_tls: None, root_cert: Some(tls::roots_pem()) };
+        return Ok(redis::Client::build_with_tls(info, certificates)?);
+    }
     Ok(redis::Client::open(info)?)
 }
 

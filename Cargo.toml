@@ -28,6 +28,17 @@ tokio = { version = "1", features = ["rt-multi-thread", "sync", "time", "net", "
 tracing = { version = "0.1", default-features = false, features = ["std"] }
 uuid = { version = "1", features = ["v4"] }
 
+# inherited by every crate (`[lints] workspace = true`); clippy's are warnings, CI denies them
+[workspace.lints.rust]
+unsafe_op_in_unsafe_fn = "deny"
+unused_must_use = "deny"
+
+[workspace.lints.clippy]
+dbg_macro = "warn"
+todo = "warn"
+unimplemented = "warn"
+unwrap_used = "warn"
+
 # smaller, leaner binary; panic stays "unwind" so a panic in one background
 # task doesn't take the whole app down
 [profile.release]

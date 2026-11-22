@@ -1,11 +1,12 @@
 //! Development tasks, run as `cargo xtask <task>` (see `cargo xtask --help`): the
-//! translation files, releases and the Windows and Linux packages. Pure Rust, so
+//! translation files, the end-to-end tests, releases and the Windows and Linux packages. Pure Rust, so
 //! they run the same on every platform; the external tools they need are installed on demand.
 
 mod appimage;
 mod changelog;
 mod deb;
 mod deps;
+mod e2e;
 mod i18n;
 mod install;
 mod linux;
@@ -13,6 +14,7 @@ mod report;
 mod ship;
 mod tools;
 mod version;
+mod wiki;
 mod windows;
 
 use clap::{Parser, Subcommand};
@@ -28,6 +30,13 @@ struct Cli {
 enum Task {
     /// Extract the UI texts and merge them into each language's .po
     I18n,
+    /// Run the end-to-end tests against a throwaway Redis server: a local redis-server, else
+    /// Docker, else WSL's (or the one `CACHEMIRE_E2E_REDIS` names, whose databases they empty)
+    E2e {
+        /// More arguments for `cargo nextest run` (`-- --profile ci`, `-- --no-fail-fast`)
+        #[arg(last = true)]
+        nextest_args: Vec<String>,
+    },
     /// Releases and their branches (`cargo ship`): betas from next, fixes and stable releases through pull requests into main
     Release {
         /// What to do; a beta of next when left out
@@ -55,8 +64,8 @@ enum Task {
         /// Build the latest stable release instead of the latest one
         #[arg(long)]
         stable: bool,
-        /// Build the working tree in the release profile as this version, as the Release workflow does
-        #[arg(long, value_name = "VERSION", conflicts_with_all = ["fast", "stable"])]
+        /// Build the working tree as this version (in the release profile, or the `fast` one), as the Release workflow does
+        #[arg(long, value_name = "VERSION", conflicts_with = "stable")]
         as_version: Option<String>,
         /// Run `cargo clean` first
         #[arg(long)]
@@ -85,8 +94,8 @@ enum Task {
         /// Build the latest stable release instead of the latest one
         #[arg(long)]
         stable: bool,
-        /// Build the working tree in the release profile as this version, as the Release workflow does
-        #[arg(long, value_name = "VERSION", conflicts_with_all = ["fast", "stable"])]
+        /// Build the working tree as this version (in the release profile, or the `fast` one), as the Release workflow does
+        #[arg(long, value_name = "VERSION", conflicts_with = "stable")]
         as_version: Option<String>,
         /// Also zip the package (the installer, .deb or AppImage)
         #[arg(long)]
@@ -103,8 +112,8 @@ enum Task {
         /// Build the latest stable release instead of the latest one
         #[arg(long)]
         stable: bool,
-        /// Build the working tree in the release profile as this version, as the Release workflow does
-        #[arg(long, value_name = "VERSION", conflicts_with_all = ["fast", "stable"])]
+        /// Build the working tree as this version (in the release profile, or the `fast` one), as the Release workflow does
+        #[arg(long, value_name = "VERSION", conflicts_with = "stable")]
         as_version: Option<String>,
         /// Also zip the package (the installer, .deb or AppImage)
         #[arg(long)]
@@ -118,8 +127,8 @@ enum Task {
         /// Build the latest stable release instead of the latest one
         #[arg(long)]
         stable: bool,
-        /// Build the working tree in the release profile as this version, as the Release workflow does
-        #[arg(long, value_name = "VERSION", conflicts_with_all = ["fast", "stable"])]
+        /// Build the working tree as this version (in the release profile, or the `fast` one), as the Release workflow does
+        #[arg(long, value_name = "VERSION", conflicts_with = "stable")]
         as_version: Option<String>,
         /// Also zip the package (the installer, .deb or AppImage)
         #[arg(long)]
@@ -147,6 +156,12 @@ enum Task {
         #[arg(long)]
         dir: Option<std::path::PathBuf>,
     },
+    /// The docs of both crates and the wiki chapters (`target/doc`), their Mermaid and Graphviz diagrams included
+    Wiki {
+        /// Open the home page in the browser
+        #[arg(long)]
+        open: bool,
+    },
     /// Cargo install plus the desktop entry and icons (Linux) or the Start menu shortcut (Windows)
     Install {
         /// Linux only: install just the desktop entry and icons
@@ -158,6 +173,7 @@ enum Task {
 fn main() {
     let result = match Cli::parse().task {
         Task::I18n => i18n::run_task(),
+        Task::E2e { nextest_args } => e2e::run_task(nextest_args),
         Task::Release { command } => ship::run_task(command),
         Task::NextVersion { request, try_run } => version::print_next_version(&request, try_run),
         Task::ReleaseNotes { version } => changelog::print_notes(&version),
@@ -178,6 +194,7 @@ fn main() {
             report::save(&step, &[], &tests, coverage.as_deref())
         }
         Task::Report { title, dir } => report::run_task(&title, dir),
+        Task::Wiki { open } => wiki::run_task(open),
         Task::Install { skip_binary } => install::run_task(skip_binary),
     };
     if let Err(e) = result {

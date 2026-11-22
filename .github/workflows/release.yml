@@ -17,6 +17,10 @@ on:
         options: [try, beta]
         default: try
 
+# nothing beyond reading the repository, unless a job asks for more
+permissions:
+  contents: read
+
 # one release at a time, so two can't work out the same version; a try build has a group per branch, and a
 # pull request closed without being released one of its own, so neither holds up or cancels a waiting release
 concurrency:
@@ -47,6 +51,7 @@ jobs:
       || github.event.pull_request.merged && contains(github.event.pull_request.labels.*.name, 'release')
       && github.event.pull_request.head.repo.full_name == github.repository
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     outputs:
       sha: ${{ steps.next.outputs.sha }}
       version: ${{ steps.next.outputs.version }}
@@ -55,15 +60,12 @@ jobs:
       # the whole history, for the tags the version is worked out from and the branches checked
       - uses: actions/checkout@v7
         with:
+          persist-credentials: false
           fetch-depth: 0
           ref: ${{ github.event.pull_request.merge_commit_sha || github.sha }}
-      # xtask's own build (target/xtask) as the CI saved it from main
-      - uses: Swatinem/rust-cache@v2
+      - uses: ./.github/actions/xtask
         with:
-          cache-bin: false
-          shared-key: xtask
-          workspaces: ". -> target/xtask"
-          save-if: false
+          upload: true
       # a beta comes from next and a release from main (merged pull request); a try build from any branch
       - id: next
         name: Next version
@@ -96,82 +98,186 @@ jobs:
             git merge-base --is-ancestor "$SHA" origin/next || { echo "::error::$SHA is not on next: betas are released from next"; exit 1; }
           fi
           if [[ "$try" == true ]]; then
-            version=$(cargo xtask next-version "$request" --try "$GITHUB_RUN_NUMBER")
+            version=$(xtask next-version "$request" --try "$GITHUB_RUN_NUMBER")
             echo "Try build of $GITHUB_REF_NAME as $version, from $SHA" >> "$GITHUB_STEP_SUMMARY"
           else
-            version=$(cargo xtask next-version "$request")
+            version=$(xtask next-version "$request")
             echo "Releasing $version from $SHA" >> "$GITHUB_STEP_SUMMARY"
           fi
           { echo "sha=$SHA"; echo "version=$version"; echo "try=$try"; } >> "$GITHUB_OUTPUT"
 
-  # a try build skips them: the pull request's checks run them
-  test:
-    name: Tests (${{ matrix.os }})
-    needs: plan
-    if: needs.plan.outputs.try != 'true'
-    runs-on: ${{ matrix.os }}
-    strategy:
-      matrix:
-        os: [ubuntu-latest, windows-latest]
+  # xtask's Windows executable, for the Windows jobs: a branch's cache isn't readable from the others, an artifact is
+  xtask-windows:
+    name: xtask (Windows)
+    if: >-
+      github.event_name != 'pull_request'
+      || github.event.pull_request.merged && contains(github.event.pull_request.labels.*.name, 'release')
+      && github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: windows-latest
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@v7
         with:
+          persist-credentials: false
+          ref: ${{ github.event.pull_request.merge_commit_sha || github.sha }}
+      - uses: ./.github/actions/xtask
+        with:
+          upload: true
+
+  # Clippy and the tests, side by side on each OS (a try build skips them: the pull request's checks run them)
+  test:
+    name: ${{ matrix.task == 'lint' && 'Clippy' || 'Tests' }} (${{ matrix.os }})
+    needs: [plan, xtask-windows]
+    if: needs.plan.outputs.try != 'true'
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 90
+    strategy:
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+        task: [lint, test]
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
           ref: ${{ needs.plan.outputs.sha }}
-      # xtask's own build (target/xtask) as the CI saved it from main; the app's builds aren't cached
-      - uses: Swatinem/rust-cache@v2
+      # Windows: CARGO_HOME, RUSTUP_HOME and `target` (a junction) on a trusted Dev Drive (ReFS, which the
+      # antivirus leaves alone), faster for the many small files of crates, Rust and builds. No cache here,
+      # so `target` can be a junction (a cache would keep the link only). The Windows jobs share these steps
+      - &dev-drive
+        if: runner.os == 'Windows'
+        uses: samypr100/setup-dev-drive@v4
         with:
-          cache-bin: false
-          shared-key: xtask
-          workspaces: ". -> target/xtask"
-          save-if: false
-      # quiet: the build log then lists what gets compiled, not each crate downloaded
-      - name: Fetch crates
-        run: cargo fetch --locked --quiet
-      - name: Install Linux libraries
-        if: runner.os == 'Linux'
+          drive-size: 20GB
+          trusted-dev-drive: true
+          env-mapping: |
+            CARGO_HOME,{{ DEV_DRIVE }}/.cargo
+            RUSTUP_HOME,{{ DEV_DRIVE }}/.rustup
+      - &dev-drive-folders
+        name: Cargo's home and the build folder on the Dev Drive
+        if: runner.os == 'Windows'
+        shell: pwsh
         run: |
-          sudo apt-get update
-          sudo apt-get install -y pkg-config libfontconfig1-dev libfreetype6-dev \
-            libxkbcommon-dev libxkbcommon-x11-dev libwayland-dev libx11-dev libxcb1-dev
-      # --timings + `report-build`: what was built, for the summary job
-      - name: Test
-        run: cargo test --timings
-      - name: Save the report
-        run: cargo xtask report-build Tests
-      - uses: actions/upload-artifact@v7
+          New-Item -ItemType Directory -Path "$env:CARGO_HOME\bin", "$env:DEV_DRIVE\target" -Force | Out-Null
+          Add-Content -Path $env:GITHUB_PATH -Value "$env:CARGO_HOME\bin"
+          New-Item -ItemType Junction -Path target -Target "$env:DEV_DRIVE\target" | Out-Null
+      # the Rust of rust-toolchain.toml, in a step of its own to time it
+      - &toolchain
+        name: Rust toolchain
+        run: rustup toolchain install
+      # nextest runs the tests: installed in the background, until the wait before the tests' build
+      - name: Install cargo-nextest
+        if: matrix.task == 'test'
+        background: true
+        uses: taiki-e/install-action@v2
         with:
-          name: report-tests-${{ matrix.os }}
+          tool: cargo-nextest
+      - uses: ./.github/actions/xtask-download
+      # quiet: the build log then lists what gets compiled, not each crate downloaded
+      - &fetch
+        name: Fetch crates
+        run: cargo fetch --locked --quiet
+      # the packages' files kept in a cache: a hit skips apt (its index and downloads) altogether.
+      # `version` names the cache: change it to start a new one (a new runner image, say)
+      - &linux-libraries
+        name: Install Linux libraries
+        if: runner.os == 'Linux'
+        uses: awalsh128/cache-apt-pkgs-action@v1
+        with:
+          packages: pkg-config libfontconfig1-dev libfreetype6-dev libxkbcommon-dev libxkbcommon-x11-dev libwayland-dev libx11-dev libxcb1-dev
+          version: 1
+      # the checks of the CI's lint job; --timings + `report-build`: what was built, for the summary job
+      - name: Clippy
+        if: matrix.task == 'lint'
+        timeout-minutes: 45
+        run: cargo clippy --all-targets --timings -- -D warnings
+      - name: Save the report (clippy)
+        if: matrix.task == 'lint'
+        run: xtask report-build Clippy
+      # the tests, as the CI's test job runs them but for coverage
+      - name: Wait for nextest
+        wait-all:
+      # the end-to-end tests' Redis server on Windows, whose Docker runs no Linux containers: Debian's, in
+      # WSL, where `cargo xtask e2e` starts it. In the background during the tests' build; timeouts here and
+      # on the builds, so a hang (seen once in the CI) fails fast
+      - name: Install Redis in WSL
+        if: matrix.task == 'test' && runner.os == 'Windows'
+        background: true
+        timeout-minutes: 10
+        uses: Vampire/setup-wsl@v7
+        with:
+          distribution: Debian-13
+          additional-packages: redis-server
+      - name: Build the tests
+        if: matrix.task == 'test'
+        id: build
+        timeout-minutes: 45
+        run: cargo nextest run --no-run --timings
+      - name: Wait for WSL
+        wait-all:
+      # in the background beside the others, as they mostly wait on Redis; their own nextest profile, so
+      # their own JUnit file
+      - name: End-to-end tests
+        if: ${{ !cancelled() && steps.build.outcome == 'success' }}
+        background: true
+        run: |
+          mkdir -p target/test-output
+          xtask e2e -- --profile ci-e2e || failed=1
+          if [[ -f target/nextest/ci-e2e/junit.xml ]]; then cp target/nextest/ci-e2e/junit.xml target/test-output/e2e.xml; fi
+          exit ${failed:-0}
+      - name: Tests
+        if: ${{ !cancelled() && steps.build.outcome == 'success' }}
+        run: |
+          mkdir -p target/test-output
+          cargo nextest run --profile ci || failed=1
+          if [[ -f target/nextest/ci/junit.xml ]]; then cp target/nextest/ci/junit.xml target/test-output/tests.xml; fi
+          exit ${failed:-0}
+      - name: Wait for the end-to-end tests
+        wait-all:
+      - name: Save the report (tests)
+        if: ${{ !cancelled() && steps.build.outcome == 'success' }}
+        run: xtask report-build Tests --tests "Tests=target/test-output/tests.xml" --tests "End-to-end=target/test-output/e2e.xml"
+      - uses: actions/upload-artifact@v7
+        if: ${{ !cancelled() }}
+        with:
+          name: report-${{ matrix.task }}-${{ matrix.os }}
           path: target/reports/
           retention-days: 5
 
   windows:
     name: Windows (MSI and portable zip)
-    needs: plan
+    needs: [plan, xtask-windows]
     runs-on: windows-latest
+    timeout-minutes: 90
     steps:
       - uses: actions/checkout@v7
         with:
+          persist-credentials: false
           ref: ${{ needs.plan.outputs.sha }}
-      # xtask's own build (target/xtask) as the CI saved it from main; the app's builds aren't cached
-      - uses: Swatinem/rust-cache@v2
-        with:
-          cache-bin: false
-          shared-key: xtask
-          workspaces: ". -> target/xtask"
-          save-if: false
-      # quiet: the build log then lists what gets compiled, not each crate downloaded
-      - name: Fetch crates
-        run: cargo fetch --locked --quiet
+      - *dev-drive
+      - *dev-drive-folders
+      - *toolchain
+      # WiX makes the MSI: installed in the background, during the crates, until the wait before the build
       - name: Install WiX
+        background: true
         shell: pwsh
         run: |
           dotnet tool install --global wix --version "7.*"
           "$env:USERPROFILE\.dotnet\tools" | Out-File -FilePath $env:GITHUB_PATH -Append
           & "$env:USERPROFILE\.dotnet\tools\wix.exe" eula accept wix7
+      - uses: ./.github/actions/xtask-download
+      - *fetch
+      - name: Wait for WiX
+        wait-all:
       - name: Build
+      # a beta (a version with a suffix, a try build too) is built without LTO: much quicker, and
+      # stripped like a release so its packages stay the same size
         env:
           VERSION: ${{ needs.plan.outputs.version }}
-        run: cargo xtask build-windows --as-version "$VERSION" --report
+          FAST: ${{ contains(needs.plan.outputs.version, '-') && '--fast' || '' }}
+          CARGO_PROFILE_FAST_STRIP: "true"
+          CARGO_PROFILE_FAST_DEBUG: "false"
+          CARGO_PROFILE_FAST_INCREMENTAL: "false"
+        run: xtask build-windows --as-version "$VERSION" $FAST --report
       - uses: actions/upload-artifact@v7
         with:
           name: report-windows
@@ -181,24 +287,27 @@ jobs:
         with:
           name: package-windows
           path: |
-            target/windows/*.msi
-            target/windows/Cachemire-Portable-*.zip
+            target/windows*/*.msi
+            target/windows*/Cachemire-Portable-*.zip
 
   linux:
     name: Linux (deb and AppImage)
     needs: plan
     runs-on: ubuntu-latest
+    timeout-minutes: 60
     steps:
       - uses: actions/checkout@v7
         with:
+          persist-credentials: false
           ref: ${{ needs.plan.outputs.sha }}
-      # xtask's own build (target/xtask) as the CI saved it from main; the app's builds aren't cached
-      - uses: Swatinem/rust-cache@v2
+      - *toolchain
+      # cargo-deb makes the .deb: installed in the background, until the wait before the build
+      - name: Install cargo-deb
+        background: true
+        uses: taiki-e/install-action@v2
         with:
-          cache-bin: false
-          shared-key: xtask
-          workspaces: ". -> target/xtask"
-          save-if: false
+          tool: cargo-deb
+      - uses: ./.github/actions/xtask-download
       # a stable release's notes: its section of CHANGELOG.md, checked before anything is built
       - name: Release notes
         if: ${{ !contains(needs.plan.outputs.version, '-') }}
@@ -206,28 +315,26 @@ jobs:
           VERSION: ${{ needs.plan.outputs.version }}
         run: |
           mkdir -p target/notes
-          cargo xtask release-notes "$VERSION" > target/notes/release-notes.md
+          xtask release-notes "$VERSION" > target/notes/release-notes.md
       - if: ${{ !contains(needs.plan.outputs.version, '-') }}
         uses: actions/upload-artifact@v7
         with:
           name: release-notes
           path: target/notes/release-notes.md
-      # quiet: the build log then lists what gets compiled, not each crate downloaded
-      - name: Fetch crates
-        run: cargo fetch --locked --quiet
-      - name: Install Linux libraries
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y pkg-config libfontconfig1-dev libfreetype6-dev \
-            libxkbcommon-dev libxkbcommon-x11-dev libwayland-dev libx11-dev libxcb1-dev
-      - name: Install cargo-deb
-        uses: taiki-e/install-action@v2
-        with:
-          tool: cargo-deb
+      - *fetch
+      - *linux-libraries
+      - name: Wait for cargo-deb
+        wait-all:
       - name: Build
+      # a beta (a version with a suffix, a try build too) is built without LTO: much quicker, and
+      # stripped like a release so its packages stay the same size
         env:
           VERSION: ${{ needs.plan.outputs.version }}
-        run: cargo xtask build-linux --as-version "$VERSION" --report
+          FAST: ${{ contains(needs.plan.outputs.version, '-') && '--fast' || '' }}
+          CARGO_PROFILE_FAST_STRIP: "true"
+          CARGO_PROFILE_FAST_DEBUG: "false"
+          CARGO_PROFILE_FAST_INCREMENTAL: "false"
+        run: xtask build-linux --as-version "$VERSION" $FAST --report
       - uses: actions/upload-artifact@v7
         with:
           name: report-linux
@@ -238,7 +345,7 @@ jobs:
           name: package-linux
           path: |
             target/debian/*.deb
-            target/appimage/*.AppImage
+            target/appimage*/*.AppImage
 
   # the tag is made here, on the released commit: it only exists once everything passed
   publish:
@@ -246,14 +353,34 @@ jobs:
     needs: [plan, test, windows, linux]
     if: needs.plan.outputs.try != 'true'
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     permissions:
       contents: write
+      # the build provenance attestations of the packages
+      id-token: write
+      attestations: write
     steps:
       - uses: actions/download-artifact@v8
         with:
           pattern: package-*
           path: dist
           merge-multiple: true
+      # signed proof of which workflow run built each package (`gh attestation verify <file> --repo <owner/repo>`)
+      - uses: actions/attest-build-provenance@v4
+        with:
+          subject-path: |
+            dist/**/*.msi
+            dist/**/*.zip
+            dist/**/*.deb
+            dist/**/*.AppImage
+      # SHA256SUMS: one line per package, by file name (`sha256sum --check SHA256SUMS` next to the downloads)
+      - name: Checksums
+        run: |
+          mkdir sums
+          find dist -type f | sort | while read -r file; do
+            (cd "$(dirname "$file")" && sha256sum "$(basename "$file")")
+          done > sums/SHA256SUMS
+          cat sums/SHA256SUMS
       - if: ${{ !contains(needs.plan.outputs.version, '-') }}
         uses: actions/download-artifact@v8
         with:
@@ -272,6 +399,7 @@ jobs:
           [[ -f notes/release-notes.md ]] && flags+=(--notes-file notes/release-notes.md)
           # every file, as an artifact keeps the folders of its files (the linux one: debian/, appimage/)
           mapfile -t files < <(find dist -type f)
+          files+=(sums/SHA256SUMS)
           gh release create "v$VERSION" "${files[@]}" --repo "$GITHUB_REPOSITORY" --target "$SHA" \
             --title "v$VERSION" --generate-notes "${flags[@]}"
 
@@ -282,6 +410,7 @@ jobs:
     needs: [plan, test, windows, linux, publish]
     if: always() && github.event_name == 'push'
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     permissions:
       contents: write
     steps:
@@ -300,17 +429,16 @@ jobs:
     needs: [plan, test, windows, linux]
     if: always() && needs.plan.result != 'skipped'
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@v7
         with:
+          persist-credentials: false
           ref: ${{ needs.plan.outputs.sha || github.sha }}
-      # xtask's own build (target/xtask) as the CI saved it from main; the app's builds aren't cached
-      - uses: Swatinem/rust-cache@v2
-        with:
-          cache-bin: false
-          shared-key: xtask
-          workspaces: ". -> target/xtask"
-          save-if: false
+      - if: needs.plan.result == 'success'
+        uses: ./.github/actions/xtask-download
+      - if: needs.plan.result != 'success'
+        uses: ./.github/actions/xtask
       - uses: actions/download-artifact@v8
         with:
           pattern: report-*
@@ -324,4 +452,4 @@ jobs:
           title="🚀 Release v$VERSION"
           [[ "$TRY" == true ]] && title="🧪 Try build v$VERSION"
           [[ -z "$VERSION" ]] && title="🚀 Release request $GITHUB_REF_NAME"
-          cargo xtask report "$title" --dir reports
+          xtask report "$title" --dir reports

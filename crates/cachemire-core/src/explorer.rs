@@ -2,12 +2,13 @@ use futures_util::stream::{FuturesOrdered, StreamExt};
 use rustc_hash::{FxHashMap, FxHashSet};
 
 use crate::error::{Error, Invalid, NotFound};
-use crate::key_name::KeyName;
+use crate::key_name::{KeyName, display_bytes, is_text_field};
 use serde_json::Value;
 
 use crate::redis_value_type::RedisValueType;
+pub use crate::session::Checked;
 use crate::session::{KeyScan, ScriptKey, Session, TypedKey, lossy, pairs, stream_fields};
-use crate::state::AppState;
+use crate::state::{AppState, ensure_writable};
 
 /// One increment of a level listing from [`scan_namespaces`]. `folders`
 /// holds only prefixes first seen this batch; `keys` may repeat (per SCAN's
@@ -167,8 +168,8 @@ async fn read_entries(session: &mut Session, keys: Vec<TypedKey>, limit: usize) 
 /// this many, so a huge key only holds up its own few neighbours.
 const SEARCH_READ_KEYS: usize = 50;
 
-/// How many of those reads run at once. Each goes through the next connection
-/// of the pool, so a big reply on one doesn't hold the others up.
+/// How many of those reads run at once. They share the pool's background
+/// connection, so the search never competes with what clicks ask.
 const SEARCH_READS_IN_FLIGHT: usize = 8;
 
 /// How many SCAN pages the walk may be ahead of the reads: enough that the
@@ -268,7 +269,8 @@ async fn read_chunk(
     {
         match read_entries_lua(&mut session, &names, &filter.needle, depth).await {
             Ok(keys) => return Ok(keys),
-            Err(_) => filter.working.store(false, std::sync::atomic::Ordering::Relaxed),
+            Err(e) if e.is_script_refused() => filter.working.store(false, std::sync::atomic::Ordering::Relaxed),
+            Err(e) => return Err(e),
         }
     }
     let typed = session.types(names).await?;
@@ -379,8 +381,14 @@ fn sort_by_field_name<T>(items: &mut [T], name: impl Fn(&T) -> &str, descending:
 }
 
 /// Values of a hash's fields, as [`fetch_hash_fields_as_map`] reads them: a JSON object
-/// in field order, and the size in bytes of each field left out for being too big.
-pub type HashValues = (serde_json::Map<String, Value>, FxHashMap<String, usize>);
+/// in field order, the size in bytes of each field left out for being too big, and which
+/// values aren't UTF-8 text.
+pub struct HashValues {
+    pub values: serde_json::Map<String, Value>,
+    pub oversized: FxHashMap<String, usize>,
+    /// the fields whose value isn't UTF-8 text
+    pub binary: FxHashSet<String>,
+}
 
 /// Fetches `field_names`' values via `HMGET` into a JSON object in that order (a field
 /// deleted since is skipped); with `max_bytes`, a pipelined `HSTRLEN` first leaves out
@@ -392,6 +400,7 @@ async fn fetch_hash_fields_as_map(
     max_bytes: Option<usize>,
 ) -> Result<HashValues, Error> {
     let mut oversized = FxHashMap::default();
+    let mut binary = FxHashSet::default();
     let field_names = match max_bytes {
         Some(max) => {
             let sizes = session.hash_value_sizes(key, &field_names).await?;
@@ -411,8 +420,15 @@ async fn fetch_hash_fields_as_map(
     };
     let values = session.hash_values(key, &field_names).await?;
 
-    let map = field_names.into_iter().zip(values).filter_map(|(field, value)| Some((field, Value::String(value?)))).collect();
-    Ok((map, oversized))
+    let mut map = serde_json::Map::new();
+    for (field, value) in field_names.into_iter().zip(values) {
+        let Some((text, is_binary)) = value else { continue };
+        if is_binary {
+            binary.insert(field.clone());
+        }
+        map.insert(field, Value::String(text));
+    }
+    Ok(HashValues { values: map, oversized, binary })
 }
 
 /// How many field names of a hash are read before they are sorted and shown: a
@@ -450,8 +466,8 @@ async fn read_hash_bounded(session: &mut Session, key: &KeyName, max_items: usiz
     field_names.truncate(max_items);
     sort_by_field_name(&mut field_names, |name| name.as_str(), false);
 
-    let (map, _) = fetch_hash_fields_as_map(session, key, field_names, None).await?;
-    Ok(ReadValueResult { truncated: total > map.len(), value: Value::Object(map) })
+    let HashValues { values, .. } = fetch_hash_fields_as_map(session, key, field_names, None).await?;
+    Ok(ReadValueResult { truncated: total > values.len(), value: Value::Object(values) })
 }
 
 /// Same idea as [`read_hash_bounded`] but for sets via `SSCAN` instead of a
@@ -545,6 +561,10 @@ pub struct KeyDetails {
     /// (`None` once every name is read).
     pub field_count: usize,
     pub names_cursor: Option<u64>,
+    /// For a string: its value isn't UTF-8 text.
+    pub binary_value: bool,
+    /// For a hash: the fields of the page in `value` whose value isn't UTF-8 text.
+    pub binary_fields: FxHashSet<String>,
 }
 
 impl KeyDetails {
@@ -561,6 +581,8 @@ impl KeyDetails {
             page_start: 0,
             field_count: 0,
             names_cursor: None,
+            binary_value: false,
+            binary_fields: FxHashSet::default(),
         }
     }
 }
@@ -601,18 +623,38 @@ pub async fn get_key_details(
         sort_by_field_name(&mut names, |name| name.as_str(), descending);
         let page_start = focus.and_then(|f| names.iter().position(|n| n == f)).map_or(0, |i| i / hash_page_size * hash_page_size);
         let page: Vec<String> = names.iter().skip(page_start).take(hash_page_size).cloned().collect();
-        let (map, oversized) = fetch_hash_fields_as_map(&mut session, key, page, Some(MAX_FIELD_BYTES)).await?;
+        let HashValues { values, oversized, binary } = fetch_hash_fields_as_map(&mut session, key, page, Some(MAX_FIELD_BYTES)).await?;
         let names_cursor = (cursor != 0).then_some(cursor);
         return Ok(KeyDetails {
             key_type,
             ttl,
-            value: Value::Object(map),
+            value: Value::Object(values),
             truncated: false,
             all_field_names: Some(names),
             oversized,
             page_start,
             field_count,
             names_cursor,
+            binary_value: false,
+            binary_fields: binary,
+        });
+    }
+
+    if key_type == RedisValueType::String {
+        let (len, head) = session.string_head(key, MAX_STRING_BYTES).await?;
+        let (text, binary_value) = display_bytes(&head);
+        return Ok(KeyDetails {
+            key_type,
+            ttl,
+            value: Value::String(text),
+            truncated: len > MAX_STRING_BYTES,
+            all_field_names: None,
+            oversized: FxHashMap::default(),
+            page_start: 0,
+            field_count: 0,
+            names_cursor: None,
+            binary_value,
+            binary_fields: FxHashSet::default(),
         });
     }
 
@@ -627,6 +669,8 @@ pub async fn get_key_details(
         page_start: 0,
         field_count: 0,
         names_cursor: None,
+        binary_value: false,
+        binary_fields: FxHashSet::default(),
     })
 }
 
@@ -650,42 +694,65 @@ pub async fn hash_more_names(
 /// or JSON path filter.
 pub async fn hash_field_page(state: &AppState, connection_id: Option<&str>, key: &KeyName, names: &[String]) -> Result<HashValues, Error> {
     if names.is_empty() {
-        return Ok(Default::default());
+        return Ok(HashValues { values: Default::default(), oversized: Default::default(), binary: Default::default() });
     }
     let mut session = Session::open(state, connection_id).await?;
     fetch_hash_fields_as_map(&mut session, key, names.to_vec(), Some(MAX_FIELD_BYTES)).await
 }
 
 /// The values of `names` in a hash, whatever their size, in that order (`None` for
-/// a field that is gone).
+/// a field that is gone), each with whether it isn't UTF-8 text.
 pub async fn hash_full_values(
     state: &AppState,
     connection_id: Option<&str>,
     key: &KeyName,
     names: &[String],
-) -> Result<Vec<Option<String>>, Error> {
+) -> Result<Vec<Option<(String, bool)>>, Error> {
     let mut session = Session::open(state, connection_id).await?;
     session.hash_values(key, names).await
 }
 
+/// Refuses a hash field whose name isn't UTF-8 text: it is shown, never written.
+fn ensure_text_field(field: Option<&str>) -> Result<(), Error> {
+    if field.is_some_and(|field| !is_text_field(field)) { Err(Error::BinaryData) } else { Ok(()) }
+}
+
+/// A session for a write: refused when the connection is read-only.
+async fn write_session(state: &AppState, connection_id: Option<&str>) -> Result<Session, Error> {
+    ensure_writable(state, connection_id)?;
+    Session::open(state, connection_id).await
+}
+
+/// [`write_session`] on the connection kept for long reads.
+async fn write_background_session(state: &AppState, connection_id: Option<&str>) -> Result<Session, Error> {
+    ensure_writable(state, connection_id)?;
+    Session::open_background(state, connection_id).await
+}
+
 /// Writes `value` as what `key` holds: the value of its field `field` for a hash
-/// (`Some`), its whole value, TTL kept, for a string (`None`).
+/// (`Some`), its whole value, TTL kept, for a string (`None`). With `expected` (the
+/// value the writer saw), nothing is written when the stored value is another one.
 pub async fn write_value(
     state: &AppState,
     connection_id: Option<&str>,
     key: &KeyName,
     field: Option<&str>,
     value: &str,
-) -> Result<(), Error> {
-    let mut session = Session::open(state, connection_id).await?;
-    match field {
-        Some(field) => session.hash_set(key, field, value).await,
-        None => session.string_set(key, value).await,
+    expected: Option<&str>,
+) -> Result<Checked, Error> {
+    ensure_text_field(field)?;
+    let mut session = write_session(state, connection_id).await?;
+    match (field, expected) {
+        (Some(field), Some(expected)) => session.hash_set_checked(key, field, expected, value).await,
+        (None, Some(expected)) => session.string_set_checked(key, expected, value).await,
+        (Some(field), None) => session.hash_set(key, field, value).await.map(|()| Checked::Done),
+        (None, None) => session.string_set(key, value).await.map(|()| Checked::Done),
     }
 }
 
 /// Moves hash `key`'s field `from` to the new name `to`, with `value` as its value:
-/// false, nothing changed, when the hash has a field `to` already.
+/// [`Checked::Taken`], nothing changed, when the hash has a field `to` already. With
+/// `expected`, nothing moves when `from` holds another value.
 pub async fn rename_hash_field(
     state: &AppState,
     connection_id: Option<&str>,
@@ -693,8 +760,15 @@ pub async fn rename_hash_field(
     from: &str,
     to: &str,
     value: &str,
-) -> Result<bool, Error> {
-    Session::open(state, connection_id).await?.hash_rename(key, from, to, value).await
+    expected: Option<&str>,
+) -> Result<Checked, Error> {
+    ensure_text_field(Some(from))?;
+    ensure_text_field(Some(to))?;
+    let mut session = write_session(state, connection_id).await?;
+    match expected {
+        Some(expected) => session.hash_rename_checked(key, from, to, expected, value).await,
+        None => Ok(if session.hash_rename(key, from, to, value).await? { Checked::Done } else { Checked::Taken }),
+    }
 }
 
 /// Writes `value` into a new field `field` of hash `key` (making the hash if there is
@@ -706,12 +780,14 @@ pub async fn write_new_hash_field(
     field: &str,
     value: &str,
 ) -> Result<bool, Error> {
-    Session::open(state, connection_id).await?.hash_set_new(key, field, value).await
+    ensure_text_field(Some(field))?;
+    write_session(state, connection_id).await?.hash_set_new(key, field, value).await
 }
 
 /// Removes field `field` from hash `key`.
 pub async fn delete_hash_field(state: &AppState, connection_id: Option<&str>, key: &KeyName, field: &str) -> Result<(), Error> {
-    Session::open(state, connection_id).await?.hash_delete(key, field).await
+    ensure_text_field(Some(field))?;
+    write_session(state, connection_id).await?.hash_delete(key, field).await
 }
 
 /// Whether `key` exists.
@@ -722,12 +798,12 @@ pub async fn key_exists(state: &AppState, connection_id: Option<&str>, key: &Key
 
 /// Removes `key`.
 pub async fn delete_key(state: &AppState, connection_id: Option<&str>, key: &KeyName) -> Result<(), Error> {
-    Session::open(state, connection_id).await?.unlink(std::slice::from_ref(key)).await
+    write_session(state, connection_id).await?.unlink(std::slice::from_ref(key)).await
 }
 
 /// Renames `from` to `to`: false, nothing changed, when a key `to` exists already.
 pub async fn rename_key(state: &AppState, connection_id: Option<&str>, from: &KeyName, to: &KeyName) -> Result<bool, Error> {
-    Session::open(state, connection_id).await?.rename_new(from, to).await
+    write_session(state, connection_id).await?.rename_new(from, to).await
 }
 
 /// Every key whose name starts with `prefix`.
@@ -741,12 +817,18 @@ async fn keys_under(session: &mut Session, prefix: &KeyName) -> Result<Vec<KeyNa
     Ok(keys.into_iter().collect())
 }
 
+/// How many keys have a name starting with `prefix` (a folder's keys).
+pub async fn count_keys_under(state: &AppState, connection_id: Option<&str>, prefix: &KeyName) -> Result<usize, Error> {
+    let mut session = Session::open_background(state, connection_id).await?;
+    Ok(keys_under(&mut session, prefix).await?.len())
+}
+
 /// How many keys one `UNLINK` or one round of renames takes.
 const KEYS_PER_WRITE: usize = 500;
 
 /// Removes every key whose name starts with `prefix` (a folder); how many there were.
 pub async fn delete_folder(state: &AppState, connection_id: Option<&str>, prefix: &KeyName) -> Result<usize, Error> {
-    let mut session = Session::open_background(state, connection_id).await?;
+    let mut session = write_background_session(state, connection_id).await?;
     let keys = keys_under(&mut session, prefix).await?;
     for chunk in keys.chunks(KEYS_PER_WRITE) {
         session.unlink(chunk).await?;
@@ -765,7 +847,7 @@ pub enum FolderMove {
 /// Moves every key whose name starts with `from` to the same name starting with `to`,
 /// once none of the new names is taken.
 pub async fn rename_folder(state: &AppState, connection_id: Option<&str>, from: &KeyName, to: &KeyName) -> Result<FolderMove, Error> {
-    let mut session = Session::open_background(state, connection_id).await?;
+    let mut session = write_background_session(state, connection_id).await?;
     let renamed = |key: &KeyName| {
         let mut name = to.as_bytes().to_vec();
         name.extend_from_slice(&key.as_bytes()[from.as_bytes().len()..]);

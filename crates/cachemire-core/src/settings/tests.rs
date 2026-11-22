@@ -17,7 +17,7 @@ fn ssh(username: &str, password: &str) -> SshSettings {
         username: username.into(),
         password: password.into(),
         private_key: String::new(),
-        passphrase: String::new(),
+        passphrase: Default::default(),
     }
 }
 
@@ -54,7 +54,7 @@ fn passwords_go_to_the_vault_and_are_only_read_when_needed() {
     let mut store = SettingsStore::with_vault(file.clone(), Arc::new(vault.clone()));
     let id = store.create_ssh_profile("Work", "deploy", "s3cret").unwrap();
     assert!(!fs::read_to_string(&file).unwrap().contains("s3cret"), "the file holds no password");
-    assert_eq!(vault.entries.lock()[&vault_key(&id)].ssh_password, "s3cret");
+    assert_eq!(vault.entries.lock()[&vault_key(&id)].ssh_password.expose(), "s3cret");
 
     // a new run reads nothing until a connection needs the profile
     let mut reopened = SettingsStore::with_vault(file.clone(), Arc::new(vault.clone()));
@@ -63,15 +63,15 @@ fn passwords_go_to_the_vault_and_are_only_read_when_needed() {
     assert_eq!(vault.reads.load(Ordering::SeqCst), 1);
     let mut settings = ssh("", "");
     reopened.fill_ssh(&mut settings).unwrap();
-    assert_eq!((settings.username.as_str(), settings.password.as_str()), ("deploy", "s3cret"));
+    assert_eq!((settings.username.as_str(), settings.password.expose()), ("deploy", "s3cret"));
 
     // changing the name or the username keeps the password; a new one replaces it
-    reopened.update_ssh_profile(&id, "Work 2", "deploy2", None).unwrap();
-    assert_eq!(vault.entries.lock()[&vault_key(&id)].ssh_password, "s3cret");
-    reopened.update_ssh_profile(&id, "Work 2", "deploy2", Some("")).unwrap();
-    assert_eq!(vault.entries.lock()[&vault_key(&id)].ssh_password, "s3cret", "a blank box keeps it");
-    reopened.update_ssh_profile(&id, "Work 2", "deploy2", Some("n3w")).unwrap();
-    assert_eq!(vault.entries.lock()[&vault_key(&id)].ssh_password, "n3w");
+    reopened.update_ssh_profile(&id, "Work 2", "deploy2", None, SecretsPolicy::PlainText).unwrap();
+    assert_eq!(vault.entries.lock()[&vault_key(&id)].ssh_password.expose(), "s3cret");
+    reopened.update_ssh_profile(&id, "Work 2", "deploy2", Some(""), SecretsPolicy::PlainText).unwrap();
+    assert_eq!(vault.entries.lock()[&vault_key(&id)].ssh_password.expose(), "s3cret", "a blank box keeps it");
+    reopened.update_ssh_profile(&id, "Work 2", "deploy2", Some("n3w"), SecretsPolicy::PlainText).unwrap();
+    assert_eq!(vault.entries.lock()[&vault_key(&id)].ssh_password.expose(), "n3w");
     assert!(!fs::read_to_string(&file).unwrap().contains("n3w"));
 }
 
@@ -84,11 +84,11 @@ fn editing_an_unloaded_profile_does_not_touch_the_vault() {
 
     let mut reopened = SettingsStore::with_vault(file, Arc::new(vault.clone()));
     vault.broken.store(true, Ordering::SeqCst);
-    reopened.update_ssh_profile(&id, "Renamed", "deploy", None).unwrap();
+    reopened.update_ssh_profile(&id, "Renamed", "deploy", None, SecretsPolicy::PlainText).unwrap();
     reopened.set_active_ssh_profile(&id).unwrap();
     assert!(reopened.unlock_active_ssh_profile().unwrap_err().to_string().contains("system keyring"));
     vault.broken.store(false, Ordering::SeqCst);
-    assert_eq!(vault.entries.lock()[&vault_key(&id)].ssh_password, "s3cret", "nothing was lost");
+    assert_eq!(vault.entries.lock()[&vault_key(&id)].ssh_password.expose(), "s3cret", "nothing was lost");
 }
 
 #[test]
@@ -105,7 +105,7 @@ fn without_a_credential_store_the_password_stays_in_the_file() {
     let mut reopened = SettingsStore::with_vault(file.clone(), Arc::new(vault.clone()));
     reopened.unlock_active_ssh_profile().unwrap();
     assert!(!fs::read_to_string(&file).unwrap().contains("s3cret"));
-    assert_eq!(vault.entries.lock().values().next().unwrap().ssh_password, "s3cret");
+    assert_eq!(vault.entries.lock().values().next().unwrap().ssh_password.expose(), "s3cret");
 }
 
 #[test]
@@ -118,18 +118,18 @@ fn a_connection_with_its_own_username_ignores_the_profile() {
     store.create_ssh_profile("Work", "deploy", "profile-pw").unwrap();
     let mut own = ssh("me", "my-pw");
     store.fill_ssh(&mut own).unwrap();
-    assert_eq!((own.username.as_str(), own.password.as_str()), ("me", "my-pw"));
+    assert_eq!((own.username.as_str(), own.password.expose()), ("me", "my-pw"));
     let mut key_only = ssh("me", "");
     store.fill_ssh(&mut key_only).unwrap();
     assert_eq!(
-        (key_only.username.as_str(), key_only.password.as_str()),
+        (key_only.username.as_str(), key_only.password.expose()),
         ("me", ""),
         "the profile's password never goes with another username"
     );
 
     let mut empty = ssh("", "");
     store.fill_ssh(&mut empty).unwrap();
-    assert_eq!((empty.username.as_str(), empty.password.as_str()), ("deploy", "profile-pw"));
+    assert_eq!((empty.username.as_str(), empty.password.expose()), ("deploy", "profile-pw"));
 }
 
 #[test]
@@ -166,7 +166,16 @@ fn a_first_run_has_a_red_production_profile_that_stays_deleted_once_removed() {
     let file = temp_file("connection-profiles");
     let mut store = SettingsStore::with_vault(file.clone(), Arc::new(MemoryVault::default()));
     let listed = store.connection_profiles();
-    assert_eq!(listed, vec![ConnectionProfile { id: DEFAULT_PROFILE_ID.into(), name: "Production".into(), color: ProfileColor::Red }]);
+    assert_eq!(
+        listed,
+        vec![ConnectionProfile {
+            id: DEFAULT_PROFILE_ID.into(),
+            name: "Production".into(),
+            color: ProfileColor::Red,
+            read_only: true,
+            light_tint: false
+        }]
+    );
 
     store.remove_connection_profile(DEFAULT_PROFILE_ID).unwrap();
     assert!(store.connection_profiles().is_empty());
@@ -192,14 +201,20 @@ fn a_settings_file_from_before_connection_profiles_gets_the_default_one_once() {
 fn connection_profiles_are_created_renamed_recolored_and_read_back() {
     let file = temp_file("connection-profiles-crud");
     let mut store = SettingsStore::with_vault(file.clone(), Arc::new(MemoryVault::default()));
-    let dev = store.create_connection_profile(" dev ", ProfileColor::Green).unwrap();
-    assert_eq!(store.connection_profile(&dev), Some(ConnectionProfile { id: dev.clone(), name: "dev".into(), color: ProfileColor::Green }));
-    assert_eq!(store.create_connection_profile("  ", ProfileColor::Blue).unwrap_err().to_string(), "The profile needs a name.");
+    let dev = store.create_connection_profile(" dev ", ProfileColor::Green, false, false).unwrap();
+    assert_eq!(
+        store.connection_profile(&dev),
+        Some(ConnectionProfile { id: dev.clone(), name: "dev".into(), color: ProfileColor::Green, read_only: false, light_tint: false })
+    );
+    assert_eq!(
+        store.create_connection_profile("  ", ProfileColor::Blue, false, false).unwrap_err().to_string(),
+        "The profile needs a name."
+    );
 
-    store.update_connection_profile(&dev, "staging", ProfileColor::Purple).unwrap();
+    store.update_connection_profile(&dev, "staging", ProfileColor::Purple, false, false).unwrap();
     assert_eq!(store.connection_profile(&dev).map(|p| (p.name, p.color)), Some(("staging".to_string(), ProfileColor::Purple)));
-    assert!(store.update_connection_profile("nope", "x", ProfileColor::Red).is_err());
-    assert!(store.update_connection_profile(&dev, "", ProfileColor::Red).is_err());
+    assert!(store.update_connection_profile("nope", "x", ProfileColor::Red, false, false).is_err());
+    assert!(store.update_connection_profile(&dev, "", ProfileColor::Red, false, false).is_err());
 
     let reopened = SettingsStore::with_vault(file, Arc::new(MemoryVault::default()));
     assert_eq!(reopened.connection_profile(&dev).map(|p| (p.name, p.color)), Some(("staging".to_string(), ProfileColor::Purple)));
@@ -276,4 +291,29 @@ fn every_color_has_its_own_code_and_an_unknown_one_reads_as_red() {
     }
     assert_eq!(all.iter().map(|c| c.code()).collect::<FxHashSet<_>>().len(), 8);
     assert_eq!(ProfileColor::from_code("chartreuse"), ProfileColor::Red);
+}
+
+#[test]
+fn the_theme_and_syntax_theme_are_kept_by_name_across_a_reopen() {
+    let file = temp_file("themes");
+    let mut store = SettingsStore::with_vault(file.clone(), Arc::new(MemoryVault::default()));
+    assert_eq!((store.theme(), store.syntax_theme()), ("", ""), "none picked yet");
+    store.set_theme("nord").unwrap();
+    store.set_syntax_theme("monokai").unwrap();
+    assert_eq!((store.theme(), store.syntax_theme()), ("nord", "monokai"));
+
+    let reopened = SettingsStore::with_vault(file.clone(), Arc::new(MemoryVault::default()));
+    assert_eq!((reopened.theme(), reopened.syntax_theme()), ("nord", "monokai"));
+    let written = std::fs::read_to_string(&file).unwrap();
+    assert!(written.contains(r#""theme": "nord""#) && written.contains(r#""syntaxTheme": "monokai""#), "{written}");
+}
+
+#[test]
+fn a_settings_file_from_before_the_themes_still_loads() {
+    let file = temp_file("no-themes");
+    std::fs::create_dir_all(file.parent().unwrap()).unwrap();
+    std::fs::write(&file, r#"{"language": "fr", "zoom": 120}"#).unwrap();
+    let store = SettingsStore::with_vault(file, Arc::new(MemoryVault::default()));
+    assert_eq!(store.zoom(), 120);
+    assert_eq!((store.theme(), store.syntax_theme()), ("", ""));
 }

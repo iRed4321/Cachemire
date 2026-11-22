@@ -1,9 +1,11 @@
 import { Theme } from "components/theme.slint";
 import { TitleBar } from "components/title-bar.slint";
 import { AwsProfileDropdown } from "components/cloud-picker.slint";
-import { About, AboutModal } from "components/about.slint";
 import { ValueEditor, ValueEditorModal } from "components/value-editor.slint";
 import { KeyNameDialog, KeyNameModal, KeyNameAction } from "components/key-name-dialog.slint";
+import { FolderDeleteDialog, FolderDeleteModal } from "components/folder-delete-dialog.slint";
+import { KeyringDialog, KeyringModal, SecretsPrompt, SecretsPromptModal } from "components/secrets-dialogs.slint";
+import { HostKeyDialog, HostKeyModal } from "components/host-key-dialog.slint";
 import { CloudSettings, CloudSettingsModal } from "components/cloud-settings.slint";
 import { ConnectionTransfer, ConnectionTransferModal } from "components/connection-transfer.slint";
 import { ConnectionDropdown, ConnectionModal, ConnectionRowData, ConnectionForm, ConnProfileRowData } from "components/connection-picker.slint";
@@ -13,17 +15,21 @@ import { KeyDetail, KeyScroll, ExportPrefs, AllValuesRowData, FindResult, LineSe
 import { SearchPanel, SearchRowData } from "components/search-panel.slint";
 import { QueryEditor, QueryToolbar, ResultTabs, HistoryRow } from "components/query-panel.slint";
 import { TableRowData } from "components/key-detail-types.slint";
-import { FloatingCard, Hint, HResizeHandle, SquareIconButton } from "components/widgets.slint";
+import { BackdropArea, FloatingCard, Hint, HResizeHandle, SquareIconButton } from "components/widgets.slint";
 import { IconSidebar } from "components/icons.slint";
 import { SettingsModal, SshProfileRowData, SshProfileForm, ConnProfileForm } from "components/settings.slint";
-import { ConnectionStatus, TreeRowKind, ExportFormat, ExportTarget, LanguageSetting, ProfileTint, KeyView, SidebarView, SearchScope } from "components/types.slint";
-import { ConnectionView, ConnectionState, ConnectionEditor, AwsAccount, Preferences, KeyTree, SavedQueries, TabStrip, SearchTab, QueryTab, KeyPanel } from "globals.slint";
+import { ConnectionStatus, TreeRowKind, ExportFormat, ExportTarget, LanguageSetting, SettingsCategory, ProfileTint, KeyView, OpeningView, SidebarView, SearchScope, ShortcutAction, ShortcutRow, ThemeChoice, AwsProfileRow } from "components/types.slint";
+import { ConnectionView, ConnectionState, ConnectionEditor, AwsAccount, About, Preferences, Shortcuts, KeyTree, SavedQueries, TabStrip, SearchTab, QueryTab, KeyPanel } from "globals.slint";
 
 // read and written by Rust: where each tab left the key panel scrolled to
 // (Rust tints the background: see Theme.env-tint)
-export { KeyScroll, ExportPrefs, Theme, About, CloudSettings, ConnectionTransfer, LineSelection, ValueLine, ValueEditor, KeyNameDialog, KeyNameAction }
+export { KeyScroll, ExportPrefs, Theme, About, CloudSettings, ConnectionTransfer, LineSelection, ValueLine, ValueEditor, KeyNameDialog, KeyNameAction, FolderDeleteDialog, KeyringDialog, SecretsPrompt, HostKeyDialog }
 // the enumerations Rust shares with the UI
-export { ConnectionStatus, TreeRowKind, ExportFormat, ExportTarget, LanguageSetting, ProfileTint, KeyView, SidebarView, SearchScope }
+export { ConnectionStatus, TreeRowKind, ExportFormat, ExportTarget, LanguageSetting, SettingsCategory, ProfileTint, KeyView, OpeningView, SidebarView, SearchScope, ShortcutAction, ThemeChoice }
+// a row of the settings' Key bindings page
+export { ShortcutRow }
+// a profile of the title bar's AWS list
+export { AwsProfileRow }
 // a badge of the key panel's field/value search bar
 export { BadgeData, HistoryRow }
 // a saved query of the left panel's Search/Query view
@@ -31,7 +37,7 @@ export { SavedQueryRowData }
 // a hit of a search tab
 export { SearchRowData }
 // each feature's state and callbacks (see globals.slint)
-export { ConnectionView, ConnectionState, ConnectionEditor, AwsAccount, Preferences, KeyTree, SavedQueries, TabStrip, SearchTab, QueryTab, KeyPanel }
+export { ConnectionView, ConnectionState, ConnectionEditor, AwsAccount, Preferences, Shortcuts, KeyTree, SavedQueries, TabStrip, SearchTab, QueryTab, KeyPanel }
 
 export component MainWindow inherits Window {
     title: ConnectionState.view.name == "" ? "Cachemire" : ConnectionState.view.name + " — Cachemire";
@@ -66,6 +72,9 @@ export component MainWindow inherits Window {
     // a row opening or folding can leave no item focused: the key handler takes it back
     property <int> refocus-tick: KeyScroll.refocus-tick;
     changed refocus-tick => { root-scope.focus(); }
+    // Settings or the cloud settings held the keyboard: the key handler takes it back when they close
+    property <bool> settings-open: Preferences.open || CloudSettings.open;
+    changed settings-open => { if !settings-open { root-scope.focus(); } }
     // bumped by Ctrl+F on a key tab: the key panel focuses its search box
     property <int> key-search-focus-tick: 0;
 
@@ -87,8 +96,9 @@ export component MainWindow inherits Window {
     // the title bar's dropdowns: open or not, and where; whether the form edits a connection
     property <bool> connections-open: false;
     property <bool> aws-profiles-open: false;
+    // a gear's hint shown when the list closes would stay, with nothing left to hide it
+    changed aws-profiles-open => { if !aws-profiles-open { Hint.hide(); } }
     property <length> aws-profiles-x: 0px;
-    property <bool> connection-modal-is-edit: false;
     // the sidebar (the keyspace and the saved queries) is hidden; the tab bar has the button to bring it back
     in-out property <bool> sidebar-hidden: false;
     // which of its views the sidebar shows
@@ -96,7 +106,7 @@ export component MainWindow inherits Window {
     // whether the clipboard holds text, for a text box's right-click "Paste"
     callback clipboard-has-text() -> bool;
 
-    // Right-click "Copy selection" over selectable text in the key detail
+    // Right-click "Copy" over selectable text in the key detail
     // panel: the panel reports the click position and the selected text
     // (see KeyDetail.context-requested); the menu opens only if there is one.
     property <string> selection-text: "";
@@ -149,7 +159,7 @@ export component MainWindow inherits Window {
         Theme.zoom = max(Theme.zoom-min, min(Theme.zoom-max, Theme.zoom - 0.1));
     }
     function zoom-reset() {
-        Theme.zoom = 1.0;
+        Theme.zoom = Preferences.zoom / 100.0;
     }
 
     root-scope := FocusScope {
@@ -163,33 +173,6 @@ export component MainWindow inherits Window {
                     KeyTree.export-mode-toggled();
                 }
             }
-            if (event.modifiers.control) {
-                if (event.text == "=" || event.text == "+") {
-                    zoom-in();
-                    return accept;
-                }
-                if (event.text == "-") {
-                    zoom-out();
-                    return accept;
-                }
-                if (event.text == "0") {
-                    zoom-reset();
-                    return accept;
-                }
-                // Ctrl+letter arrives as the letter or as its control character
-                if (event.text == "f" || event.text == "F" || event.text == "\u{6}") {
-                    if (KeyPanel.loaded && !TabStrip.active-is-search) {
-                        key-search-focus-tick += 1;
-                    } else if (root.connection-chosen) {
-                        TabStrip.new-search-clicked();
-                    }
-                    return accept;
-                }
-                if (event.text == "w" || event.text == "W" || event.text == "\u{17}") {
-                    TabStrip.close-active();
-                    return accept;
-                }
-            }
             reject
         }
         key-released(event) => {
@@ -198,6 +181,22 @@ export component MainWindow inherits Window {
             }
             reject
         }
+        // the app's shortcuts, with the keys picked in Settings (see Shortcuts)
+        KeyBinding { keys: Shortcuts.zoom-in; activated => { zoom-in(); } }
+        KeyBinding { keys: Shortcuts.zoom-in-2; activated => { zoom-in(); } }
+        KeyBinding { keys: Shortcuts.zoom-out; activated => { zoom-out(); } }
+        KeyBinding { keys: Shortcuts.zoom-reset; activated => { zoom-reset(); } }
+        KeyBinding {
+            keys: Shortcuts.search;
+            activated => {
+                if (KeyPanel.loaded && !TabStrip.active-is-search) {
+                    key-search-focus-tick += 1;
+                } else if (root.connection-chosen) {
+                    TabStrip.new-search-clicked();
+                }
+            }
+        }
+        KeyBinding { keys: Shortcuts.close-tab; activated => { TabStrip.close-active(); } }
 
         scroll-zoom := TouchArea {
             width: 100%;
@@ -218,10 +217,6 @@ export component MainWindow inherits Window {
                 TitleBar {
                     device-scale: root.device-scale;
                     is-maximized: root.maximized;
-                    aws-settings-clicked => {
-                        root.aws-profiles-open = false;
-                        CloudSettings.open-requested(0, "");
-                    }
                     aws-clicked => {
                         root.aws-profiles-open = false;
                         AwsAccount.clicked();
@@ -232,11 +227,8 @@ export component MainWindow inherits Window {
                         root.aws-profiles-open = !root.aws-profiles-open;
                     }
                     settings-clicked => {
-                        Preferences.error = "";
-                        Preferences.ssh-profile-editing = false;
-                        Preferences.conn-profile-editing = false;
                         root.connections-open = false;
-                        Preferences.open = true;
+                        Preferences.show(Preferences.category);
                     }
                     expanded: root.connections-open;
                     bar-clicked => {
@@ -271,9 +263,13 @@ export component MainWindow inherits Window {
                         view <=> root.sidebar-view;
                         hide-sidebar-clicked => { root.sidebar-hidden = true; }
                         row-context-requested(name, x, y) => {
+                            // nothing to offer on the empty space of a read-only connection
+                            if name == "" && ConnectionState.read-only {
+                                return;
+                            }
                             root.row-menu-name = name;
                             root.row-menu-x = min(x, root.width - Theme.px(200px) - Theme.px(4px));
-                            root.row-menu-y = min(y, root.height - Theme.px(190px));
+                            root.row-menu-y = min(y, root.height - Theme.px(220px));
                             root.row-menu-open = true;
                         }
                     }
@@ -344,9 +340,7 @@ export component MainWindow inherits Window {
                         max-height: 100000px;
                         background: Theme.bg-panel;
 
-                        // Rectangular clip, never rounded: a border-radius clip
-                        // renders offscreen, which at fractional HiDPI scales
-                        // resamples every glyph. The card above gives the rounding.
+                        // a rectangular clip: the card above gives the rounding
                         Rectangle {
                             clip: true;
 
@@ -362,7 +356,9 @@ export component MainWindow inherits Window {
                                         root.tab-menu-open = true;
                                     }
                                 }
+                                // painted last, so its completion list is over the results below it
                                 if TabStrip.active-is-query: QueryEditor {
+                                    z: 10;
                                     clipboard-has-text() => { return root.clipboard-has-text(); }
                                 }
                                 if TabStrip.active-is-query && QueryTab.results.length > 1: ResultTabs {
@@ -397,6 +393,13 @@ export component MainWindow inherits Window {
                                 }
                             }
                         }
+                        // the card's border again, over the content: a scrollbar's strip
+                        // reaching the edge doesn't hide it
+                        Rectangle {
+                            border-radius: Theme.radius-lg;
+                            border-width: 1px;
+                            border-color: Theme.chrome-border;
+                        }
                     }
                 }
             }
@@ -405,7 +408,7 @@ export component MainWindow inherits Window {
         // declared here rather than inside TitleBar so it paints on top: the
         // title bar paints early in tree order, and a dropdown overflowing its
         // bounds would end up under the panels below it
-        if connections-open: TouchArea {
+        if connections-open: BackdropArea {
             width: 100%;
             height: 100%;
             clicked => { root.connections-open = false; }
@@ -422,25 +425,8 @@ export component MainWindow inherits Window {
 
             ConnectionDropdown {
                 new-connection-clicked => {
-                    ConnectionEditor.id = "";
-                    ConnectionEditor.name = "";
-                    ConnectionEditor.connection-url = "";
-                    ConnectionEditor.username = "";
-                    ConnectionEditor.password = "";
-                    ConnectionEditor.ssh-enabled = false;
-                    ConnectionEditor.ssh-host = "";
-                    ConnectionEditor.ssh-port = "22";
-                    ConnectionEditor.ssh-username = "";
-                    ConnectionEditor.ssh-password = "";
-                    ConnectionEditor.ssh-key = "";
-                    ConnectionEditor.ssh-passphrase = "";
-                    ConnectionEditor.profile-enabled = false;
-                    ConnectionEditor.profile-id = "";
-                    ConnectionEditor.error = "";
-                    ConnectionEditor.test-status = "";
-                    root.connection-modal-is-edit = false;
                     root.connections-open = false;
-                    ConnectionEditor.open = true;
+                    ConnectionEditor.start-new();
                 }
                 connection-clicked(id) => {
                     root.connections-open = false;
@@ -469,9 +455,10 @@ export component MainWindow inherits Window {
                     ConnectionEditor.ssh-passphrase = "";
                     ConnectionEditor.profile-enabled = row.profile-id != "";
                     ConnectionEditor.profile-id = row.profile-id;
+                    ConnectionEditor.read-only = row.read-only;
                     ConnectionEditor.error = "";
                     ConnectionEditor.test-status = "";
-                    root.connection-modal-is-edit = true;
+                    ConnectionEditor.is-edit = true;
                     root.connections-open = false;
                     ConnectionEditor.open = true;
                 }
@@ -479,7 +466,7 @@ export component MainWindow inherits Window {
         }
 
         // the AWS profiles list, under the profile button
-        if aws-profiles-open: TouchArea {
+        if aws-profiles-open: BackdropArea {
             width: 100%;
             height: 100%;
             clicked => { root.aws-profiles-open = false; }
@@ -487,15 +474,25 @@ export component MainWindow inherits Window {
         if aws-profiles-open: AwsProfileDropdown {
             x: root.aws-profiles-x;
             y: Theme.px(40px);
+            clipboard-has-text() => { return root.clipboard-has-text(); }
             picked(name) => {
                 root.aws-profiles-open = false;
                 AwsAccount.profile-selected(name);
             }
+            settings-clicked(name) => {
+                root.aws-profiles-open = false;
+                CloudSettings.open-requested(0, name);
+            }
+            sign-out-clicked => {
+                root.aws-profiles-open = false;
+                AwsAccount.clicked();
+            }
+            closed => { root.aws-profiles-open = false; }
         }
 
         // tab context menu: catcher first (any click outside dismisses),
         // menu after so it paints on top
-        if tab-menu-open: TouchArea {
+        if tab-menu-open: BackdropArea {
             width: 100%;
             height: 100%;
             pointer-event(event) => {
@@ -518,7 +515,7 @@ export component MainWindow inherits Window {
         }
 
         // keyspace row menu: catcher first, menu on top (see tab menu)
-        if row-menu-open: TouchArea {
+        if row-menu-open: BackdropArea {
             width: 100%;
             height: 100%;
             pointer-event(event) => {
@@ -532,6 +529,11 @@ export component MainWindow inherits Window {
             y: root.row-menu-y;
             selection-count: KeyTree.export-mode ? KeyTree.export-count : 0;
             on-row: root.row-menu-name != "";
+            read-only: ConnectionState.read-only;
+            copy => {
+                root.row-menu-open = false;
+                KeyTree.copy-requested(root.row-menu-name);
+            }
             add-key => {
                 root.row-menu-open = false;
                 KeyTree.add-key-requested(root.row-menu-name);
@@ -558,8 +560,8 @@ export component MainWindow inherits Window {
             }
         }
 
-        // "Copy selection" menu: catcher first, menu on top (see tab menu)
-        if selection-menu-open: TouchArea {
+        // "Copy" menu: catcher first, menu on top (see tab menu)
+        if selection-menu-open: BackdropArea {
             width: 100%;
             height: 100%;
             pointer-event(event) => {
@@ -584,8 +586,8 @@ export component MainWindow inherits Window {
             y: Hint.above
                 ? max(Theme.px(4px), Hint.anchor-y - self.height)
                 : min(Hint.anchor-y, root.height - self.height - Theme.px(4px));
-            width: tooltip-label.width + Theme.px(16px);
-            height: Theme.px(24px);
+            width: max(tooltip-label.width, Hint.footer == "" ? 0px : tooltip-footer.width) + Theme.px(16px);
+            height: Hint.footer == "" ? Theme.px(24px) : Theme.px(47px);
             background: Theme.bg-elevated;
             border-radius: Theme.radius-sm;
             border-width: 1px;
@@ -596,12 +598,31 @@ export component MainWindow inherits Window {
 
             tooltip-label := Text {
                 x: Theme.px(8px);
-                y: (parent.height - self.height) / 2;
+                y: (Theme.px(24px) - self.height) / 2;
                 width: min(self.preferred-width, root.width - Theme.px(24px));
                 text: Hint.text;
                 font-size: Theme.pt(12px);
                 font-family: Theme.font-mono;
                 color: Theme.text-primary;
+                vertical-alignment: center;
+                overflow: elide;
+            }
+            // the footer line, under a separator
+            if Hint.footer != "": Rectangle {
+                x: Theme.px(6px);
+                y: Theme.px(24px);
+                width: parent.width - Theme.px(12px);
+                height: 1px;
+                background: Theme.border-soft;
+            }
+            tooltip-footer := Text {
+                visible: Hint.footer != "";
+                x: Theme.px(8px);
+                y: Theme.px(25px) + (Theme.px(22px) - self.height) / 2;
+                width: min(self.preferred-width, root.width - Theme.px(24px));
+                text: Hint.footer;
+                font-size: Theme.pt(11px);
+                color: Theme.text-tertiary;
                 vertical-alignment: center;
                 overflow: elide;
             }
@@ -642,33 +663,101 @@ export component MainWindow inherits Window {
             }
         }
 
-        if Preferences.open: SettingsModal {
+        // the dialogs are placed by hand (`x`, `y`): an overlay doesn't count toward the size
+        // of what it covers
+        // takes the keyboard while open, so what is typed stays out of the window behind; an Esc
+        // no field inside took ends up here
+        if Preferences.open: FocusScope {
+            x: 0px;
+            y: 0px;
             width: 100%;
             height: 100%;
-            clipboard-has-text() => { return root.clipboard-has-text(); }
+            init => { self.focus(); }
+            key-pressed(event) => {
+                if event.text == Key.Escape {
+                    settings.escape();
+                    return accept;
+                }
+                return reject;
+            }
+            settings := SettingsModal {
+                width: 100%;
+                height: 100%;
+                clipboard-has-text() => { return root.clipboard-has-text(); }
+            }
         }
 
-        if About.open: AboutModal { }
         if ValueEditor.open: ValueEditorModal {
+            x: 0px;
+            y: 0px;
             width: 100%;
             height: 100%;
             device-scale: root.device-scale;
             clipboard-has-text() => { return root.clipboard-has-text(); }
         }
         if KeyNameDialog.open: KeyNameModal {
+            x: 0px;
+            y: 0px;
             width: 100%;
             height: 100%;
             clipboard-has-text() => { return root.clipboard-has-text(); }
         }
-        if ConnectionTransfer.open: ConnectionTransferModal { }
-        if CloudSettings.open: CloudSettingsModal {
-            clipboard-has-text() => { return root.clipboard-has-text(); }
+        if FolderDeleteDialog.open: FolderDeleteModal {
+            x: 0px;
+            y: 0px;
+            width: 100%;
+            height: 100%;
+        }
+        if ConnectionTransfer.open: ConnectionTransferModal {
+            x: 0px;
+            y: 0px;
+        }
+        // like Settings: holds the keyboard while open, and Esc closes it as Cancel does
+        if CloudSettings.open: FocusScope {
+            x: 0px;
+            y: 0px;
+            width: 100%;
+            height: 100%;
+            init => { self.focus(); }
+            key-pressed(event) => {
+                if event.text == Key.Escape {
+                    CloudSettings.open = false;
+                    return accept;
+                }
+                return reject;
+            }
+            CloudSettingsModal {
+                width: 100%;
+                height: 100%;
+                clipboard-has-text() => { return root.clipboard-has-text(); }
+            }
         }
         if ConnectionEditor.open: ConnectionModal {
+            x: 0px;
+            y: 0px;
             width: 100%;
             height: 100%;
             clipboard-has-text() => { return root.clipboard-has-text(); }
-            is-edit: root.connection-modal-is-edit;
+            is-edit: ConnectionEditor.is-edit;
+        }
+        if KeyringDialog.open: KeyringModal {
+            x: 0px;
+            y: 0px;
+            width: 100%;
+            height: 100%;
+        }
+        if HostKeyDialog.open: HostKeyModal {
+            x: 0px;
+            y: 0px;
+            width: 100%;
+            height: 100%;
+        }
+        if SecretsPrompt.open: SecretsPromptModal {
+            x: 0px;
+            y: 0px;
+            width: 100%;
+            height: 100%;
+            clipboard-has-text() => { return root.clipboard-has-text(); }
         }
     }
 

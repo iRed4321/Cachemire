@@ -44,6 +44,10 @@ pub enum Error {
         "This server runs in cluster mode, which Cachemire doesn't support yet. Connect to a server or endpoint with cluster mode disabled."
     )]
     ClusterMode,
+    #[error("This connection is read-only.")]
+    ReadOnly,
+    #[error("This data isn't UTF-8 text: it is read-only.")]
+    BinaryData,
 }
 
 /// What the user gave can't be used.
@@ -57,6 +61,10 @@ pub enum Invalid {
     UnreadableUrl,
     #[error("The connection URL has no host.")]
     UrlWithoutHost,
+    #[error("The connection URL starts with {0}://, which isn't supported: use redis://, rediss://, valkey:// or valkeys://.")]
+    UnknownScheme(String),
+    #[error("The database in the connection URL must be a number, 0 or more.")]
+    InvalidDatabase,
     #[error("SSH host is required.")]
     SshHost,
     #[error("SSH port must be a number between 1 and 65535.")]
@@ -174,7 +182,32 @@ impl Error {
             Error::JsonPath(_) => ErrorKind::Parse,
             Error::System(_) => ErrorKind::System,
             Error::ClusterMode => ErrorKind::Unsupported,
+            Error::ReadOnly => ErrorKind::Denied,
+            Error::BinaryData => ErrorKind::Invalid,
         }
+    }
+}
+
+impl Error {
+    /// The server answered that it doesn't know an option (an old server's `syntax error`).
+    pub(crate) fn is_unknown_option(&self) -> bool {
+        self.server_detail_has(&["syntax error", "unknown argument", "unknown option"])
+    }
+
+    /// The server doesn't know scripts, or its ACL or settings refuse them.
+    pub(crate) fn is_script_refused(&self) -> bool {
+        self.kind() == ErrorKind::Denied
+            || self.server_detail_has(&["unknown command", "scripting", "not allowed", "disabled", "not supported"])
+    }
+
+    /// Whether this is a Redis reply (not a network or timeout failure) saying one of `words`.
+    fn server_detail_has(&self, words: &[&str]) -> bool {
+        let Error::Redis(error) = self else { return false };
+        if self.kind() != ErrorKind::Redis {
+            return false;
+        }
+        let said = format!("{} {}", error.code().unwrap_or_default(), error.detail().unwrap_or_default()).to_lowercase();
+        words.iter().any(|word| said.contains(word))
     }
 }
 

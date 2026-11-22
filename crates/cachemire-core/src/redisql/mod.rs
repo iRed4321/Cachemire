@@ -1,6 +1,6 @@
 //! Redisql: a small query language that pulls rows out of keys holding JSON (a hash
 //! of JSON objects, or a string holding an object/array) and joins them on matching
-//! field values. Example and clause rules are in the README.
+//! field values. The README has an example; the clause rules are in `parser` and the wiki's Redisql chapter.
 
 mod ast;
 pub mod complete;
@@ -78,6 +78,8 @@ pub enum QueryError {
     NonObjectValue { key: String, kind: &'static str },
     #[error("Invalid JSON in {key}: {source}")]
     ValueJson { key: String, source: serde_json::Error },
+    #[error("{key} holds {} of text: Redisql reads strings up to 16 MB.", crate::server_info::format_bytes(*.size as i64))]
+    StringTooBig { key: String, size: usize },
 }
 
 impl QueryError {
@@ -88,7 +90,8 @@ impl QueryError {
             | QueryError::NonObjectField { .. }
             | QueryError::FieldJson { .. }
             | QueryError::NonObjectValue { .. }
-            | QueryError::ValueJson { .. } => ErrorKind::Invalid,
+            | QueryError::ValueJson { .. }
+            | QueryError::StringTooBig { .. } => ErrorKind::Invalid,
             _ => ErrorKind::Parse,
         }
     }

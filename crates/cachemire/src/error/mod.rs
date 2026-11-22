@@ -2,7 +2,7 @@
 //! in the interface language, while `Display` stays English for the log. What comes from
 //! outside (Redis, the OS, a library) is shown as it was given.
 
-use rust_i18n::t;
+use crate::t;
 
 use cachemire_core::aws::AwsError;
 use cachemire_core::connection::ssh_tunnel::TunnelError;
@@ -64,6 +64,8 @@ impl Localize for CoreError {
             CoreError::JsonPath(error) => error.localized(),
             CoreError::System(error) => error.localized(),
             CoreError::ClusterMode => t!("This server runs in cluster mode, which Cachemire doesn't support yet. Connect to a server or endpoint with cluster mode disabled.").into_owned(),
+            CoreError::ReadOnly => t!("This connection is read-only.").into_owned(),
+            CoreError::BinaryData => t!("This data isn't UTF-8 text: it is read-only.").into_owned(),
             CoreError::Redis(_) => self.to_string(),
         }
     }
@@ -76,6 +78,13 @@ impl Localize for Invalid {
             Invalid::ConnectionUrl => t!("Connection URL is required."),
             Invalid::UnreadableUrl => t!("Couldn't understand the connection URL."),
             Invalid::UrlWithoutHost => t!("The connection URL has no host."),
+            Invalid::UnknownScheme(scheme) => {
+                t!(
+                    "The connection URL starts with %{scheme}://, which isn't supported: use redis://, rediss://, valkey:// or valkeys://.",
+                    scheme = scheme
+                )
+            }
+            Invalid::InvalidDatabase => t!("The database in the connection URL must be a number, 0 or more."),
             Invalid::SshHost => t!("SSH host is required."),
             Invalid::SshPort => t!("SSH port must be a number between 1 and 65535."),
             Invalid::SshLogin => t!("Provide an SSH password or a private key."),
@@ -150,6 +159,10 @@ impl Localize for KeyringError {
             KeyringError::SshProfilePassword(error) => {
                 t!("Couldn't read the SSH profile's password from the system keyring: %{error}", error = error.localized()).into_owned()
             }
+            KeyringError::CantStore(error) => {
+                t!("The system keyring is unavailable, so the passwords can't be stored in it: %{error}", error = error.localized())
+                    .into_owned()
+            }
             KeyringError::TunnelSecrets(error) => {
                 t!("Couldn't read the SSH tunnel's secrets from the system keyring: %{error}", error = error.localized()).into_owned()
             }
@@ -161,6 +174,7 @@ impl Localize for TunnelError {
     fn localized(&self) -> String {
         match self {
             TunnelError::HostKeyNotSaved { file, source } => t!("couldn't remember the SSH server's host key in %{file}: %{error}", file = file.display(), error = source),
+            TunnelError::UnknownHostKey(server) => t!("the SSH server's host key isn't trusted yet: %{server}", server = server),
             TunnelError::HostKeyChanged { line, file } => t!(
                 "the SSH server's host key has changed since it was first seen (recorded on line %{line} of %{file}). If the server was reinstalled, delete that line; otherwise someone may be impersonating it.",
                 line = line,
@@ -181,6 +195,7 @@ impl Localize for TunnelError {
             TunnelError::Connect { host, port, source } => t!("couldn't connect to the SSH server %{host}:%{port}: %{error}", host = host, port = port, error = source),
             TunnelError::Timeout { host, port } => t!("timed out connecting to the SSH server %{host}:%{port}", host = host, port = port),
             TunnelError::Unreachable { host, port, source } => t!("the SSH server couldn't reach %{host}:%{port}: %{error}", host = host, port = port, error = source),
+            TunnelError::Tls { host, source } => t!("couldn't make a secure connection to %{host} through the SSH tunnel: %{error}", host = host, error = source),
             TunnelError::LocalPort(error) => t!("couldn't open a local port for the SSH tunnel: %{error}", error = error),
             TunnelError::Ssh(_) => return self.to_string(),
         }
@@ -257,6 +272,13 @@ impl Localize for QueryError {
                 t!("%{key} holds JSON, but not an object or an array of objects: %{kind}", key = key, kind = kind)
             }
             QueryError::ValueJson { key, source } => t!("Invalid JSON in %{key}: %{error}", key = key, error = source),
+            QueryError::StringTooBig { key, size } => {
+                t!(
+                    "%{key} holds %{size} of text: Redisql reads strings up to 16 MB.",
+                    key = key,
+                    size = cachemire_core::server_info::format_bytes(*size as i64)
+                )
+            }
         }
         .into_owned()
     }

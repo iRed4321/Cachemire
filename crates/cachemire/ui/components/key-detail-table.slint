@@ -29,7 +29,7 @@ component TableRow inherits Rectangle {
     in property <bool> selected: false;
     callback toggled(shift: bool);
     // a cell's selected text changed ("" when it was cleared): the table keeps
-    // the latest, for the right-click "Copy selection" (only one cell at a time
+    // the latest, for the right-click "Copy" (only one cell at a time
     // holds a selection, the others collapse when they lose the focus)
     callback selection-changed(text: string);
     // right-click anywhere on the row, with the pointer's window-relative position
@@ -49,6 +49,8 @@ component TableRow inherits Rectangle {
     out property <bool> in-paint-window: row-y + row-height >= view-top - paint-buffer && row-y <= view-top + view-height + paint-buffer;
 
     property <length> line-height: Theme.pt(12px) * 1.4;
+    // the row's padding above and below its line: each cell's click area covers it too
+    property <length> pad-y: Theme.px(5px);
 
     background: selected || row-area.has-hover ? Theme.bg-selected-soft : (mod(index, 2) == 1 ? Theme.bg-hover : transparent);
 
@@ -62,8 +64,8 @@ component TableRow inherits Rectangle {
             }
         }
         HorizontalLayout {
-            padding-top: Theme.px(5px);
-            padding-bottom: Theme.px(5px);
+            padding-top: root.pad-y;
+            padding-bottom: root.pad-y;
 
             // the selection column: a checkbox by the first line, the whole cell
             // is what's clicked
@@ -75,6 +77,8 @@ component TableRow inherits Rectangle {
                     checked: selected;
                 }
                 TouchArea {
+                    y: -root.pad-y;
+                    height: parent.height + 2 * root.pad-y;
                     mouse-cursor: pointer;
                     // Shift is read on the press: a click carries no modifiers
                     property <bool> shift-down: false;
@@ -108,6 +112,8 @@ component TableRow inherits Rectangle {
                     }
                 }
                 TouchArea {
+                    y: -root.pad-y;
+                    height: parent.height + 2 * root.pad-y;
                     pointer-event(event) => {
                         if event.kind == PointerEventKind.down && event.button == PointerEventButton.left {
                             root.cell-clicked(0);
@@ -136,6 +142,18 @@ component TableRow inherits Rectangle {
                     running: click-pending;
                     triggered => { click-pending = false; }
                 }
+                // a press beside the text (in the row's padding, or past its end) focuses the cell
+                TouchArea {
+                    y: -root.pad-y;
+                    height: parent.height + 2 * root.pad-y;
+                    pointer-event(event) => {
+                        if event.kind == PointerEventKind.down && event.button == PointerEventButton.left {
+                            root.cell-clicked(j + 1);
+                        } else if event.kind == PointerEventKind.down && event.button == PointerEventButton.right {
+                            root.context-requested(self.mouse-x + self.absolute-position.x, self.mouse-y + self.absolute-position.y);
+                        }
+                    }
+                }
                 Rectangle {
                     clip: true;
                     StyledText {
@@ -152,18 +170,24 @@ component TableRow inherits Rectangle {
                         default-color: Theme.text-primary;
                         default-font-family: Theme.font-mono;
                         default-font-size: Theme.pt(12px);
+                        selectable: true;
+                        keep-mouse-cursor: true;
+                        // transparent: the selected text keeps its own colors
+                        selection-foreground-color: transparent;
                         selection-background-color: Theme.accent-blue.with-alpha(0.35);
                         changed selected-text => { root.selection-changed(self.selected-text); }
-                        // a click focuses the cell; double click: the whole cell (the cursor is
-                        // clamped to the text's end)
+                        // a click focuses the cell and opens the time a second one makes a double click
                         clicked => {
                             root.cell-clicked(j + 1);
+                            click-pending = true;
+                        }
+                        // double click: the whole cell, where the text alone would select a word
+                        // (a press ends here before `clicked`, so the first click isn't pending yet)
+                        selection-drag-ended => {
                             if click-pending {
                                 click-pending = false;
-                                self.anchor-position-byte-offset = 0;
-                                self.cursor-position-byte-offset = 2147483647;
-                            } else {
-                                click-pending = true;
+                                root.cell-clicked(j + 1);
+                                self.select-all();
                             }
                         }
                     }
@@ -221,7 +245,7 @@ export component TableView inherits Rectangle {
     // the row last ticked or unticked, where a Shift-click's range starts (-1: none)
     property <int> select-anchor: -1;
     // right-click in the table: window-relative position plus the text selected
-    // in a cell ("" if none), so the window can offer "Copy selection"
+    // in a cell ("" if none), so the window can offer "Copy"
     callback context-requested(x: length, y: length, selected: string);
     // scrolled within `near-end-margin` rows of the end of what's loaded — see
     // AllValuesTable.near-end, same idea, same caveat (Rust decides if there's
@@ -431,8 +455,7 @@ export component TableView inherits Rectangle {
                                 running: KeyScroll.restore-table-pending;
                                 triggered => {
                                     KeyScroll.restore-table-pending = false;
-                                    table-flick.content-x = max(-max(0px, table-flick.content-width - table-flick.width), KeyScroll.restore-table-x);
-                                    table-flick.content-y = max(-max(0px, table-flick.content-height - table-flick.height), KeyScroll.restore-table-y);
+                                    table-flick.scroll-to({ x: -KeyScroll.restore-table-x, y: -KeyScroll.restore-table-y }, ScrollBehavior.instant);
                                 }
                             }
                             property <[TableRowData]> watched-rows: root.rows;
@@ -477,12 +500,10 @@ export component TableView inherits Rectangle {
                                 width: root.flick-width-snapshot;
                                 height: root.flick-height-snapshot;
                                 scroll-by(delta) => {
-                                    let scroll-range = max(0px, table-flick.content-height - table-flick.height);
-                                    table-flick.content-y = max(-scroll-range, min(0px, table-flick.content-y + delta));
+                                    table-flick.scroll-to({ x: -table-flick.content-x, y: -table-flick.content-y - delta }, ScrollBehavior.instant);
                                 }
                                 scroll-by-x(delta) => {
-                                    let scroll-range = max(0px, table-flick.content-width - table-flick.width);
-                                    table-flick.content-x = max(-scroll-range, min(0px, table-flick.content-x + delta));
+                                    table-flick.scroll-to({ x: -table-flick.content-x - delta, y: -table-flick.content-y }, ScrollBehavior.instant);
                                 }
                                 // the cells' text leaves right-clicks to what is behind it,
                                 // which is this
@@ -574,7 +595,7 @@ export component TableView inherits Rectangle {
                                             width: parent.width - Theme.px(16px) - Theme.px(4px) - (root.sortable[j] ? Theme.px(24px) : 0px);
                                             height: parent.height;
                                             text: j == 0 ? root.row-column-title : name;
-                                            font-size: Theme.pt(10.5px);
+                                            font-size: Theme.pt(12px);
                                             font-weight: 700;
                                             font-family: j == 0 ? Theme.font-ui : Theme.font-mono;
                                             color: Theme.text-secondary;

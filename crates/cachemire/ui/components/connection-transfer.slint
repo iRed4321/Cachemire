@@ -1,5 +1,5 @@
 import { Theme } from "theme.slint";
-import { ModalButton, SegmentedToggle, CheckBox, CheckRow, VScrollBar } from "widgets.slint";
+import { ModalButton, SegmentedToggle, CheckBox, CheckRow, VScrollBar, BackdropArea } from "widgets.slint";
 
 // One connection of the import file, or of the saved ones, in the list to tick.
 export struct TransferRow {
@@ -129,7 +129,7 @@ component TransferList inherits Rectangle {
 export component ConnectionTransferModal inherits Rectangle {
     background: #000000aa;
 
-    TouchArea {
+    BackdropArea {
         clicked => { ConnectionTransfer.open = false; }
     }
 
