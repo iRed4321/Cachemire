@@ -4,6 +4,10 @@ Every stable release of Cachemire; `Unreleased` is what the next one brings. Bet
 
 ## Unreleased
 
+### Fixes
+
+- **Security**: the `url` library is updated past a crash on crafted `blob:` URLs (RUSTSEC-2026-0592)
+
 ## 3.3.0 - 2026-11-22
 
 ### Added
