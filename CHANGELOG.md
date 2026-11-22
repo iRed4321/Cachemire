@@ -4,59 +4,40 @@ Every stable release of Cachemire; `Unreleased` is what the next one brings. Bet
 
 ## Unreleased
 
+## 3.3.0 - 2026-11-22
+
 ### Added
 
-- **Settings**: the window now lists its categories on the left (general, key bindings, SSH profiles, connection profiles, experimental, about) and shows the one picked beside them. The title bar's **i** button opens its About page, which replaces the separate info window. A search box above the categories gathers every setting it finds on one Settings found page, under its category's name, as you type. Esc closes the window, or leaves a profile form
-- **Themes** (Settings, Display): pick the app's colors from a list of themes, dark or light (Cachemire Dark, Nord, Dracula, Tokyo Night, One Dark, Catppuccin Mocha and Latte, Gruvbox, Solarized, Cachemire Light, GitHub Light...). Each is four colors, shown beside its name, from which all the others are worked out; connection profile colors stay the same. **Syntax highlighting** picks the colors of JSON, YAML, XML and Redisql text separately (Monokai, Dracula, One Dark, Nord, Catppuccin, Rosé Pine, GitHub...)
-- **Display** (Settings): a new page with the language, moved from General, and a **Zoom** slider with marks from 60% to 200% to pick the zoom the app starts at. Ctrl+0 returns to it; Ctrl with + or -, or the mouse wheel, still zooms for the session. A preview at its top shows a key's value in the theme, syntax colors and fonts picked, also over the search's results
-- **Fonts** (Settings, Display): the interface and the values and queries can use any font installed on the computer, picked from a searchable list where each name is drawn in its font; values and queries list monospaced fonts only
-- **Key bindings** (Settings): lists every keyboard shortcut, and the app's own (zoom, search, close the tab, run a query, save a value...) can be given other keys. Copy, paste, undo and Esc stay as they are
-- **New tabs open in** (Settings, General): a key's new tab starts in the fields view (as before), the table view, or the view you last picked
-- **Key header**: one row instead of two. A single box searches fields and values, Tab lists where to search (All, Fields or Value, or type `field:` / `value:`, or just `f:` / `v:`), even before a word is typed, and filters the JSON once what you type starts with `$` or `.`. Enter turns what you typed into a search pill in its scope's color, spaces included (no quotes needed). Hovering a pill names its scope, its × removes it, and a click or ← at the start of the box edits it again; the filter shows as a yellow chip. Exports (JSON or escaped JSON) and the table as CSV are in its **Export…** menu. Pointing at the key's name shows its size and TTL, and a click on it copies it; Refresh and its link sit beside it. In the field view, **Show as** in the Value column picks how every value reads (JSON, escaped JSON, YAML, XML or raw text); an open value's header keeps Edit and its link, with Open, Download, Copy and its own format in a ⋯ menu
-- **Field name**: in an open value's header, a click on the field's name copies it (a hint says so) and leaves the value open
-- **YAML, XML and raw text**: **Show as** now also reads values as YAML, XML or raw text, with their own colors: text on several lines shows as written, XML on one line is indented, and a JSON value can be read as YAML. Open, Download and Copy give that text. The value editor has an **Edit as** menu (JSON, YAML, XML, raw text) that checks what you type as that kind, turns JSON into YAML and back, and has a Format button for each. The table view makes columns from YAML and XML values too
-- **Links**: the link button beside the key's name copies a `cachemire://` link to it, with its filter but never a login or password. Opening one goes to that key on the right connection, saved or AWS, and offers to add a server you haven't saved; the Windows installer and the .deb register these links. An opened field has one too, next to its edit button: its link opens the key on that field
-- **SSH host keys**: a server whose key isn't known yet is no longer trusted silently. A dialog shows its address, key type and SHA-256 fingerprint, with **Trust and connect** or **Cancel**, when connecting, testing a connection or reaching an AWS endpoint. **Accept new SSH host keys automatically** (Settings, SSH profiles) brings the old behavior back
-- **SSH known hosts**: keys listed in `~/.ssh/known_hosts` are trusted without asking, and a different key listed there is refused. New keys are only written to Cachemire's own file
-- **Portable zip**: on Windows it now keeps all its data (connections, settings, history, logs) in a `data` folder next to the exe
-- **Read-only mode**: tick *Read-only* on a connection profile or on a connection and nothing can be written to Redis through it. The default Production profile is read-only
-- **Light theming**: tick *Light theming* on a connection profile and only the connection bar at the top takes its color, not the whole window. Handy for a dev profile
-- **Copy a key's name**: right-click a key in the tree and pick **Copy** (a folder copies its prefix)
-- **Folder deletion**: deleting a folder asks first, with the number of keys it will remove
-- **Changed values**: saving an edit to a value that changed in Redis meanwhile asks whether to cancel, reload the new value or overwrite it
-- **Passwords without a keyring**: when the system keyring can't store a password, Cachemire now asks instead of writing it to the data file in clear text. Choose to save it in the file anyway, or (for a connection) to save without it: the Redis password, SSH password or key passphrase is then asked for each time you connect, kept in memory only. This covers connections, imports, SSH profiles and the AWS tunnel settings
+- **Settings**: categories on the side, a search across every setting, and an About page (the title bar's **i**)
+- **Appearance** (Settings, Display): dark and light themes (Nord, Dracula, Catppuccin, Gruvbox, Solarized...), their own syntax colors, any installed font for the interface and the values, and the zoom the app starts at
+- **Key bindings** (Settings): every shortcut listed, and the app's own can be given other keys
+- **Key header**: one row with a single search box for fields and values (Tab or `f:` / `v:` picks where, `$` or `.` filters the JSON), searches kept as colored pills, and an **Export…** menu
+- **YAML, XML and raw text**: values can be shown, edited and formatted as YAML, XML or raw text, and the table view makes columns from them
+- **Links**: copy a `cachemire://` link to a key or one of its fields; opening it goes there, on the right connection
+- **SSH host keys**: a new server's key is shown with its fingerprint to trust or refuse, and `~/.ssh/known_hosts` is used
+- **Read-only**: a connection or a connection profile can block every write to Redis (the default Production profile does)
+- **Light theming**: a connection profile can tint only the connection bar instead of the whole window
+- **Safer edits**: deleting a folder asks first, and saving a value that changed in Redis meanwhile offers to reload or overwrite
+- **Passwords without a keyring**: Cachemire asks before saving one in clear text, or asks for it at each connection instead
+- **Also**: new tabs can open in the table view, the tree's menu copies a key's name, and the Windows portable zip keeps its data next to the exe
 
 ### Changed
 
-- **Text selection**: in a value, a table cell or the key's name, a double click selects a word, a triple click the whole paragraph, and Shift+click extends the selection (a double click in a table cell still selects the whole cell). The interface toolkit moves to Slint 1.19
-- **AWS**: the title bar has one button for the account: **Sign in to AWS** while signed out, then the profile in use. Its list has a filter (arrows and Enter pick, Esc closes), the three profiles used last first with when, each profile's connection profile and SSH tunnel under its name with a gear to change them (once its account is known), and **Sign out of AWS** at the bottom. Chips over the list keep the profiles of one connection profile (or of none), and a profile's star pins it above the others, two per line
-- **AWS**: the connection profile chip picked over the profile list stays picked when the list is opened again, and after a restart
-- **AWS**: a reload button beside the profile count reads your AWS config again, so newly added profiles show without restarting
-- **AWS**: ElastiCache endpoints with cluster mode enabled are no longer listed, since Cachemire can't connect to them
-- **Scrollbars**: only their thumb shows, with no strip behind it while you scroll or point at them
-- **TLS**: `rediss://` connections now also trust the certificate authorities installed on your computer, such as a company's own
+- **AWS**: one title bar button to sign in and pick a profile, with a filter, recent and pinned profiles, a remembered filter by connection profile, and a reload of the AWS config. ElastiCache clusters in cluster mode are no longer listed
+- **Text selection**: a double click selects a word, a triple click a paragraph, and Shift+click extends the selection
+- **TLS**: `rediss://` connections also trust the certificate authorities installed on your computer
 
 ### Fixes
 
-- **AWS**: an account's settings list every connection profile without scrolling, unless the window is too short
-- **Connection**: a `rediss://` server reached through an SSH tunnel is now verified against its real host name
-- **Connection**: URLs accept `valkey://` and `valkeys://`; other schemes and negative database numbers are refused with a clear message
+- **Connection**: `valkey://` URLs are accepted, and a TLS server behind an SSH tunnel is checked against its real name
 - **Dialogs**: scrolling over a dialog or an open menu no longer scrolls the view behind it
-- **Editor**: "Open in editor" now finds VS Code and VSCodium on Windows
-- **Export**: a failed export no longer leaves a half-written file, and keys that aren't valid UTF-8 are written with their exact name
-- **Export**: in the tree, Select all during a search now shows a folder ticked once all its keys are
-- **Performance**: big queries and key exports no longer slow the rest of the app down while they work
-- **Query**: the completion list is drawn over the results' buttons below the box, no longer mixed with them
-- **Query**: a string over 16 MB is refused with a message naming the key and its size, instead of being read whole
-- **Query**: with *Restore the last connection* on, Run no longer does nothing in a query tab after a while
-- **Security**: the AWS SSO sign-in ignores a refusal that doesn't come from your own sign-in attempt
-- **Security**: exported key files are readable by your user only
-- **Security**: passwords, passphrases and sign-in tokens are wiped from memory once no longer needed, and kept out of logs
-- **Search**: with *Restore the last connection* on, Enter no longer does nothing and long searches no longer stall after a while
-- **Search**: key and instance searches find accented letters however stored: `à`, `a` plus an accent, or JSON's `\u00e0`
-- **Table view**: a click near the line between two rows now selects the cell, not only a click on its text
-- **Values**: binary values and field names show their bytes as `\xNN` and can no longer be damaged by an edit
-- **Window**: a scrollbar no longer hides the border of the tab panel, tinted by a connection profile
+- **Export**: a failed export no longer leaves a half-written file, and non-UTF-8 key names are kept exactly
+- **Performance**: big queries and key exports no longer slow the rest of the app down
+- **Query**: a string over 16 MB is refused with a clear message instead of being read whole
+- **Search**: accented letters are found however they're stored, in key and instance searches
+- **Security**: SSO ignores refusals from other sign-ins, exported keys are private, secrets are wiped and kept out of logs
+- **Tabs**: search and query tabs no longer ignore Enter or Run after a while
+- **Values**: binary values show their bytes as `\xNN` and an edit can no longer damage them
 
 ## 3.2.2 - 2026-11-16
 
