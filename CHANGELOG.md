@@ -4,6 +4,13 @@ Every stable release of Cachemire; `Unreleased` is what the next one brings. Bet
 
 ## Unreleased
 
+## 3.3.2 - 2026-11-23
+
+### Fixes
+
+- **Dependencies**: the libraries it's built on are updated (aws-config, aws-sdk-elasticache, aws-sdk-sso and 38 more)
+- **Security**: rsa updated, fixing RUSTSEC-2023-0071
+
 ## 3.3.1 - 2026-11-22
 
 ### Fixes
