@@ -13,10 +13,10 @@ This chapter covers everything under `src/connection/`; the secrets themselves a
 |------|---------------|
 | `connection/mod.rs` | [`ConnectionItem`](crate::connection::ConnectionItem), [`SshSettings`](crate::connection::SshSettings), [`Endpoint`](crate::connection::Endpoint), [`ConnectionPayloadInput`](crate::connection::ConnectionPayloadInput), and the two entry points [`connect_connection`](crate::connection::connect_connection) / [`test_connection`](crate::connection::test_connection) |
 | `connection/url.rs` | [`parse`](crate::connection::url::parse): the connection URL grammar |
-| `connection/client.rs` | [`build_client`](crate::connection::client::build_client), [`create_connection`](crate::connection::client::create_connection): the `redis-rs` client |
+| `connection/client.rs` | [`build_client`](crate::connection::client::build_client), [`create_connection`](crate::connection::client::create_connection): the `redis-rs` client; `build_cluster_client`, `create_cluster_connection`: a cluster's |
 | `connection/tls.rs` | trusted roots: [`roots_pem`](crate::connection::tls::roots_pem), [`connector`](crate::connection::tls::connector) |
-| `connection/pool.rs` | [`ConnectionCache`](crate::connection::pool::ConnectionCache) and [`ConnectionPool`](crate::connection::pool::ConnectionPool) |
-| `connection/ssh_tunnel/mod.rs` | [`SshTunnel`](crate::connection::ssh_tunnel::SshTunnel), [`HostKeys`](crate::connection::ssh_tunnel::HostKeys), [`TunnelError`](crate::connection::ssh_tunnel::TunnelError) |
+| `connection/pool.rs` | [`ConnectionCache`](crate::connection::pool::ConnectionCache), [`ConnectionPool`](crate::connection::pool::ConnectionPool) and [`RedisConnection`](crate::connection::pool::RedisConnection) (one server or a cluster) |
+| `connection/ssh_tunnel/mod.rs` | [`SshTunnel`](crate::connection::ssh_tunnel::SshTunnel), [`TunnelResolver`](crate::connection::ssh_tunnel::TunnelResolver), [`HostKeys`](crate::connection::ssh_tunnel::HostKeys), [`TunnelError`](crate::connection::ssh_tunnel::TunnelError) |
 | `connection/store/mod.rs` | [`ConnectionStore`](crate::connection::store::ConnectionStore): the saved connections file |
 
 ## The data model
@@ -113,9 +113,10 @@ flowchart LR
     S -->|yes| T["SshTunnel::open: host key check,<br/>login, probe channel,<br/>optional TLS probe, local listener"]
     S --> F
     T --> F["5. first redis<br/>connection"]
-    F -->|cluster mode?| X["Error::ClusterMode"]
+    F -->|"cluster mode?"| X["drop it: 3 cluster connections,<br/>the first alone"]
     F --> G["6. two more<br/>in parallel"]
-    G --> H["ConnectionPool { 3 x ConnectionManager,<br/>_tunnel }"]
+    G --> H["ConnectionPool { 3 x RedisConnection,<br/>cluster, _tunnel }"]
+    X --> H
 ```
 
 ### Step 1 and 2: secrets and resolution
@@ -154,8 +155,8 @@ pool share a single open. Behaviour worth knowing:
   over the others ([`ConnectionPool::pick`](crate::connection::pool::ConnectionPool::pick)),
   because Redis serves one connection strictly in order and a big reply would block everything
   queued behind it.
-- Cluster mode is refused up front with [`Error::ClusterMode`](crate::error::Error::ClusterMode)
-  (checked by `cluster_enabled` on the first connection).
+- A server in cluster mode (`cluster_enabled` on the first connection) gets cluster connections
+  instead, the first opened alone too: see [Clusters](#clusters) below.
 - The tunnel is stored in the pool (`_tunnel`): it lives exactly as long as the pool, and
   dropping it aborts forwarding.
 - [`ConnectionCache::invalidate`](crate::connection::pool::ConnectionCache::invalidate) drops the
@@ -175,6 +176,25 @@ pool share a single open. Behaviour worth knowing:
   reported at once and the next command tries again. The
   [`ConnectionManager`](redis::aio::ConnectionManager) reopens its socket by itself after a drop.
 - Through a tunnel, the client talks plain TCP to `127.0.0.1:<local port>` (see below).
+
+## Clusters
+
+A connection to any node of a cluster (or to an ElastiCache configuration endpoint) is a connection
+to the whole cluster; nothing in the saved connection says so, the pool finds out on opening.
+
+- [`RedisConnection`](crate::connection::pool::RedisConnection) is `Server(ConnectionManager)` or
+  `Cluster(ClusterConnection)` and implements `redis::aio::ConnectionLike` for both, so the
+  [session](crate::wiki::session) builds commands the same way; it handles what a cluster needs.
+- `build_cluster_client` starts from the endpoint (its login, database, TLS and certificates, RESP2,
+  the same TCP settings and timeouts) and finds the other nodes from it (`CLUSTER SLOTS`). redis-rs
+  sends each command to the node serving its key, follows `MOVED`/`ASK` (3 quick retries, 100 ms to
+  1 s apart, unlike a single server's zero) and reopens what drops.
+- The pool keeps the split of a single server: connection 0 for long reads, the other two in turn.
+  Each cluster connection holds one socket per node.
+- The nodes are reached at the addresses they announce: a client that can reach the endpoint but not
+  those addresses (NAT, Docker Desktop's port publishing) fails on the other nodes.
+- Through an SSH tunnel, the cluster client resolves every node's address with the tunnel's
+  [`TunnelResolver`](crate::connection::ssh_tunnel::TunnelResolver) (see [below](#ssh-tunnel)).
 
 ## TLS
 
@@ -223,9 +243,16 @@ certificate would otherwise be checked against `127.0.0.1`. The tunnel connects 
 session over the SSH channel with the endpoint's real host name
 ([`build_client`](crate::connection::client::build_client) sets `tls = false` and the local port when `via_local_port` is given).
 
+For a cluster, the same SSH session forwards to every node:
+[`SshTunnel::resolver`](crate::connection::ssh_tunnel::SshTunnel::resolver) gives the cluster client
+a DNS resolver that opens, on first use, a local listener per node address (`Forwards::port_to`), and
+answers `127.0.0.1:<its port>`. These forwards are plain TCP: redis-rs keeps the node's real address
+for its slot map and its redirects, and does the TLS handshake itself, with that name, over the
+forwarded socket. The SSH server resolves the addresses the nodes announce, as it would for one server.
+
 [`SshTunnel::is_alive`](crate::connection::ssh_tunnel::SshTunnel::is_alive) is true while the SSH
 session is open and the forwarding task is running; the pool uses it to rebuild itself.
-`Drop` aborts the forwarding task.
+`Drop` aborts the forwarding tasks.
 
 ### Authentication
 

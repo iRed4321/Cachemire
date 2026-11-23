@@ -4,6 +4,11 @@ Every stable release of Cachemire; `Unreleased` is what the next one brings. Bet
 
 ## Unreleased
 
+### Added
+
+- **Clusters**: Redis and Valkey clusters are supported: connect to any node, even through an SSH tunnel, to browse, search and edit every key
+- **AWS**: ElastiCache groups in cluster mode and Valkey caches are listed
+
 ## 3.3.2 - 2026-11-23
 
 ### Fixes

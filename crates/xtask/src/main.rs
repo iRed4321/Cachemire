@@ -30,8 +30,8 @@ struct Cli {
 enum Task {
     /// Extract the UI texts and merge them into each language's .po
     I18n,
-    /// Run the end-to-end tests against a throwaway Redis server: a local redis-server, else
-    /// Docker, else WSL's (or the one `CACHEMIRE_E2E_REDIS` names, whose databases they empty)
+    /// Run the end-to-end tests against a throwaway Redis server and cluster: a local redis-server,
+    /// else Docker, else WSL's (or the ones `CACHEMIRE_E2E_REDIS` and `CACHEMIRE_E2E_CLUSTER` name)
     E2e {
         /// More arguments for `cargo nextest run` (`-- --profile ci`, `-- --no-fail-fast`)
         #[arg(last = true)]

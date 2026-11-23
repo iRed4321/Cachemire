@@ -1488,6 +1488,12 @@ dependencies = [
 ]
 
 [[package]]
+name = "crc16"
+version = "0.4.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "338089f42c427b86394a5ee60ff321da23a5c89c9d89514c829687b26359fcff"
+
+[[package]]
 name = "crc32fast"
 version = "1.5.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -5101,11 +5107,14 @@ dependencies = [
  "bytes",
  "cfg-if",
  "combine",
+ "crc16",
  "futures-channel",
  "futures-util",
  "itoa",
+ "log",
  "percent-encoding",
  "pin-project-lite",
+ "rand",
  "rustls",
  "rustls-native-certs",
  "ryu",

@@ -41,9 +41,9 @@ pub enum Error {
     #[error(transparent)]
     System(#[from] SystemError),
     #[error(
-        "This server runs in cluster mode, which Cachemire doesn't support yet. Connect to a server or endpoint with cluster mode disabled."
+        "The new name puts the key in another slot of the cluster: moving it there takes the DUMP and RESTORE commands, which the server refused."
     )]
-    ClusterMode,
+    CrossSlotRename,
     #[error("This connection is read-only.")]
     ReadOnly,
     #[error("This data isn't UTF-8 text: it is read-only.")]
@@ -163,7 +163,7 @@ pub enum ErrorKind {
     Cloud,
     /// the operating system failed us otherwise (the browser, a task)
     System,
-    /// the server is set up in a way the app doesn't handle (cluster mode)
+    /// the server can't do what was asked the way it is set up (a cluster's slots)
     Unsupported,
 }
 
@@ -181,7 +181,7 @@ impl Error {
             Error::Query(error) => error.kind(),
             Error::JsonPath(_) => ErrorKind::Parse,
             Error::System(_) => ErrorKind::System,
-            Error::ClusterMode => ErrorKind::Unsupported,
+            Error::CrossSlotRename => ErrorKind::Unsupported,
             Error::ReadOnly => ErrorKind::Denied,
             Error::BinaryData => ErrorKind::Invalid,
         }
@@ -198,6 +198,22 @@ impl Error {
     pub(crate) fn is_script_refused(&self) -> bool {
         self.kind() == ErrorKind::Denied
             || self.server_detail_has(&["unknown command", "scripting", "not allowed", "disabled", "not supported"])
+    }
+
+    /// A cluster refused a command whose keys lie in different slots (`CROSSSLOT`).
+    pub(crate) fn is_cross_slot(&self) -> bool {
+        let Error::Redis(error) = self else { return false };
+        matches!(error.kind(), redis::ErrorKind::Server(redis::ServerErrorKind::CrossSlot)) || error.code() == Some("CROSSSLOT")
+    }
+
+    /// The server doesn't know the command, or its ACL refuses it.
+    pub(crate) fn is_command_refused(&self) -> bool {
+        self.kind() == ErrorKind::Denied || self.server_detail_has(&["unknown command", "not allowed", "disabled"])
+    }
+
+    /// `RESTORE` found a key under the name it was to write (`BUSYKEY`).
+    pub(crate) fn is_busy_key(&self) -> bool {
+        matches!(self, Error::Redis(error) if error.code() == Some("BUSYKEY"))
     }
 
     /// Whether this is a Redis reply (not a network or timeout failure) saying one of `words`.

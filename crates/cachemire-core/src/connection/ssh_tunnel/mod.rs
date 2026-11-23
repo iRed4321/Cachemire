@@ -3,9 +3,11 @@
 //! `ssh -L port:redis-host:6379` does, without an `ssh` binary.
 
 use parking_lot::Mutex;
+use rustc_hash::FxHashMap;
+use std::net::SocketAddr;
 use std::path::PathBuf;
-use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::{Arc, Weak};
 use std::time::Duration;
 
 use russh::client::{self, Handle};
@@ -293,10 +295,57 @@ async fn forward_loop(
     }
 }
 
+/// The local ports opened on demand for other targets of the same SSH session (a
+/// cluster's nodes), plain TCP, one per `host:port`, with the tasks serving them.
+struct Forwards {
+    session: Arc<Handle<HostKeyCheck>>,
+    ports: Mutex<FxHashMap<(String, u16), u16>>,
+    tasks: Mutex<Vec<JoinHandle<()>>>,
+}
+
+impl Forwards {
+    /// The local port leading to `host:port` (as the SSH server sees it), opened on first use.
+    async fn port_to(&self, host: &str, port: u16) -> std::io::Result<u16> {
+        if let Some(&local) = self.ports.lock().get(&(host.to_string(), port)) {
+            return Ok(local);
+        }
+        let listener = TcpListener::bind(("127.0.0.1", 0)).await?;
+        let local = listener.local_addr()?.port();
+        let mut ports = self.ports.lock();
+        // another caller may have opened one meanwhile: theirs is kept, this listener dropped
+        if let Some(&theirs) = ports.get(&(host.to_string(), port)) {
+            return Ok(theirs);
+        }
+        ports.insert((host.to_string(), port), local);
+        self.tasks.lock().push(tokio::spawn(forward_loop(listener, self.session.clone(), host.to_string(), port, None)));
+        tracing::debug!(target = %format_args!("{host}:{port}"), local_port = local, "SSH tunnel forward opened");
+        Ok(local)
+    }
+}
+
+/// Resolves a cluster node's address to a local port forwarded through the SSH tunnel,
+/// so the Redis client reaches every node through it; the TLS handshake, if any, stays
+/// the client's, with the node's real name.
+pub struct TunnelResolver(Weak<Forwards>);
+
+impl redis::io::AsyncDNSResolver for TunnelResolver {
+    fn resolve<'a, 'b: 'a>(&'a self, host: &'b str, port: u16) -> redis::RedisFuture<'a, Box<dyn Iterator<Item = SocketAddr> + Send + 'a>> {
+        Box::pin(async move {
+            let closed = || std::io::Error::new(std::io::ErrorKind::NotConnected, "the SSH tunnel is closed");
+            let forwards = self.0.upgrade().ok_or_else(closed)?;
+            let local = forwards.port_to(host, port).await?;
+            let addresses: Box<dyn Iterator<Item = SocketAddr> + Send> =
+                Box::new(std::iter::once(SocketAddr::from(([127, 0, 0, 1], local))));
+            Ok(addresses)
+        })
+    }
+}
+
 pub struct SshTunnel {
     local_port: u16,
     forwarding: JoinHandle<()>,
     session: Arc<Handle<HostKeyCheck>>,
+    forwards: Arc<Forwards>,
 }
 
 impl SshTunnel {
@@ -333,7 +382,8 @@ impl SshTunnel {
         let local_port = listener.local_addr().map_err(TunnelError::LocalPort)?.port();
         let session = Arc::new(session);
         let forwarding = tokio::spawn(forward_loop(listener, session.clone(), target_host.to_string(), target_port, tls));
-        Ok(SshTunnel { local_port, forwarding, session })
+        let forwards = Arc::new(Forwards { session: session.clone(), ports: Mutex::default(), tasks: Mutex::default() });
+        Ok(SshTunnel { local_port, forwarding, session, forwards })
     }
 
     /// Whether the SSH session still stands: once the server or the network drops it
@@ -346,11 +396,20 @@ impl SshTunnel {
     pub fn local_port(&self) -> u16 {
         self.local_port
     }
+
+    /// What a cluster client resolves its nodes' addresses with, to reach each of them
+    /// through this tunnel (plain TCP: the client secures it). Useless once it is dropped.
+    pub fn resolver(&self) -> TunnelResolver {
+        TunnelResolver(Arc::downgrade(&self.forwards))
+    }
 }
 
 impl Drop for SshTunnel {
     fn drop(&mut self) {
         self.forwarding.abort();
+        for task in self.forwards.tasks.lock().drain(..) {
+            task.abort();
+        }
     }
 }
 

@@ -1,11 +1,14 @@
 use std::time::Duration;
 
 use redis::aio::{ConnectionManager, ConnectionManagerConfig};
+use redis::cluster::{ClusterClient, ClusterClientBuilder};
+use redis::cluster_async::ClusterConnection;
 use redis::io::tcp::TcpSettings;
 use redis::io::tcp::socket2::TcpKeepalive;
 use rustls::pki_types::ServerName;
 
-use crate::connection::{ConnectionItem, tls};
+use crate::connection::ssh_tunnel::TunnelResolver;
+use crate::connection::{ConnectionItem, Endpoint, tls};
 use crate::error::{Error, Invalid};
 
 /// Where the Redis server is, as the connection says (through an SSH tunnel,
@@ -26,17 +29,9 @@ pub fn tls_name_of(connection: &ConnectionItem) -> Result<Option<ServerName<'sta
     Ok(Some(name))
 }
 
-pub(crate) fn build_client(connection: &ConnectionItem, via_local_port: Option<u16>) -> Result<redis::Client, Error> {
+/// How to reach `endpoint` and log in to it: RESP2, keepalive probes, TLS when it says so.
+fn connection_info(endpoint: Endpoint) -> Result<redis::ConnectionInfo, Error> {
     use redis::IntoConnectionInfo;
-
-    let mut endpoint = connection.endpoint()?;
-    // through an SSH tunnel, the server is the tunnel's end on this machine, in plain
-    // TCP: the tunnel does the TLS handshake with the endpoint's real host name
-    if let Some(port) = via_local_port {
-        endpoint.host = "127.0.0.1".to_string();
-        endpoint.port = port;
-        endpoint.tls = false;
-    }
 
     // RESP2 on purpose: every server speaks it (RESP3 needs Redis 6+), the replies are
     // decoded in their RESP2 shapes (flat HSCAN and WITHSCORES arrays), and nothing
@@ -49,24 +44,69 @@ pub(crate) fn build_client(connection: &ConnectionItem, via_local_port: Option<u
         redis_settings = redis_settings.set_password(password.expose());
     }
 
-    let tls = endpoint.tls;
-    let addr = if tls {
+    let addr = if endpoint.tls {
         redis::ConnectionAddr::TcpTls { host: endpoint.host, port: endpoint.port, insecure: false, tls_params: None }
     } else {
         redis::ConnectionAddr::Tcp(endpoint.host, endpoint.port)
     };
-    // keepalive probes find a socket that died silently (sleep, a dropped NAT mapping)
-    let keepalive = TcpKeepalive::new().with_time(Duration::from_secs(30)).with_interval(Duration::from_secs(10));
-    let tcp = TcpSettings::default().set_nodelay(true).set_keepalive(keepalive);
-    let info = addr.into_connection_info()?.set_redis_settings(redis_settings).set_tcp_settings(tcp);
+    Ok(addr.into_connection_info()?.set_redis_settings(redis_settings).set_tcp_settings(tcp_settings()))
+}
 
+/// No-delay, and keepalive probes that find a socket that died silently (sleep, a dropped NAT mapping).
+fn tcp_settings() -> TcpSettings {
+    let keepalive = TcpKeepalive::new().with_time(Duration::from_secs(30)).with_interval(Duration::from_secs(10));
+    TcpSettings::default().set_nodelay(true).set_keepalive(keepalive)
+}
+
+/// The bundled roots and the system's (the redis feature for the former stays on so
+/// redis-rs doesn't load the system store itself, and fail with it).
+fn certificates() -> redis::TlsCertificates {
+    redis::TlsCertificates { client_tls: None, root_cert: Some(tls::roots_pem()) }
+}
+
+pub(crate) fn build_client(connection: &ConnectionItem, via_local_port: Option<u16>) -> Result<redis::Client, Error> {
+    let mut endpoint = connection.endpoint()?;
+    // through an SSH tunnel, the server is the tunnel's end on this machine, in plain
+    // TCP: the tunnel does the TLS handshake with the endpoint's real host name
+    if let Some(port) = via_local_port {
+        endpoint.host = "127.0.0.1".to_string();
+        endpoint.port = port;
+        endpoint.tls = false;
+    }
+    let tls = endpoint.tls;
+    let info = connection_info(endpoint)?;
     if tls {
-        // trusts the bundled roots and the system's (the redis feature for the former
-        // stays on so redis-rs doesn't load the system store itself, and fail with it)
-        let certificates = redis::TlsCertificates { client_tls: None, root_cert: Some(tls::roots_pem()) };
-        return Ok(redis::Client::build_with_tls(info, certificates)?);
+        return Ok(redis::Client::build_with_tls(info, certificates())?);
     }
     Ok(redis::Client::open(info)?)
+}
+
+/// A client of the cluster the connection's endpoint belongs to, which finds the other
+/// nodes from it. Through an SSH tunnel, `resolver` leads every node's address through it.
+pub(crate) fn build_cluster_client(connection: &ConnectionItem, resolver: Option<TunnelResolver>) -> Result<ClusterClient, Error> {
+    let endpoint = connection.endpoint()?;
+    let tls = endpoint.tls;
+    let mut builder = ClusterClientBuilder::new([connection_info(endpoint)?])
+        .tcp_settings(tcp_settings())
+        .connection_timeout(Duration::from_secs(20))
+        .response_timeout(Duration::from_secs(60))
+        // a few quick retries: a slot that moved is followed (MOVED, ASK) by retrying
+        .retries(3)
+        .min_retry_wait(100)
+        .max_retry_wait(1000);
+    if tls {
+        builder = builder.certs(certificates());
+    }
+    if let Some(resolver) = resolver {
+        builder = builder.async_dns_resolver(resolver);
+    }
+    Ok(builder.build()?)
+}
+
+/// A connection to every node of the cluster, which sends each command to the node
+/// holding its keys and reopens what drops.
+pub(crate) async fn create_cluster_connection(client: &ClusterClient) -> Result<ClusterConnection, Error> {
+    Ok(client.get_async_connection().await?)
 }
 
 /// Opens a connection that reopens its socket by itself once it drops, with

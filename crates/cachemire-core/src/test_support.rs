@@ -83,6 +83,56 @@ impl TestRedis {
     }
 }
 
+/// The end-to-end tests' cluster, `redis://host:port` of one of its nodes (`cargo xtask e2e`
+/// starts one and sets it).
+pub const E2E_CLUSTER: &str = "CACHEMIRE_E2E_CLUSTER";
+
+/// The end-to-end tests' cluster, which the tests running at once share: each keeps to the
+/// keys under a prefix of its own. With a connection for setting up and checking what a
+/// test does. Panics when there is no cluster.
+pub struct TestCluster {
+    /// `redis://host:port` of one node: what a saved connection to the cluster holds
+    pub url: String,
+    /// what the names of this test's keys start with (no `{`, so they spread over the slots)
+    pub prefix: String,
+    con: redis::cluster::ClusterConnection,
+}
+
+impl TestCluster {
+    pub fn claim(test: &str) -> Self {
+        let url = std::env::var(E2E_CLUSTER).unwrap_or_default();
+        assert!(!url.is_empty(), "the end-to-end tests need a Redis cluster: run them with `cargo xtask e2e`");
+        let client = redis::cluster::ClusterClient::new(vec![url.as_str()]).unwrap_or_else(|e| panic!("can't use {url}: {e}"));
+        let con = client.get_connection().unwrap_or_else(|e| panic!("can't reach the cluster at {url}: {e}"));
+        let prefix = format!("e2e:{test}:{}:{}:", std::process::id(), crate::now_ms());
+        Self { url, prefix, con }
+    }
+
+    /// The test's key `name`: its prefix, then `name`.
+    pub fn key(&self, name: &str) -> String {
+        format!("{}{name}", self.prefix)
+    }
+
+    /// Runs one command, such as `["HSET", "user:1", "name", "Ada"]`; panics on an error.
+    pub fn query<T: redis::FromRedisValue>(&mut self, args: &[&str]) -> T {
+        let mut cmd = redis::cmd(args[0]);
+        for arg in &args[1..] {
+            cmd.arg(*arg);
+        }
+        cmd.query(&mut self.con).unwrap_or_else(|e| panic!("{args:?} failed: {e}"))
+    }
+
+    /// [`TestCluster::query`] for a command whose reply doesn't matter.
+    pub fn run(&mut self, args: &[&str]) {
+        self.query::<redis::Value>(args);
+    }
+
+    /// A state in a directory of its own whose active connection, `"e2e"`, is to the cluster.
+    pub fn state(&self) -> crate::state::AppState {
+        e2e_state(&self.url)
+    }
+}
+
 /// A state in a directory of its own whose active connection, `"e2e"`, is to `url`.
 pub fn e2e_state(url: &str) -> crate::state::AppState {
     let state = crate::state::AppState::for_tests(&temp_dir("e2e"));

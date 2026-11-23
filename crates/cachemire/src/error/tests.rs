@@ -154,7 +154,7 @@ fn core_errors() -> Vec<CoreError> {
         FileError::Json(json()).into(),
         FileError::NoFileName(PathBuf::from("/")).into(),
         CoreError::from(join_error()),
-        CoreError::ClusterMode,
+        CoreError::CrossSlotRename,
         CoreError::ReadOnly,
         CoreError::BinaryData,
     ]);
@@ -170,7 +170,7 @@ fn every_error_reads_in_english_as_its_display() {
         assert_eq!(error.localized(), error.to_string(), "{error:?}");
     }
     let app_errors =
-        [Error::ReadFile(io()), Error::NotJson(json()), Error::NoConnections, Error::Io(io()), Error::Core(CoreError::ClusterMode)];
+        [Error::ReadFile(io()), Error::NotJson(json()), Error::NoConnections, Error::Io(io()), Error::Core(CoreError::CrossSlotRename)];
     for error in app_errors {
         assert_eq!(error.localized(), error.to_string(), "{error:?}");
     }

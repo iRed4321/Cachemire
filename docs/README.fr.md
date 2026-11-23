@@ -90,8 +90,7 @@ Les clés, les recherches et les requêtes s'ouvrent dans des onglets que vous p
 - ☁️ **AWS** : connectez-vous avec vos profils locaux `~/.aws` (SSO compris) et listez les points de terminaison ElastiCache de chacun.
 - 📥 **Import / export** de vos connexions au format JSON, avec ou sans les mots de passe.
 - 🔗 **Liens partageables** : le bouton de lien à côté du nom d'une clé copie un lien `cachemire://` vers la clé, avec son filtre ou l'un de ses champs, sans jamais contenir d'identifiant ni de mot de passe. L'ouvrir mène à cette clé sur la connexion enregistrée ou le point de terminaison AWS correspondant. L'installeur Windows et le .deb enregistrent ces liens ; un AppImage ne le fait qu'une fois intégré au bureau.
-
-> Le mode cluster n'est pas encore pris en charge : un serveur de ce type est refusé avec un message explicite.
+- 🧩 **Clusters** : indiquez n'importe quel nœud d'un cluster Redis ou Valkey (ou un point de terminaison de configuration ElastiCache) pour parcourir, rechercher et modifier tout l'espace de clés, y compris à travers un tunnel SSH.
 
 ### Sûr par défaut
 

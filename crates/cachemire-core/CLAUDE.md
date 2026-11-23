@@ -25,3 +25,5 @@ Start at `wiki/index.md`.
 - Any password/passphrase/token is a `Secret`. Plain-text save asks the user first; SSH host keys are confirmed.
 - `unwrap` only in tests. Keep sibling `tests.rs` in step with the module.
 - Skills: `add-core-feature`, `redisql-feature`.
+- Clusters: a command, pipeline or script over keys of different slots fails (`CROSSSLOT`). Send commands about many
+  keys through `Session::replies` (one pipeline on a server, one command each on a cluster); walk with `KeyScan`.

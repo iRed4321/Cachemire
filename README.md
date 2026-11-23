@@ -88,8 +88,7 @@ Open keys, searches and queries in tabs. Drag them around; each remembers its fi
 - ☁️ **AWS**: sign in with your local `~/.aws` profiles (SSO included) and list their ElastiCache endpoints.
 - 📥 **Import / Export** your connections as JSON, with or without passwords.
 - 🔗 **Shareable links**: the link button beside a key's name copies a `cachemire://` link to the key, with its filter or one of its fields, and never a login or password. Opening it goes to that key on the matching saved connection or AWS endpoint. The Windows installer and the .deb register these links; an AppImage only does once it is integrated into the desktop.
-
-> Cluster mode isn't supported yet: such a server is refused with a clear message.
+- 🧩 **Clusters**: point at any node of a Redis or Valkey cluster (or an ElastiCache configuration endpoint) and browse, search and edit the whole keyspace, through an SSH tunnel too.
 
 ### Safe by default
 

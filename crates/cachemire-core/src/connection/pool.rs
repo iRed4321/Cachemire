@@ -5,11 +5,12 @@ use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use std::time::Duration;
 
 use redis::aio::ConnectionManager;
+use redis::cluster_async::ClusterConnection;
 use tokio::sync::OnceCell;
 use tokio::task::JoinSet;
 
 use crate::connection::ConnectionItem;
-use crate::connection::client::{create_connection, target_of, tls_name_of};
+use crate::connection::client::{build_cluster_client, create_cluster_connection, create_connection, target_of, tls_name_of};
 use crate::connection::ssh_tunnel::{HostKeys, SshTunnel};
 use crate::error::{Error, Timeout};
 use crate::session::{Session, cluster_enabled, ping};
@@ -22,13 +23,47 @@ const POOL_SIZE: usize = 3;
 /// Opening a pool (its SSH tunnel, then its connections) must finish within this.
 const OPEN_TIMEOUT: Duration = Duration::from_secs(30);
 
-/// A pooled connection: a cheap-to-clone handle that reopens its socket
-/// when it drops (see `create_connection`).
-pub type RedisConnection = ConnectionManager;
+/// A pooled connection: a cheap-to-clone handle on one server, or on every node of a
+/// cluster, which reopens its sockets when they drop (see `connection::client`).
+#[derive(Clone)]
+pub enum RedisConnection {
+    Server(ConnectionManager),
+    Cluster(ClusterConnection),
+}
+
+impl redis::aio::ConnectionLike for RedisConnection {
+    fn req_packed_command<'a>(&'a mut self, cmd: &'a redis::Cmd) -> redis::RedisFuture<'a, redis::Value> {
+        match self {
+            RedisConnection::Server(con) => con.req_packed_command(cmd),
+            RedisConnection::Cluster(con) => con.req_packed_command(cmd),
+        }
+    }
+
+    fn req_packed_commands<'a>(
+        &'a mut self,
+        pipeline: &'a redis::Pipeline,
+        offset: usize,
+        count: usize,
+    ) -> redis::RedisFuture<'a, Vec<redis::Value>> {
+        match self {
+            RedisConnection::Server(con) => con.req_packed_commands(pipeline, offset, count),
+            RedisConnection::Cluster(con) => con.req_packed_commands(pipeline, offset, count),
+        }
+    }
+
+    fn get_db(&self) -> i64 {
+        match self {
+            RedisConnection::Server(con) => con.get_db(),
+            RedisConnection::Cluster(con) => con.get_db(),
+        }
+    }
+}
 
 pub struct ConnectionPool {
     connections: Vec<RedisConnection>,
     next: AtomicUsize,
+    // the connections are to a cluster's nodes, not to one server
+    cluster: bool,
     // the server takes `HSCAN ... NOVALUES` (until it is found not to)
     pub(crate) hscan_novalues: AtomicBool,
     // the SSH tunnel the connections go through, when there is one: it lives
@@ -37,8 +72,8 @@ pub struct ConnectionPool {
 }
 
 impl ConnectionPool {
-    /// The first connection is opened alone so bad credentials or an
-    /// unreachable host fail once, quickly; the rest then open in parallel.
+    /// The first connection is opened alone so bad credentials or an unreachable host
+    /// fail once, quickly; the rest then open in parallel. A cluster gets cluster connections.
     async fn open(connection: &ConnectionItem, host_keys: &HostKeys) -> Result<Self, Error> {
         let tunnel = match &connection.ssh {
             Some(ssh) => {
@@ -51,24 +86,32 @@ impl ConnectionPool {
         };
         let via = tunnel.as_ref().map(SshTunnel::local_port);
 
-        let mut connections = Vec::with_capacity(POOL_SIZE);
         let mut first = create_connection(connection, via).await?;
-        // a cluster spreads its keys over several servers: talking to one of them would
-        // show part of the keyspace and fail on the rest, so it is refused up front
-        if cluster_enabled(&mut first).await {
-            return Err(Error::ClusterMode);
-        }
-        connections.push(first);
-
-        let mut rest = JoinSet::new();
-        for _ in 1..POOL_SIZE {
+        let cluster = cluster_enabled(&mut first).await;
+        let connections = if cluster {
+            drop(first);
+            let client = build_cluster_client(connection, tunnel.as_ref().map(SshTunnel::resolver))?;
+            let first = create_cluster_connection(&client).await?;
+            tracing::info!(name = %connection.name, "connected to a cluster");
+            open_rest(RedisConnection::Cluster(first), move || {
+                let client = client.clone();
+                async move { create_cluster_connection(&client).await.map(RedisConnection::Cluster) }
+            })
+            .await?
+        } else {
             let connection = connection.clone();
-            rest.spawn(async move { create_connection(&connection, via).await });
-        }
-        while let Some(opened) = rest.join_next().await {
-            connections.push(opened??);
-        }
-        Ok(Self { connections, next: AtomicUsize::new(0), hscan_novalues: AtomicBool::new(true), _tunnel: tunnel })
+            open_rest(RedisConnection::Server(first), move || {
+                let connection = connection.clone();
+                async move { create_connection(&connection, via).await.map(RedisConnection::Server) }
+            })
+            .await?
+        };
+        Ok(Self { connections, next: AtomicUsize::new(0), cluster, hscan_novalues: AtomicBool::new(true), _tunnel: tunnel })
+    }
+
+    /// Whether the connections are to a cluster's nodes.
+    pub(crate) fn is_cluster(&self) -> bool {
+        self.cluster
     }
 
     /// False once its SSH tunnel is down: its connections can't reach the server again.
@@ -93,6 +136,24 @@ impl ConnectionPool {
     pub(crate) fn background(&self) -> RedisConnection {
         self.connections[0].clone()
     }
+}
+
+/// The pool's connections: `first`, then the others `open` makes, all at once.
+async fn open_rest<F, O>(first: RedisConnection, open: F) -> Result<Vec<RedisConnection>, Error>
+where
+    F: Fn() -> O,
+    O: Future<Output = Result<RedisConnection, Error>> + Send + 'static,
+{
+    let mut connections = Vec::with_capacity(POOL_SIZE);
+    connections.push(first);
+    let mut rest = JoinSet::new();
+    for _ in 1..POOL_SIZE {
+        rest.spawn(open());
+    }
+    while let Some(opened) = rest.join_next().await {
+        connections.push(opened??);
+    }
+    Ok(connections)
 }
 
 /// Caches a small pool of multiplexed connections per saved connection id,

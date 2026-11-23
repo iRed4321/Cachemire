@@ -162,7 +162,7 @@ sequenceDiagram
     Note over T: authenticate: private key, then password
     T->>R: probe direct-tcpip
     Note over T: [rediss] TLS handshake over channel, name check<br/>bind 127.0.0.1:P, spawn forward_loop
-    Note over T: create_connection(via P): plain TCP 127.0.0.1:P, first conn,<br/>AUTH/SELECT, cluster check, 2 more conns in parallel
+    Note over T: create_connection(via P): plain TCP 127.0.0.1:P, first conn,<br/>AUTH/SELECT, cluster check, 2 more conns in parallel<br/>(a cluster: 3 cluster conns, each node through the tunnel)
     T-->>U: Result<ConnectionItem, Error>
     Note over U: later(): unknown key? dialog -> trust -> connect_then again<br/>else set_active, view = Connected, established, follow_connection
 ```

@@ -240,8 +240,8 @@ stateDiagram-v2
 | `Invalidated` | disconnect, delete, profile change, a stale pool found by connect |
 
 - **Opening** opens the SSH tunnel (if any), then the first connection alone (so bad credentials fail
-  once and fast), refuses a cluster-mode server ([`Error::ClusterMode`](cachemire_core::error::Error::ClusterMode)),
-  then opens the other two in parallel. The whole open is bounded by 30 seconds.
+  once and fast), then the other two in parallel; on a cluster-mode server it opens three cluster
+  connections instead (see the core's connection chapter). The whole open is bounded by 30 seconds.
 - **Stale detection**: [`connect_connection`](cachemire_core::connection::connect_connection) pings every
   connection of an already open pool (3 seconds); if one does not answer, the pool is invalidated and
   reopened. A pool whose SSH tunnel died is replaced at the next `pool()` call.

@@ -2,11 +2,11 @@ use crate::error::Error;
 use crate::session::Session;
 use crate::state::AppState;
 
-/// Bytes of memory the server reports using — just the `memory` section of
-/// `INFO`, not the whole (several KB) reply.
+/// Bytes of memory the server reports using (a cluster: its primaries together) — just
+/// the `memory` section of `INFO`, not the whole (several KB) reply.
 pub async fn used_memory(state: &AppState, connection_id: Option<&str>) -> Result<i64, Error> {
     let raw = Session::open(state, connection_id).await?.info("memory").await?;
-    Ok(raw.lines().find_map(|line| line.strip_prefix("used_memory:")).and_then(|v| v.trim().parse().ok()).unwrap_or(0))
+    Ok(raw.lines().filter_map(|line| line.strip_prefix("used_memory:")).filter_map(|v| v.trim().parse::<i64>().ok()).sum())
 }
 
 pub fn format_bytes(bytes: i64) -> String {

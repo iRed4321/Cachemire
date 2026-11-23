@@ -53,14 +53,15 @@ and the `ring` crypto provider (`http_client`).
 (account id from STS `GetCallerIdentity`, region, items):
 
 1. find the profile, sign in, require a region ([`NoRegion`](crate::aws::AwsError::NoRegion));
-2. page through `DescribeCacheClusters` (with node info): engine must be `redis`; a cluster with a
-   replication group id only records the group id; a standalone one becomes an item from its
-   first node's endpoint;
-3. page through `DescribeReplicationGroups`: only groups seen in step 2 that are **not** in cluster
-   mode (`cluster_enabled` false and no configuration endpoint) become items, using the primary endpoint;
+2. page through `DescribeCacheClusters` (with node info): engine must be `redis` or `valkey`; a
+   cluster with a replication group id only records the group id; a standalone one becomes an item
+   from its first node's endpoint;
+3. page through `DescribeReplicationGroups`: the groups seen in step 2 become items, using the
+   configuration endpoint of a group in cluster mode, else the first node group's primary endpoint;
 4. sort by name.
 
-Memcached, Valkey clusters and cluster-mode groups are left out. Each item is a
+Memcached and ElastiCache Serverless caches are left out. A cluster-mode group's connection finds
+the cluster's nodes from its configuration endpoint (see [connection](crate::wiki::connection)). Each item is a
 [`ConnectionItem`](crate::connection::ConnectionItem) with id
 [`connection_id`](crate::aws::connection_id)`(profile, name)` = `aws:<profile>:<name>` (prefix
 [`ID_PREFIX`](crate::aws::ID_PREFIX)), a URL from `cloud_url` (`rediss://` when in-transit

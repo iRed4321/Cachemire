@@ -80,7 +80,8 @@ Design constraints visible in `ui_tests/mod.rs`:
 
 ### End-to-end tests against a real Redis
 
-Both e2e suites are `#[ignore = "needs a Redis server: cargo xtask e2e"]`, so a plain `cargo test` skips them.
+Both e2e suites are `#[ignore = "needs a Redis server: cargo xtask e2e"]` (the core's cluster tests:
+`"needs a Redis cluster: cargo xtask e2e"`), so a plain `cargo test` skips them.
 
 `cargo xtask e2e` (`crates/xtask/src/e2e.rs`):
 
@@ -91,13 +92,21 @@ Both e2e suites are `#[ignore = "needs a Redis server: cargo xtask e2e"]`, so a 
 3. It waits until the server answers, then runs `cargo nextest run --run-ignored only -E 'test(/(^|::)e2e::/)'`
    (every test inside an `e2e` module of either crate) with the URL in the environment; without nextest it
    falls back to `cargo test -- --ignored e2e::`. Extra arguments go after `--` (`-- --profile ci`).
-4. It shuts the server down afterwards.
+4. It also starts a cluster of three primaries (`CLUSTER_NODES`), the same first way that works (in Docker,
+   all three in one container that publishes their ports), each with its own bus port and announcing
+   `127.0.0.1`; it gives each a third of the slots (`CLUSTER ADDSLOTSRANGE`, Redis 7+), has the first
+   `CLUSTER MEET` the others and waits for `cluster_state:ok` on all. `CACHEMIRE_E2E_CLUSTER` set to one node's
+   URL uses that cluster instead (the tests write keys under `e2e:` into it and leave some there).
+5. It shuts the servers down afterwards.
 
 Isolation between tests: `TestRedis::claim` increments a counter key in database 0, takes database
 `1 + (n - 1) % (databases - 1)` and `FLUSHDB`s it, so parallel tests and parallel test processes use
-different databases. That is why the server is started with many databases.
+different databases. That is why the server is started with many databases. A cluster has one database:
+`TestCluster::claim` gives each test a key prefix of its own (`e2e:<test>:<pid>:<ms>:`, no hash tag, so its
+keys spread over the slots), and the cluster tests only look at their own keys.
 
-Core e2e areas: `connection`, `browse`, `read`, `edit`, `export`, `search`, `redisql`. The app's `ui_tests/e2e`
+Core e2e areas: `connection`, `browse`, `read`, `edit`, `export`, `search`, `redisql`, and `cluster` (connecting
+through one node, walking every primary, a level, a search, renames across slots, a folder moved and deleted). The app's `ui_tests/e2e`
 (`tree.rs`, `values.rs`, `big_keys.rs`, `tabs.rs`, `connections.rs`, `secrets.rs`) start a `Running` struct: seed the database, build a `Harness`, connect through
 `connections::connect_to`, wait for the tree, then act like a user (these also hold an `EventLoopTurn`).
 

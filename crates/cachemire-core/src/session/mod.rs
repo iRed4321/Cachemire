@@ -5,8 +5,12 @@
 use std::sync::Arc;
 use std::sync::atomic::Ordering;
 
+use futures_util::stream::{self, StreamExt};
+use redis::cluster_routing::{Route, RoutingInfo, SingleNodeRoutingInfo, SlotAddr};
+use rustc_hash::FxHashSet;
+
 use crate::connection::pool::{ConnectionPool, RedisConnection};
-use crate::error::{Error, ErrorKind};
+use crate::error::{Error, ErrorKind, NotFound};
 use crate::key_name::{KeyName, display_bytes, field_bytes, field_name};
 use crate::redis_value_type::RedisValueType;
 use crate::state::{AppState, resolve_connection};
@@ -30,6 +34,10 @@ const READ_CHUNK: usize = 1000;
 
 /// How much of a string value a search reads: its first MB.
 const SEARCH_STRING_BYTES: usize = 1024 * 1024;
+
+/// How many commands a cluster connection has in flight at once when commands about many
+/// keys are sent each on its own (see `Session::replies`).
+const CLUSTER_IN_FLIGHT: usize = 256;
 
 static SEARCH_SCRIPT: std::sync::LazyLock<redis::Script> = std::sync::LazyLock::new(|| redis::Script::new(include_str!("search.lua")));
 
@@ -102,9 +110,34 @@ fn changed(current: Option<Vec<u8>>) -> Result<Checked, Error> {
 
 /// Whether the server runs in cluster mode (`cluster_enabled:1` in `INFO cluster`); a
 /// server that won't say (INFO not allowed) is taken not to.
-pub(super) async fn cluster_enabled(con: &mut RedisConnection) -> bool {
+pub(super) async fn cluster_enabled(con: &mut (impl redis::aio::ConnectionLike + Send)) -> bool {
     let info: Result<String, _> = redis::cmd("INFO").arg("cluster").query_async(con).await;
     info.is_ok_and(|info| info.lines().any(|line| line.trim() == "cluster_enabled:1"))
+}
+
+/// One reply of `Session::replies` as a `T`, or the error the server answered with.
+fn decode<T: redis::FromRedisValue>(reply: redis::Value) -> Result<T, Error> {
+    match reply {
+        redis::Value::ServerError(error) => Err(redis::RedisError::from(error).into()),
+        reply => Ok(redis::from_redis_value(reply).map_err(redis::RedisError::from)?),
+    }
+}
+
+/// One slot of each primary in `CLUSTER SLOTS`' answer, by which a command reaches that
+/// primary; primaries are told apart by their address and id.
+pub(super) fn primary_slots(ranges: Vec<redis::Value>) -> Vec<u16> {
+    let (mut seen, mut slots) = (FxHashSet::default(), Vec::new());
+    for range in ranges {
+        let redis::Value::Array(range) = range else { continue };
+        let (Some(start), Some(redis::Value::Array(primary))) = (range.first(), range.get(2)) else { continue };
+        let Ok(start) = redis::from_redis_value_ref::<u16>(start) else { continue };
+        let node: Vec<String> =
+            primary.iter().take(3).map(|part| redis::from_redis_value_ref::<String>(part).unwrap_or_default()).collect();
+        if seen.insert(node) {
+            slots.push(start);
+        }
+    }
+    slots
 }
 
 pub(super) async fn ping(con: &mut RedisConnection) -> Result<(), Error> {
@@ -175,42 +208,68 @@ fn entries_of_reply(key_type: &RedisValueType, reply: redis::Value) -> Vec<(Stri
     }
 }
 
-/// Queues the read of at most `limit` entries of `key`; false for a type with
-/// nothing to read.
-fn push_head_read(pipe: &mut redis::Pipeline, key: &TypedKey, limit: usize) -> bool {
+/// The read of at most `limit` entries of `key`; `None` for a type with nothing to read.
+fn head_read(key: &TypedKey, limit: usize) -> Option<redis::Cmd> {
     let name = &key.name;
     let last = limit.saturating_sub(1);
+    let mut cmd = redis::Cmd::new();
     match key.key_type {
-        RedisValueType::String => pipe.cmd("GETRANGE").arg(name).arg(0).arg(SEARCH_STRING_BYTES - 1),
-        RedisValueType::Hash => pipe.cmd("HSCAN").arg(name).arg(0).arg("COUNT").arg(limit),
-        RedisValueType::List => pipe.cmd("LRANGE").arg(name).arg(0).arg(last),
-        RedisValueType::Set => pipe.cmd("SSCAN").arg(name).arg(0).arg("COUNT").arg(limit),
-        RedisValueType::Zset => pipe.cmd("ZRANGE").arg(name).arg(0).arg(last).arg("WITHSCORES"),
-        RedisValueType::Stream => pipe.cmd("XRANGE").arg(name).arg("-").arg("+").arg("COUNT").arg(limit),
-        _ => return false,
+        RedisValueType::String => cmd.arg("GETRANGE").arg(name).arg(0).arg(SEARCH_STRING_BYTES - 1),
+        RedisValueType::Hash => cmd.arg("HSCAN").arg(name).arg(0).arg("COUNT").arg(limit),
+        RedisValueType::List => cmd.arg("LRANGE").arg(name).arg(0).arg(last),
+        RedisValueType::Set => cmd.arg("SSCAN").arg(name).arg(0).arg("COUNT").arg(limit),
+        RedisValueType::Zset => cmd.arg("ZRANGE").arg(name).arg(0).arg(last).arg("WITHSCORES"),
+        RedisValueType::Stream => cmd.arg("XRANGE").arg(name).arg("-").arg("+").arg("COUNT").arg(limit),
+        _ => return None,
     };
-    true
+    Some(cmd)
 }
 
 /// A walk of the keyspace with `SCAN`, matching `pattern` when there is one, `count`
-/// names asked for per step. A page may repeat a name an earlier one gave.
+/// names asked for per step; on a cluster, each primary's keys in turn. A page may
+/// repeat a name an earlier one gave.
 pub struct KeyScan {
     pattern: Option<Vec<u8>>,
     count: usize,
     // where the next step starts; `None` once the walk is over
     cursor: Option<u64>,
+    // on a cluster, a slot of each primary still to walk, the one walked now last
+    // (`None` before the first step, and on a single server)
+    primaries: Option<Vec<u16>>,
 }
 
 impl KeyScan {
     pub fn new(pattern: Option<Vec<u8>>, count: usize) -> Self {
-        Self { pattern, count, cursor: Some(0) }
+        Self { pattern, count, cursor: Some(0), primaries: None }
     }
 
     /// The next page of names, `None` once the walk is over.
     pub async fn next(&mut self, session: &mut Session) -> Result<Option<Vec<KeyName>>, Error> {
         let Some(cursor) = self.cursor else { return Ok(None) };
-        let (next, names) = session.scan(cursor, self.pattern.as_deref(), self.count).await?;
-        self.cursor = (next != 0).then_some(next);
+        if session.is_cluster() && self.primaries.is_none() {
+            let mut slots = session.primaries().await?;
+            slots.reverse();
+            self.primaries = Some(slots);
+        }
+        let node = match &self.primaries {
+            Some(slots) => match slots.last() {
+                Some(&slot) => Some(slot),
+                None => {
+                    self.cursor = None; // a cluster with no slots served: no keys
+                    return Ok(Some(Vec::new()));
+                }
+            },
+            None => None,
+        };
+        let (next, names) = session.scan(cursor, self.pattern.as_deref(), self.count, node).await?;
+        self.cursor = match &mut self.primaries {
+            _ if next != 0 => Some(next),
+            Some(slots) => {
+                slots.pop();
+                (!slots.is_empty()).then_some(0)
+            }
+            None => None,
+        };
         Ok(Some(names))
     }
 
@@ -262,23 +321,79 @@ impl Session {
         ping(&mut self.con).await
     }
 
-    /// The `section` part of `INFO`, as the server words it.
+    /// Whether the session's connection is to a cluster's nodes.
+    pub fn is_cluster(&self) -> bool {
+        self.pool.is_cluster()
+    }
+
+    /// One slot of each primary of the cluster (`CLUSTER SLOTS`).
+    async fn primaries(&mut self) -> Result<Vec<u16>, Error> {
+        Ok(primary_slots(redis::cmd("CLUSTER").arg("SLOTS").query_async(&mut self.con).await?))
+    }
+
+    /// `run` on each of `items`, all in flight at once (up to [`CLUSTER_IN_FLIGHT`]) on
+    /// clones of the session's connection; the results in the order of `items`.
+    async fn each<I, T, F, O>(&self, items: impl IntoIterator<Item = I>, run: F) -> Vec<T>
+    where
+        F: Fn(RedisConnection, I) -> O,
+        O: Future<Output = T>,
+    {
+        stream::iter(items).map(|item| run(self.con.clone(), item)).buffered(CLUSTER_IN_FLIGHT).collect().await
+    }
+
+    /// The replies to `commands` in order, a server's refusal in its command's place
+    /// (`Value::ServerError`): one pipeline on a server; on a cluster, each command on its
+    /// own, all in flight at once, since a pipeline can't span the slots of several keys.
+    async fn replies(&mut self, commands: Vec<redis::Cmd>) -> Result<Vec<redis::Value>, Error> {
+        if commands.is_empty() {
+            return Ok(Vec::new());
+        }
+        if !self.is_cluster() {
+            let mut pipe = redis::pipe();
+            pipe.ignore_errors();
+            for cmd in commands {
+                pipe.add_command(cmd);
+            }
+            return Ok(pipe.query_async(&mut self.con).await?);
+        }
+        let replies = self.each(commands, |mut con, cmd| async move { cmd.query_async::<redis::Value>(&mut con).await }).await;
+        replies
+            .into_iter()
+            .map(|reply| reply.or_else(|error| redis::ServerError::try_from(error).map(redis::Value::ServerError)).map_err(Error::from))
+            .collect()
+    }
+
+    /// The `section` part of `INFO`, as the server words it; on a cluster, each primary's
+    /// one after the other.
     pub async fn info(&mut self, section: &str) -> Result<String, Error> {
-        Ok(redis::cmd("INFO").arg(section).query_async(&mut self.con).await?)
+        match redis::cmd("INFO").arg(section).query_async(&mut self.con).await? {
+            redis::Value::Map(nodes) => {
+                Ok(nodes.into_iter().map(|(_, text)| decode::<String>(text)).collect::<Result<Vec<_>, _>>()?.join("\n"))
+            }
+            reply => decode(reply),
+        }
     }
 
     pub async fn dbsize(&mut self) -> Result<usize, Error> {
         Ok(redis::cmd("DBSIZE").query_async(&mut self.con).await?)
     }
 
-    /// One `SCAN` step from `cursor`: the next cursor (0 once done) and the names found.
-    async fn scan(&mut self, cursor: u64, pattern: Option<&[u8]>, count: usize) -> Result<(u64, Vec<KeyName>), Error> {
+    /// One `SCAN` step from `cursor`: the next cursor (0 once done) and the names found;
+    /// on a cluster, on the primary serving the slot `node`.
+    async fn scan(&mut self, cursor: u64, pattern: Option<&[u8]>, count: usize, node: Option<u16>) -> Result<(u64, Vec<KeyName>), Error> {
         let mut cmd = redis::cmd("SCAN");
         cmd.arg(cursor);
         if let Some(pattern) = pattern {
             cmd.arg("MATCH").arg(pattern);
         }
-        Ok(cmd.arg("COUNT").arg(count).query_async(&mut self.con).await?)
+        cmd.arg("COUNT").arg(count);
+        match (&mut self.con, node) {
+            (RedisConnection::Cluster(con), Some(slot)) => {
+                let route = RoutingInfo::SingleNode(SingleNodeRoutingInfo::SpecificNode(Route::new(slot, SlotAddr::Master)));
+                decode(con.route_command(cmd, route).await?)
+            }
+            _ => Ok(cmd.query_async(&mut self.con).await?),
+        }
     }
 
     pub async fn key_type(&mut self, key: &KeyName) -> Result<RedisValueType, Error> {
@@ -289,19 +404,14 @@ impl Session {
     /// The types of `names`, in one pipelined round trip; a key whose `TYPE` the server
     /// refuses (an ACL that doesn't cover it) is of an unknown type, `Other("")`.
     pub async fn types(&mut self, names: Vec<KeyName>) -> Result<Vec<TypedKey>, Error> {
-        if names.is_empty() {
-            return Ok(Vec::new());
-        }
-        let mut pipe = redis::pipe();
-        pipe.ignore_errors();
-        for name in &names {
-            pipe.cmd("TYPE").arg(name);
-        }
-        let kinds: Vec<redis::RedisResult<String>> = pipe.query_async(&mut self.con).await?;
+        let kinds = self.replies(names.iter().map(|name| redis::cmd("TYPE").arg(name).clone()).collect()).await?;
         Ok(names
             .into_iter()
             .zip(kinds)
-            .map(|(name, kind)| TypedKey { name, key_type: kind.map_or(RedisValueType::Other(String::new()), RedisValueType::from) })
+            .map(|(name, kind)| TypedKey {
+                name,
+                key_type: decode::<String>(kind).map_or(RedisValueType::Other(String::new()), RedisValueType::from),
+            })
             .collect())
     }
 
@@ -314,14 +424,9 @@ impl Session {
     /// At most `limit` searchable entries of each of `keys`, in one pipelined round
     /// trip; a key whose read fails (gone, changed type, refused) has none.
     pub async fn entry_heads(&mut self, keys: &[TypedKey], limit: usize) -> Result<Vec<Vec<(String, String)>>, Error> {
-        let mut pipe = redis::pipe();
-        pipe.ignore_errors();
-        let read: Vec<bool> = keys.iter().map(|key| push_head_read(&mut pipe, key, limit)).collect();
-        let mut replies = if read.contains(&true) {
-            pipe.query_async::<Vec<redis::Value>>(&mut self.con).await?.into_iter()
-        } else {
-            Vec::new().into_iter()
-        };
+        let reads: Vec<Option<redis::Cmd>> = keys.iter().map(|key| head_read(key, limit)).collect();
+        let read: Vec<bool> = reads.iter().map(Option::is_some).collect();
+        let mut replies = self.replies(reads.into_iter().flatten().collect()).await?.into_iter();
         Ok(keys
             .iter()
             .zip(read)
@@ -333,10 +438,21 @@ impl Session {
             .collect())
     }
 
-    /// Runs the search script on `names`: Redis answers only the entries that may
-    /// hold `needle` (lowercased), at most `depth` per key.
+    /// Runs the search script on `names` (on a cluster, once per key, a script's keys
+    /// sharing a slot): Redis answers only the entries that may hold `needle`
+    /// (lowercased), at most `depth` per key.
     pub async fn search_script(&mut self, names: &[KeyName], needle: &str, depth: usize) -> Result<Vec<ScriptKey>, Error> {
-        Ok(SEARCH_SCRIPT.key(names).arg(needle).arg(depth).arg(SEARCH_STRING_BYTES).invoke_async(&mut self.con).await?)
+        if !self.is_cluster() {
+            return Ok(SEARCH_SCRIPT.key(names).arg(needle).arg(depth).arg(SEARCH_STRING_BYTES).invoke_async(&mut self.con).await?);
+        }
+        let run = |mut con: RedisConnection, name: KeyName| async move {
+            SEARCH_SCRIPT.key(name).arg(needle).arg(depth).arg(SEARCH_STRING_BYTES).invoke_async::<Vec<ScriptKey>>(&mut con).await
+        };
+        let mut found = Vec::new();
+        for answer in self.each(names.iter().cloned(), run).await {
+            found.extend(answer?);
+        }
+        Ok(found)
     }
 
     pub async fn get(&mut self, key: &KeyName) -> Result<Option<String>, Error> {
@@ -511,14 +627,8 @@ impl Session {
 
     /// Which of `keys` exist, in their order (`EXISTS` each, in one round trip).
     pub async fn existing(&mut self, keys: &[KeyName]) -> Result<Vec<bool>, Error> {
-        if keys.is_empty() {
-            return Ok(Vec::new());
-        }
-        let mut pipe = redis::pipe();
-        for key in keys {
-            pipe.cmd("EXISTS").arg(key);
-        }
-        Ok(pipe.query_async(&mut self.con).await?)
+        let replies = self.replies(keys.iter().map(|key| redis::cmd("EXISTS").arg(key).clone()).collect()).await?;
+        replies.into_iter().map(decode).collect()
     }
 
     /// Removes `keys`, their memory freed in the background (`UNLINK`).
@@ -530,22 +640,44 @@ impl Session {
     }
 
     /// `RENAMENX` of each pair, in one round trip: whether each was renamed, or why not.
+    /// On a cluster, a pair whose names lie in different slots is moved by `move_new`.
     pub async fn rename_new_many(&mut self, moves: &[(KeyName, KeyName)]) -> Result<Vec<Result<bool, Error>>, Error> {
-        if moves.is_empty() {
-            return Ok(Vec::new());
+        let replies = self.replies(moves.iter().map(|(from, to)| redis::cmd("RENAMENX").arg(from).arg(to).clone()).collect()).await?;
+        let mut renamed = Vec::with_capacity(moves.len());
+        for ((from, to), reply) in moves.iter().zip(replies) {
+            renamed.push(match decode(reply) {
+                Err(e) if e.is_cross_slot() => self.move_new(from, to).await,
+                reply => reply,
+            });
         }
-        let mut pipe = redis::pipe();
-        pipe.ignore_errors();
-        for (from, to) in moves {
-            pipe.cmd("RENAMENX").arg(from).arg(to);
-        }
-        let renamed: Vec<redis::RedisResult<bool>> = pipe.query_async(&mut self.con).await?;
-        Ok(renamed.into_iter().map(|r| r.map_err(Error::from)).collect())
+        Ok(renamed)
     }
 
     /// Renames `from` to `to` unless a key `to` exists (`RENAMENX`); whether it was renamed.
+    /// On a cluster, names in different slots are moved by `move_new`.
     pub async fn rename_new(&mut self, from: &KeyName, to: &KeyName) -> Result<bool, Error> {
-        Ok(redis::cmd("RENAMENX").arg(from).arg(to).query_async(&mut self.con).await?)
+        let renamed: Result<bool, Error> = redis::cmd("RENAMENX").arg(from).arg(to).query_async(&mut self.con).await.map_err(Error::from);
+        match renamed {
+            Err(e) if e.is_cross_slot() => self.move_new(from, to).await,
+            renamed => renamed,
+        }
+    }
+
+    /// `RENAMENX` across a cluster's slots, in several commands (not atomic): `DUMP` and
+    /// `PTTL` of `from`, `RESTORE` as `to` unless that is a key (false), then `UNLINK` `from`.
+    async fn move_new(&mut self, from: &KeyName, to: &KeyName) -> Result<bool, Error> {
+        let refused = |e: Error| if e.is_command_refused() { Error::CrossSlotRename } else { e };
+        let (payload, ttl): (Option<Vec<u8>>, i64) =
+            redis::pipe().cmd("DUMP").arg(from).cmd("PTTL").arg(from).query_async(&mut self.con).await.map_err(|e| refused(e.into()))?;
+        let Some(payload) = payload else { return Err(NotFound::Key.into()) };
+        let restored: Result<(), Error> =
+            redis::cmd("RESTORE").arg(to).arg(ttl.max(0)).arg(payload).query_async(&mut self.con).await.map_err(Error::from);
+        match restored {
+            Err(e) if e.is_busy_key() => return Ok(false),
+            restored => restored.map_err(refused)?,
+        }
+        redis::cmd("UNLINK").arg(from).query_async::<()>(&mut self.con).await?;
+        Ok(true)
     }
 
     /// Replaces the string's value, its TTL kept: `SET … KEEPTTL`, or before Redis 6,

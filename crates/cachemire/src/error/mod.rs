@@ -63,7 +63,7 @@ impl Localize for CoreError {
             CoreError::Query(error) => error.localized(),
             CoreError::JsonPath(error) => error.localized(),
             CoreError::System(error) => error.localized(),
-            CoreError::ClusterMode => t!("This server runs in cluster mode, which Cachemire doesn't support yet. Connect to a server or endpoint with cluster mode disabled.").into_owned(),
+            CoreError::CrossSlotRename => t!("The new name puts the key in another slot of the cluster: moving it there takes the DUMP and RESTORE commands, which the server refused.").into_owned(),
             CoreError::ReadOnly => t!("This connection is read-only.").into_owned(),
             CoreError::BinaryData => t!("This data isn't UTF-8 text: it is read-only.").into_owned(),
             CoreError::Redis(_) => self.to_string(),

@@ -9,7 +9,7 @@ connection pool of the [connection](crate::wiki::connection) chapter.
 
 | File | What it holds |
 |------|---------------|
-| `src/session/mod.rs` | `Session`, `KeyScan`, the Lua scripts, the per-type reads and writes |
+| `src/session/mod.rs` | `Session`, `KeyScan`, the Lua scripts, the per-type reads and writes, what clusters need |
 | `src/session/search.lua` | the server-side prefilter of the global search |
 | `src/session/tests.rs` | unit tests of the reply decoding |
 | `src/key_name/mod.rs` | `KeyName` and the `\xNN` text encoding of bytes |
@@ -133,6 +133,30 @@ runs one `SCAN` step through a session and returns the page, `None` when finishe
 - Scripts may be refused (no `EVAL` permission, a server without them): see the next section.
 - `cluster_enabled` (a `pub(super)` helper) reads `INFO cluster` for `cluster_enabled:1`; a server
   that won't answer INFO is taken not to be a cluster. It is used by the connection code.
+
+### Clusters
+
+On a cluster ([`Session::is_cluster`](crate::session::Session::is_cluster)) the commands are the same,
+sent to the node serving their key by redis-rs (see [connection](crate::wiki::connection)). What
+spans several keys needs more, since a cluster refuses one command, pipeline or script over keys in
+different slots (`CROSSSLOT`):
+
+- **Walks**: [`KeyScan`](crate::session::KeyScan) reads one slot of each primary from `CLUSTER SLOTS`
+  (`primary_slots`) on its first step, then runs `SCAN` on each primary in turn (routed by that slot),
+  so callers see one walk. `DBSIZE` is the sum over the primaries (redis-rs adds them up).
+- **Many keys at once** (`types`, `entry_heads`, `existing`, `rename_new_many`): the private `replies`
+  helper sends one pipeline to a single server, and on a cluster each command on its own, up to
+  `CLUSTER_IN_FLIGHT` (256) at once on the multiplexed connection, replies in order, a refusal in its
+  command's place. Pipelines over one key (`type_and_ttl`, the chunked heads) stay pipelines.
+- **The search script** runs once per key, concurrently, and the answers are put together.
+- **`UNLINK` of many keys** is split by slot by redis-rs. The single-key scripts (checked writes,
+  field renames) go to their key's node; `SCRIPT LOAD` goes to every primary.
+- **Renames across slots**: `RENAMENX` answers `CROSSSLOT`, so `rename_new` and `rename_new_many` fall
+  back to `move_new`: `DUMP` + `PTTL`, `RESTORE` under the new name (refused with `BUSYKEY` when
+  taken: not renamed), then `UNLINK` of the old one. Not atomic. A server that refuses `DUMP` or
+  `RESTORE` (ACL) gives [`Error::CrossSlotRename`](crate::error::Error::CrossSlotRename).
+- **`INFO`** answers per primary; [`info`](crate::session::Session::info) puts the texts one after
+  the other, and `used_memory` adds the primaries' figures.
 
 ## Writes
 

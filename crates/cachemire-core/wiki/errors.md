@@ -29,7 +29,7 @@ Where to look:
   |-- Query(QueryError)         a Redisql query
   |-- JsonPath(ParseError)      the key panel's filter path
   |-- System(SystemError)       Task(JoinError) | Panicked(String)
-  |-- ClusterMode               cluster mode is not supported
+  |-- CrossSlotRename           a cluster refused DUMP/RESTORE for a rename to another slot
   |-- ReadOnly                  a write through a read-only connection
   `-- BinaryData                data that isn't UTF-8 text can't be edited
 ```
@@ -52,7 +52,8 @@ Where to look:
 | `KeyringError` / `VaultError` | the credential store failed | `CantStore`, `ConnectionPasswords`, `Unavailable` | [`secret_vault`](crate::secret_vault) |
 
 The three variants without a payload enum are cases that deserve a message of their own:
-[`ClusterMode`](crate::error::Error::ClusterMode) (the pool refuses a cluster server up front),
+[`CrossSlotRename`](crate::error::Error::CrossSlotRename) (a rename to another slot of a cluster, whose `DUMP`
+or `RESTORE` the server refused, see [session](crate::wiki::session)),
 [`ReadOnly`](crate::error::Error::ReadOnly) (raised by [`ensure_writable`](crate::state::ensure_writable), through
 which every write passes) and [`BinaryData`](crate::error::Error::BinaryData) (an edit of a non-text value).
 
@@ -99,7 +100,7 @@ The user sees the same sentence translated by the app; the two must read identic
 | `Timeout` | `Timeout`, a timed-out Redis call, `AwsError::SignInTimedOut` |
 | `Redis` | any other server reply |
 | `Parse` | `JsonPath`, other `QueryError`s |
-| `Keyring`, `File`, `Cloud`, `System`, `Unsupported` | the variant of the same name (`Unsupported`: `ClusterMode`) |
+| `Keyring`, `File`, `Cloud`, `System`, `Unsupported` | the variant of the same name (`Unsupported`: `CrossSlotRename`) |
 
 Sub-enums with several kinds (`AwsError`, `QueryError`) have their own `kind()`; Redis errors are
 sorted by `redis_kind` (timeout first, then network, then auth, then permission).

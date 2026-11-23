@@ -4,7 +4,8 @@ The explorer is the layer between the UI and [`Session`](crate::session::Session
 `SCAN` cursors into a folder tree, reads one key's value in a bounded way, walks the whole
 keyspace for the global search, and performs the edits and the folder-wide delete and rename.
 It is plain async functions taking an [`AppState`](crate::state::AppState) and an optional
-connection id; it holds no state of its own.
+connection id; it holds no state of its own. It works the same on a cluster: the session walks
+every primary and spreads what spans several keys over their slots (see [session](crate::wiki::session)).
 
 ## Where to look
 
