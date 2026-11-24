@@ -216,10 +216,39 @@ fn write_checked(url: &str, path: &std::path::Path, sha256: Option<&str>) -> Res
     }
 }
 
-/// Starts the Windows Installer on the MSI, detached from this process.
+/// Starts the Windows Installer on the MSI with a progress bar only, from a hidden PowerShell
+/// that outlives this process: once the installer is done, it reopens `app` (unless the
+/// installer's Restart Manager already did), as the user, not as administrator.
 #[cfg(windows)]
-pub fn run_installer(path: &std::path::Path) -> Result<(), UpdateError> {
-    Ok(std::process::Command::new("msiexec").arg("/i").arg(path).spawn().map(drop)?)
+pub fn run_installer(path: &std::path::Path, app: &std::path::Path) -> Result<(), UpdateError> {
+    use base64::Engine;
+    use std::os::windows::process::CommandExt;
+    const CREATE_NO_WINDOW: u32 = 0x0800_0000;
+    let script = update_script(path, app);
+    let encoded: Vec<u8> = script.encode_utf16().flat_map(u16::to_le_bytes).collect();
+    std::process::Command::new("powershell.exe")
+        .args(["-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-EncodedCommand"])
+        .arg(base64::engine::general_purpose::STANDARD.encode(encoded))
+        .creation_flags(CREATE_NO_WINDOW)
+        .spawn()?;
+    Ok(())
+}
+
+/// The PowerShell of `run_installer` (Windows): `msiexec /passive` on `msi`, waited for, then `app` started
+/// again when no process of that name runs.
+pub fn update_script(msi: &std::path::Path, app: &std::path::Path) -> String {
+    // inside single quotes, PowerShell only gives a meaning to a doubled quote
+    let quote = |text: &str| format!("'{}'", text.replace('\'', "''"));
+    let name = app.file_stem().map(|stem| stem.to_string_lossy().into_owned()).unwrap_or_default();
+    format!(
+        "$msi = {msi}; $app = {app}; \
+         Start-Process -FilePath 'msiexec.exe' -ArgumentList @('/i', ('\"' + $msi + '\"'), '/passive', '/norestart') -Wait; \
+         Start-Sleep -Seconds 2; \
+         if (-not (Get-Process -Name {name} -ErrorAction SilentlyContinue)) {{ Start-Process -FilePath $app }}",
+        msi = quote(&msi.display().to_string()),
+        app = quote(&app.display().to_string()),
+        name = quote(&name),
+    )
 }
 
 #[cfg(test)]

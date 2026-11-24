@@ -78,6 +78,9 @@ struct StoredSettings {
     // whether the app reopens the last connection with its tabs and open folders
     #[serde(default)]
     restore_session: bool,
+    // Windows: whether a shutdown waits, with Cachemire named as still open, until the user goes on
+    #[serde(default)]
+    hold_shutdown: bool,
     // whether an SSH server's host key seen for the first time is trusted without asking
     #[serde(default)]
     accept_new_ssh_host_keys: bool,
@@ -346,6 +349,17 @@ impl SettingsStore {
     pub fn set_restore_session(&mut self, enabled: bool) -> Result<(), Error> {
         let mut next = self.state.clone();
         next.restore_session = enabled;
+        self.commit(next, false)
+    }
+
+    /// Windows: whether shutting down or restarting waits for the user while Cachemire is open.
+    pub fn hold_shutdown(&self) -> bool {
+        self.state.hold_shutdown
+    }
+
+    pub fn set_hold_shutdown(&mut self, enabled: bool) -> Result<(), Error> {
+        let mut next = self.state.clone();
+        next.hold_shutdown = enabled;
         self.commit(next, false)
     }
 

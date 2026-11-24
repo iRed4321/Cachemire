@@ -425,7 +425,12 @@ The real MSI around a stand-in app that builds in seconds, to try installing, up
 $ cargo xtask build-installer-test --version 1.2.0
 ```
 
-It lands in `target/installer-test/`. Build two versions (say `1.2.0` then `1.3.0-beta.2`) to try an update. On GitHub: **Actions** → **Installer test** → **Run workflow** with a version, then download the artifact.
+It lands in `target/installer-test/`. Build two versions (say `1.2.0` then `1.3.0-beta.2`) to try an update. Worth checking after a change of `resources/cachemire.wxs`:
+
+- a first install asks for the Start menu entry and the desktop shortcut on its first page; an update asks nothing and keeps those choices (an unticked Start menu stays without the entry);
+- `cachemire` in Win+R starts it; Settings → Apps → Default apps lists Cachemire; Apps & features shows its links and "Open file location";
+- an update from inside the app shows only a progress bar, then reopens the app;
+- uninstalling removes the shortcuts, and through Modify, the data too when ticked. On GitHub: **Actions** → **Installer test** → **Run workflow** with a version, then download the artifact.
 
 ## Troubleshooting
 

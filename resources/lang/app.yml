@@ -499,6 +499,8 @@ _version: 2
   fr: "Fermer l'onglet"
 "Open the connection list":
   fr: "Ouvrir la liste des connexions"
+"Cachemire is still open":
+  fr: "Cachemire est encore ouvert"
 "Run the statement at the caret":
   fr: "Exécuter l'instruction au curseur"
 "Run the whole script":

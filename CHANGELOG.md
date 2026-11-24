@@ -10,6 +10,15 @@ Every stable release of Cachemire; `Unreleased` is what the next one brings. Bet
 - **AWS**: ElastiCache groups in cluster mode and Valkey caches are listed
 - **Connection list**: a search box, a switch between saved and AWS connections, profile chips and pinned connections, like the AWS profile list; each connection shows its profile, SSH tunnel, and whether it is a cluster; Ctrl+P opens it (changeable in Key bindings)
 - **Title bar**: a dot (green once connected), the connection's name and address, a line in its profile's color, its details on hover, and a menu to copy, reconnect, edit or disconnect; connecting and a lost connection say so in words, with a Reconnect button
+- **Windows shutdown**: a setting to make Windows wait while Cachemire is open, until you shut down anyway
+- **Windows**: updating from the app shows only a progress bar, then reopens Cachemire; Windows also reopens it after an installer or a restart closed it
+- **Windows**: `cachemire` in Win+R starts it, Default apps lists it for `cachemire://` links, and Apps & features links to its GitHub page
+- **Windows**: the Start menu entry is for every user of the PC, and both shortcuts are picked on the installer's first page
+
+### Fixes
+
+- **Windows**: shutting down or restarting no longer waits on Cachemire, which saves its tabs and closes
+- **Windows**: an update no longer asks again about the Start menu and desktop shortcuts
 
 ## 3.3.2 - 2026-11-23
 

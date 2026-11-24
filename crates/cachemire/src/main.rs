@@ -29,6 +29,8 @@ mod search;
 mod server_stats;
 mod settings;
 mod shortcuts;
+#[cfg(windows)]
+mod shutdown;
 mod styled_text;
 mod table_text;
 mod tabs;
@@ -104,6 +106,8 @@ fn install_window_events(window: &MainWindow) {
         use_exe_icon(window, event, &mut icon_applied);
         #[cfg(windows)]
         drag_latch::on_window_event(window, event, &mut cursor);
+        #[cfg(windows)]
+        window.with_winit_window(shutdown::install);
         slint::winit_030::EventResult::Propagate
     });
 }
@@ -243,6 +247,17 @@ fn main() -> Result<(), slint::PlatformError> {
     last_session::keep_saved();
     links::watch(links::inbox());
 
+    let save_window_state = std::rc::Rc::new(save_window_state);
+    #[cfg(windows)]
+    shutdown::register_restart();
+    #[cfg(windows)]
+    shutdown::on_end({
+        let save_window_state = save_window_state.clone();
+        move || {
+            app::with(|app, window| last_session::save(app, window));
+            save_window_state();
+        }
+    });
     let outcome = window.run();
     last_session::save(&app, &window);
     save_window_state();

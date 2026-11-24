@@ -61,6 +61,7 @@ Key points of this design:
 | check updates at startup | `set_check_updates_at_startup` | read at the next start by [`updates::init`](crate::updates::init) |
 | accept new SSH host keys | `AppState::set_accept_new_ssh_host_keys` | also updates the live host-key checker at once |
 | restore session | `set_restore_session` | turning it off calls [`last_session::forget`](crate::last_session::forget) |
+| hold shutdown (Windows) | `set_hold_shutdown` | `shutdown::set_hold` (Windows only, not linked), read when Windows ends the session |
 | SSH profiles | create / update / remove / set active | drops the pooled connections that used the active profile (`drop_profile_pools`) |
 
 Not in this file: connection profiles ([connections](crate::wiki::connections), `connections/profiles`),

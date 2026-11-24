@@ -534,6 +534,7 @@ global SettingTexts {
     out property <string> syntax-hint: @tr("The colors of JSON, YAML, XML and Redisql text. One that would be hard to read on the theme's background is brought closer to its text color.");
     out property <string> depth-hint: @tr("How many entries of each key (hash fields, list items, set members...) the global search reads. Fewer is faster, but a match deeper inside a big key is missed.");
     out property <string> opening-view-hint: @tr("The view a key shows when its tab opens. A query's result always opens as a table, and a search hit or a link to a field in the fields view.");
+    out property <string> shutdown-hint: @tr("Windows then waits before shutting down or restarting, and names Cachemire as still open: Shut down anyway closes it. Off, Cachemire saves its tabs and closes along with Windows.");
     out property <string> restore-hint: @tr("Cachemire reconnects to the connection it was closed on, with its tabs and open folders. An AWS connection signs in again first, in the browser if its session has expired.");
     out property <string> updates-hint: @tr("Each time Cachemire starts, it looks for a newer version on the channel picked above, and opens it when there is one.");
     out property <string> server-search-hint: @tr("The global search lets Redis filter the data itself, so far less of it travels. It uses the server's CPU while it runs, needs permission to run scripts, and goes back to the normal search if the server refuses.");
@@ -1039,6 +1040,7 @@ component GeneralSettings inherits VerticalLayout {
     in property <bool> show-opening-view: true;
     in property <bool> show-depth: true;
     in property <bool> show-restore: true;
+    in property <bool> show-shutdown: true;
 
     spacing: Theme.px(20px);
     if root.show-export: VerticalLayout {
@@ -1088,6 +1090,17 @@ component GeneralSettings inherits VerticalLayout {
             toggled => { Preferences.restore-session-toggled(!Preferences.restore-session); }
         }
         SettingHint { text: SettingTexts.restore-hint; }
+    }
+
+    if root.show-shutdown && Platform.os == OperatingSystemType.windows: VerticalLayout {
+        spacing: Theme.px(4px);
+        SettingTitle { text: @tr("Windows shutdown"); }
+        CheckRow {
+            text: @tr("Hold the shutdown while Cachemire is open");
+            checked: Preferences.hold-shutdown;
+            toggled => { Preferences.hold-shutdown-toggled(!Preferences.hold-shutdown); }
+        }
+        SettingHint { text: SettingTexts.shutdown-hint; }
     }
 }
 
@@ -1448,6 +1461,8 @@ export component SettingsModal inherits Rectangle {
     property <bool> found-opening-view: root.hit(@tr("General") + " " + @tr("New tabs open in") + " " + @tr("Fields view") + " " + @tr("Table view") + " " + @tr("Last view picked") + " " + SettingTexts.opening-view-hint);
     property <bool> found-depth: root.hit(@tr("General") + " " + @tr("Search depth") + " 60 200 1000 " + SettingTexts.depth-hint);
     property <bool> found-restore: root.hit(@tr("General") + " " + @tr("Startup") + " " + @tr("Restore the last connection") + " " + SettingTexts.restore-hint);
+    property <bool> found-shutdown: Platform.os == OperatingSystemType.windows
+        && root.hit(@tr("General") + " " + @tr("Windows shutdown") + " " + @tr("Hold the shutdown while Cachemire is open") + " " + SettingTexts.shutdown-hint);
     property <bool> found-server-search: root.hit(@tr("Experimental") + " " + @tr("Search on the server (Lua script)") + " " + SettingTexts.server-search-hint);
     property <bool> found-version: root.hit(@tr("About") + " Cachemire Léo Parent " + About.version + " " + @tr("GitHub repository"));
     property <bool> found-updates: root.hit(@tr("About") + " " + @tr("Updates") + " " + @tr("Stable") + " " + @tr("Beta") + " " + @tr("Check for updates") + " " + @tr("Check for Updates at startup") + " " + SettingTexts.updates-hint);
@@ -1457,7 +1472,7 @@ export component SettingsModal inherits Rectangle {
         || root.found(SettingsCategory.conn-profiles) || root.found(SettingsCategory.experimental) || root.found(SettingsCategory.about);
 
     pure function found(category: SettingsCategory) -> bool {
-        return category == SettingsCategory.general ? root.found-export || root.found-opening-view || root.found-depth || root.found-restore
+        return category == SettingsCategory.general ? root.found-export || root.found-opening-view || root.found-depth || root.found-restore || root.found-shutdown
             : category == SettingsCategory.display ? root.found-language || root.found-zoom || root.found-theme || root.found-syntax || root.found-fonts
             : category == SettingsCategory.key-bindings ? root.query == "" || Shortcuts.rows.length > 0 || Shortcuts.standard.length > 0
             : category == SettingsCategory.ssh-profiles ? root.found-ssh
@@ -1709,6 +1724,7 @@ export component SettingsModal inherits Rectangle {
                                 show-opening-view: root.found-opening-view;
                                 show-depth: root.found-depth;
                                 show-restore: root.found-restore;
+                                show-shutdown: root.found-shutdown;
                             }
                         }
                         if root.found(SettingsCategory.display): ResultSection {

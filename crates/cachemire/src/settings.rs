@@ -159,6 +159,10 @@ pub fn init(window: &MainWindow, state: Arc<AppState>, rt: Handle) {
     window.global::<Preferences>().set_server_search(state.settings.lock().server_search());
     window.global::<Preferences>().set_check_updates_at_startup(state.settings.lock().check_updates_at_startup());
     window.global::<Preferences>().set_restore_session(state.settings.lock().restore_session());
+    let hold_shutdown = state.settings.lock().hold_shutdown();
+    window.global::<Preferences>().set_hold_shutdown(hold_shutdown);
+    #[cfg(windows)]
+    crate::shutdown::set_hold(hold_shutdown);
     let export_escaped = state.settings.lock().export_escaped();
     window.global::<Preferences>().set_export_escaped(export_escaped);
     window.global::<ExportPrefs>().set_format(i32::from(export_escaped));
@@ -270,6 +274,21 @@ pub fn init(window: &MainWindow, state: Arc<AppState>, rt: Handle) {
                 crate::last_session::forget(&state);
             }
             saved(&window, result, |window| window.global::<Preferences>().set_restore_session(enabled));
+        }
+    });
+
+    // holding a Windows shutdown while the app is open: saved, and followed from the next one
+    window.global::<Preferences>().on_hold_shutdown_toggled({
+        let weak = window.as_weak();
+        let state = state.clone();
+        move |enabled| {
+            let Some(window) = weak.upgrade() else { return };
+            let result = state.settings.lock().set_hold_shutdown(enabled);
+            #[cfg(windows)]
+            if result.is_ok() {
+                crate::shutdown::set_hold(enabled);
+            }
+            saved(&window, result, |window| window.global::<Preferences>().set_hold_shutdown(enabled));
         }
     });
 

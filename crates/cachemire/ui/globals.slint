@@ -236,6 +236,9 @@ export global Preferences {
     // reopens the connection the app was closed on, with its tabs and open folders
     in-out property <bool> restore-session: false;
     callback restore-session-toggled(enabled: bool);
+    // Windows: a shutdown or restart waits for the user while the app is open
+    in-out property <bool> hold-shutdown: false;
+    callback hold-shutdown-toggled(enabled: bool);
     // the themes and the syntax themes (src/theme/mod.rs), and the `id` of the one in use
     in property <[ThemeChoice]> themes;
     in property <string> theme;

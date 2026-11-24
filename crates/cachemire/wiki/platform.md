@@ -9,7 +9,7 @@ targets (CI runs both).
 
 - `src/main.rs`: [`select_backend`](crate::select_backend), [`install_window_events`](crate::install_window_events),
   the single-instance branch of `main`, `use_exe_icon` (Windows).
-- `src/drag_latch.rs` (Windows only), `src/window_state/mod.rs`, `src/toast.rs` (`on_window_event`).
+- `src/drag_latch.rs` and `src/shutdown.rs` (Windows only), `src/window_state/mod.rs`, `src/toast.rs` (`on_window_event`).
 - `src/links/mod.rs` and core [`link`](cachemire_core::link): `cachemire://` links and the inbox.
 - `src/updates.rs` and core [`updates`](cachemire_core::updates).
 - `src/logging.rs`: [`init`](crate::logging::init).
@@ -25,8 +25,9 @@ targets (CI runs both).
 | Window attributes | `with_transparent(false)` | default |
 | Window icon | the exe's resource id 1, applied from the winit hook | Wayland: via the app id and the `.desktop` entry |
 | Resize/move latch workaround | `drag_latch` | not compiled |
+| Shutdown or restart | `shutdown`: saves the session and quits, or holds it (setting `hold_shutdown`); registered to be restarted by an installer or after a reboot | the process just ends |
 | Link scheme registration | registry keys in the MSI (`resources/cachemire.wxs`) | `MimeType=x-scheme-handler/cachemire;` in `cachemire.desktop` |
-| Update | downloads the MSI, checks its SHA-256, runs `msiexec`, quits | opens the release page in the browser |
+| Update | downloads the MSI, checks its SHA-256, runs `msiexec /passive` from a hidden PowerShell that reopens the app, quits | opens the release page in the browser |
 | Passing focus on link hand-over | `AllowSetForegroundWindow` | not needed |
 | File mode | no mode bits | files `0600`, directories `0700` |
 | Packages | MSI, portable zip | AppImage, `.deb` |
@@ -54,6 +55,7 @@ window.on_winit_window_event(|window, event| {
     toast::on_window_event(..)               // all platforms
     use_exe_icon(..)                         // Windows: first event and on ScaleFactorChanged
     drag_latch::on_window_event(..)          // Windows
+    shutdown::install(..)                    // Windows: first event, once
     EventResult::Propagate
 })
 ```
@@ -76,6 +78,21 @@ The workaround sends that message first: `clear` is called before `drag_window()
 `on_request_drag_window`, and `on_window_event` calls it on a left press within the resize border (5
 logical px, not when maximized). It keeps the last cursor position since a press carries none.
 The module is declared `#[cfg(windows)]` in `main.rs`, so rustdoc cannot link it here.
+
+### Shutdown and restart (Windows)
+
+winit leaves `WM_QUERYENDSESSION` and `WM_ENDSESSION` to the default procedure, which neither saves
+nor quits the app when Windows ends the session. `shutdown.rs` replaces the window procedure
+(`SetWindowLongPtrW`, on the first winit event) and hands every other message on to winit's.
+`WM_QUERYENDSESSION` answers yes, or, with `hold_shutdown` on (unless the shutdown is critical, or
+an installer closes the app through the Restart Manager), sets a block reason ("Cachemire is still
+open") and answers no: Windows then lists Cachemire and offers to shut down anyway. `WM_ENDSESSION`
+clears the reason; when the session does end it runs what `main` gave `on_end` (last session and
+window state saved) and exits the process.
+
+`register_restart` (`RegisterApplicationRestart`, at startup, no crash nor hang restarts) lets the
+Restart Manager start the app again once an installer that closed it is done, and Windows reopen it
+after a reboot when the user's "restart apps" option is on.
 
 ## Single instance and links
 
@@ -162,8 +179,11 @@ setting asks and the build is not a dev build, looks for a release at startup.
   other outcomes stay silent. The result is kept in the thread-local `FOUND`; changing the channel clears it.
 - Download (Windows only, `cfg(windows)` in core): to `%TEMP%\cachemire-update`, written as `.part`,
   hashed while streaming, renamed when the checksum matches (no checksum means no check), then
-  `msiexec /i` is spawned detached and the event loop quits so the installer can replace the files. On
-  other platforms `launch` is a stub and `on_download` opens the release page instead.
+  [`run_installer`](cachemire_core::updates) starts a hidden PowerShell (`-EncodedCommand`, script from
+  [`update_script`](cachemire_core::updates::update_script)) and the event loop quits so the installer can
+  replace the files. The script runs `msiexec /i … /passive /norestart` (a progress bar and the
+  administrator prompt, no page to click), waits for it, then starts the app again as the user, unless
+  the Restart Manager already did. On other platforms `launch` is a stub and `on_download` opens the release page instead.
 
 ## Logging
 
@@ -180,7 +200,15 @@ If the log directory cannot be written the app prints a line to stderr and goes 
 
 ## Packaging touchpoints
 
-- `resources/cachemire.wxs`: the MSI installs `cachemire.exe` and registers the `cachemire` URL protocol under `HKLM\Software\Classes`, passing `"%1"` as the argument; also uninstall handling of shortcuts.
+- `resources/cachemire.wxs`: the MSI installs `cachemire.exe` and registers the `cachemire` URL protocol under
+  `HKLM\Software\Classes`, passing `"%1"` as the argument. A first install asks on its first page for a Start menu
+  entry (the package's own, for every user, its choice remembered as `HKLM\Software\Cachemire\StartMenuShortcut`
+  for updates) and a desktop shortcut (the installing user's, made by a deferred PowerShell as that user); an update
+  of a version older than this one removes the Start menu entry those made in the user's own folder. The last page
+  offers to open the app. Also: App Paths (`cachemire` in Win+R), `RegisteredApplications` with the
+  `Cachemire.Link` ProgID (Settings > Default apps), the GitHub links and install folder of Apps & features
+  (`ARPURLINFOABOUT`, `ARPHELPLINK`, `ARPURLUPDATEINFO`, `ARPINSTALLLOCATION`), and the uninstall of the shortcuts.
+  Windows' own Uninstall button skips the first page, so deleting the user's data is only offered through Modify.
 - `resources/cachemire.desktop`: `Exec=cachemire %u`, `MimeType=x-scheme-handler/cachemire;`, `StartupWMClass=cachemire`.
 - `crates/xtask`: `build-windows` (exe, MSI, portable zip with the empty `portable` file), `build-appimage`,
   `build-deb`; the `fast` cargo profile builds without LTO for quick tries. `docs/releasing.md` has the release process.

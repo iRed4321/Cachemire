@@ -84,6 +84,7 @@ Main groups of fields in `StoredSettings` (read the struct for the full list, ea
 comment):
 
 - preferences: `language`, `export_escaped`, `opening_view`, `last_view_table`, `restore_session`,
+  `hold_shutdown` (Windows),
   `check_updates_at_startup`, `update_channel`, `accept_new_ssh_host_keys`, `server_search`,
   `search_depth`, `shortcuts`, `theme`, `syntax_theme` (names the app gives its themes);
 - lists: `ssh_profiles` (+ `active_ssh_profile`), `connection_profiles`, `saved_queries`;

@@ -166,7 +166,8 @@ pub fn init(window: &MainWindow, state: Arc<AppState>, rt: tokio::runtime::Handl
 
 #[cfg(windows)]
 fn launch(url: &str, sha256: Option<&str>) -> Result<(), String> {
-    updates::download_installer(url, sha256).and_then(|installer| updates::run_installer(&installer)).map_err(|e| e.to_string())
+    let app = std::env::current_exe().map_err(|e| e.to_string())?;
+    updates::download_installer(url, sha256).and_then(|installer| updates::run_installer(&installer, &app)).map_err(|e| e.to_string())
 }
 
 #[cfg(not(windows))]
