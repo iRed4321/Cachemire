@@ -2,6 +2,8 @@
 # target/nextest/ci/junit.xml for the CI report (`cargo xtask report-build --tests`)
 [profile.ci]
 fail-fast = false
+# a test still running after 5 minutes is stopped (and named): a hang fails the run instead of stalling it
+slow-timeout = { period = "60s", terminate-after = 5 }
 
 [profile.ci.junit]
 path = "junit.xml"
@@ -10,6 +12,7 @@ path = "junit.xml"
 # others, so into a JUnit file of their own (target/nextest/ci-e2e/junit.xml)
 [profile.ci-e2e]
 fail-fast = false
+slow-timeout = { period = "60s", terminate-after = 5 }
 
 [profile.ci-e2e.junit]
 path = "junit.xml"

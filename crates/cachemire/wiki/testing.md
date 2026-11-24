@@ -96,7 +96,9 @@ Both e2e suites are `#[ignore = "needs a Redis server: cargo xtask e2e"]` (the c
    all three in one container that publishes their ports), each with its own bus port and announcing
    `127.0.0.1`; it gives each a third of the slots (`CLUSTER ADDSLOTSRANGE`, Redis 7+), has the first
    `CLUSTER MEET` the others and waits for `cluster_state:ok` on all. `CACHEMIRE_E2E_CLUSTER` set to one node's
-   URL uses that cluster instead (the tests write keys under `e2e:` into it and leave some there).
+   URL uses that cluster instead (the tests write keys under `e2e:` into it and leave some there). With WSL
+   as the only way (Windows CI: WSL 1, where a cluster can stall the whole runner), no cluster is started
+   and the cluster's tests are left out of the filter (`FILTER_NO_CLUSTER`); Linux CI still runs them.
 5. It shuts the servers down afterwards.
 
 Isolation between tests: `TestRedis::claim` increments a counter key in database 0, takes database

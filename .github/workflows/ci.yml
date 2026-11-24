@@ -194,6 +194,7 @@ jobs:
       - name: End-to-end tests
         if: ${{ !cancelled() && steps.build.outcome == 'success' }}
         background: true
+        timeout-minutes: 20
         run: |
           eval "$(cargo llvm-cov show-env --sh)"
           mkdir -p target/test-output
@@ -205,6 +206,7 @@ jobs:
       # the JUnit file is kept for the report, which still goes on when a test fails
       - name: Tests
         if: ${{ !cancelled() && steps.build.outcome == 'success' }}
+        timeout-minutes: 20
         run: |
           eval "$(cargo llvm-cov show-env --sh)"
           mkdir -p target/test-output

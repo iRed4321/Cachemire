@@ -1,6 +1,6 @@
 //! `cargo xtask e2e`: the end-to-end tests, against a throwaway Redis server and cluster started
 //! for them: `redis-server` (or Valkey, Memurai) on the PATH, else Docker, else `redis-server` in
-//! WSL. The tests read where they are from `CACHEMIRE_E2E_REDIS` and `CACHEMIRE_E2E_CLUSTER`.
+//! WSL (the server only). The tests read where they are from `CACHEMIRE_E2E_REDIS` and `CACHEMIRE_E2E_CLUSTER`.
 
 use std::io::{Read, Write};
 use std::net::{TcpListener, TcpStream};
@@ -30,6 +30,9 @@ const SERVER_ARGS: [&str; 6] = ["--databases", "10000", "--save", "", "--appendo
 
 /// The tests' nextest filter: every test inside an `e2e` module.
 const FILTER: &str = "test(/(^|::)e2e::/)";
+
+/// [`FILTER`] without the cluster's tests, when no cluster could be started.
+const FILTER_NO_CLUSTER: &str = "test(/(^|::)e2e::/) and not test(/(^|::)e2e::cluster::/)";
 
 /// A server started for the tests, stopped when dropped.
 enum Server {
@@ -75,15 +78,20 @@ pub fn run_task(extra: Vec<String>) -> Result<()> {
         }
         None => {
             let nodes = cluster_ports()?;
-            let servers = start_cluster(&nodes)?;
-            let ports: Vec<u16> = nodes.iter().map(|(port, _)| *port).collect();
-            form_cluster(&nodes)?;
-            let url = format!("redis://127.0.0.1:{}", ports[0]);
-            println!("The Redis cluster is up at {url}");
-            (url, Some((servers, ports)))
+            match start_cluster(&nodes)? {
+                Some(servers) => {
+                    let ports: Vec<u16> = nodes.iter().map(|(port, _)| *port).collect();
+                    form_cluster(&nodes)?;
+                    let url = format!("redis://127.0.0.1:{}", ports[0]);
+                    println!("The Redis cluster is up at {url}");
+                    (url, Some((servers, ports)))
+                }
+                None => (String::new(), None),
+            }
         }
     };
-    let outcome = run(test_command(extra).current_dir(repo_root()).env(E2E_REDIS, &url).env(E2E_CLUSTER, &cluster_url));
+    let with_cluster = !cluster_url.is_empty();
+    let outcome = run(test_command(extra, with_cluster).current_dir(repo_root()).env(E2E_REDIS, &url).env(E2E_CLUSTER, &cluster_url));
     for (servers, ports) in server.map(|(server, ports)| (vec![server], ports)).into_iter().chain(cluster) {
         // asked first, since stopping WSL's launcher may leave the server itself running
         for port in ports {
@@ -95,13 +103,17 @@ pub fn run_task(extra: Vec<String>) -> Result<()> {
 }
 
 /// The end-to-end tests with nextest, `extra` added to its arguments (`--profile ci`); with
-/// `cargo test` when nextest isn't installed.
-fn test_command(extra: Vec<String>) -> Command {
+/// `cargo test` when nextest isn't installed. The cluster's tests only `with_cluster`.
+fn test_command(extra: Vec<String>, with_cluster: bool) -> Command {
     let mut command = cargo();
     if nextest_installed() {
-        command.args(["nextest", "run", "--run-ignored", "only", "-E", FILTER]).args(extra);
+        let filter = if with_cluster { FILTER } else { FILTER_NO_CLUSTER };
+        command.args(["nextest", "run", "--run-ignored", "only", "-E", filter]).args(extra);
     } else {
         command.arg("test").args(extra).args(["--", "--ignored", "e2e::"]);
+        if !with_cluster {
+            command.args(["--skip", "e2e::cluster::"]);
+        }
     }
     command
 }
@@ -161,8 +173,9 @@ fn cluster_ports() -> Result<Vec<(u16, u16)>> {
 }
 
 /// Starts each node of the tests' cluster, `(port, bus port)`, the first way this machine allows:
-/// all of them in one Docker container, which publishes their ports.
-fn start_cluster(nodes: &[(u16, u16)]) -> Result<Vec<Server>> {
+/// all of them in one Docker container, which publishes their ports. `None` with WSL alone (WSL 1
+/// on CI runners, where a cluster can stall the whole machine): the cluster's tests are skipped.
+fn start_cluster(nodes: &[(u16, u16)]) -> Result<Option<Vec<Server>>> {
     let node_args = |port: u16, bus: u16, nodes_file: String| {
         let mut args: Vec<String> = ["--port", &port.to_string(), "--cluster-port", &bus.to_string()].map(String::from).to_vec();
         args.extend(["--cluster-config-file".to_string(), nodes_file]);
@@ -184,7 +197,7 @@ fn start_cluster(nodes: &[(u16, u16)]) -> Result<Vec<Server>> {
                     .spawn();
                 servers.push(child.map(Server::Process).map_err(|e| format!("could not start {program}: {e}"))?);
             }
-            return Ok(servers);
+            return Ok(Some(servers));
         }
     }
     if docker_runs_linux() {
@@ -203,18 +216,11 @@ fn start_cluster(nodes: &[(u16, u16)]) -> Result<Vec<Server>> {
             docker.args(["--publish", &format!("127.0.0.1:{port}:{port}")]);
         }
         run(docker.args([IMAGE, "sh", "-c", &script]))?;
-        return Ok(vec![Server::Container(name)]);
+        return Ok(Some(vec![Server::Container(name)]));
     }
     if cfg!(windows) && Command::new("wsl").args(["-e", "sh", "-c", "command -v redis-server"]).output().is_ok_and(|o| o.status.success()) {
-        println!("Starting a cluster of {} redis-server in WSL on ports {nodes:?}", nodes.len());
-        let mut servers = Vec::new();
-        for &(port, bus) in nodes {
-            let nodes_file = format!("/tmp/cachemire-e2e-nodes-{port}.conf");
-            let child =
-                Command::new("wsl").args(["-e", "redis-server"]).args(node_args(port, bus, nodes_file)).stdout(Stdio::null()).spawn();
-            servers.push(child.map(Server::Process).map_err(|e| format!("could not start redis-server in WSL: {e}"))?);
-        }
-        return Ok(servers);
+        println!("No Redis cluster in WSL: the cluster's tests are skipped (set {E2E_CLUSTER} to run them against one)");
+        return Ok(None);
     }
     Err(format!(
         "no Redis cluster to start: install redis-server (or valkey-server), or Docker{}, \
