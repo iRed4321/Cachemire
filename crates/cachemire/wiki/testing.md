@@ -61,6 +61,9 @@ state where the key panel accepts input (connected, one tab, badge `HASH`, panel
 Tests then drive the real window:
 
 - `click(x, y)` dispatches move, press and release; `mod.rs` also has `install_app`, `wait_for`, `sweep` and `wait_out_double_click`.
+  `sweep` clicks a grid until a click does what is looked for: keep its area tight around the target,
+  since every point costs a click and the `between`/`found` calls (a sleep in them lasts a ~16 ms timer
+  tick on Windows), and a sweep over the whole window takes a minute there.
 - `frame()` runs what other threads handed to the UI thread, updates timers and animations, and
   renders into `buffer` (RGB565); `settle()` loops it 30 times at 20 ms for animations and inertia.
 - Assertions read Slint globals (`window.global::<KeyPanel>()...`) or the rendered pixels.

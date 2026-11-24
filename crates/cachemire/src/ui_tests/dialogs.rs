@@ -40,7 +40,8 @@ fn the_startup_update_check_box_saves_the_setting_both_ways() {
     to_about(&h);
     h.frame();
     let on = |h: &Harness| h.window.global::<Preferences>().get_check_updates_at_startup();
-    let at = sweep(&mut h, 300..1000, 100..780, 6, to_about, on).expect("the box was found and ticked");
+    // around the box, on the About page: each point clicked costs, so the area stays small
+    let at = sweep(&mut h, 500..750, 150..270, 6, to_about, on).expect("the box was found and ticked");
     assert!(state.settings.lock().check_updates_at_startup(), "ticking it saves it");
 
     h.click(at.0, at.1);
@@ -72,7 +73,8 @@ fn the_search_depth_buttons_save_the_depth_picked() {
     let state = test_state();
     let (mut h, _rt) = settings_open(&state);
     let picked = |h: &Harness| h.window.global::<Preferences>().get_search_depth() == 60;
-    sweep(&mut h, 300..1000, 100..780, 6, back_to_settings, picked).expect("the 60 button");
+    // around the search depth's buttons, on the General page
+    sweep(&mut h, 380..620, 230..350, 6, back_to_settings, picked).expect("the 60 button");
     assert_eq!(state.settings.lock().search_depth(), 60);
 }
 

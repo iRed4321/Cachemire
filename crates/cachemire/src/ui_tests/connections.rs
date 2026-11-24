@@ -42,7 +42,9 @@ fn press_save(h: &mut Harness, form: (&str, &str, &str, &str), done: impl Fn() -
         let _ = h;
         done()
     };
-    sweep(h, 430..870, 200..740, 8, refill, saved).expect("the Save button");
+    // the form's bottom-right corner, where its buttons are: each miss waits a little
+    // (a Windows sleep lasts a timer tick, ~16 ms), so the fewer points the better
+    sweep(h, 640..870, 480..740, 8, refill, saved).expect("the Save button");
 }
 
 #[test]
