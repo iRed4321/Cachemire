@@ -117,6 +117,7 @@ export enum ShortcutAction {
     zoom-reset,
     search,
     close-tab,
+    connection-list,
     run-statement,
     run-script,
     suggest,
@@ -192,6 +193,33 @@ export struct ConnectionRowData {
     profile-tint: ProfileTint,
     // the connection's own read-only setting (its profile may make it read-only too)
     read-only: bool,
+}
+
+// a connection in the title bar's connection list (see ConnectionState.rows)
+export struct PickerRow {
+    id: string,
+    name: string,
+    address: string,
+    // when it was last connected to ("in use", "open", "2 h ago", or "")
+    when: string,
+    // the connection in use, or one kept open in the background
+    active: bool,
+    kept: bool,
+    // a cloud account's connection: its settings, not the connection form, edit it
+    cloud: bool,
+    has-tint: bool,
+    tint: ProfileTint,
+    profile-label: string,
+    // "Cluster · 3 primaries", "Standalone", or "" when not known yet
+    kind-label: string,
+    cluster: bool,
+    // "SSH via host", or ""
+    ssh-label: string,
+    read-only: bool,
+    pinned: bool,
+    // the title of the section it starts ("" for none), and how many sections start above it
+    section: string,
+    sections-above: int,
 }
 
 // what the add/edit form holds when it's saved

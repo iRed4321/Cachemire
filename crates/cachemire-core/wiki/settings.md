@@ -88,6 +88,8 @@ comment):
   `search_depth`, `shortcuts`, `theme`, `syntax_theme` (names the app gives its themes);
 - lists: `ssh_profiles` (+ `active_ssh_profile`), `connection_profiles`, `saved_queries`;
 - `cloud`: per AWS account / endpoint overrides, plus which local AWS profile last listed what.
+- the title bar's connection list: `pinned_connections` (ids, in the order pinned), and the source
+  and profile chip picked over it (`connection_source`, `connection_chip`).
 
 Reads of the preferences are plain getters (`language`, `restore_session`, ...). `search_depth` is
 validated against [`SEARCH_DEPTHS`](crate::settings::SEARCH_DEPTHS) and falls back to

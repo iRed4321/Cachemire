@@ -5,12 +5,13 @@ use std::sync::Arc;
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
-use crate::connection::{CloudKey, ConnectionItem, ConnectionPayloadInput, ConnectionsState, SshSettings};
+use crate::connection::{CloudKey, ConnectionItem, ConnectionPayloadInput, ConnectionsState, ServerKind, SshSettings};
 use crate::error::{Error, Invalid, NotFound};
 use crate::now_ms;
 use crate::persist;
 use crate::secret::Secret;
 use crate::secret_vault::{KeyringError, LeftOut, OsVault, Secrets, SecretsCleanup, SecretsPolicy, Vault, VaultBacked, Vaulting, place};
+use rustc_hash::FxHashMap;
 
 fn default_ssh_port() -> u16 {
     22
@@ -54,6 +55,9 @@ struct StoredConnection {
     // no write to Redis is made through this connection
     #[serde(default)]
     read_only: bool,
+    // what the server was when last connected to
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    server: Option<ServerKind>,
     // the passwords and passphrase are in the credential store, not in this file
     #[serde(default)]
     in_vault: bool,
@@ -98,6 +102,7 @@ impl Default for StoredConnection {
             ssh_passphrase: Secret::default(),
             profile_id: String::new(),
             read_only: false,
+            server: None,
             in_vault: false,
             left_out: LeftOut::default(),
             extra: Default::default(),
@@ -137,6 +142,9 @@ pub struct ConnectionStore {
     cloud_active: Option<String>,
     /// the account and region `cloud` was listed from
     cloud_where: (String, String),
+    /// what the cloud connections' servers are, and when each was last connected to (this run)
+    cloud_servers: FxHashMap<String, ServerKind>,
+    cloud_used: FxHashMap<String, i64>,
 }
 
 impl VaultBacked for ConnectionStore {
@@ -198,7 +206,12 @@ fn apply_payload(conn: &mut StoredConnection, payload: ConnectionPayloadInput) {
         conn.name = trimmed(name);
     }
     if let Some(url) = payload.connection_url {
-        conn.connection_url = trimmed(url);
+        let url = trimmed(url);
+        // another address may be another server
+        if url != conn.connection_url {
+            conn.server = None;
+        }
+        conn.connection_url = url;
     }
     if let Some(username) = payload.username {
         conn.username = trimmed(username);
@@ -373,6 +386,8 @@ impl ConnectionStore {
             dry_run: !writable,
             cloud: Vec::new(),
             cloud_active: None,
+            cloud_servers: FxHashMap::default(),
+            cloud_used: FxHashMap::default(),
             cloud_where: Default::default(),
         };
         if first_write {
@@ -494,6 +509,39 @@ impl ConnectionStore {
         self.get(self.active_connection_id()).ok_or_else(|| NotFound::ActiveConnection.into())
     }
 
+    /// When connection `id` was last connected to (Unix ms); a cloud one, during this run only.
+    pub fn last_connected_at(&self, id: &str) -> Option<i64> {
+        match self.state.connections.iter().find(|c| c.id == id) {
+            Some(stored) => stored.last_connected_at,
+            None => self.cloud_used.get(id).copied(),
+        }
+    }
+
+    /// What connection `id`'s server was when last connected to, or as its cloud listing says.
+    pub fn server_kind(&self, id: &str) -> Option<ServerKind> {
+        match self.state.connections.iter().find(|c| c.id == id) {
+            Some(stored) => stored.server.clone(),
+            None => self.cloud_servers.get(id).cloned(),
+        }
+    }
+
+    /// Remembers what connection `id`'s server is; saved for a saved connection, when it changed.
+    pub fn remember_server(&mut self, id: &str, kind: ServerKind) -> Result<(), Error> {
+        if self.cloud.iter().any(|c| c.id == id) {
+            self.cloud_servers.insert(id.to_string(), kind);
+            return Ok(());
+        }
+        let Some(stored) = self.state.connections.iter().find(|c| c.id == id) else { return Ok(()) };
+        if stored.server.as_ref() == Some(&kind) {
+            return Ok(());
+        }
+        let mut next = self.state.clone();
+        if let Some(conn) = next.connections.iter_mut().find(|c| c.id == id) {
+            conn.server = Some(kind);
+        }
+        self.commit(next, false)
+    }
+
     pub fn cloud_connections(&self) -> &[ConnectionItem] {
         &self.cloud
     }
@@ -517,6 +565,12 @@ impl ConnectionStore {
             self.cloud_active = None;
         }
         self.cloud = connections;
+        self.cloud_servers.retain(|id, _| self.cloud.iter().any(|c| &c.id == id));
+    }
+
+    /// What the cloud listing says of its connections' servers, by connection id.
+    pub fn set_cloud_servers(&mut self, servers: FxHashMap<String, ServerKind>) {
+        self.cloud_servers.extend(servers);
     }
 
     #[cfg(test)]
@@ -603,6 +657,7 @@ impl ConnectionStore {
     pub fn set_active(&mut self, id: &str) -> Result<(), Error> {
         if self.cloud.iter().any(|c| c.id == id) {
             self.cloud_active = Some(id.to_string());
+            self.cloud_used.insert(id.to_string(), now_ms());
             return Ok(());
         }
         let mut next = self.state.clone();

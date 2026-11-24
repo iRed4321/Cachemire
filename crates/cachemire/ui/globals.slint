@@ -1,7 +1,7 @@
 // What Rust reads and writes, grouped by feature: each global is one feature's
 // state and the callbacks Rust answers. `main.slint` binds the components to them.
 import { ConnectionStatus, LanguageSetting, SettingsCategory, ShortcutAction, ShortcutRow, ProfileTint, KeyView, OpeningView, SearchScope, ExportFormat, ExportTarget, ThemeChoice } from "components/types.slint";
-import { AwsChip, AwsProfileRow, ConnectionRowData, ConnProfileRowData, ConnectionForm, SshProfileRowData, SshProfileForm, ConnProfileForm, KeyspaceRowData, SavedQueryRowData, TabData, SearchRowData, HistoryRow } from "components/types.slint";
+import { AwsChip, AwsProfileRow, PickerRow, ConnectionRowData, ConnProfileRowData, ConnectionForm, SshProfileRowData, SshProfileForm, ConnProfileForm, KeyspaceRowData, SavedQueryRowData, TabData, SearchRowData, HistoryRow } from "components/types.slint";
 import { AllValuesRowData, FindResult, LineSelection, ValueLine, TableRowData, SuggestionRow, CompletionEdit, BadgeData } from "components/key-detail-types.slint";
 
 // The connection in use, as the title bar shows it; Rust sets it whole.
@@ -20,7 +20,14 @@ export struct ConnectionView {
     ssh-via: string,
     // the last failure was setting up that tunnel, not the Redis endpoint past it
     ssh-failed: bool,
+    // the connection shown, even while connecting or once it failed
     name: string,
+    // its connection profile, whose color the line under the name takes
+    has-profile: bool,
+    profile-name: string,
+    profile-tint: ProfileTint,
+    // what its server is ("Valkey 9.0.0 · cluster of 3 primaries"), "" when not known yet
+    server: string,
 }
 
 // The connection in use, and the saved and cloud connections to pick from.
@@ -34,6 +41,30 @@ export global ConnectionState {
     in-out property <bool> read-only: false;
     callback copy-connection-string();
     callback selected(id: string);
+    // connects again to the connection shown (the one in use, or the one that failed)
+    callback reconnect-requested();
+    // opens the connection form (or a cloud connection's settings) for `id`, "" for the one shown
+    callback edit-requested(id: string);
+
+    // the connection list: the rows its filter, source and chip keep, in sections; the pinned
+    // ones apart (not in `rows`); the row the keyboard is on; "6 of 9"
+    in-out property <[PickerRow]> rows: [];
+    in-out property <[PickerRow]> pins: [];
+    in-out property <int> highlighted: 0;
+    in-out property <string> count-label: "";
+    in-out property <bool> has-pinned: false;
+    // the source segments (all, saved, cloud) when there are cloud connections, and the
+    // connection profile chips in lines that fit; the picked keys ("" for all)
+    in-out property <[AwsChip]> sources: [];
+    in-out property <[[AwsChip]]> chip-lines: [];
+    in-out property <string> source: "";
+    in-out property <string> chip: "";
+    // fills the list with the connections matching `filter`, under the source and chip picked
+    callback list-requested(filter: string);
+    callback source-picked(key: string);
+    callback chip-picked(key: string);
+    // pins `id` at the end of the pinned ones, or unpins it
+    callback pin-toggled(id: string);
     // raised from Rust once a connection picked in the dropdown has connected
     callback established();
     callback disconnect-requested();
@@ -266,6 +297,7 @@ export global Shortcuts {
     in property <keys> zoom-reset;
     in property <keys> search;
     in property <keys> close-tab;
+    in property <keys> connection-list;
     in property <keys> run-statement;
     in property <keys> run-script;
     in property <keys> suggest;

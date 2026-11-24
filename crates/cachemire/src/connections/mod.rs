@@ -20,6 +20,7 @@ use cachemire_core::secret_vault::{LeftOut, SecretsPolicy, staged};
 use cachemire_core::settings::ConnectionProfile;
 
 mod connect;
+pub(crate) mod picker;
 pub mod profiles;
 pub mod transfer;
 
@@ -128,6 +129,16 @@ pub fn init(app: &Rc<App>, window: &MainWindow) {
 
     let connection = window.global::<ConnectionState>();
     connection.on_copy_connection_string(|| crate::app::with(copy_connection_string));
+    // the title bar's "Reconnect": the connection shown, in use or lost
+    connection.on_reconnect_requested(|| {
+        crate::app::with(|app, window| {
+            let id = app.picked.borrow().clone();
+            if !id.is_empty() {
+                connect_to(window, app.state.clone(), &app.rt, id, true);
+            }
+        });
+    });
+    picker::init(window);
     connection.on_selected(|id| crate::app::with(|app, window| connect_to(window, app.state.clone(), &app.rt, id.to_string(), true)));
     connection.on_established(|| {
         crate::app::with(|app, window| {
@@ -135,7 +146,7 @@ pub fn init(app: &Rc<App>, window: &MainWindow) {
             crate::keyspace::reload(app);
         });
     });
-    // the × in the title bar's pill: drops the connection in use and returns to
+    // "Disconnect" in the title bar's menu: drops the connection in use and returns to
     // "No connection"; its tabs are dropped
     connection.on_disconnect_requested(|| crate::app::with(|app, window| disconnect(app, window)));
 
@@ -151,10 +162,11 @@ pub fn init(app: &Rc<App>, window: &MainWindow) {
     });
 }
 
-/// The title bar pill's copy button: the connected instance's connection string
+/// "Copy connection string" in the title bar's menu: the string of the connection shown
 /// (credentials included, see ConnectionStore::connection_string).
 fn copy_connection_string(app: &Rc<App>, window: &MainWindow) {
-    let id = window.connection_id().to_string();
+    let in_use = window.connection_id().to_string();
+    let id = if in_use.is_empty() { app.picked.borrow().clone() } else { in_use };
     if id.is_empty() {
         return;
     }

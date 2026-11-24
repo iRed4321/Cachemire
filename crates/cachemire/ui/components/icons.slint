@@ -795,3 +795,65 @@ export component IconCheck inherits Rectangle {
         stroke-line-join: round;
     }
 }
+
+// a padlock: an SSH tunnel's badge
+export component IconLock inherits Rectangle {
+    in property <color> tint: Theme.text-secondary;
+    in property <length> size: 10px;
+    width: size;
+    height: size;
+
+    Path {
+        width: 100%;
+        height: 100%;
+        viewbox-width: 24;
+        viewbox-height: 24;
+        commands: "M7 11 V8 a5 5 0 0 1 10 0 v3 M5 11 h14 v10 H5 z";
+        fill: transparent;
+        stroke: tint;
+        stroke-width: 1.6px;
+        stroke-line-join: round;
+    }
+}
+
+// three joined nodes: a cluster
+export component IconCluster inherits Rectangle {
+    in property <color> tint: Theme.text-secondary;
+    in property <length> size: 12px;
+    width: size;
+    height: size;
+
+    Path {
+        width: 100%;
+        height: 100%;
+        viewbox-width: 24;
+        viewbox-height: 24;
+        commands: "M12 3 a2.5 2.5 0 1 0 0.01 0 M5.5 15.5 a2.5 2.5 0 1 0 0.01 0 M18.5 15.5 a2.5 2.5 0 1 0 0.01 0 M10.8 7.7 L6.8 15.8 M13.2 7.7 L17.2 15.8 M8 18 H16";
+        fill: transparent;
+        stroke: tint;
+        stroke-width: 1.5px;
+        stroke-line-cap: round;
+    }
+}
+
+// a link broken in two: a connection lost
+export component IconUnlinked inherits Rectangle {
+    in property <color> tint: Theme.text-primary;
+    in property <length> size: 13px;
+    width: size;
+    height: size;
+
+    Path {
+        width: 100%;
+        height: 100%;
+        viewbox-width: 24;
+        viewbox-height: 24;
+        commands: "M9.5 14.5 L7.5 16.5 a3.5 3.5 0 0 1 -5 -5 L4.5 9.5 M14.5 9.5 L16.5 7.5 a3.5 3.5 0 0 1 5 5 L19.5 14.5 M8 3 v2.5 M3 8 h2.5 M16 21 v-2.5 M21 16 h-2.5";
+        fill: transparent;
+        stroke: tint;
+        stroke-width: 1.6px;
+        stroke-line-cap: round;
+        stroke-line-join: round;
+    }
+}
+

@@ -51,7 +51,7 @@ main.slint            MainWindow  (root, overlays, shortcuts, zoom, toast, hint)
         types.slint       enums and row/form structs shared with Rust
         widgets.slint     Hint, IconButton, FloatingCard, scrollbars, WheelScroller, resize handles...
         icons.slint       one Icon* component per glyph (drawn with Path)
-        title-bar.slint   TitleBar (connection pill, AWS buttons, window buttons)
+        title-bar.slint   TitleBar (connection pill, AWS buttons, window buttons), its details and menu
         keyspace-panel    KeyspacePanel (tree + saved queries)
         content-header    TabBar and the three context menus
         key-detail*.slint KeyDetail and its parts (rows, table, values, widgets, types)
@@ -72,7 +72,7 @@ main.slint            MainWindow  (root, overlays, shortcuts, zoom, toast, hint)
 | `components/widgets.slint` | `Hint` global, `IconButton`, `CheckBox`, `FloatingCard`, `PastePopup`/`TextMenuPopup`, `VScrollBar`/`HScrollBar`, `WheelScroller`, `HResizeHandle`/`VResizeHandle`, `ModalButton`, `SegmentedToggle`... |
 | `components/icons.slint` | ~40 `Icon*` components |
 | `components/title-bar.slint` | the custom title bar (the window has `no-frame: true`) |
-| `components/connection-picker.slint` | `ConnectionDropdown`, `ConnectionModal` (the connection form), SSH fields |
+| `components/connection-picker.slint` | `ConnectionDropdown` (the connection list), `ProfileChip`, `ConnectionModal` (the connection form), SSH fields |
 | `components/cloud-picker.slint`, `cloud-settings.slint` | AWS profile dropdown; the cloud account dialog (`CloudSettings` global) |
 | `components/connection-transfer.slint` | import/export of saved connections (`ConnectionTransfer` global) |
 | `components/keyspace-panel.slint` | `KeyspacePanel`: tree, search box, export mode bar, saved queries |
@@ -137,7 +137,7 @@ to them.
   the theme, syntax or font settings. Profile colors (`profile-color`) are fixed.
   `bg-app` is `bg-app-base` mixed with the profile tint when `env-tinted` is true (25%), and
   `chrome-border` mixes 50% (`env-border`). With `env-light` (the profile's light theming) both stay
-  plain and only the title bar's connection pill, with the settings and copy buttons beside it, takes the
+  plain and only the title bar's connection pill, with the settings and "more" buttons beside it, takes the
   tint: `env-border`, and a background mixed with 10% of the color (15% on hover). This is how a connection profile (Production = red...) colors the window.
 - **Fonts**: `font-ui` = Roboto, `font-mono` = JetBrains Mono, both bundled by `import "...ttf"` lines
   at the top of the file, unless the Display settings picked installed ones (`ui_font`, `mono_font`,

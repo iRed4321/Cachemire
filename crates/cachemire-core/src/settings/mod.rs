@@ -119,6 +119,14 @@ struct StoredSettings {
     // what is set for AWS accounts and their endpoints (none of the endpoints themselves)
     #[serde(default)]
     cloud: StoredCloud,
+    // the connections pinned at the top of the connection list, by id, in the order pinned
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pinned_connections: Vec<String>,
+    // the source ("saved", "cloud") and profile chip picked over the connection list ("": all)
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    connection_source: String,
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    connection_chip: String,
     // what a newer version wrote that this one doesn't know: saved back as it was
     #[serde(flatten)]
     extra: serde_json::Map<String, serde_json::Value>,
@@ -204,6 +212,40 @@ impl SettingsStore {
         }
         let mut next = self.state.clone();
         next.search_depth = depth;
+        self.commit(next, false)
+    }
+
+    /// The connections pinned at the top of the connection list, by id, in the order pinned.
+    pub fn pinned_connections(&self) -> &[String] {
+        &self.state.pinned_connections
+    }
+
+    /// Pins connection `id` at the end of the pinned ones, or unpins it.
+    pub fn set_connection_pinned(&mut self, id: &str, pinned: bool) -> Result<(), Error> {
+        if self.state.pinned_connections.iter().any(|p| p == id) == pinned {
+            return Ok(());
+        }
+        let mut next = self.state.clone();
+        next.pinned_connections.retain(|p| p != id);
+        if pinned {
+            next.pinned_connections.push(id.to_string());
+        }
+        self.commit(next, false)
+    }
+
+    /// The source and the profile chip picked over the connection list ("" for all).
+    pub fn connection_filters(&self) -> (&str, &str) {
+        (&self.state.connection_source, &self.state.connection_chip)
+    }
+
+    /// Keeps `source` and `chip` picked over the connection list ("" for all).
+    pub fn set_connection_filters(&mut self, source: &str, chip: &str) -> Result<(), Error> {
+        if self.state.connection_source == source && self.state.connection_chip == chip {
+            return Ok(());
+        }
+        let mut next = self.state.clone();
+        next.connection_source = source.to_string();
+        next.connection_chip = chip.to_string();
         self.commit(next, false)
     }
 

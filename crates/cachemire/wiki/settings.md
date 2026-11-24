@@ -95,7 +95,7 @@ hand-written table, not Unicode normalisation). Slint calls it through `Preferen
 
 ## Keyboard shortcuts
 
-`shortcuts.rs` has a `SPECS` table of eleven actions: Slint `ShortcutAction`, a `code` (the name stored
+`shortcuts.rs` has a `SPECS` table of twelve actions: Slint `ShortcutAction`, a `code` (the name stored
 in `settings.json`), a `Scope` (window, query box, value editor) and default key parts.
 Only a *change* from the defaults is stored (`SettingsStore::set_shortcut(code, Some(keys))`;
 `None` restores the default). Two actions may not share keys inside one scope nor with a window-wide

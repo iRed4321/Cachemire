@@ -10,6 +10,7 @@ use slint::ComponentHandle;
 use tokio::runtime::Handle;
 
 use crate::app::App;
+use crate::connections::picker::{Shown, shown};
 use crate::error::Localize;
 use crate::host_key_dialog::Answered;
 use crate::{ConnectionState, ConnectionStatus, ConnectionView, MainWindow};
@@ -49,15 +50,21 @@ fn connect_then(
     let attempt = state.connect_attempt.fetch_add(1, Ordering::SeqCst) + 1;
     crate::app::with(|app, _| connection_id.clone_into(&mut app.picked.borrow_mut()));
     let connection = window.global::<ConnectionState>();
-    connection.set_view(ConnectionView { connecting: true, ..connection.get_view() });
+    // the one being connected to is shown, while the one in use stays in use until then
+    connection.set_view(ConnectionView { connecting: true, ..with_shown(connection.get_view(), shown(&state, &connection_id)) });
     let (task_state, id) = (state.clone(), connection_id.clone());
     let connect = async move {
         // (the keyring may ask for its password first: only opening the connection is timed)
         let outcome = cachemire_core::connection::connect_connection(&task_state, &id).await;
-        // resolved from the saved connection itself, not the attempt's outcome, so the
-        // status glyph can still show its lock when this connection uses SSH but failed
-        let ssh_via = task_state.connections.lock().get(&id).and_then(|c| c.ssh.as_ref().map(ssh_server_label)).unwrap_or_default();
-        (outcome, ssh_via)
+        // what the server is, for the title bar and the list (not worth failing over)
+        let kind = match &outcome {
+            Ok(_) => tokio::time::timeout(SERVER_KIND_TIMEOUT, cachemire_core::server_info::server_kind(&task_state, Some(&id)))
+                .await
+                .ok()
+                .and_then(Result::ok),
+            Err(_) => None,
+        };
+        (outcome, kind)
     };
     crate::app::spawn(rt, connect, move |app, window, done| {
         // (checked here, on the UI thread, where the attempts are numbered: nothing
@@ -65,7 +72,12 @@ fn connect_then(
         if state.connect_attempt.load(Ordering::SeqCst) != attempt {
             return;
         }
-        let (outcome, ssh_via) = done.unwrap_or_else(|e| (Err(e), String::new()));
+        let (outcome, kind) = done.unwrap_or_else(|e| (Err(e), None));
+        if let Some(kind) = kind
+            && let Err(e) = state.connections.lock().remember_server(&connection_id, kind)
+        {
+            tracing::warn!("can't save what the server is: {e}");
+        }
         // a server not seen before: the user decides, and a trusted key retries the attempt
         if let Err(e) = &outcome
             && let Some(server) = crate::host_key_dialog::unknown(e)
@@ -78,15 +90,12 @@ fn connect_then(
                 match answered {
                     Answered::Trusted => connect_then(window, state, &app.rt, connection_id, announce, then),
                     Answered::Cancelled => {
-                        show(
-                            app,
-                            window,
-                            ConnectionView { status: ConnectionStatus::Disconnected, ssh_via: ssh_via.into(), ..Default::default() },
-                        );
+                        let view = ConnectionView { status: ConnectionStatus::Disconnected, ..Default::default() };
+                        show(app, window, with_shown(view, shown(&state, &connection_id)));
                         crate::tabs::follow_connection(app, window);
                     }
                     Answered::NotSaved(e) => {
-                        show(app, window, failed_view(&connection_id, &e, ssh_via));
+                        show(app, window, failed_view(&state, &connection_id, &e));
                         crate::tabs::follow_connection(app, window);
                     }
                 }
@@ -103,17 +112,15 @@ fn connect_then(
         let view = match outcome {
             Ok(c) => {
                 tracing::info!(name = %c.name, address = %c.address(), "connected");
-                ConnectionView {
+                let view = ConnectionView {
                     connected: true,
                     status: ConnectionStatus::Connected,
-                    connection_id: connection_id.into(),
-                    address: c.address().into(),
-                    name: c.name.into(),
-                    ssh_via: ssh_via.into(),
+                    connection_id: connection_id.as_str().into(),
                     ..Default::default()
-                }
+                };
+                with_shown(view, shown(&state, &connection_id))
             }
-            Err(e) => failed_view(&connection_id, &e, ssh_via),
+            Err(e) => failed_view(&state, &connection_id, &e),
         };
         let connected = view.connected;
         show(app, window, view);
@@ -127,18 +134,39 @@ fn connect_then(
     });
 }
 
-/// The title bar's view of a connection that couldn't be made. `ssh_failed` marks the SSH
-/// tunnel itself as the failure (not the Redis endpoint past it): the SSH badge colors red.
-fn failed_view(connection_id: &str, error: &cachemire_core::error::Error, ssh_via: String) -> ConnectionView {
+/// The title bar's view of a connection that couldn't be made, with why. `ssh_failed` marks
+/// the SSH tunnel itself as the failure (not the Redis endpoint past it).
+fn failed_view(state: &AppState, connection_id: &str, error: &cachemire_core::error::Error) -> ConnectionView {
     tracing::warn!(connection = %connection_id, kind = ?error.kind(), "couldn't connect: {error}");
-    ConnectionView {
+    let view = ConnectionView {
         status: ConnectionStatus::Disconnected,
         status_detail: error.localized().into(),
         ssh_failed: error.kind() == ErrorKind::Tunnel,
-        ssh_via: ssh_via.into(),
         ..Default::default()
+    };
+    with_shown(view, shown(state, connection_id))
+}
+
+/// `view` showing the connection `shown` describes: its name, address, SSH server, profile, server.
+fn with_shown(view: ConnectionView, shown: Shown) -> ConnectionView {
+    let (has_profile, profile_name, profile_tint) = match shown.profile {
+        Some((name, tint)) => (true, name, tint),
+        None => (false, String::new(), view.profile_tint),
+    };
+    ConnectionView {
+        name: shown.name.into(),
+        address: shown.address.into(),
+        ssh_via: shown.ssh_via.into(),
+        has_profile,
+        profile_name: profile_name.into(),
+        profile_tint,
+        server: shown.server.into(),
+        ..view
     }
 }
+
+/// How long asking what the server is may take once connected.
+const SERVER_KIND_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(5);
 
 /// Puts `view` in the title bar. With no connection in it, none stays active in the
 /// store either, so whatever falls back to the active connection finds none.
@@ -167,7 +195,7 @@ pub(crate) fn keep_active_in_step(app: &App, window: &MainWindow) {
 }
 
 /// `user@host` (with `:port` when it isn't 22) of an SSH tunnel's server.
-fn ssh_server_label(ssh: &SshSettings) -> String {
+pub(super) fn ssh_server_label(ssh: &SshSettings) -> String {
     match ssh.port {
         22 => format!("{}@{}", ssh.username, ssh.host),
         port => format!("{}@{}:{port}", ssh.username, ssh.host),

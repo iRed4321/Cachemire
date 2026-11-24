@@ -1,84 +1,8 @@
 import { Theme } from "theme.slint";
-import { ConnectionStatus, SettingsCategory } from "types.slint";
-import { IconCloud, IconSpinner, IconChevron, IconMinimize, IconMaximize, IconClose, IconDot, IconCopy, IconSettings } from "icons.slint";
-import { ConnectionState, AwsAccount, Preferences } from "../globals.slint";
+import { ConnectionStatus, SettingsCategory, ProfileTint } from "types.slint";
+import { IconCloud, IconDot, IconSpinner, IconChevron, IconMinimize, IconMaximize, IconClose, IconCopy, IconSettings, IconLock, IconUnlinked, IconMore, IconRefresh, IconPencil } from "icons.slint";
+import { ConnectionState, AwsAccount, Preferences, ConnectionView } from "../globals.slint";
 import { Hint } from "widgets.slint";
-
-// The connection's status, at the start of the middle pill: a dot colored
-// by connection health. Clicking it opens the connection picker; hovering
-// drives TitleBar's tooltip. SSH gets its own badge, just to its left (see SshBadge).
-component ConnectionStatusGlyph inherits Rectangle {
-    in property <color> dot-color: Theme.text-tertiary;
-    // a connection attempt is under way: a spinner stands in for the dot
-    in property <bool> connecting: false;
-    out property <bool> hovered: area.has-hover;
-    callback clicked <=> area.clicked;
-
-    // wider than the dot itself, evenly, so there's real breathing room on
-    // both sides of it — before the badge or pill edge on its left, before
-    // the connection name on its right — whether or not the badge is shown
-    width: Theme.px(20px);
-    height: Theme.px(20px);
-
-    area := TouchArea { mouse-cursor: pointer; }
-
-    if !root.connecting: IconDot {
-        x: (parent.width - self.width) / 2;
-        y: (parent.height - self.height) / 2;
-        size: Theme.px(10px);
-        tint: root.dot-color;
-    }
-    if root.connecting: IconSpinner {
-        x: (parent.width - self.width) / 2;
-        y: (parent.height - self.height) / 2;
-        size: Theme.px(14px);
-        tint: Theme.accent-blue;
-    }
-}
-
-// "SSH" pill left of the status dot, shown only for a tunneled connection —
-// colored by the tunnel's own health, not the Redis endpoint's (the dot's
-// job). Self-contained tooltip logic, since it only exists behind an `if`.
-component SshBadge inherits Rectangle {
-    in property <color> tunnel-color: Theme.text-tertiary;
-    in property <string> hint: "";
-    callback clicked <=> area.clicked;
-
-    height: Theme.px(20px);
-    width: label.preferred-width + Theme.px(16px);
-    border-radius: Theme.radius-sm;
-    background: tunnel-color;
-
-    property <bool> hovered: area.has-hover;
-    property <bool> tooltip-shown: false;
-    function hide-tooltip() {
-        if tooltip-shown {
-            tooltip-shown = false;
-            Hint.hide();
-        }
-    }
-    changed hovered => { if !hovered { hide-tooltip(); } }
-    changed hint => { hide-tooltip(); }
-    Timer {
-        interval: 500ms;
-        running: root.hovered && root.hint != "" && !root.tooltip-shown;
-        triggered => {
-            root.tooltip-shown = true;
-            Hint.show-below(root.hint, area.absolute-position.x, area.absolute-position.y + area.height + Theme.px(6px));
-        }
-    }
-
-    area := TouchArea { mouse-cursor: pointer; }
-
-    label := Text {
-        x: (parent.width - self.width) / 2;
-        y: (parent.height - self.height) / 2;
-        text: "SSH";
-        color: white;
-        font-size: Theme.pt(12px);
-        font-weight: 700;
-    }
-}
 
 component WinControlButton inherits Rectangle {
     in property <bool> danger: false;
@@ -138,43 +62,53 @@ component WindowDragArea inherits TouchArea {
     }
 }
 
+// A small outlined label in the pill: the SSH tunnel's lock and "SSH".
+component SshBadge inherits Rectangle {
+    height: Theme.px(18px);
+    width: row.preferred-width;
+    border-radius: Theme.radius-sm;
+    border-width: 1px;
+    border-color: Theme.border-soft.mix(Theme.text-tertiary, 0.6);
+    row := HorizontalLayout {
+        padding-left: Theme.px(6px);
+        padding-right: Theme.px(6px);
+        spacing: Theme.px(4px);
+        VerticalLayout {
+            alignment: center;
+            IconLock { size: Theme.px(10px); tint: Theme.text-secondary; }
+        }
+        Text {
+            text: "SSH";
+            color: Theme.text-secondary;
+            font-size: Theme.pt(10.5px);
+            font-weight: 700;
+            vertical-alignment: center;
+        }
+    }
+}
+
+// A square button beside the connection pill, in its shape.
+component BarButton inherits Rectangle {
+    in property <color> bar-background;
+    in property <length> hairline: 1px;
+    out property <bool> hovered: area.has-hover;
+    callback clicked <=> area.clicked;
+    border-radius: Theme.radius-md;
+    background: bar-background;
+    border-width: hairline;
+    border-color: Theme.env-border;
+    area := TouchArea { mouse-cursor: pointer; }
+    @children
+}
+
 export component TitleBar inherits Rectangle {
     in property <bool> is-maximized: false;
-    // both empty until a connection has actually succeeded — no placeholder
-    // data is ever shown in the pill
-    in property <string> connection-name: ConnectionState.view.name;
-    in property <string> connection-address: ConnectionState.view.address;
+    // the connection shown: the one in use, being connected to, or the one that failed
+    in property <ConnectionView> view: ConnectionState.view;
     // whether the connection picker dropdown this bar controls is currently
     // open, purely to flip the chevron — the dropdown itself lives outside
     // TitleBar (see main.slint) so it can paint above the rest of the app
     in property <bool> expanded: false;
-    // connection status: the dot at the start of the middle pill (plus an
-    // "SSH" badge left of it, when relevant), color-coded, with the error
-    // reason (or working-tunnel info) as the dot's tooltip
-    in property <bool> connected: ConnectionState.view.connected;
-    // a connection attempt is under way
-    in property <bool> connecting: ConnectionState.view.connecting;
-    in property <ConnectionStatus> status: ConnectionState.view.status;
-    in property <string> status-detail: ConnectionState.view.status-detail;
-    // "user@host" of the SSH server when the connection uses a tunnel —
-    // resolved from the saved connection itself (see main.rs), so it's known
-    // even while erroring, not just once actually connected
-    in property <string> ssh-via: ConnectionState.view.ssh-via;
-    property <bool> has-ssh: root.ssh-via != "";
-    // whether the last failure was the tunnel itself, not the Redis endpoint
-    // past it (see main.rs's ConnectError); meaningless while !has-ssh
-    in property <bool> ssh-failed: ConnectionState.view.ssh-failed;
-    // a touch darker than Theme.accent-green: against the dot's and badge's
-    // small size, the plain accent read as slightly washed out
-    property <color> connected-green: Theme.accent-green.darker(0.15);
-    // the dot: purely the Redis endpoint's own health — green once
-    // connected, red for an error, whatever the tunnel (if any) is doing
-    property <color> dot-color: root.status == ConnectionStatus.connected ? root.connected-green
-        : (root.status == ConnectionStatus.disconnected ? Theme.accent-red : Theme.text-tertiary);
-    // the SSH badge: green once connected, or once disconnected with the
-    // tunnel itself fine (the dot already covers a Redis-side failure); red
-    // while the tunnel is what's actually failing
-    property <color> ssh-color: root.status == ConnectionStatus.disconnected && root.ssh-failed ? Theme.accent-red : root.connected-green;
     // the cloud account (AWS): shown only when the machine has an .aws folder
     in property <bool> aws-available: AwsAccount.available;
     in property <bool> aws-connected: AwsAccount.connected;
@@ -185,18 +119,18 @@ export component TitleBar inherits Rectangle {
     // the pill while signed in; `x` is where its dropdown should start
     callback aws-profile-clicked(x: length);
     callback bar-clicked();
-    // the × shown in the pill while a connection is active
-    callback disconnect-requested();
-    disconnect-requested => { ConnectionState.disconnect-requested(); }
-    // the "Settings" button at the left end
+    // the "Settings" button left of the pill
     callback settings-clicked();
+    // the "more" button right of the pill: its menu opens under it
+    callback more-clicked();
     callback drag-requested();
     callback maximize-toggle-requested();
     callback minimize-requested();
     callback close-requested();
-    // copy pill right of the connection pill
-    callback copy-connection-string();
-    copy-connection-string => { ConnectionState.copy-connection-string(); }
+    // the pointer rested on the pill: main.slint shows the connection's details under it
+    out property <bool> details-shown: false;
+    // where the "more" button ends, for its menu to end there too
+    out property <length> more-right: more-button.x + more-button.width;
 
     background: Theme.bg-app;
     vertical-stretch: 0;
@@ -210,73 +144,29 @@ export component TitleBar inherits Rectangle {
     property <length> hairline: snap(1px);
     height: snap(Theme.px(40px));
 
-    // what the status glyph's tooltip says: the failure reason, or, for a
-    // working tunnelled connection, where it goes through
-    property <string> status-hint: root.status-detail != "" ? root.status-detail
-        : (root.connected && root.ssh-via != "" ? @tr("Connected through an SSH tunnel via {}", root.ssh-via) : "");
-    property <bool> status-hovered: status-glyph.hovered;
-    property <bool> status-tooltip-shown: false;
-    function hide-status-tooltip() {
-        if status-tooltip-shown {
-            status-tooltip-shown = false;
-            Hint.hide();
+    // what the pill shows: a connection (named), being connected to, lost, or none
+    property <bool> named: view.name != "";
+    property <bool> connecting: view.connecting;
+    property <bool> lost: !view.connecting && view.status == ConnectionStatus.disconnected;
+    property <bool> has-ssh: view.ssh-via != "";
+
+    // the details show once the pointer rests on the pill, never over the open list
+    property <bool> pill-hovered: pill-area.has-hover;
+    changed pill-hovered => {
+        if !pill-hovered {
+            details-shown = false;
         }
     }
-    changed status-hovered => {
-        if !status-hovered {
-            hide-status-tooltip();
-        }
-    }
-    // the reason changed (e.g. a reconnect succeeded): drop the stale text
-    changed status-hint => { hide-status-tooltip(); }
+    changed expanded => { details-shown = false; }
     Timer {
         interval: 500ms;
-        running: root.status-hovered && root.status-hint != "" && !root.status-tooltip-shown;
-        triggered => {
-            root.status-tooltip-shown = true;
-            Hint.show-below(root.status-hint, status-glyph.absolute-position.x,
-                status-glyph.absolute-position.y + status-glyph.height + Theme.px(6px));
-        }
+        running: root.pill-hovered && root.named && !root.expanded && !root.details-shown;
+        triggered => { root.details-shown = true; }
     }
 
-    // hover hint on the copy pill; a click means the user knows what it does,
-    // so no hint again until the pointer leaves and comes back
-    property <bool> copy-hovered: copy-area.has-hover;
-    property <bool> copy-pressed: copy-area.pressed;
-    property <bool> copy-tooltip-shown: false;
-    property <bool> copy-tooltip-suppressed: false;
-    function hide-copy-tooltip() {
-        if copy-tooltip-shown {
-            copy-tooltip-shown = false;
-            Hint.hide();
-        }
-    }
-    changed copy-hovered => {
-        if !copy-hovered {
-            copy-tooltip-suppressed = false;
-            hide-copy-tooltip();
-        }
-    }
-    changed copy-pressed => {
-        if copy-pressed {
-            copy-tooltip-suppressed = true;
-            hide-copy-tooltip();
-        }
-    }
-    Timer {
-        interval: 500ms;
-        running: root.copy-hovered && !root.copy-tooltip-shown && !root.copy-tooltip-suppressed;
-        triggered => {
-            root.copy-tooltip-shown = true;
-            Hint.show-below(@tr("Copy connection string"), copy-area.absolute-position.x,
-                copy-area.absolute-position.y + copy-area.height + Theme.px(6px));
-        }
-    }
-
-    // hover hint on the settings icon, which has no label; same behavior as the
-    // copy pill's
-    property <bool> settings-hovered: settings-area.has-hover;
-    property <bool> settings-pressed: settings-area.pressed;
+    // hover hint on the settings icon, which has no label; a click means the user knows
+    // what it does, so no hint again until the pointer leaves and comes back
+    property <bool> settings-hovered: settings-button.hovered;
     property <bool> settings-tooltip-shown: false;
     property <bool> settings-tooltip-suppressed: false;
     function hide-settings-tooltip() {
@@ -291,19 +181,13 @@ export component TitleBar inherits Rectangle {
             hide-settings-tooltip();
         }
     }
-    changed settings-pressed => {
-        if settings-pressed {
-            settings-tooltip-suppressed = true;
-            hide-settings-tooltip();
-        }
-    }
     Timer {
         interval: 500ms;
         running: root.settings-hovered && !root.settings-tooltip-shown && !root.settings-tooltip-suppressed;
         triggered => {
             root.settings-tooltip-shown = true;
-            Hint.show-below(@tr("Settings"), settings-area.absolute-position.x,
-                settings-area.absolute-position.y + settings-area.height + Theme.px(6px));
+            Hint.show-below(@tr("Settings"), settings-button.absolute-position.x,
+                settings-button.absolute-position.y + settings-button.height + Theme.px(6px));
         }
     }
 
@@ -314,26 +198,23 @@ export component TitleBar inherits Rectangle {
     }
 
     // the settings icon, just left of the connection pill, in the same pill shape
-    settings-button := Rectangle {
+    settings-button := BarButton {
         x: snap(pill.x - self.width - Theme.px(6px));
         y: snap((parent.height - self.height) / 2);
         width: pill.height;
         height: pill.height;
-        border-radius: Theme.radius-md;
-        background: root.bar-background(settings-area.has-hover);
-        border-width: hairline;
-        border-color: Theme.env-border;
-
-        settings-area := TouchArea {
-            mouse-cursor: pointer;
-            clicked => { root.settings-clicked(); }
+        hairline: root.hairline;
+        bar-background: root.bar-background(self.hovered);
+        clicked => {
+            root.settings-tooltip-suppressed = true;
+            root.hide-settings-tooltip();
+            root.settings-clicked();
         }
-
         IconSettings {
             x: (parent.width - self.width) / 2;
             y: (parent.height - self.height) / 2;
             size: Theme.icon-sm;
-            tint: settings-area.has-hover ? Theme.text-primary : Theme.text-secondary;
+            tint: settings-button.hovered ? Theme.text-primary : Theme.text-secondary;
         }
     }
 
@@ -384,16 +265,15 @@ export component TitleBar inherits Rectangle {
     // below 960px of window, the pill is a third as wide and shows the connection's name alone
     property <bool> compact: root.width < 960px;
 
-    // a lightly tinted profile colors the connection pill and the buttons beside it (the rest of
-    // the window keeps its own): their background, hovered or not
-    property <bool> pill-tinted: Theme.env-tinted && Theme.env-light;
-    property <color> pill-tint: Theme.profile-color(Theme.env-tint);
+    // the background of the connection pill and the buttons beside it, never tinted: a profile's
+    // color shows in their border only
     pure function bar-background(hovered: bool) -> color {
-        let plain = hovered ? Theme.bg-hover : Theme.bg-elevated;
-        return root.pill-tinted ? root.pill-tint.mix(plain, hovered ? 0.15 : 0.1) : plain;
+        return hovered ? Theme.bg-hover : Theme.bg-elevated;
     }
 
-    // connection pill, centered — click opens the connection picker
+    // connection pill, centered — click opens the connection picker. A line along its bottom
+    // takes the color of the connection's profile; what goes on (connecting, a connection
+    // lost) is said in words where the address is, never in a color
     pill := Rectangle {
         x: snap((parent.width - self.width) / 2);
         y: snap((parent.height - self.height) / 2);
@@ -404,6 +284,7 @@ export component TitleBar inherits Rectangle {
         border-width: hairline;
         // the profile's tint, even a light one
         border-color: Theme.env-border;
+        clip: true;
 
         pill-area := TouchArea {
             mouse-cursor: pointer;
@@ -411,24 +292,20 @@ export component TitleBar inherits Rectangle {
         }
 
         HorizontalLayout {
-            x: Theme.px(6px);
+            x: Theme.px(12px);
             y: 0;
-            width: parent.width - Theme.px(14px);
+            width: parent.width - Theme.px(root.lost && root.named && !root.compact ? 15px : 21px);
             height: parent.height;
-            spacing: Theme.px(4px);
+            spacing: Theme.px(8px);
             cross-axis-alignment: center;
-            if root.has-ssh: SshBadge {
-                tunnel-color: root.ssh-color;
-                hint: root.status-hint;
-                clicked => { root.bar-clicked(); }
+            // green once connected, grey otherwise (nothing picked, connecting, lost)
+            IconDot {
+                size: Theme.px(8px);
+                tint: root.named && !root.connecting && !root.lost && root.view.status == ConnectionStatus.connected
+                    ? Theme.accent-green.darker(0.15) : Theme.text-tertiary;
             }
-            status-glyph := ConnectionStatusGlyph {
-                dot-color: root.dot-color;
-                connecting: root.connecting;
-                clicked => { root.bar-clicked(); }
-            }
-            if connection-name != "": Text {
-                text: connection-name;
+            if root.named: Text {
+                text: root.view.name;
                 color: Theme.text-primary;
                 font-size: Theme.pt(12.5px);
                 font-weight: 600;
@@ -436,61 +313,68 @@ export component TitleBar inherits Rectangle {
                 horizontal-stretch: root.compact ? 1 : 0;
                 overflow: elide;
             }
-            // drawn separator rather than a "·" glyph: that codepoint isn't
-            // guaranteed to exist in whichever UI font gets picked
-            if connection-name != "" && !root.compact: IconDot { size: Theme.px(3px); tint: Theme.text-tertiary; }
-            if connection-name == "" || !root.compact: Text {
-                text: connection-name == "" ? (root.connecting ? @tr("Connecting...") : @tr("No connection")) : connection-address;
-                color: Theme.text-secondary;
+            if root.connecting: IconSpinner { size: Theme.px(12px); tint: Theme.text-primary; }
+            if root.lost && root.named: IconUnlinked { size: Theme.px(13px); tint: Theme.text-primary; }
+            if !root.compact || !root.named: Text {
+                text: root.connecting
+                    ? (root.has-ssh ? @tr("connecting through {}…", root.view.ssh-via) : @tr("connecting…"))
+                    : root.lost ? root.view.status-detail
+                    : root.named ? root.view.address
+                    : @tr("No connection");
+                color: root.lost && root.named ? Theme.text-primary : Theme.text-secondary;
                 font-size: Theme.pt(12.5px);
+                font-italic: root.connecting;
                 vertical-alignment: center;
                 horizontal-stretch: 1;
                 overflow: elide;
             }
-            if connection-name == "": IconChevron { size: Theme.icon-xs; down: expanded; tint: Theme.text-tertiary; }
-            if connection-name != "": Rectangle {
-                width: Theme.px(20px);
-                height: Theme.px(20px);
+            if root.named && !root.connecting && !root.lost && root.has-ssh && !root.compact: SshBadge { }
+            if !(root.lost && root.named) || root.compact: IconChevron { size: Theme.icon-xs; down: !root.expanded; up: root.expanded; tint: Theme.text-tertiary; }
+            // the one thing to do about a connection lost, right where it says so
+            if root.lost && root.named && !root.compact: reconnect := Rectangle {
+                width: reconnect-label.preferred-width + Theme.px(20px);
+                height: Theme.px(22px);
                 border-radius: Theme.radius-sm;
-                background: disconnect-area.has-hover ? Theme.bg-hover : transparent;
-                disconnect-area := TouchArea {
+                border-width: 1px;
+                border-color: Theme.text-tertiary;
+                background: reconnect-area.has-hover ? Theme.bg-hover-elevated : transparent;
+                reconnect-area := TouchArea {
                     mouse-cursor: pointer;
-                    clicked => { root.disconnect-requested(); }
+                    clicked => { ConnectionState.reconnect-requested(); }
                 }
-                IconClose {
-                    size: Theme.icon-xs;
-                    tint: disconnect-area.has-hover ? Theme.text-primary : Theme.text-tertiary;
-                    x: (parent.width - self.width) / 2;
-                    y: (parent.height - self.height) / 2;
+                reconnect-label := Text {
+                    text: @tr("Reconnect");
+                    color: Theme.text-primary;
+                    font-size: Theme.pt(11.5px);
+                    font-weight: 700;
+                    vertical-alignment: center;
+                    horizontal-alignment: center;
                 }
             }
         }
+
+        if root.named && root.view.has-profile: Rectangle {
+            y: parent.height - self.height;
+            height: snap(Theme.px(3px));
+            background: Theme.profile-color(root.view.profile-tint);
+        }
     }
 
-    // copy pill, just right of the connection pill with the same shape:
-    // copies the connected instance's connection string; only once connected
-    copy-pill := Rectangle {
-        // `visible` rather than `if`: the hover timer above refers to
-        // `copy-area`, which can't be referenced inside a conditional
-        visible: root.connection-name != "";
+    // the "more" button, just right of the connection pill: copy, reconnect, edit, disconnect
+    more-button := BarButton {
+        visible: root.named;
         x: snap(pill.x + pill.width + Theme.px(6px));
         y: snap((parent.height - self.height) / 2);
         width: pill.height;
         height: pill.height;
-        border-radius: pill.border-radius;
-        background: root.bar-background(copy-area.has-hover);
-        border-width: hairline;
-        border-color: Theme.env-border;
-
-        copy-area := TouchArea {
-            mouse-cursor: pointer;
-            clicked => { root.copy-connection-string(); }
-        }
-
-        HorizontalLayout {
-            alignment: center;
-            cross-axis-alignment: center;
-            IconCopy { size: Theme.icon-sm; tint: copy-area.has-hover ? Theme.text-secondary : Theme.text-tertiary; }
+        hairline: root.hairline;
+        bar-background: root.bar-background(self.hovered);
+        clicked => { root.more-clicked(); }
+        IconMore {
+            x: (parent.width - self.width) / 2;
+            y: (parent.height - self.height) / 2;
+            size: Theme.icon-sm;
+            tint: more-button.hovered ? Theme.text-primary : Theme.text-secondary;
         }
     }
 
@@ -525,6 +409,173 @@ export component TitleBar inherits Rectangle {
                 // white on the red hover background, like the native caption button
                 IconClose { size: Theme.icon-lg; tint: close-btn.hovered ? white : Theme.text-secondary; }
             }
+        }
+    }
+}
+
+// One line of the connection's details: a label, then its value.
+component DetailLine inherits HorizontalLayout {
+    in property <string> label;
+    in property <string> value;
+    in property <bool> mono: false;
+    spacing: Theme.px(10px);
+    Text {
+        width: Theme.px(76px);
+        text: root.label;
+        color: Theme.text-tertiary;
+        font-size: Theme.pt(11.5px);
+    }
+    Text {
+        horizontal-stretch: 1;
+        text: root.value;
+        color: Theme.text-primary;
+        font-size: Theme.pt(root.mono ? 11px : 11.5px);
+        font-family: root.mono ? Theme.font-mono : Theme.font-ui;
+        wrap: word-wrap;
+    }
+}
+
+// What the pill's connection is, shown under the pill while the pointer rests on it.
+// Positioned (and shown) by main.slint.
+export component ConnectionDetails inherits Rectangle {
+    in property <ConnectionView> view: ConnectionState.view;
+    in property <bool> read-only: ConnectionState.read-only;
+    property <bool> lost: !view.connecting && view.status == ConnectionStatus.disconnected;
+
+    width: Theme.px(320px);
+    height: column.preferred-height;
+    background: Theme.bg-elevated;
+    border-radius: Theme.radius-md;
+    border-width: 1px;
+    border-color: Theme.border-soft;
+    drop-shadow-color: Theme.shadow-color;
+    drop-shadow-blur: Theme.shadow-blur;
+    drop-shadow-offset-y: Theme.shadow-offset-y;
+
+    column := VerticalLayout {
+        padding-left: Theme.px(14px);
+        padding-right: Theme.px(14px);
+        padding-top: Theme.px(12px);
+        padding-bottom: Theme.px(12px);
+        spacing: Theme.px(7px);
+        HorizontalLayout {
+            spacing: Theme.px(8px);
+            Text {
+                text: root.view.name;
+                color: Theme.text-primary;
+                font-size: Theme.pt(13px);
+                font-weight: 700;
+                horizontal-stretch: 1;
+                overflow: elide;
+                vertical-alignment: center;
+            }
+            if root.view.has-profile: Rectangle {
+                height: Theme.px(18px);
+                width: min(badge.preferred-width, Theme.px(140px)) + Theme.px(14px);
+                border-radius: Theme.radius-sm;
+                background: Theme.profile-color(root.view.profile-tint);
+                badge := Text {
+                    x: Theme.px(7px);
+                    width: parent.width - Theme.px(14px);
+                    text: root.view.profile-name;
+                    color: root.view.profile-tint == ProfileTint.yellow ? #1c1c1e : white;
+                    font-size: Theme.pt(10.5px);
+                    font-weight: 700;
+                    vertical-alignment: center;
+                    overflow: elide;
+                }
+            }
+        }
+        if root.lost && root.view.status-detail != "": Text {
+            text: root.view.status-detail;
+            color: Theme.text-primary;
+            font-size: Theme.pt(11.5px);
+            wrap: word-wrap;
+        }
+        if root.view.server != "": DetailLine { label: @tr("Server"); value: root.view.server; }
+        if root.view.address != "": DetailLine { label: @tr("Address"); value: root.view.address; mono: true; }
+        if root.view.ssh-via != "": DetailLine { label: @tr("SSH tunnel"); value: root.view.ssh-via; mono: true; }
+        if root.view.connected && !root.lost: DetailLine {
+            label: @tr("Access");
+            value: root.read-only ? @tr("read-only") : @tr("read and write");
+        }
+    }
+}
+
+// One entry of the "more" menu: an icon, then what it does.
+component MenuEntry inherits Rectangle {
+    in property <string> text;
+    callback clicked <=> area.clicked;
+    height: Theme.px(28px);
+    border-radius: Theme.radius-sm;
+    // opaque at rest: a hover change only redraws the row, which then covers its own area
+    background: area.has-hover ? Theme.bg-hover-elevated : Theme.bg-elevated;
+    area := TouchArea { mouse-cursor: pointer; }
+    HorizontalLayout {
+        padding-left: Theme.px(8px);
+        padding-right: Theme.px(12px);
+        spacing: Theme.px(8px);
+        alignment: start;
+        VerticalLayout {
+            alignment: center;
+            @children
+        }
+        Text {
+            text: root.text;
+            color: Theme.text-primary;
+            font-size: Theme.pt(12px);
+            vertical-alignment: center;
+        }
+    }
+}
+
+// The "more" button's menu: what can be done with the pill's connection. Positioned and
+// dismissed by main.slint, like the other menus.
+export component ConnectionMenu inherits Rectangle {
+    callback done();
+
+    property <length> pad: Theme.px(4px);
+    width: Theme.px(210px);
+    height: entries.preferred-height;
+    background: Theme.bg-elevated;
+    border-radius: Theme.radius-md;
+    border-width: 1px;
+    border-color: Theme.border-soft;
+    drop-shadow-color: Theme.shadow-color;
+    drop-shadow-blur: Theme.shadow-blur;
+    drop-shadow-offset-y: Theme.shadow-offset-y;
+
+    // absorbs clicks on the padding so they don't reach the catcher behind
+    TouchArea { }
+
+    entries := VerticalLayout {
+        padding: pad;
+        MenuEntry {
+            text: @tr("Copy connection string");
+            clicked => { root.done(); ConnectionState.copy-connection-string(); }
+            IconCopy { size: Theme.icon-sm; tint: Theme.text-secondary; }
+        }
+        MenuEntry {
+            text: @tr("Reconnect");
+            clicked => { root.done(); ConnectionState.reconnect-requested(); }
+            IconRefresh { size: Theme.icon-sm; tint: Theme.text-secondary; }
+        }
+        MenuEntry {
+            text: @tr("Edit connection…");
+            clicked => { root.done(); ConnectionState.edit-requested(""); }
+            IconPencil { size: Theme.icon-sm; tint: Theme.text-secondary; }
+        }
+        Rectangle {
+            height: Theme.px(9px);
+            Rectangle {
+                height: 1px;
+                background: Theme.border-soft;
+            }
+        }
+        MenuEntry {
+            text: @tr("Disconnect");
+            clicked => { root.done(); ConnectionState.disconnect-requested(); }
+            IconClose { size: Theme.icon-sm; tint: Theme.text-secondary; }
         }
     }
 }

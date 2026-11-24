@@ -200,12 +200,13 @@ Transitions, from `connect.rs`:
 
 - A **picked** connection id is stored in `App::picked`. A retry ([`connect_active`](crate::connections::connect_active))
   reconnects to it; with none, the view becomes `none` with the text "No saved connection".
-- **Connecting** sets the flag and keeps the other fields. The attempt gets a number from
+- **Connecting** sets the flag and shows the connection being connected to; the one in use keeps
+  its id until the switch. The attempt gets a number from
   [`connect_attempt`](cachemire_core::state::AppState::connect_attempt).
-- **Success** sets the store's active connection and shows `Connected` with address, name and the
-  SSH server label; the `established` callback then refreshes the list and reloads the keyspace.
-- **Failure** shows `Disconnected`. The failure is logged with its [`ErrorKind`](cachemire_core::error::ErrorKind);
-  the SSH badge turns red when the kind is `Tunnel`.
+- **Success** sets the store's active connection, remembers what its server is, and shows
+  `Connected` with name, address, SSH server, profile and server; the `established` callback then refreshes the list and reloads the keyspace.
+- **Failure** shows `Disconnected`, with the connection's name and the reason. The failure is logged
+  with its [`ErrorKind`](cachemire_core::error::ErrorKind).
 - **Host key unknown**: the failed outcome carries the server; the user decides in a dialog. Trusting
   records the key and retries the same attempt.
 - **Disconnect** (the cross in the pill): clears `picked`, discards the connection's tabs and the saved

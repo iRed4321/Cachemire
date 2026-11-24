@@ -186,12 +186,17 @@ fn chip_lines(app: &App, keys: &[String]) -> Vec<Vec<AwsChip>> {
         return Vec::new();
     }
     chips.insert(0, AwsChip { label: t!("All").as_ref().into(), count: keys.len() as i32, ..Default::default() });
+    in_lines(chips, CHIP_ROOM)
+}
+
+/// `chips` in lines `room` wide (at zoom 1), in their order.
+pub(crate) fn in_lines(chips: Vec<AwsChip>, room: f32) -> Vec<Vec<AwsChip>> {
     let mut lines: Vec<Vec<AwsChip>> = Vec::new();
-    let mut used = CHIP_ROOM;
+    let mut used = room;
     for chip in chips {
         let width = chip_width(&chip);
         match lines.last_mut() {
-            Some(line) if used + CHIP_GAP + width <= CHIP_ROOM => {
+            Some(line) if used + CHIP_GAP + width <= room => {
                 used += CHIP_GAP + width;
                 line.push(chip);
             }
@@ -439,7 +444,7 @@ pub fn init(app: &Rc<App>, window: &MainWindow) {
                 window.global::<AwsAccount>().set_busy(false);
                 bring_to_front(window);
                 match result.flatten() {
-                    Ok(aws::Listing { account, region, mut items }) => {
+                    Ok(aws::Listing { account, region, mut items, servers }) => {
                         tracing::info!(%account, %region, endpoints = items.len(), "listed the cloud connections");
                         // a complete listing: counts the endpoints with settings that it lacks
                         let present: FxHashSet<String> = items.iter().map(|item| item.name.clone()).collect();
@@ -456,7 +461,11 @@ pub fn init(app: &Rc<App>, window: &MainWindow) {
                         if let Err(e) = state.settings.lock().remember_cloud_profile(&name, &account, &region) {
                             tracing::warn!("can't save the profile's account: {e}");
                         }
-                        state.connections.lock().set_cloud_connections(&account, &region, items);
+                        {
+                            let mut store = state.connections.lock();
+                            store.set_cloud_connections(&account, &region, items);
+                            store.set_cloud_servers(servers);
+                        }
                         window.global::<AwsAccount>().set_account_known(true);
                         crate::connections::refresh(app, window);
                         // the last session's connection, unless one was picked since

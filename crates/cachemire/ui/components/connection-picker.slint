@@ -1,8 +1,9 @@
 import { Theme } from "theme.slint";
 import { HDivider, VScrollBar, IconButton, CheckRow, ModalButton, BackdropArea } from "widgets.slint";
-import { IconPlus, IconPencil, IconCloud } from "icons.slint";
+import { IconPlus, IconPencil, IconCloud, IconDot, IconStar, IconCluster, IconLock } from "icons.slint";
 import { PastePopup } from "widgets.slint";
-import { ProfileTint, ConnProfileRowData, ConnectionRowData, ConnectionForm } from "types.slint";
+import { SearchField } from "key-detail-widgets.slint";
+import { ProfileTint, ConnProfileRowData, ConnectionRowData, ConnectionForm, AwsChip, PickerRow } from "types.slint";
 import { ConnectionState, ConnectionEditor, Preferences } from "../globals.slint";
 export { ConnProfileRowData, ConnectionRowData, ConnectionForm }
 
@@ -16,136 +17,118 @@ export component TintDot inherits Rectangle {
     background: Theme.profile-color(tint);
 }
 
-// A small filled label at the end of a connection row: its profile, or the SSH tunnel.
-component RowBadge inherits Rectangle {
-    in property <string> text;
-    in property <color> tint;
-    in property <color> text-color: white;
-
-    height: Theme.px(20px);
-    width: min(label.preferred-width, Theme.px(110px)) + Theme.px(16px);
-    border-radius: Theme.radius-sm;
-    background: tint;
-
-    label := Text {
-        x: Theme.px(8px);
-        width: parent.width - Theme.px(16px);
-        height: parent.height;
-        text: root.text;
-        color: text-color;
-        font-size: Theme.pt(11px);
-        font-weight: 700;
-        vertical-alignment: center;
-        horizontal-alignment: center;
-        overflow: elide;
+// a connection open in this window: a green dot for the one in use, a green ring for one kept behind
+component OpenMark inherits Rectangle {
+    in property <bool> active;
+    in property <bool> kept;
+    width: Theme.px(14px);
+    if root.active: IconDot {
+        x: (parent.width - self.width) / 2;
+        y: (parent.height - self.height) / 2;
+        size: Theme.px(8px);
+        tint: Theme.accent-green.darker(0.15);
+    }
+    if root.kept: Rectangle {
+        x: (parent.width - self.width) / 2;
+        y: (parent.height - self.height) / 2;
+        width: Theme.px(8px);
+        height: self.width;
+        border-radius: self.width / 2;
+        border-width: Theme.px(1.5px);
+        border-color: Theme.accent-green.darker(0.15);
     }
 }
 
-component ConnectionRow inherits Rectangle {
-    in property <string> name;
-    in property <string> address;
-    in property <bool> active;
-    // the connection is kept in the background: shown as a green ring
-    in property <bool> kept;
-    // the connection goes through an SSH tunnel: shown as a small lock badge
-    in property <bool> ssh;
-    // a cloud account's connection: it has no edit form
-    in property <bool> editable: true;
-    // the connection profile's name and tint, for its badge ("" for no badge)
-    in property <string> profile-name: "";
-    in property <ProfileTint> profile-tint: ProfileTint.red;
-    // set by the caller to the Flickable's own width: inside a layout,
-    // `width: 100%` doesn't resolve to the panel's width like it would for
-    // a free-positioned element, so without this the row stops short of it.
-    in property <length> row-width;
-    callback connect-clicked();
-    callback modify-clicked();
+// A connection profile chip over a list: picked, it keeps the rows using that one.
+export component ProfileChip inherits Rectangle {
+    in property <AwsChip> data;
+    in property <bool> on;
+    callback clicked <=> area.clicked;
 
-    width: row-width;
-    height: Theme.px(30px);
-    // opaque even at rest: a hover change only redraws the row, which must then cover
-    // its whole area itself rather than count on the panel behind being redrawn too
-    background: active ? Theme.bg-selected-soft : (row-area.has-hover ? Theme.bg-hover-elevated : Theme.bg-elevated);
+    height: Theme.px(22px);
+    border-radius: self.height / 2;
+    border-width: 1px;
+    border-color: on ? Theme.accent-blue-dim : Theme.border-soft;
+    background: on ? Theme.bg-selected-soft : (area.has-hover ? Theme.bg-hover-elevated : transparent);
 
-    row-area := TouchArea {
-        mouse-cursor: pointer;
-        clicked => { root.connect-clicked(); }
-
-        HorizontalLayout {
-            padding-left: Theme.px(10px);
-            padding-right: Theme.px(6px);
-            spacing: Theme.px(6px);
-            cross-axis-alignment: center;
-
-            Rectangle {
-                width: Theme.px(10px);
-                height: Theme.px(10px);
-                if root.kept: Rectangle {
-                    border-radius: self.width / 2;
-                    border-width: Theme.px(1.5px);
-                    border-color: Theme.accent-green;
-                }
-            }
-            Text {
-                text: name;
-                font-size: Theme.pt(12px);
-                font-weight: 600;
-                color: Theme.text-primary;
-                vertical-alignment: center;
-                overflow: elide;
-                max-width: Theme.px(140px);
-            }
-            Text {
-                text: "-";
-                color: Theme.text-tertiary;
-                font-size: Theme.pt(12px);
-                vertical-alignment: center;
-            }
-            Text {
-                text: address;
-                font-italic: true;
-                color: Theme.text-secondary;
-                font-size: Theme.pt(12px);
-                vertical-alignment: center;
-                horizontal-stretch: 1;
-                min-width: 0px;
-                overflow: elide;
-            }
-            if root.profile-name != "": RowBadge {
-                text: root.profile-name;
-                tint: Theme.profile-color(root.profile-tint);
-                text-color: root.profile-tint == ProfileTint.yellow ? #1c1c1e : white;
-            }
-            if root.ssh: RowBadge {
-                text: "SSH";
-                tint: Theme.accent-green;
-            }
-            if root.editable: IconButton {
-                box-size: Theme.px(24px);
-                hint: @tr("Edit connection");
-                clicked => { root.modify-clicked(); }
-                IconPencil { size: Theme.icon-sm; tint: Theme.text-tertiary; }
-            }
+    area := TouchArea { mouse-cursor: pointer; }
+    HorizontalLayout {
+        padding-left: Theme.px(9px);
+        padding-right: Theme.px(9px);
+        spacing: Theme.px(5px);
+        if data.has-tint: VerticalLayout {
+            alignment: center;
+            TintDot { tint: data.tint; size: Theme.px(6px); }
+        }
+        Text {
+            text: data.label;
+            font-size: Theme.pt(11px);
+            color: on || area.has-hover ? Theme.text-primary : Theme.text-secondary;
+            vertical-alignment: center;
+        }
+        Text {
+            text: data.count;
+            font-size: Theme.pt(11px);
+            color: Theme.text-tertiary;
+            vertical-alignment: center;
         }
     }
 }
 
-// Floating panel under the title bar's connection pill: a "New
-// connection…" row, then every saved connection as "name - address", each
-// with a modify icon. Positioned and owned (open state, outside-click) by main.slint.
+// One segment of the source switch beside the filter: all, saved or cloud connections.
+component SourceSegment inherits Rectangle {
+    in property <AwsChip> data;
+    in property <bool> on;
+    callback clicked <=> area.clicked;
+
+    width: row.preferred-width + Theme.px(18px);
+    background: on ? Theme.bg-selected-soft : (area.has-hover ? Theme.bg-hover-elevated : transparent);
+    area := TouchArea { mouse-cursor: pointer; }
+    row := HorizontalLayout {
+        x: Theme.px(9px);
+        spacing: Theme.px(5px);
+        Text {
+            text: data.key == "saved" ? @tr("connection source" => "Saved") : data.label;
+            font-size: Theme.pt(11px);
+            color: on || area.has-hover ? Theme.text-primary : Theme.text-secondary;
+            vertical-alignment: center;
+        }
+        Text {
+            text: data.count;
+            font-size: Theme.pt(11px);
+            color: Theme.text-tertiary;
+            vertical-alignment: center;
+        }
+    }
+}
+
+// A small dot between the facts of a row's second line.
+component FactDot inherits VerticalLayout {
+    alignment: center;
+    IconDot { size: Theme.px(3px); tint: Theme.text-tertiary; }
+}
+
+// Floating list under the title bar's connection pill, like the AWS profiles' one: a filter, the
+// source switch and profile chips, the pinned connections, then the saved and cloud ones (see
+// connections::picker). Positioned and dismissed by main.slint.
 export component ConnectionDropdown inherits Rectangle {
-    in property <[ConnectionRowData]> connections: ConnectionState.connections;
-    // the connections of the cloud account, listed under their own heading
-    in property <[ConnectionRowData]> cloud-connections: ConnectionState.cloud-connections;
+    in property <[PickerRow]> rows: ConnectionState.rows;
+    in property <[PickerRow]> pins: ConnectionState.pins;
+    // whether the clipboard holds text, for the filter's right-click "Paste"
+    callback clipboard-has-text() -> bool;
     callback new-connection-clicked();
     // the import / export window
     callback transfer-clicked();
     callback connection-clicked(id: string);
-    callback modify-clicked(row: ConnectionRowData);
-    // the pencil of a cloud connection, which edits only what is set for it
-    callback cloud-modify-clicked(id: string);
+    // the pencil of a row: its form, or a cloud connection's settings
+    callback edit-clicked(id: string);
+    callback closed();
 
-    width: Theme.px(490px);
+    init => {
+        ConnectionState.list-requested("");
+    }
+
+    width: Theme.px(520px);
     background: Theme.bg-elevated;
     border-radius: Theme.radius-md;
     border-width: 1px;
@@ -153,140 +136,453 @@ export component ConnectionDropdown inherits Rectangle {
     drop-shadow-color: Theme.shadow-color;
     drop-shadow-blur: Theme.shadow-blur;
     drop-shadow-offset-y: Theme.shadow-offset-y;
-    // the rows' square backgrounds are cut to the panel's rounded corners
-    clip: true;
-    property <length> row-stride: Theme.px(30px);
-    property <length> list-max-height: Theme.px(280px);
-    // scrolling only kicks in once the list is actually taller than the
-    // panel's max height — roughly 9-10 connections at the current row height
-    property <length> list-height: (connections.length + cloud-connections.length) * row-stride
-        + (cloud-connections.length > 0 ? cloud-head-height : 0px);
-    property <length> cloud-head-height: Theme.px(31px);
-    property <bool> needs-scrollbar: list-height > list-max-height;
+    property <length> row-height: Theme.px(44px);
+    property <length> section-height: Theme.px(24px);
+    property <length> list-max-height: Theme.px(420px);
+    property <length> filter-height: Theme.px(40px);
+    property <length> footer-height: Theme.px(36px);
+    property <length> chip-height: Theme.px(22px);
+    property <length> chip-gap: Theme.px(6px);
+    property <int> chip-lines: ConnectionState.chip-lines.length;
+    // the chips' lines and the line under them
+    property <length> chips-height: chip-lines == 0 ? 0px : chip-lines * chip-height + (chip-lines - 1) * chip-gap + Theme.px(8px) + 1px;
+    property <length> pin-height: Theme.px(28px);
+    property <length> pin-gap: Theme.px(4px);
+    property <int> pin-lines: ceil(pins.length / 2);
+    property <length> pins-height: pins.length == 0 ? 0px : section-height + pin-lines * pin-height + (pin-lines - 1) * pin-gap + Theme.px(6px);
+    property <length> content-height: rows.length == 0 ? (pins.length == 0 ? Theme.px(48px) : 0px)
+        : rows.length * row-height + rows[rows.length - 1].sections-above * section-height + Theme.px(4px);
+    property <length> list-height: min(list-max-height, content-height);
+    // with no filter, source or chip, an empty list means nothing is saved yet
+    property <bool> unfiltered: filter-box.text == "" && ConnectionState.source == "" && ConnectionState.chip == "";
+    // sized to its parts (an unset height would stretch to the window's)
+    height: filter-height + chips-height + pins-height + list-height + footer-height;
 
-    // absorbs clicks on blank space (padding, divider) inside the panel so
-    // they don't fall through to the full-window catcher behind it and
-    // close the dropdown — same fix as ExportGroup's label area.
+    // the top of row `i` in the list, its section's title above it
+    pure function row-top(i: int) -> length {
+        return i * row-height + rows[i].sections-above * section-height;
+    }
+    function move-highlight(to: int) {
+        if rows.length == 0 {
+            return;
+        }
+        ConnectionState.highlighted = max(0, min(rows.length - 1, to));
+        let top = row-top(ConnectionState.highlighted) - (rows[ConnectionState.highlighted].section == "" ? 0px : section-height);
+        let bottom = row-top(ConnectionState.highlighted) + row-height;
+        if top < -list-flick.content-y {
+            list-flick.content-y = -top;
+        } else if bottom > -list-flick.content-y + list-flick.height {
+            list-flick.content-y = -(bottom - list-flick.height);
+        }
+    }
+    // lists again with what the filter holds, back at the top
+    function relist() {
+        ConnectionState.list-requested(filter-box.text);
+        list-flick.content-y = 0;
+    }
+
+    // absorbs clicks on blank space so they don't close the dropdown
     TouchArea { }
 
     VerticalLayout {
-        alignment: start;
-
-        new-row := HorizontalLayout {
-            width: root.width;
-            height: Theme.px(32px);
-            // the new-connection button, then the one for importing and exporting
-            Rectangle {
-                width: (root.width - Theme.px(1px)) / 2;
-                // opaque at rest, like ConnectionRow's background
-                background: new-area.has-hover ? Theme.bg-hover-elevated : Theme.bg-elevated;
-                new-area := TouchArea {
-                    mouse-cursor: pointer;
-                    clicked => { root.new-connection-clicked(); }
+        HorizontalLayout {
+            height: filter-height;
+            padding-left: Theme.px(8px);
+            padding-right: Theme.px(10px);
+            padding-top: Theme.px(8px);
+            padding-bottom: Theme.px(6px);
+            spacing: Theme.px(8px);
+            filter-box := SearchField {
+                auto-focus: true;
+                placeholder: @tr("Search a name, host or profile...");
+                font-size: Theme.pt(12px);
+                height: Theme.px(26px);
+                horizontal-stretch: 1;
+                clipboard-has-text() => { return root.clipboard-has-text(); }
+                // the list is filtered anew with its first row highlighted: back to the top
+                edited => { root.relist(); }
+                accepted => {
+                    if rows.length > 0 {
+                        root.connection-clicked(rows[ConnectionState.highlighted].id);
+                    } else if pins.length > 0 {
+                        root.connection-clicked(pins[0].id);
+                    }
                 }
-                HorizontalLayout {
-                    alignment: center;
-                    spacing: Theme.px(6px);
-                    cross-axis-alignment: center;
-                    IconPlus { size: Theme.icon-sm; tint: Theme.accent-blue; }
-                    Text {
-                        text: @tr("New connection...");
-                        color: Theme.accent-blue;
-                        font-size: Theme.pt(12px);
-                        font-weight: 600;
-                        vertical-alignment: center;
+                key-intercept(event) => {
+                    if event.text == Key.UpArrow {
+                        root.move-highlight(ConnectionState.highlighted - 1);
+                        return true;
+                    } else if event.text == Key.DownArrow {
+                        root.move-highlight(ConnectionState.highlighted + 1);
+                        return true;
+                    } else if event.text == Key.Escape {
+                        root.closed();
+                        return true;
+                    }
+                    return false;
+                }
+            }
+            if ConnectionState.sources.length > 0: Rectangle {
+                y: (parent.height - self.height) / 2;
+                height: Theme.px(22px);
+                width: segments.preferred-width + 2px;
+                border-radius: self.height / 2;
+                border-width: 1px;
+                border-color: Theme.border-soft;
+                clip: true;
+                segments := HorizontalLayout {
+                    x: 1px;
+                    y: 1px;
+                    height: parent.height - 2px;
+                    for s in ConnectionState.sources: SourceSegment {
+                        data: s;
+                        on: s.key == ConnectionState.source;
+                        clicked => {
+                            ConnectionState.source-picked(s.key);
+                            root.relist();
+                        }
                     }
                 }
             }
-            Rectangle { width: Theme.px(1px); background: Theme.border-soft; }
-            Rectangle {
-                width: (root.width - Theme.px(1px)) / 2;
-                background: transfer-area.has-hover ? Theme.bg-hover-elevated : Theme.bg-elevated;
-                transfer-area := TouchArea {
-                    mouse-cursor: pointer;
-                    clicked => { root.transfer-clicked(); }
+            Text {
+                text: ConnectionState.count-label;
+                font-size: Theme.pt(11px);
+                color: Theme.text-tertiary;
+                vertical-alignment: center;
+            }
+        }
+
+        if chip-lines > 0: VerticalLayout {
+            height: chips-height;
+            VerticalLayout {
+                padding-left: Theme.px(8px);
+                padding-right: Theme.px(10px);
+                spacing: chip-gap;
+                for line in ConnectionState.chip-lines: HorizontalLayout {
+                    height: chip-height;
+                    alignment: start;
+                    spacing: chip-gap;
+                    for c in line: ProfileChip {
+                        data: c;
+                        on: c.key == ConnectionState.chip;
+                        // picked again, a chip lets go: all the connections are back
+                        clicked => {
+                            ConnectionState.chip-picked(c.key == ConnectionState.chip ? "" : c.key);
+                            root.relist();
+                        }
+                    }
                 }
+            }
+            Rectangle { }
+            Rectangle {
+                height: 1px;
+                background: Theme.border-soft;
+            }
+        }
+
+        // the pins: two per line, a click connects, the star unpins
+        if pins.length > 0: Rectangle {
+            height: pins-height;
+            HorizontalLayout {
+                y: 0;
+                height: section-height;
+                padding-left: Theme.px(12px);
                 Text {
-                    text: @tr("Import / Export");
-                    color: Theme.text-secondary;
-                    font-size: Theme.pt(12px);
+                    text: @tr("PINNED");
+                    font-size: Theme.pt(10.5px);
                     font-weight: 600;
-                    horizontal-alignment: center;
+                    color: Theme.text-tertiary;
                     vertical-alignment: center;
                 }
             }
+            for p[i] in pins: Rectangle {
+                property <length> tile-width: (parent.width - Theme.px(16px) - pin-gap) / 2;
+                x: Theme.px(8px) + mod(i, 2) * (tile-width + pin-gap);
+                y: section-height + floor(i / 2) * (pin-height + pin-gap);
+                width: tile-width;
+                height: pin-height;
+                border-radius: Theme.radius-sm;
+                border-width: 1px;
+                border-color: p.active ? Theme.accent-blue-dim : Theme.border-soft;
+                background: p.active ? Theme.bg-selected-soft
+                    : (tile-area.has-hover ? Theme.bg-hover-elevated : Theme.bg-hover-elevated.mix(Theme.bg-elevated, 0.3));
+                tile-area := TouchArea {
+                    mouse-cursor: pointer;
+                    clicked => { root.connection-clicked(p.id); }
+                }
+                HorizontalLayout {
+                    padding-left: Theme.px(8px);
+                    padding-right: Theme.px(2px);
+                    spacing: Theme.px(7px);
+                    VerticalLayout {
+                        alignment: center;
+                        if p.has-tint: TintDot { tint: p.tint; size: Theme.px(7px); }
+                        if !p.has-tint: IconDot { size: Theme.px(7px); tint: Theme.text-tertiary; }
+                    }
+                    Text {
+                        text: p.name;
+                        font-size: Theme.pt(12px);
+                        font-weight: p.active ? 700 : 500;
+                        color: Theme.text-primary;
+                        vertical-alignment: center;
+                        overflow: elide;
+                        horizontal-stretch: 1;
+                        min-width: 0px;
+                    }
+                    if p.active || p.kept: OpenMark { active: p.active; kept: p.kept; }
+                    if p.cluster: VerticalLayout {
+                        alignment: center;
+                        IconCluster { size: Theme.px(12px); tint: Theme.text-tertiary; }
+                    }
+                    if p.ssh-label != "": VerticalLayout {
+                        alignment: center;
+                        IconLock { size: Theme.px(11px); tint: Theme.text-tertiary; }
+                    }
+                    VerticalLayout {
+                        alignment: center;
+                        IconButton {
+                            box-size: Theme.px(22px);
+                            hint: @tr("Unpin");
+                            clicked => {
+                                ConnectionState.pin-toggled(p.id);
+                                root.relist();
+                            }
+                            IconStar { size: Theme.px(12px); filled: true; tint: Theme.accent-yellow; }
+                        }
+                    }
+                }
+            }
         }
-        HDivider { }
-        if connections.length == 0 && cloud-connections.length == 0: Text {
-            text: @tr("No saved connections yet");
+
+        if rows.length == 0 && pins.length == 0: Text {
+            height: list-height;
+            text: root.unfiltered ? @tr("No saved connections yet") : @tr("No connection matches");
             color: Theme.text-tertiary;
             font-size: Theme.pt(12px);
             horizontal-alignment: center;
-            height: Theme.px(40px);
             vertical-alignment: center;
         }
-        if connections.length > 0 || cloud-connections.length > 0: HorizontalLayout {
-            height: min(list-max-height, list-height);
+        HorizontalLayout {
+            height: rows.length == 0 ? 0px : list-height;
             list-flick := Flickable {
                 horizontal-stretch: 1;
-                interactive: true;
-                // A Flickable's content sizes to itself, not its frame, so
-                // this layout is pinned to the panel's known width instead
-                // (not list-flick.width, which would be circular here).
-                content := VerticalLayout {
-                    width: root.width;
+                VerticalLayout {
+                    width: list-flick.width;
                     alignment: start;
-                    for c in connections: ConnectionRow {
-                        row-width: content.width;
-                        name: c.name;
-                        address: c.address;
-                        active: c.active;
-                        kept: c.in-background;
-                        ssh: c.ssh-enabled;
-                        profile-name: c.profile-name;
-                        profile-tint: c.profile-tint;
-                        connect-clicked => { root.connection-clicked(c.id); }
-                        modify-clicked => { root.modify-clicked(c); }
-                    }
-                    if cloud-connections.length > 0: Rectangle {
-                        height: cloud-head-height;
-                        VerticalLayout {
-                            Rectangle { height: Theme.px(8px); }
-                            HDivider { }
-                            HorizontalLayout {
-                                padding-left: Theme.px(10px);
-                                spacing: Theme.px(6px);
-                                alignment: start;
-                                IconCloud { size: Theme.px(13px); tint: Theme.text-primary; y: (parent.height - self.height) / 2; }
-                                Text {
-                                    text: @tr("Cloud connections");
-                                    color: Theme.text-tertiary;
-                                    font-size: Theme.pt(11px);
-                                    font-weight: 700;
-                                    vertical-alignment: center;
+                    padding-bottom: Theme.px(4px);
+                    for r[i] in rows: VerticalLayout {
+                        if r.section != "": HorizontalLayout {
+                            height: section-height;
+                            padding-left: Theme.px(12px);
+                            spacing: Theme.px(6px);
+                            if r.cloud: VerticalLayout {
+                                alignment: center;
+                                IconCloud { size: Theme.px(12px); filled: true; tint: Theme.accent-orange; }
+                            }
+                            Text {
+                                text: r.section;
+                                font-size: Theme.pt(10.5px);
+                                font-weight: 600;
+                                color: Theme.text-tertiary;
+                                vertical-alignment: center;
+                                horizontal-stretch: 1;
+                            }
+                        }
+                        Rectangle {
+                            height: row-height;
+                            Rectangle {
+                                x: Theme.px(4px);
+                                width: parent.width - Theme.px(8px);
+                                border-radius: Theme.radius-sm;
+                                background: r.active ? Theme.bg-selected-soft
+                                    : (i == ConnectionState.highlighted || row-area.has-hover ? Theme.bg-hover-elevated : Theme.bg-elevated);
+                                row-area := TouchArea {
+                                    mouse-cursor: pointer;
+                                    clicked => { root.connection-clicked(r.id); }
+                                }
+                                HorizontalLayout {
+                                    padding-left: Theme.px(8px);
+                                    padding-right: Theme.px(6px);
+                                    spacing: Theme.px(8px);
+                                    // as the title bar's dot: in use, a green dot; kept open behind, a green ring
+                                    OpenMark { active: r.active; kept: r.kept; }
+                                    VerticalLayout {
+                                        horizontal-stretch: 1;
+                                        alignment: center;
+                                        spacing: Theme.px(3px);
+                                        HorizontalLayout {
+                                            spacing: Theme.px(8px);
+                                            Text {
+                                                text: r.name;
+                                                font-size: Theme.pt(12.5px);
+                                                font-weight: r.active ? 700 : 500;
+                                                color: Theme.text-primary;
+                                                overflow: elide;
+                                                max-width: Theme.px(200px);
+                                                vertical-alignment: center;
+                                            }
+                                            Text {
+                                                text: r.address;
+                                                font-size: Theme.pt(10.5px);
+                                                font-family: Theme.font-mono;
+                                                color: Theme.text-tertiary;
+                                                overflow: elide;
+                                                horizontal-stretch: 1;
+                                                min-width: 0px;
+                                                vertical-alignment: center;
+                                            }
+                                            Text {
+                                                text: r.when;
+                                                font-size: Theme.pt(11px);
+                                                font-weight: r.active || r.kept ? 600 : 400;
+                                                color: r.active || r.kept ? Theme.accent-green.darker(0.15) : Theme.text-tertiary;
+                                                vertical-alignment: center;
+                                            }
+                                        }
+                                        HorizontalLayout {
+                                            spacing: Theme.px(6px);
+                                            VerticalLayout {
+                                                alignment: center;
+                                                if r.has-tint: TintDot { tint: r.tint; size: Theme.px(7px); }
+                                                if !r.has-tint: IconDot { size: Theme.px(7px); tint: Theme.text-tertiary; }
+                                            }
+                                            Text {
+                                                text: r.profile-label;
+                                                font-size: Theme.pt(11px);
+                                                color: r.has-tint ? Theme.text-secondary : Theme.text-tertiary;
+                                                overflow: elide;
+                                                min-width: 0px;
+                                            }
+                                            if r.kind-label != "": FactDot { }
+                                            if r.cluster: VerticalLayout {
+                                                alignment: center;
+                                                IconCluster { size: Theme.px(12px); tint: Theme.text-secondary; }
+                                            }
+                                            if r.kind-label != "": Text {
+                                                text: r.kind-label;
+                                                font-size: Theme.pt(11px);
+                                                color: Theme.text-secondary;
+                                            }
+                                            if r.ssh-label != "": FactDot { }
+                                            if r.ssh-label != "": VerticalLayout {
+                                                alignment: center;
+                                                IconLock { size: Theme.px(11px); tint: Theme.text-secondary; }
+                                            }
+                                            if r.ssh-label != "": Text {
+                                                text: r.ssh-label;
+                                                font-size: Theme.pt(11px);
+                                                color: Theme.text-secondary;
+                                                overflow: elide;
+                                                min-width: 0px;
+                                            }
+                                            if r.read-only: FactDot { }
+                                            if r.read-only: Text {
+                                                text: @tr("read-only");
+                                                font-size: Theme.pt(11px);
+                                                color: Theme.text-secondary;
+                                            }
+                                            Rectangle { horizontal-stretch: 1; }
+                                        }
+                                    }
+                                    // the star and the pencil show on the row under the pointer or the keyboard
+                                    VerticalLayout {
+                                        alignment: center;
+                                        IconButton {
+                                            box-size: Theme.px(26px);
+                                            hint: @tr("Pin to the top");
+                                            opacity: row-area.has-hover || self.hovered || i == ConnectionState.highlighted ? 1 : 0;
+                                            clicked => {
+                                                ConnectionState.pin-toggled(r.id);
+                                                root.relist();
+                                            }
+                                            IconStar { size: Theme.icon-sm; tint: Theme.text-secondary; }
+                                        }
+                                    }
+                                    VerticalLayout {
+                                        alignment: center;
+                                        IconButton {
+                                            box-size: Theme.px(26px);
+                                            hint: r.cloud ? @tr("Connection settings") : @tr("Edit connection");
+                                            opacity: row-area.has-hover || self.hovered || i == ConnectionState.highlighted ? 1 : 0;
+                                            clicked => { root.edit-clicked(r.id); }
+                                            IconPencil { size: Theme.icon-sm; tint: Theme.text-secondary; }
+                                        }
+                                    }
                                 }
                             }
                         }
                     }
-                    for c in cloud-connections: ConnectionRow {
-                        row-width: content.width;
-                        name: c.name;
-                        address: c.address;
-                        active: c.active;
-                        kept: c.in-background;
-                        ssh: c.ssh-enabled;
-                        profile-name: c.profile-name;
-                        profile-tint: c.profile-tint;
-                        connect-clicked => { root.connection-clicked(c.id); }
-                        modify-clicked => { root.cloud-modify-clicked(c.id); }
-                    }
                 }
             }
-            // conditional, not just `visible: false`, which would still
-            // reserve layout space and leave a gap for a short list
-            if needs-scrollbar: VScrollBar {
+            if list-flick.content-height > list-flick.height: VScrollBar {
                 content-height: list-flick.content-height;
                 content-y <=> list-flick.content-y;
+            }
+        }
+
+        Rectangle {
+            height: footer-height;
+            Rectangle {
+                y: 0;
+                height: 1px;
+                background: Theme.border-soft;
+            }
+            HorizontalLayout {
+                padding-left: Theme.px(4px);
+                padding-right: Theme.px(10px);
+                spacing: Theme.px(2px);
+                new-button := Rectangle {
+                    y: (parent.height - self.height) / 2;
+                    width: new-row.preferred-width + Theme.px(16px);
+                    height: Theme.px(26px);
+                    border-radius: Theme.radius-sm;
+                    background: new-area.has-hover ? Theme.bg-hover-elevated : transparent;
+                    new-area := TouchArea {
+                        mouse-cursor: pointer;
+                        clicked => { root.new-connection-clicked(); }
+                    }
+                    new-row := HorizontalLayout {
+                        x: Theme.px(8px);
+                        spacing: Theme.px(6px);
+                        VerticalLayout {
+                            alignment: center;
+                            IconPlus { size: Theme.px(13px); tint: Theme.accent-blue; }
+                        }
+                        Text {
+                            text: @tr("New connection");
+                            color: Theme.accent-blue;
+                            font-size: Theme.pt(12px);
+                            font-weight: 600;
+                            vertical-alignment: center;
+                        }
+                    }
+                }
+                Rectangle {
+                    y: (parent.height - self.height) / 2;
+                    width: transfer-label.preferred-width + Theme.px(16px);
+                    height: Theme.px(26px);
+                    border-radius: Theme.radius-sm;
+                    background: transfer-area.has-hover ? Theme.bg-hover-elevated : transparent;
+                    transfer-area := TouchArea {
+                        mouse-cursor: pointer;
+                        clicked => { root.transfer-clicked(); }
+                    }
+                    transfer-label := Text {
+                        text: @tr("Import / Export");
+                        color: transfer-area.has-hover ? Theme.text-primary : Theme.text-secondary;
+                        font-size: Theme.pt(12px);
+                        vertical-alignment: center;
+                    }
+                }
+                Text {
+                    horizontal-stretch: 1;
+                    text: @tr("↑↓ to move, Enter to connect");
+                    font-size: Theme.pt(11px);
+                    color: Theme.text-tertiary;
+                    horizontal-alignment: right;
+                    vertical-alignment: center;
+                    overflow: elide;
+                }
             }
         }
     }

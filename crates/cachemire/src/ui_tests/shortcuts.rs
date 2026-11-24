@@ -39,7 +39,7 @@ fn error(h: &Harness) -> String {
 fn the_page_lists_every_shortcut_under_the_place_it_works_in() {
     let h = bindings(&test_state());
     let rows = rows(&h);
-    assert_eq!(rows.len(), 11, "every action of the app");
+    assert_eq!(rows.len(), 12, "every action of the app");
     let titles: Vec<String> = rows.iter().filter(|row| !row.group_title.is_empty()).map(|row| row.group_title.to_string()).collect();
     assert_eq!(titles, ["Window", "Query box", "Value editor"], "each place named once, on its first row");
     assert_eq!(keys_shown(&row(&h, ShortcutAction::CloseTab)), ["Ctrl+W"]);
@@ -166,5 +166,5 @@ fn the_settings_search_keeps_the_shortcuts_it_finds() {
     assert_eq!(found, [ShortcutAction::CloseTab], "found by its keys too");
 
     shortcuts.invoke_filter_changed("key bindings".into(), "Key bindings".into(), "Standard keys".into());
-    assert_eq!(rows(&h).len(), 11, "the page's name finds all of it");
+    assert_eq!(rows(&h).len(), 12, "the page's name finds all of it");
 }

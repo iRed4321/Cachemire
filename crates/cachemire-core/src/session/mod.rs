@@ -327,7 +327,7 @@ impl Session {
     }
 
     /// One slot of each primary of the cluster (`CLUSTER SLOTS`).
-    async fn primaries(&mut self) -> Result<Vec<u16>, Error> {
+    pub(crate) async fn primaries(&mut self) -> Result<Vec<u16>, Error> {
         Ok(primary_slots(redis::cmd("CLUSTER").arg("SLOTS").query_async(&mut self.con).await?))
     }
 

@@ -2,7 +2,6 @@
 //! (SSO in the browser, see [`sso`], or the SDK's chain) and the ElastiCache
 //! Redis groups.
 
-use rustc_hash::FxHashSet;
 use std::path::PathBuf;
 use std::time::{Duration, UNIX_EPOCH};
 
@@ -270,6 +269,14 @@ pub struct Listing {
     pub account: String,
     pub region: String,
     pub items: Vec<ConnectionItem>,
+    /// what each connection's server is, by connection id
+    pub servers: rustc_hash::FxHashMap<String, crate::connection::ServerKind>,
+}
+
+/// The server an ElastiCache engine (`redis`, `valkey`) and version make, with `primaries`.
+fn server_of(engine: Option<&str>, version: Option<&str>, primaries: u32) -> crate::connection::ServerKind {
+    let product = if engine == Some("valkey") { "Valkey" } else { "Redis" };
+    crate::connection::ServerKind { product: product.to_string(), version: version.unwrap_or_default().to_string(), primaries }
 }
 
 /// The ElastiCache Redis and Valkey groups and standalone nodes that `profile` sees, as
@@ -307,7 +314,9 @@ pub async fn redis_connections(profile_name: &str, page: &SignInPage) -> Result<
     };
 
     let mut items = Vec::new();
-    let mut groups = FxHashSet::default();
+    let mut servers = rustc_hash::FxHashMap::default();
+    // each replication group's engine and version, from its nodes
+    let mut groups: rustc_hash::FxHashMap<String, (Option<String>, Option<String>)> = Default::default();
     let mut marker: Option<String> = None;
     loop {
         let page = client.describe_cache_clusters().show_cache_node_info(true).set_marker(marker.take()).send().await.map_err(describe)?;
@@ -317,15 +326,19 @@ pub async fn redis_connections(profile_name: &str, page: &SignInPage) -> Result<
             }
             match cluster.replication_group_id() {
                 Some(group) => {
-                    groups.insert(group.to_string());
+                    groups.insert(group.to_string(), (cluster.engine().map(str::to_string), cluster.engine_version().map(str::to_string)));
                 }
                 None => {
                     let endpoint = cluster.cache_nodes().first().and_then(|n| n.endpoint());
-                    items.extend(item(
+                    let listed = item(
                         cluster.cache_cluster_id().unwrap_or_default(),
                         endpoint,
                         cluster.transit_encryption_enabled().unwrap_or(false),
-                    ));
+                    );
+                    if let Some(listed) = listed {
+                        servers.insert(listed.id.clone(), server_of(cluster.engine(), cluster.engine_version(), 0));
+                        items.push(listed);
+                    }
                 }
             }
         }
@@ -340,12 +353,15 @@ pub async fn redis_connections(profile_name: &str, page: &SignInPage) -> Result<
         let page = client.describe_replication_groups().set_marker(marker.take()).send().await.map_err(describe)?;
         for group in page.replication_groups() {
             let id = group.replication_group_id().unwrap_or_default();
-            if !groups.contains(id) {
-                continue;
-            }
+            let Some((engine, version)) = groups.get(id) else { continue };
             // a group in cluster mode is reached through its configuration endpoint
+            let cluster = group.configuration_endpoint().is_some();
             let endpoint = group.configuration_endpoint().or_else(|| group.node_groups().first().and_then(|n| n.primary_endpoint()));
-            items.extend(item(id, endpoint, group.transit_encryption_enabled().unwrap_or(false)));
+            if let Some(listed) = item(id, endpoint, group.transit_encryption_enabled().unwrap_or(false)) {
+                let primaries = if cluster { group.node_groups().len() as u32 } else { 0 };
+                servers.insert(listed.id.clone(), server_of(engine.as_deref(), version.as_deref(), primaries));
+                items.push(listed);
+            }
         }
         marker = page.marker().map(str::to_string);
         if marker.is_none() {
@@ -354,7 +370,7 @@ pub async fn redis_connections(profile_name: &str, page: &SignInPage) -> Result<
     }
 
     items.sort_by(|a, b| a.name.cmp(&b.name));
-    Ok(Listing { account, region, items })
+    Ok(Listing { account, region, items, servers })
 }
 
 #[cfg(test)]

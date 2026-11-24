@@ -69,7 +69,7 @@ sequenceDiagram
     else unknown SSH host key
         Note over U: host_key_dialog::ask(.., retry), return
     else ok
-        Note over U: connections.set_active(id) (saves last_connected_at)
+        Note over U: remember_server(id, kind) (asked in the task: server_info::server_kind)<br/>connections.set_active(id) (saves last_connected_at)
     end
     Note over U: build ConnectionView (connected / failed_view), show(): set view, apply_tint<br/>announce? ConnectionState.established() -> refresh list + keyspace::reload<br/>then() (the continuation, if any), tabs::follow_connection
 ```
@@ -94,12 +94,52 @@ Points worth knowing:
 - **A failure** goes through `failed_view`: the error is logged with its
   [`ErrorKind`](cachemire_core::error::ErrorKind), `status_detail` is the localised text
   ([`Localize`](crate::error::Localize), see [errors](crate::wiki::errors)), and `ssh_failed` is
-  `kind == Tunnel`, which turns the SSH badge red rather than the status dot. `ssh_via` (a
-  `user@host[:port]` label) is computed from the saved connection, not from the outcome, so the SSH
-  glyph still shows on a failure.
-- [`disconnect`](crate::connections::disconnect) (the pill's x) clears `picked`, discards the
-  tabs and the remembered last session, clears the active connection, invalidates the pool
-  (closing its tunnel), and refreshes.
+  `kind == Tunnel` (kept in the view; nothing colors it).
+- **What the view shows** comes from `picker::shown`, whatever the state: the name, address, SSH
+  server (`user@host[:port]`), connection profile and server kind of the connection being
+  connected to, in use, or that failed (`with_shown`). While connecting, the connection in use keeps
+  its `connection_id`.
+- [`disconnect`](crate::connections::disconnect) (the title bar menu's "Disconnect") clears
+  `picked`, discards the tabs and the remembered last session, clears the active connection,
+  invalidates the pool (closing its tunnel), and refreshes.
+- **Reconnect** (in the pill when the connection is lost, and in the menu) is `connect_to` on
+  `app.picked`, announcing: the keyspace reloads once it is back.
+
+## The title bar's connection pill
+
+`components/title-bar.slint`. The pill shows `ConnectionView`:
+
+- in use: the name, the address, an outlined lock + `SSH` badge for a tunnel, a chevron;
+- connecting: the name, a spinner and "connecting…" (or "connecting through user@host…");
+- lost (status `Disconnected`): the name, a broken-link icon, the reason (`status_detail`) and a
+  **Reconnect** button. A dot before the name is green once connected, grey otherwise (no hover
+  on it). A line along the bottom of the pill takes the connection profile's color (`has-profile`,
+  `profile-tint`); the other states say what goes on in words, not in a color.
+
+Settings is the button on its left; the one on its right opens `ConnectionMenu` (copy the
+connection string, reconnect, edit, disconnect). Resting the pointer on the pill for 500 ms sets
+`details-shown`, and `main.slint` draws `ConnectionDetails` under it: the profile, the reason of a
+failure, the server (`ConnectionView.server`, from the remembered
+[`ServerKind`](cachemire_core::connection::ServerKind)), the address, the SSH tunnel and the access.
+
+## The connection list
+
+`ConnectionDropdown` (`components/connection-picker.slint`) works like the AWS profiles' list; Rust
+builds it in [`picker::list`](crate::connections::picker), on `ConnectionState.list-requested`
+(when it opens, and on each change of the filter, the source, a chip or a pin):
+
+- the filter keeps the connections holding every typed word in their name, address, profile, kind
+  or SSH host; the source switch (only with cloud connections) keeps the saved ones or the cloud
+  account's; the connection profile chips (only when the connections fall under two or more) keep
+  one profile. The source and chip are kept in the settings (`connection_filters`);
+- the pinned connections (`pinned_connections` in the settings, by id) are drawn two per line on
+  top and left out of the rows; the rows come in two sections, saved then cloud, each last used
+  first (`last_connected_at`; for a cloud connection, during the run only), titled only when both exist;
+- each row says when it was used ("in use" with a green dot, "open" with a green ring for one kept
+  in the background, both also on pinned tiles), its profile,
+  its kind (`Cluster · 3 primaries`, `Standalone`, nothing before the first connection), its SSH
+  server and read-only. The pencil opens the form (`picker::edit`, filling `ConnectionEditor`) or a
+  cloud connection's settings. Up, Down, Enter and Escape work from the filter.
 
 ## Dialogs that interrupt an attempt
 
@@ -210,7 +250,7 @@ profile badge. A profile id that no longer exists counts as none.
 ## Connection profiles
 
 [`profiles`](crate::connections::profiles) edits the *connection profiles* (name, tint, read-only, light theming)
-stored in the settings. [`apply_tint`](crate::connections::profiles::apply_tint) tints the window (only the connection pill for a light tint) for the
+stored in the settings. [`apply_tint`](crate::connections::profiles::apply_tint) tints the window (only the border of the connection pill and its two buttons for a light tint) for the
 connection in use and sets `ConnectionState.read_only` (and forces the key panel non-editable)
 using [`is_read_only`](cachemire_core::state::is_read_only). A profile cannot be deleted while a connection uses it
 (the message lists up to three names, then `+N`). The tint enum has `to_tint` / `from_tint` as

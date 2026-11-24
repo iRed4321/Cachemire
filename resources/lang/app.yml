@@ -497,6 +497,8 @@ _version: 2
   fr: "Chercher dans la clé ouverte, ou ouvrir un onglet de recherche"
 "Close the tab":
   fr: "Fermer l'onglet"
+"Open the connection list":
+  fr: "Ouvrir la liste des connexions"
 "Run the statement at the caret":
   fr: "Exécuter l'instruction au curseur"
 "Run the whole script":
@@ -586,3 +588,31 @@ _version: 2
 # the AWS profile list's pinned profiles: their header
 "Pinned":
   fr: "Épinglés"
+# the title bar's connection list: when a connection was last used, its counts and sections
+"in use":
+  fr: "utilisée"
+"open":
+  fr: "ouverte"
+"1 connection":
+  fr: "1 connexion"
+"%{n} connections":
+  fr: "%{n} connexions"
+"Saved connections":
+  fr: "Connexions enregistrées"
+"AWS · %{profile}":
+  fr: "AWS · %{profile}"
+"SSH via %{host}":
+  fr: "SSH via %{host}"
+# what a connection's server is, in the list and in the title bar's details
+"Standalone":
+  fr: "Autonome"
+"Cluster · 1 primary":
+  fr: "Cluster · 1 primaire"
+"Cluster · %{n} primaries":
+  fr: "Cluster · %{n} primaires"
+"%{server} · standalone":
+  fr: "%{server} · serveur autonome"
+"%{server} · cluster of 1 primary":
+  fr: "%{server} · cluster à 1 primaire"
+"%{server} · cluster of %{n} primaries":
+  fr: "%{server} · cluster à %{n} primaires"

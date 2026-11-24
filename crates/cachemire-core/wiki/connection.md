@@ -65,6 +65,12 @@ memory and writes them through to a JSON file (`databases.json` in the data dire
   `REDIS_HOST`, `REDIS_PORT`, `REDIS_DB`, `REDIS_USERNAME`, `REDIS_PASSWORD`.
 - Old files that have `host`/`port`/`db` instead of a URL get a URL built for them on load
   (`give_urls`); those three fields are only ever read, never written back.
+- Each saved connection remembers what its server was when last connected to
+  ([`ServerKind`](crate::connection::ServerKind): Redis or Valkey, version, primaries of a cluster),
+  set by [`remember_server`](crate::connection::store::ConnectionStore::remember_server) and
+  forgotten when its URL changes; [`server_info::server_kind`](crate::server_info::server_kind) asks a
+  connected server. A cloud connection's comes from its listing and lives for the run, as does when
+  it was last connected to ([`last_connected_at`](crate::connection::store::ConnectionStore::last_connected_at)).
 - Unknown JSON fields written by a newer version are kept (`#[serde(flatten)] extra`) and
   saved back as they were.
 - `commit` is "persist, then swap": the new state replaces the in-memory one only after the
@@ -313,8 +319,8 @@ connection. See the app's connections chapter.
 
 [`TunnelError`](crate::connection::ssh_tunnel::TunnelError) is boxed into
 [`Error::Tunnel`](crate::error::Error::Tunnel), whose
-[`ErrorKind`](crate::error::ErrorKind) is `Tunnel` for every variant. The UI uses that to
-colour the SSH badge red instead of the status dot. Localisation and the full model are in
+[`ErrorKind`](crate::error::ErrorKind) is `Tunnel` for every variant. The UI records that the
+failure was the tunnel's. Localisation and the full model are in
 [errors](crate::wiki::errors).
 
 ## Invariants to keep

@@ -29,6 +29,21 @@ pub struct SshSettings {
     pub passphrase: Secret,
 }
 
+/// What a server turned out to be the last time it was connected to (or what its cloud
+/// listing says): shown before it is connected to again.
+#[derive(Debug, Clone, Default, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ServerKind {
+    /// "Redis" or "Valkey"
+    pub product: String,
+    /// as the server gives it ("" when not known)
+    #[serde(default)]
+    pub version: String,
+    /// how many primaries the cluster has: 0 for a server on its own
+    #[serde(default)]
+    pub primaries: u32,
+}
+
 /// Identifies a cloud endpoint across runs: the account and region it lives in
 /// and its name (the replication group or cluster id). None of it is a secret.
 #[derive(Debug, Clone, PartialEq, Eq)]

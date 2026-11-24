@@ -111,8 +111,8 @@ Two core errors are not reported, they start a dialog:
 
 [`Error::kind`](cachemire_core::error::Error::kind) returns an [`ErrorKind`](cachemire_core::error::ErrorKind)
 (`Invalid`, `NotFound`, `Tunnel`, `Auth`, `Denied`, `Network`, `Timeout`, `Redis`, `Parse`, `Keyring`,
-`File`, `Cloud`, `System`, `Unsupported`). In the app it is used in one place: the connection
-failure marks the SSH badge red when the kind is `Tunnel` (and logs the kind). Inside the core it
+`File`, `Cloud`, `System`, `Unsupported`). In the app a connection failure logs the kind and
+records whether it was the SSH tunnel's (`ssh_failed`). Inside the core it
 also steers fallbacks (`is_script_refused` checks for `Denied`). Other kinds are available for the UI
 to act on but no other use is established in the code read for this wiki.
 

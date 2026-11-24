@@ -1,46 +1,10 @@
 import { Theme } from "theme.slint";
 import { VScrollBar, IconButton } from "widgets.slint";
 import { SearchField } from "key-detail-widgets.slint";
-import { TintDot } from "connection-picker.slint";
+import { TintDot, ProfileChip } from "connection-picker.slint";
 import { IconCheck, IconDot, IconRefresh, IconSettings, IconStar } from "icons.slint";
 import { AwsAccount } from "../globals.slint";
 import { AwsChip, AwsProfileRow } from "types.slint";
-
-// A connection profile chip over the list: picked, it keeps the profiles using that one.
-component ProfileChip inherits Rectangle {
-    in property <AwsChip> data;
-    in property <bool> on;
-    callback clicked <=> area.clicked;
-
-    height: Theme.px(22px);
-    border-radius: self.height / 2;
-    border-width: 1px;
-    border-color: on ? Theme.accent-blue-dim : Theme.border-soft;
-    background: on ? Theme.bg-selected-soft : (area.has-hover ? Theme.bg-hover-elevated : transparent);
-
-    area := TouchArea { mouse-cursor: pointer; }
-    HorizontalLayout {
-        padding-left: Theme.px(9px);
-        padding-right: Theme.px(9px);
-        spacing: Theme.px(5px);
-        if data.has-tint: VerticalLayout {
-            alignment: center;
-            TintDot { tint: data.tint; size: Theme.px(6px); }
-        }
-        Text {
-            text: data.label;
-            font-size: Theme.pt(11px);
-            color: on || area.has-hover ? Theme.text-primary : Theme.text-secondary;
-            vertical-alignment: center;
-        }
-        Text {
-            text: data.count;
-            font-size: Theme.pt(11px);
-            color: Theme.text-tertiary;
-            vertical-alignment: center;
-        }
-    }
-}
 
 // Floating list under the title bar's AWS pill: a filter, chips keeping one connection profile,
 // the pinned profiles two per line, then the recent ones and the others, each with its account's

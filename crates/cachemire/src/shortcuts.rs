@@ -39,6 +39,7 @@ fn title(action: ShortcutAction) -> Cow<'static, str> {
         ShortcutAction::ZoomReset => t!("Reset the zoom"),
         ShortcutAction::Search => t!("Search the open key, or open a search tab"),
         ShortcutAction::CloseTab => t!("Close the tab"),
+        ShortcutAction::ConnectionList => t!("Open the connection list"),
         ShortcutAction::RunStatement => t!("Run the statement at the caret"),
         ShortcutAction::RunScript => t!("Run the whole script"),
         ShortcutAction::Suggest => t!("Show the suggestions"),
@@ -69,7 +70,7 @@ struct Spec {
     defaults: &'static [&'static [&'static str]],
 }
 
-const SPECS: [Spec; 11] = [
+const SPECS: [Spec; 12] = [
     Spec {
         action: ShortcutAction::ZoomIn,
         code: "zoomIn",
@@ -80,6 +81,7 @@ const SPECS: [Spec; 11] = [
     Spec { action: ShortcutAction::ZoomReset, code: "zoomReset", scope: Scope::Window, defaults: &[&["Control", "Digit0"]] },
     Spec { action: ShortcutAction::Search, code: "search", scope: Scope::Window, defaults: &[&["Control", "F"]] },
     Spec { action: ShortcutAction::CloseTab, code: "closeTab", scope: Scope::Window, defaults: &[&["Control", "W"]] },
+    Spec { action: ShortcutAction::ConnectionList, code: "connectionList", scope: Scope::Window, defaults: &[&["Control", "P"]] },
     Spec { action: ShortcutAction::RunStatement, code: "runStatement", scope: Scope::Query, defaults: &[&["Control", "Return"]] },
     Spec { action: ShortcutAction::RunScript, code: "runScript", scope: Scope::Query, defaults: &[&["Control", "Shift", "Return"]] },
     Spec { action: ShortcutAction::Suggest, code: "suggest", scope: Scope::Query, defaults: &[&["Control", "Space"]] },
@@ -321,6 +323,7 @@ fn set_keys(global: &Shortcuts<'_>, action: ShortcutAction, first: Keys, second:
         ShortcutAction::ZoomReset => global.set_zoom_reset(first),
         ShortcutAction::Search => global.set_search(first),
         ShortcutAction::CloseTab => global.set_close_tab(first),
+        ShortcutAction::ConnectionList => global.set_connection_list(first),
         ShortcutAction::RunStatement => global.set_run_statement(first),
         ShortcutAction::RunScript => global.set_run_script(first),
         ShortcutAction::Suggest => global.set_suggest(first),

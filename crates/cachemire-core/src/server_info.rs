@@ -1,6 +1,26 @@
+use crate::connection::ServerKind;
 use crate::error::Error;
 use crate::session::Session;
 use crate::state::AppState;
+
+/// What the server of `connection_id` is (the active connection's when `None`): Redis or
+/// Valkey, its version, and how many primaries it has if it is a cluster.
+pub async fn server_kind(state: &AppState, connection_id: Option<&str>) -> Result<ServerKind, Error> {
+    let mut session = Session::open(state, connection_id).await?;
+    let info = session.info("server").await?;
+    let primaries = if session.is_cluster() { session.primaries().await?.len() as u32 } else { 0 };
+    Ok(kind_of_info(&info, primaries))
+}
+
+/// The product and version an `INFO server` reply names (Valkey gives `valkey_version`).
+pub(crate) fn kind_of_info(info: &str, primaries: u32) -> ServerKind {
+    let field = |name: &str| info.lines().find_map(|line| line.strip_prefix(name)).map(|v| v.trim().to_string());
+    let (product, version) = match field("valkey_version:") {
+        Some(version) => ("Valkey", version),
+        None => ("Redis", field("redis_version:").unwrap_or_default()),
+    };
+    ServerKind { product: product.to_string(), version, primaries }
+}
 
 /// Bytes of memory the server reports using (a cluster: its primaries together) — just
 /// the `memory` section of `INFO`, not the whole (several KB) reply.
