@@ -49,7 +49,7 @@ pub fn install(window: &Window) {
     if let RawWindowHandle::Win32(win32) = handle.as_raw() {
         let hwnd = win32.hwnd.get() as HWND;
         // SAFETY: this thread's own window; `procedure` hands every message on to the previous one
-        let previous = unsafe { SetWindowLongPtrW(hwnd, GWLP_WNDPROC, procedure as usize as isize) };
+        let previous = unsafe { SetWindowLongPtrW(hwnd, GWLP_WNDPROC, procedure as *const () as isize) };
         PREVIOUS.set(previous);
     }
 }
