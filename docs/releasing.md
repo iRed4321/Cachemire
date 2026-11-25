@@ -293,7 +293,7 @@ To see what a request would release without pushing anything: `cargo xtask next-
 
 ### CI
 
-[`.github/workflows/ci.yml`](../.github/workflows/ci.yml): on every pull request, and every push to `main` and `next`. Each OS runs two jobs side by side. `Lint (…)`: formatting and `cargo deny check` on Ubuntu (the advisories, licenses and sources of the dependencies, per `deny.toml`; an advisory accepted for good is recorded there as an `ignore` entry with its reason), and Clippy. `Test (…)`: the tests (the end-to-end ones against a Redis server in Docker, or in WSL on Windows, run beside the others) with their coverage. Then a summary. The four `Lint` and `Test` jobs are the checks `main`'s rules require: after changing them, run `cargo ship setup` again.
+[`.github/workflows/ci.yml`](../.github/workflows/ci.yml): on every pull request, and every push to `main` and `next`. Each OS runs two jobs side by side. `Lint (…)`: formatting and `cargo deny check` on Ubuntu (the advisories, licenses and sources of the dependencies, per `deny.toml`; an advisory accepted for good is recorded there as an `ignore` entry with its reason), and Clippy. `Test (…)`: the tests (the end-to-end ones against a Redis server in Docker, or a native Windows build of Redis on Windows, run beside the others) with their coverage. Then a summary. The four `Lint` and `Test` jobs are the checks `main`'s rules require: after changing them, run `cargo ship setup` again.
 
 ### Dependencies
 
@@ -329,7 +329,7 @@ A pull request closed without being merged, or without the label, releases nothi
 | Remove the release request | Ubuntu | for a beta: deletes the `release/*` branch, whatever happened, so the same request can be pushed again |
 | Summary | Ubuntu | a report of what was built and how long it took, on the run's page |
 
-On Windows, the jobs build on a Dev Drive (`CARGO_HOME`, `RUSTUP_HOME` and `target`), faster for the many files of a build; tools (nextest, WiX, cargo-deb, WSL) install in background steps while other steps run.
+On Windows, the jobs build on a Dev Drive (`CARGO_HOME`, `RUSTUP_HOME` and `target`), faster for the many files of a build; tools (nextest, WiX, cargo-deb, Redis) install in background steps while other steps run. Not WSL for the end-to-end tests' Redis: it can lock a Windows runner up, past every time limit.
 
 Only one release runs at a time; try builds run beside them, one per branch at a time. The tag is created only once everything passed, so a failed run leaves no tag and no release behind.
 

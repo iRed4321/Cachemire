@@ -100,8 +100,9 @@ Both e2e suites are `#[ignore = "needs a Redis server: cargo xtask e2e"]` (the c
    `127.0.0.1`; it gives each a third of the slots (`CLUSTER ADDSLOTSRANGE`, Redis 7+), has the first
    `CLUSTER MEET` the others and waits for `cluster_state:ok` on all. `CACHEMIRE_E2E_CLUSTER` set to one node's
    URL uses that cluster instead (the tests write keys under `e2e:` into it and leave some there). With WSL
-   as the only way (Windows CI: WSL 1, where a cluster can stall the whole runner), no cluster is started
-   and the cluster's tests are left out of the filter (`FILTER_NO_CLUSTER`); Linux CI still runs them.
+   as the only way (a cluster can stall WSL 1), no cluster is started and the cluster's tests are left out
+   of the filter (`FILTER_NO_CLUSTER`). The CI runs them on both OSes: on Windows it puts a native Redis
+   build (redis-windows, pinned and checked by its SHA-256) on the PATH instead of WSL, which can lock a runner up.
 5. It shuts the servers down afterwards.
 
 Isolation between tests: `TestRedis::claim` increments a counter key in database 0, takes database
@@ -126,7 +127,7 @@ cargo deny check                   (Linux): advisories, licences, sources
 cargo clippy --all-targets -- -D warnings
 cargo nextest run --no-run         build the tests, under cargo-llvm-cov's environment
 cargo nextest run --profile ci     unit + headless UI tests; results to target/nextest/ci/junit.xml
-xtask e2e -- --profile ci          end-to-end tests (Windows: Redis installed in WSL)
+xtask e2e -- --profile ci          end-to-end tests (Windows: a native Redis build on the PATH)
 cargo llvm-cov report              coverage, test-only files excluded
 ```
 

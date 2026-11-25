@@ -165,17 +165,23 @@ jobs:
       # test: the tools installed in the background above (and the runner's description)
       - name: Wait for the tools
         wait-all:
-      # the e2e tests' Redis on Windows (no Linux containers there): Debian's, in WSL, where `cargo xtask e2e`
-      # starts it. In the background during the tests' build (after the disk-heavy setup it would slow);
-      # timeouts here and on the builds, so a hang (seen once, beside Clippy) fails fast
-      - name: Install Redis in WSL
+      # the e2e tests' Redis on Windows (no Linux containers there): a native build, which `cargo xtask e2e`
+      # takes first, unzipped in the background during the tests' build. Not WSL: it can lock the runner up
+      - name: Install Redis
         if: env.CODE && matrix.task == 'test' && runner.os == 'Windows'
         background: true
-        timeout-minutes: 10
-        uses: Vampire/setup-wsl@v7
-        with:
-          distribution: Debian-13
-          additional-packages: redis-server
+        timeout-minutes: 5
+        env:
+          REDIS_VERSION: 8.10.3
+          REDIS_SHA256: af16df340525b431e9ec8dabfd625d5e7a233f82805b5418819904ea909c447f
+        run: |
+          tmp=$(cygpath -u "$RUNNER_TEMP")
+          name="Redis-$REDIS_VERSION-Windows-x64-msys2"
+          curl -fsSL --retry 3 --max-time 120 -o "$tmp/redis.zip" \
+            "https://github.com/redis-windows/redis-windows/releases/download/$REDIS_VERSION/$name.zip"
+          echo "$REDIS_SHA256  $tmp/redis.zip" | sha256sum -c -
+          7z x -y -o"$(cygpath -w "$tmp")" "$(cygpath -w "$tmp/redis.zip")" > /dev/null
+          mv "$tmp/$name" "$tmp/redis"
       # the test steps load cargo-llvm-cov's environment: it instruments the workspace's crates
       # alone, their dependencies are built as usual. cachemire and cachemire-core are always
       # built here: the cache never holds them
@@ -186,8 +192,8 @@ jobs:
         run: |
           eval "$(cargo llvm-cov show-env --sh)"
           cargo nextest run --no-run --timings
-      # WSL's install (none on Linux, where this returns at once)
-      - name: Wait for WSL
+      # Redis's install (none on Linux, where this returns at once)
+      - name: Wait for Redis
         wait-all:
       # the tests the "Tests" step skips, against a Redis server started for them, in the background
       # beside the others: they mostly wait on Redis. Their own nextest profile, so their own JUnit file
@@ -199,6 +205,7 @@ jobs:
           eval "$(cargo llvm-cov show-env --sh)"
           mkdir -p target/test-output
           rm -f target/nextest/ci-e2e/junit.xml
+          if [[ $RUNNER_OS == Windows ]]; then PATH="$(cygpath -u "$RUNNER_TEMP")/redis:$PATH"; fi
           xtask e2e -- --profile ci-e2e || failed=1
           if [[ -f target/nextest/ci-e2e/junit.xml ]]; then cp target/nextest/ci-e2e/junit.xml target/test-output/e2e.xml; fi
           exit ${failed:-0}

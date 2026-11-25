@@ -196,23 +196,29 @@ jobs:
       # the tests, as the CI's test job runs them but for coverage
       - name: Wait for nextest
         wait-all:
-      # the end-to-end tests' Redis server on Windows, whose Docker runs no Linux containers: Debian's, in
-      # WSL, where `cargo xtask e2e` starts it. In the background during the tests' build; timeouts here and
-      # on the builds, so a hang (seen once in the CI) fails fast
-      - name: Install Redis in WSL
+      # the e2e tests' Redis on Windows (no Linux containers there): a native build, which `cargo xtask e2e`
+      # takes first, unzipped in the background during the tests' build. Not WSL: it can lock the runner up
+      - name: Install Redis
         if: matrix.task == 'test' && runner.os == 'Windows'
         background: true
-        timeout-minutes: 10
-        uses: Vampire/setup-wsl@v7
-        with:
-          distribution: Debian-13
-          additional-packages: redis-server
+        timeout-minutes: 5
+        env:
+          REDIS_VERSION: 8.10.3
+          REDIS_SHA256: af16df340525b431e9ec8dabfd625d5e7a233f82805b5418819904ea909c447f
+        run: |
+          tmp=$(cygpath -u "$RUNNER_TEMP")
+          name="Redis-$REDIS_VERSION-Windows-x64-msys2"
+          curl -fsSL --retry 3 --max-time 120 -o "$tmp/redis.zip" \
+            "https://github.com/redis-windows/redis-windows/releases/download/$REDIS_VERSION/$name.zip"
+          echo "$REDIS_SHA256  $tmp/redis.zip" | sha256sum -c -
+          7z x -y -o"$(cygpath -w "$tmp")" "$(cygpath -w "$tmp/redis.zip")" > /dev/null
+          mv "$tmp/$name" "$tmp/redis"
       - name: Build the tests
         if: matrix.task == 'test'
         id: build
         timeout-minutes: 45
         run: cargo nextest run --no-run --timings
-      - name: Wait for WSL
+      - name: Wait for Redis
         wait-all:
       # in the background beside the others, as they mostly wait on Redis; their own nextest profile, so
       # their own JUnit file
@@ -221,6 +227,7 @@ jobs:
         background: true
         run: |
           mkdir -p target/test-output
+          if [[ $RUNNER_OS == Windows ]]; then PATH="$(cygpath -u "$RUNNER_TEMP")/redis:$PATH"; fi
           xtask e2e -- --profile ci-e2e || failed=1
           if [[ -f target/nextest/ci-e2e/junit.xml ]]; then cp target/nextest/ci-e2e/junit.xml target/test-output/e2e.xml; fi
           exit ${failed:-0}
