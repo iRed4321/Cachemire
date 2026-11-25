@@ -11,7 +11,8 @@ use tokio::task::JoinSet;
 
 use crate::connection::ConnectionItem;
 use crate::connection::client::{build_cluster_client, create_cluster_connection, create_connection, target_of, tls_name_of};
-use crate::connection::ssh_tunnel::{HostKeys, SshTunnel};
+use crate::connection::ssh_tunnel::{self, HostKeys};
+use crate::connection::tunnel::Tunnel;
 use crate::error::{Error, Timeout};
 use crate::session::{Session, cluster_enabled, ping};
 
@@ -66,9 +67,9 @@ pub struct ConnectionPool {
     cluster: bool,
     // the server takes `HSCAN ... NOVALUES` (until it is found not to)
     pub(crate) hscan_novalues: AtomicBool,
-    // the SSH tunnel the connections go through, when there is one: it lives
+    // the tunnel the connections go through, when there is one: it lives
     // exactly as long as the pool
-    _tunnel: Option<SshTunnel>,
+    _tunnel: Option<Tunnel>,
 }
 
 impl ConnectionPool {
@@ -78,19 +79,19 @@ impl ConnectionPool {
         let tunnel = match &connection.ssh {
             Some(ssh) => {
                 let (host, port) = target_of(connection)?;
-                let tunnel = SshTunnel::open(ssh, &host, port, tls_name_of(connection)?, host_keys).await?;
+                let tunnel = ssh_tunnel::open(ssh, &host, port, tls_name_of(connection)?, host_keys).await?;
                 tracing::info!(ssh_server = %format_args!("{}:{}", ssh.host, ssh.port), local_port = tunnel.local_port(), "SSH tunnel opened");
                 Some(tunnel)
             }
             None => None,
         };
-        let via = tunnel.as_ref().map(SshTunnel::local_port);
+        let via = tunnel.as_ref().map(Tunnel::local_port);
 
         let mut first = create_connection(connection, via).await?;
         let cluster = cluster_enabled(&mut first).await;
         let connections = if cluster {
             drop(first);
-            let client = build_cluster_client(connection, tunnel.as_ref().map(SshTunnel::resolver))?;
+            let client = build_cluster_client(connection, tunnel.as_ref().map(Tunnel::resolver))?;
             let first = create_cluster_connection(&client).await?;
             tracing::info!(name = %connection.name, "connected to a cluster");
             open_rest(RedisConnection::Cluster(first), move || {
@@ -114,9 +115,9 @@ impl ConnectionPool {
         self.cluster
     }
 
-    /// False once its SSH tunnel is down: its connections can't reach the server again.
+    /// False once its tunnel is down: its connections can't reach the server again.
     fn is_alive(&self) -> bool {
-        self._tunnel.as_ref().is_none_or(SshTunnel::is_alive)
+        self._tunnel.as_ref().is_none_or(Tunnel::is_alive)
     }
 
     /// [`ConnectionPool::open`] within [`OPEN_TIMEOUT`].

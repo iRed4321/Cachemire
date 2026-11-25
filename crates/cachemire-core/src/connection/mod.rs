@@ -13,6 +13,7 @@ pub mod pool;
 pub mod ssh_tunnel;
 pub mod store;
 pub mod tls;
+pub mod tunnel;
 pub mod url;
 
 /// How to reach the Redis server through an SSH server, when a connection

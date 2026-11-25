@@ -16,7 +16,8 @@ This chapter covers everything under `src/connection/`; the secrets themselves a
 | `connection/client.rs` | [`build_client`](crate::connection::client::build_client), [`create_connection`](crate::connection::client::create_connection): the `redis-rs` client; `build_cluster_client`, `create_cluster_connection`: a cluster's |
 | `connection/tls.rs` | trusted roots: [`roots_pem`](crate::connection::tls::roots_pem), [`connector`](crate::connection::tls::connector) |
 | `connection/pool.rs` | [`ConnectionCache`](crate::connection::pool::ConnectionCache), [`ConnectionPool`](crate::connection::pool::ConnectionPool) and [`RedisConnection`](crate::connection::pool::RedisConnection) (one server or a cluster) |
-| `connection/ssh_tunnel/mod.rs` | [`SshTunnel`](crate::connection::ssh_tunnel::SshTunnel), [`TunnelResolver`](crate::connection::ssh_tunnel::TunnelResolver), [`HostKeys`](crate::connection::ssh_tunnel::HostKeys), [`TunnelError`](crate::connection::ssh_tunnel::TunnelError) |
+| `connection/tunnel/mod.rs` | [`Tunnel`](crate::connection::tunnel::Tunnel), [`Dialer`](crate::connection::tunnel::Dialer), [`TunnelResolver`](crate::connection::tunnel::TunnelResolver): the local ports, whatever transport carries them |
+| `connection/ssh_tunnel/mod.rs` | [`open`](crate::connection::ssh_tunnel::open) (the SSH transport), [`HostKeys`](crate::connection::ssh_tunnel::HostKeys), [`TunnelError`](crate::connection::ssh_tunnel::TunnelError) |
 | `connection/store/mod.rs` | [`ConnectionStore`](crate::connection::store::ConnectionStore): the saved connections file |
 
 ## The data model
@@ -116,7 +117,7 @@ Step 4 (`ConnectionCache::pool`) then opens the tunnel if any, and the connectio
 ```mermaid
 flowchart LR
     S{"SSH tunnel?"}
-    S -->|yes| T["SshTunnel::open: host key check,<br/>login, probe channel,<br/>optional TLS probe, local listener"]
+    S -->|yes| T["ssh_tunnel::open: host key check,<br/>login, probe channel,<br/>optional TLS probe, local listener"]
     S --> F
     T --> F["5. first redis<br/>connection"]
     F -->|"cluster mode?"| X["drop it: 3 cluster connections,<br/>the first alone"]
@@ -150,7 +151,7 @@ here (the app does that, see the app's connections chapter).
 pool share a single open. Behaviour worth knowing:
 
 - [`ConnectionCache::pool`](crate::connection::pool::ConnectionCache::pool) replaces the cell
-  when the existing pool's SSH tunnel is down ([`SshTunnel::is_alive`](crate::connection::ssh_tunnel::SshTunnel::is_alive)),
+  when the existing pool's tunnel is down ([`Tunnel::is_alive`](crate::connection::tunnel::Tunnel::is_alive)),
   so the next call opens a fresh one.
 - Opening is bounded by `OPEN_TIMEOUT` (30 s), reported as
   [`Timeout::Connect`](crate::error::Timeout::Connect).
@@ -220,8 +221,10 @@ certificate in it that is unusable, is logged and skipped.
 
 ## SSH tunnel
 
-[`SshTunnel`](crate::connection::ssh_tunnel::SshTunnel) does what `ssh -L port:redis-host:6379`
-does, with the pure-Rust `russh` client and no `ssh` binary.
+A [`Tunnel`](crate::connection::tunnel::Tunnel) is a local port whose connections a
+[`Dialer`](crate::connection::tunnel::Dialer) (a transport) carries to the Redis server, each
+through its own stream. The SSH transport does what `ssh -L port:redis-host:6379` does, with the
+pure-Rust `russh` client and no `ssh` binary: each stream is a `direct-tcpip` channel.
 
 ```mermaid
 flowchart LR
@@ -231,7 +234,7 @@ flowchart LR
     L -.- TLS["if rediss://: TLS handshake done HERE,<br/>over the SSH channel, against the real host name"]
 ```
 
-[`SshTunnel::open`](crate::connection::ssh_tunnel::SshTunnel::open), in order:
+[`ssh_tunnel::open`](crate::connection::ssh_tunnel::open), in order:
 
 1. `connect`, within `SETUP_TIMEOUT` (20 s, [`TunnelError::Timeout`](crate::connection::ssh_tunnel::TunnelError::Timeout)):
    TCP connect, **host key check**, authentication. The SSH session sends keepalives every
@@ -240,24 +243,24 @@ flowchart LR
    is reported as [`TunnelError::Unreachable`](crate::connection::ssh_tunnel::TunnelError::Unreachable)
    instead of a bare "connection closed" later. With TLS, the probe also performs the handshake
    ([`TunnelError::Tls`](crate::connection::ssh_tunnel::TunnelError::Tls) on failure) and is then dropped.
-3. It binds `127.0.0.1:0` (a free port) and spawns `forward_loop`, which accepts local
-   connections and forwards each through its own SSH channel (`copy_bidirectional`). The loop owns the
-   session and a `JoinSet` of forwarders, so aborting it closes everything.
+3. [`Tunnel::start`](crate::connection::tunnel::Tunnel::start) binds `127.0.0.1:0` (a free port) and
+   spawns `forward_loop`, which accepts local connections and forwards each through its own stream of
+   the dialer (`copy_bidirectional`). The loop owns a `JoinSet` of forwarders, so aborting it closes them all.
 
 Why TLS is done by the tunnel: the Redis client sees plain TCP on localhost, so the
 certificate would otherwise be checked against `127.0.0.1`. The tunnel connects the TLS
 session over the SSH channel with the endpoint's real host name
 ([`build_client`](crate::connection::client::build_client) sets `tls = false` and the local port when `via_local_port` is given).
 
-For a cluster, the same SSH session forwards to every node:
-[`SshTunnel::resolver`](crate::connection::ssh_tunnel::SshTunnel::resolver) gives the cluster client
+For a cluster, the same transport forwards to every node:
+[`Tunnel::resolver`](crate::connection::tunnel::Tunnel::resolver) gives the cluster client
 a DNS resolver that opens, on first use, a local listener per node address (`Forwards::port_to`), and
 answers `127.0.0.1:<its port>`. These forwards are plain TCP: redis-rs keeps the node's real address
 for its slot map and its redirects, and does the TLS handshake itself, with that name, over the
 forwarded socket. The SSH server resolves the addresses the nodes announce, as it would for one server.
 
-[`SshTunnel::is_alive`](crate::connection::ssh_tunnel::SshTunnel::is_alive) is true while the SSH
-session is open and the forwarding task is running; the pool uses it to rebuild itself.
+[`Tunnel::is_alive`](crate::connection::tunnel::Tunnel::is_alive) is true while the forwarding task
+runs and the dialer stands (for SSH: the session is open); the pool uses it to rebuild itself.
 `Drop` aborts the forwarding tasks.
 
 ### Authentication

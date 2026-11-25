@@ -196,7 +196,7 @@ sequenceDiagram
     participant S as SSH server :22
     participant R as redis-host:6379
     U->>T: connect_connection (spawn)
-    Note over T: spawn_blocking(staged(unlock_secrets)), keyring prompt?<br/>resolve_connection (fill from SSH profile)<br/>ConnectionCache::pool, ConnectionPool::open (<= 30 s)<br/>SshTunnel::open (<= 20 s)
+    Note over T: spawn_blocking(staged(unlock_secrets)), keyring prompt?<br/>resolve_connection (fill from SSH profile)<br/>ConnectionCache::pool, ConnectionPool::open (<= 30 s)<br/>ssh_tunnel::open (<= 20 s)
     T->>S: russh connect
     Note over T: HostKeyCheck: known? changed? new? new + not accepted -> Err(UnknownHostKey)
     Note over T: authenticate: private key, then password

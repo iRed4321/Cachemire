@@ -3,21 +3,18 @@
 //! `ssh -L port:redis-host:6379` does, without an `ssh` binary.
 
 use parking_lot::Mutex;
-use rustc_hash::FxHashMap;
-use std::net::SocketAddr;
 use std::path::PathBuf;
+use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::{Arc, Weak};
 use std::time::Duration;
 
 use russh::client::{self, Handle};
 use russh::keys::known_hosts::learn_known_hosts_path;
 use russh::keys::{HashAlg, PrivateKeyWithHashAlg, PublicKeyOrCertificate, check_known_hosts_path};
-use tokio::net::TcpListener;
-use tokio::task::{JoinHandle, JoinSet};
 
 use crate::connection::SshSettings;
 use crate::connection::tls;
+use crate::connection::tunnel::{BoxedStream, DialFuture, Dialer, Tunnel};
 use rustls::pki_types::ServerName;
 
 /// Why the tunnel couldn't be set up.
@@ -260,157 +257,56 @@ async fn connect(ssh: &SshSettings, keys: &HostKeys) -> Result<Handle<HostKeyChe
     Ok(session)
 }
 
-/// Accepts connections on the local end and forwards each through its own
-/// channel of the SSH session. Owns the session and every forwarding task, so
-/// dropping this future (aborting the task running it) closes them all.
-async fn forward_loop(
-    listener: TcpListener,
-    session: Arc<Handle<HostKeyCheck>>,
-    host: String,
-    port: u16,
-    tls: Option<ServerName<'static>>,
-) {
-    let mut forwards = JoinSet::new();
-    while let Ok((mut socket, peer)) = listener.accept().await {
-        let session = session.clone();
-        let host = host.clone();
-        let tls = tls.clone();
-        forwards.spawn(async move {
-            let Ok(channel) = session.channel_open_direct_tcpip(host, u32::from(port), peer.ip().to_string(), u32::from(peer.port())).await
-            else {
-                return; // the client sees its connection closed
-            };
-            let mut stream = channel.into_stream();
-            let _ = match tls {
-                Some(name) => match tls::connector().connect(name, stream).await {
-                    Ok(mut secured) => tokio::io::copy_bidirectional(&mut socket, &mut secured).await,
-                    Err(error) => {
-                        tracing::warn!(%error, "TLS handshake through the SSH tunnel failed");
-                        return;
-                    }
-                },
-                None => tokio::io::copy_bidirectional(&mut socket, &mut stream).await,
-            };
-        });
-    }
+/// The SSH transport: each stream is a `direct-tcpip` channel of one logged-in session.
+struct SshDialer {
+    session: Handle<HostKeyCheck>,
 }
 
-/// The local ports opened on demand for other targets of the same SSH session (a
-/// cluster's nodes), plain TCP, one per `host:port`, with the tasks serving them.
-struct Forwards {
-    session: Arc<Handle<HostKeyCheck>>,
-    ports: Mutex<FxHashMap<(String, u16), u16>>,
-    tasks: Mutex<Vec<JoinHandle<()>>>,
-}
-
-impl Forwards {
-    /// The local port leading to `host:port` (as the SSH server sees it), opened on first use.
-    async fn port_to(&self, host: &str, port: u16) -> std::io::Result<u16> {
-        if let Some(&local) = self.ports.lock().get(&(host.to_string(), port)) {
-            return Ok(local);
-        }
-        let listener = TcpListener::bind(("127.0.0.1", 0)).await?;
-        let local = listener.local_addr()?.port();
-        let mut ports = self.ports.lock();
-        // another caller may have opened one meanwhile: theirs is kept, this listener dropped
-        if let Some(&theirs) = ports.get(&(host.to_string(), port)) {
-            return Ok(theirs);
-        }
-        ports.insert((host.to_string(), port), local);
-        self.tasks.lock().push(tokio::spawn(forward_loop(listener, self.session.clone(), host.to_string(), port, None)));
-        tracing::debug!(target = %format_args!("{host}:{port}"), local_port = local, "SSH tunnel forward opened");
-        Ok(local)
-    }
-}
-
-/// Resolves a cluster node's address to a local port forwarded through the SSH tunnel,
-/// so the Redis client reaches every node through it; the TLS handshake, if any, stays
-/// the client's, with the node's real name.
-pub struct TunnelResolver(Weak<Forwards>);
-
-impl redis::io::AsyncDNSResolver for TunnelResolver {
-    fn resolve<'a, 'b: 'a>(&'a self, host: &'b str, port: u16) -> redis::RedisFuture<'a, Box<dyn Iterator<Item = SocketAddr> + Send + 'a>> {
+impl Dialer for SshDialer {
+    fn dial<'a>(&'a self, host: &'a str, port: u16) -> DialFuture<'a> {
         Box::pin(async move {
-            let closed = || std::io::Error::new(std::io::ErrorKind::NotConnected, "the SSH tunnel is closed");
-            let forwards = self.0.upgrade().ok_or_else(closed)?;
-            let local = forwards.port_to(host, port).await?;
-            let addresses: Box<dyn Iterator<Item = SocketAddr> + Send> =
-                Box::new(std::iter::once(SocketAddr::from(([127, 0, 0, 1], local))));
-            Ok(addresses)
+            let channel =
+                self.session.channel_open_direct_tcpip(host, u32::from(port), "127.0.0.1", 0).await.map_err(std::io::Error::other)?;
+            Ok(Box::new(channel.into_stream()) as BoxedStream)
         })
-    }
-}
-
-pub struct SshTunnel {
-    local_port: u16,
-    forwarding: JoinHandle<()>,
-    session: Arc<Handle<HostKeyCheck>>,
-    forwards: Arc<Forwards>,
-}
-
-impl SshTunnel {
-    /// Sets up a tunnel to `target_host:target_port` (as the SSH server sees
-    /// it) and checks that the SSH server can reach it, so a wrong host or port
-    /// is reported here rather than as a bare "connection closed" later. With a `tls`
-    /// name, each forwarded connection is secured and checked against that name.
-    pub async fn open(
-        ssh: &SshSettings,
-        target_host: &str,
-        target_port: u16,
-        tls: Option<ServerName<'static>>,
-        keys: &HostKeys,
-    ) -> Result<SshTunnel, TunnelError> {
-        let session = tokio::time::timeout(SETUP_TIMEOUT, connect(ssh, keys))
-            .await
-            .map_err(|_| TunnelError::Timeout { host: ssh.host.clone(), port: ssh.port })??;
-
-        let probe = session
-            .channel_open_direct_tcpip(target_host, u32::from(target_port), "127.0.0.1", 0)
-            .await
-            .map_err(|source| TunnelError::Unreachable { host: target_host.to_string(), port: target_port, source })?;
-        match &tls {
-            Some(name) => {
-                tls::connector()
-                    .connect(name.clone(), probe.into_stream())
-                    .await
-                    .map_err(|source| TunnelError::Tls { host: target_host.to_string(), source })?;
-            }
-            None => drop(probe),
-        }
-
-        let listener = TcpListener::bind(("127.0.0.1", 0)).await.map_err(TunnelError::LocalPort)?;
-        let local_port = listener.local_addr().map_err(TunnelError::LocalPort)?.port();
-        let session = Arc::new(session);
-        let forwarding = tokio::spawn(forward_loop(listener, session.clone(), target_host.to_string(), target_port, tls));
-        let forwards = Arc::new(Forwards { session: session.clone(), ports: Mutex::default(), tasks: Mutex::default() });
-        Ok(SshTunnel { local_port, forwarding, session, forwards })
     }
 
     /// Whether the SSH session still stands: once the server or the network drops it
-    /// (its keepalives unanswered), nothing goes through this tunnel any more.
-    pub fn is_alive(&self) -> bool {
-        !self.session.is_closed() && !self.forwarding.is_finished()
-    }
-
-    /// The port on this machine (`127.0.0.1`) that leads to the Redis server.
-    pub fn local_port(&self) -> u16 {
-        self.local_port
-    }
-
-    /// What a cluster client resolves its nodes' addresses with, to reach each of them
-    /// through this tunnel (plain TCP: the client secures it). Useless once it is dropped.
-    pub fn resolver(&self) -> TunnelResolver {
-        TunnelResolver(Arc::downgrade(&self.forwards))
+    /// (its keepalives unanswered), nothing goes through it any more.
+    fn is_alive(&self) -> bool {
+        !self.session.is_closed()
     }
 }
 
-impl Drop for SshTunnel {
-    fn drop(&mut self) {
-        self.forwarding.abort();
-        for task in self.forwards.tasks.lock().drain(..) {
-            task.abort();
+/// Logs in to the SSH server and sets up a tunnel to `target_host:target_port` (as the
+/// SSH server sees it), checking that the server can reach it so a wrong host or port is
+/// reported here. With a `tls` name, each forwarded connection is secured against it.
+pub async fn open(
+    ssh: &SshSettings,
+    target_host: &str,
+    target_port: u16,
+    tls: Option<ServerName<'static>>,
+    keys: &HostKeys,
+) -> Result<Tunnel, TunnelError> {
+    let session = tokio::time::timeout(SETUP_TIMEOUT, connect(ssh, keys))
+        .await
+        .map_err(|_| TunnelError::Timeout { host: ssh.host.clone(), port: ssh.port })??;
+
+    let probe = session
+        .channel_open_direct_tcpip(target_host, u32::from(target_port), "127.0.0.1", 0)
+        .await
+        .map_err(|source| TunnelError::Unreachable { host: target_host.to_string(), port: target_port, source })?;
+    match &tls {
+        Some(name) => {
+            tls::connector()
+                .connect(name.clone(), probe.into_stream())
+                .await
+                .map_err(|source| TunnelError::Tls { host: target_host.to_string(), source })?;
         }
+        None => drop(probe),
     }
+
+    Tunnel::start(Arc::new(SshDialer { session }), target_host, target_port, tls).await.map_err(TunnelError::LocalPort)
 }
 
 #[cfg(test)]

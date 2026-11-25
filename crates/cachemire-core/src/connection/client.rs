@@ -7,7 +7,7 @@ use redis::io::tcp::TcpSettings;
 use redis::io::tcp::socket2::TcpKeepalive;
 use rustls::pki_types::ServerName;
 
-use crate::connection::ssh_tunnel::TunnelResolver;
+use crate::connection::tunnel::TunnelResolver;
 use crate::connection::{ConnectionItem, Endpoint, tls};
 use crate::error::{Error, Invalid};
 
@@ -82,7 +82,7 @@ pub(crate) fn build_client(connection: &ConnectionItem, via_local_port: Option<u
 }
 
 /// A client of the cluster the connection's endpoint belongs to, which finds the other
-/// nodes from it. Through an SSH tunnel, `resolver` leads every node's address through it.
+/// nodes from it. Through a tunnel, `resolver` leads every node's address through it.
 pub(crate) fn build_cluster_client(connection: &ConnectionItem, resolver: Option<TunnelResolver>) -> Result<ClusterClient, Error> {
     let endpoint = connection.endpoint()?;
     let tls = endpoint.tls;
