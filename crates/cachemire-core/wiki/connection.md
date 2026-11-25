@@ -354,6 +354,8 @@ a port-forward is opened once; with TLS the handshake is tried. An error the API
 missing pod, a refused permission) is [`KubeError::Refused`](crate::connection::kube_tunnel::KubeError::Refused)
 with its message. Like SSH, [`Error::Kube`](crate::error::Error::Kube) has the kind `Tunnel`.
 
+To try it by hand: `docs/kubernetes-test-cluster.md` (k3s in Docker, a selectorless Service, a relay pod).
+
 On Windows the app sets `KUBE_RS_UNSTABLE_CREATE_NO_WINDOW` first thing, so a sign-in command doesn't
 open a console window.
 
