@@ -2,7 +2,7 @@
 msgid ""
 msgstr ""
 "Project-Id-Version: cachemire VERSION\n"
-"POT-Creation-Date: 2026-11-24 21:10+0000\n"
+"POT-Creation-Date: 2026-11-25 17:53+0000\n"
 "PO-Revision-Date: YEAR-MO-DA HO:MI+ZONE\n"
 "Last-Translator: FULL NAME <EMAIL@ADDRESS>\n"
 "Language-Team: LANGUAGE <LL@li.org>\n"
@@ -245,67 +245,97 @@ msgid ""
 "Leave the username empty to log in with the active SSH profile from Settings."
 msgstr ""
 
-#: crates/cachemire/ui/components/connection-picker.slint:964
-#: crates/cachemire/ui/components/connection-picker.slint:964
-#: crates/cachemire/ui/components/connection-picker.slint:964
+#: crates/cachemire/ui/components/connection-picker.slint:1020
+#: crates/cachemire/ui/components/connection-picker.slint:1020
+#: crates/cachemire/ui/components/connection-picker.slint:1020
 msgid "Name"
 msgstr ""
 
-#: crates/cachemire/ui/components/connection-picker.slint:967
+#: crates/cachemire/ui/components/connection-picker.slint:1023
 msgid "Connection URL"
 msgstr ""
 
-#: crates/cachemire/ui/components/connection-picker.slint:974
+#: crates/cachemire/ui/components/connection-picker.slint:1030
 msgid "Username (optional)"
 msgstr ""
 
-#: crates/cachemire/ui/components/connection-picker.slint:977
-#: crates/cachemire/ui/components/connection-picker.slint:977
+#: crates/cachemire/ui/components/connection-picker.slint:1033
+#: crates/cachemire/ui/components/connection-picker.slint:1033
 msgid "Password"
 msgstr ""
 
-#: crates/cachemire/ui/components/connection-picker.slint:986
+#: crates/cachemire/ui/components/connection-picker.slint:1042
 msgid "Enable SSH Tunnel"
 msgstr ""
 
-#: crates/cachemire/ui/components/connection-picker.slint:1005
+#: crates/cachemire/ui/components/connection-picker.slint:1064
+msgid "Inside a Kubernetes cluster"
+msgstr ""
+
+#: crates/cachemire/ui/components/connection-picker.slint:1079
+msgid "Context"
+msgstr ""
+
+#: crates/cachemire/ui/components/connection-picker.slint:1089
+msgid "Namespace"
+msgstr ""
+
+#: crates/cachemire/ui/components/connection-picker.slint:1090
+msgid "the context's namespace"
+msgstr ""
+
+#: crates/cachemire/ui/components/connection-picker.slint:1095
+msgid "Relay pod"
+msgstr ""
+
+#: crates/cachemire/ui/components/connection-picker.slint:1096
+msgid "none"
+msgstr ""
+
+#: crates/cachemire/ui/components/connection-picker.slint:1100
+msgid ""
+"For a Service with no pods behind it, or a server outside the cluster: a pod "
+"with socat, nc or bash connects for Cachemire."
+msgstr ""
+
+#: crates/cachemire/ui/components/connection-picker.slint:1109
 msgid "Add a connection profile"
 msgstr ""
 
-#: crates/cachemire/ui/components/connection-picker.slint:1030
-#: crates/cachemire/ui/components/connection-picker.slint:1030
-#: crates/cachemire/ui/components/connection-picker.slint:1030
+#: crates/cachemire/ui/components/connection-picker.slint:1134
+#: crates/cachemire/ui/components/connection-picker.slint:1134
+#: crates/cachemire/ui/components/connection-picker.slint:1134
 msgid "Read-only"
 msgstr ""
 
-#: crates/cachemire/ui/components/connection-picker.slint:1037
+#: crates/cachemire/ui/components/connection-picker.slint:1141
 msgid "Its profile is read-only."
 msgstr ""
 
-#: crates/cachemire/ui/components/connection-picker.slint:1037
+#: crates/cachemire/ui/components/connection-picker.slint:1141
 msgid "No key or value can be changed through this connection."
 msgstr ""
 
-#: crates/cachemire/ui/components/connection-picker.slint:1068
-#: crates/cachemire/ui/components/connection-picker.slint:1068
-#: crates/cachemire/ui/components/connection-picker.slint:1068
-#: crates/cachemire/ui/components/connection-picker.slint:1068
+#: crates/cachemire/ui/components/connection-picker.slint:1172
+#: crates/cachemire/ui/components/connection-picker.slint:1172
+#: crates/cachemire/ui/components/connection-picker.slint:1172
+#: crates/cachemire/ui/components/connection-picker.slint:1172
 msgid "Click again to delete"
 msgstr ""
 
-#: crates/cachemire/ui/components/connection-picker.slint:1068
-#: crates/cachemire/ui/components/connection-picker.slint:1068
-#: crates/cachemire/ui/components/connection-picker.slint:1068
-#: crates/cachemire/ui/components/connection-picker.slint:1068
-#: crates/cachemire/ui/components/connection-picker.slint:1068
+#: crates/cachemire/ui/components/connection-picker.slint:1172
+#: crates/cachemire/ui/components/connection-picker.slint:1172
+#: crates/cachemire/ui/components/connection-picker.slint:1172
+#: crates/cachemire/ui/components/connection-picker.slint:1172
+#: crates/cachemire/ui/components/connection-picker.slint:1172
 msgid "Delete"
 msgstr ""
 
-#: crates/cachemire/ui/components/connection-picker.slint:1081
+#: crates/cachemire/ui/components/connection-picker.slint:1185
 msgid "Testing…"
 msgstr ""
 
-#: crates/cachemire/ui/components/connection-picker.slint:1081
+#: crates/cachemire/ui/components/connection-picker.slint:1185
 msgid "Test connection"
 msgstr ""
 
@@ -1240,56 +1270,60 @@ msgstr ""
 msgid "No setting matches “{}”"
 msgstr ""
 
-#: crates/cachemire/ui/components/title-bar.slint:252
+#: crates/cachemire/ui/components/title-bar.slint:253
 msgid "Sign in to AWS"
 msgstr ""
 
-#: crates/cachemire/ui/components/title-bar.slint:252
+#: crates/cachemire/ui/components/title-bar.slint:253
 msgid "Select Profile"
 msgstr ""
 
-#: crates/cachemire/ui/components/title-bar.slint:320
+#: crates/cachemire/ui/components/title-bar.slint:321
 msgid "connecting through {}…"
 msgstr ""
 
-#: crates/cachemire/ui/components/title-bar.slint:320
+#: crates/cachemire/ui/components/title-bar.slint:321
 msgid "connecting…"
 msgstr ""
 
-#: crates/cachemire/ui/components/title-bar.slint:323
+#: crates/cachemire/ui/components/title-bar.slint:324
 msgid "No connection"
 msgstr ""
 
-#: crates/cachemire/ui/components/title-bar.slint:346
-#: crates/cachemire/ui/components/title-bar.slint:346
+#: crates/cachemire/ui/components/title-bar.slint:347
+#: crates/cachemire/ui/components/title-bar.slint:347
 msgid "Reconnect"
 msgstr ""
 
-#: crates/cachemire/ui/components/title-bar.slint:495
+#: crates/cachemire/ui/components/title-bar.slint:496
 msgid "Server"
 msgstr ""
 
-#: crates/cachemire/ui/components/title-bar.slint:496
+#: crates/cachemire/ui/components/title-bar.slint:497
 msgid "Address"
 msgstr ""
 
-#: crates/cachemire/ui/components/title-bar.slint:499
-msgid "Access"
+#: crates/cachemire/ui/components/title-bar.slint:498
+msgid "Kubernetes"
 msgstr ""
 
 #: crates/cachemire/ui/components/title-bar.slint:500
+msgid "Access"
+msgstr ""
+
+#: crates/cachemire/ui/components/title-bar.slint:501
 msgid "read and write"
 msgstr ""
 
-#: crates/cachemire/ui/components/title-bar.slint:554
+#: crates/cachemire/ui/components/title-bar.slint:555
 msgid "Copy connection string"
 msgstr ""
 
-#: crates/cachemire/ui/components/title-bar.slint:564
+#: crates/cachemire/ui/components/title-bar.slint:565
 msgid "Edit connection…"
 msgstr ""
 
-#: crates/cachemire/ui/components/title-bar.slint:576
+#: crates/cachemire/ui/components/title-bar.slint:577
 msgid "Disconnect"
 msgstr ""
 

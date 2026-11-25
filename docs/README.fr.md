@@ -8,7 +8,7 @@
 
 **Votre cache sous toutes les coutures !**
 
-Pensé pour les hashs Redis remplis de JSON : lisez chaque valeur en JSON coloré, filtrez-les toutes avec un chemin JSON et affichez les résultats dans un tableau exportable en CSV. Redisql, un petit langage de requête inspiré du SQL, extrait des lignes de plusieurs clés et les joint entre elles. Fonctionne à travers des tunnels SSH et avec AWS ElastiCache.
+Pensé pour les hashs Redis remplis de JSON : lisez chaque valeur en JSON coloré, filtrez-les toutes avec un chemin JSON et affichez les résultats dans un tableau exportable en CSV. Redisql, un petit langage de requête inspiré du SQL, extrait des lignes de plusieurs clés et les joint entre elles. Fonctionne à travers des tunnels SSH, dans des clusters Kubernetes et avec AWS ElastiCache.
 
 <p>
   <a href="https://github.com/iRed4321/Cachemire/releases/latest"><img alt="Version stable" src="https://img.shields.io/github/v/release/iRed4321/Cachemire?label=stable"></a>
@@ -86,11 +86,12 @@ Les clés, les recherches et les requêtes s'ouvrent dans des onglets que vous p
 
 - **URL de connexion** : `redis://user:pass@host:6379/0`, ou `rediss://` pour le TLS. Testez-la avant de l'enregistrer.
 - 🔐 **Tunnels SSH** par mot de passe, par clé privée, ou les deux. La clé d'hôte est présentée pour approbation la première fois (ou reprise de `~/.ssh/known_hosts`), puis refusée si elle change. Les profils SSH permettent de partager un même identifiant entre plusieurs tunnels.
+- ☸️ **Kubernetes** : atteignez un serveur qui ne vit qu'à l'intérieur d'un cluster Kubernetes, connecté avec votre kubeconfig (contexte et espace de noms au choix), comme le fait `kubectl port-forward`. Un Service sans pod derrière lui, ou un serveur hors du cluster, est atteint par un pod relais de votre choix qui dispose de socat, nc ou bash.
 - 🎛️ **Profils de connexion** : un nom et une couleur qui teinte l'application pendant la connexion, pour toujours savoir si vous êtes sur `Production`.
 - ☁️ **AWS** : connectez-vous avec vos profils locaux `~/.aws` (SSO compris) et listez les points de terminaison ElastiCache de chacun.
 - 📥 **Import / export** de vos connexions au format JSON, avec ou sans les mots de passe.
 - 🔗 **Liens partageables** : le bouton de lien à côté du nom d'une clé copie un lien `cachemire://` vers la clé, avec son filtre ou l'un de ses champs, sans jamais contenir d'identifiant ni de mot de passe. L'ouvrir mène à cette clé sur la connexion enregistrée ou le point de terminaison AWS correspondant. L'installeur Windows et le .deb enregistrent ces liens ; un AppImage ne le fait qu'une fois intégré au bureau.
-- 🧩 **Clusters** : indiquez n'importe quel nœud d'un cluster Redis ou Valkey (ou un point de terminaison de configuration ElastiCache) pour parcourir, rechercher et modifier tout l'espace de clés, y compris à travers un tunnel SSH.
+- 🧩 **Clusters** : indiquez n'importe quel nœud d'un cluster Redis ou Valkey (ou un point de terminaison de configuration ElastiCache) pour parcourir, rechercher et modifier tout l'espace de clés, y compris à travers un tunnel SSH ou dans Kubernetes.
 
 ### Sûr par défaut
 

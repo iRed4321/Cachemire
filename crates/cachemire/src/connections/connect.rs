@@ -157,6 +157,7 @@ fn with_shown(view: ConnectionView, shown: Shown) -> ConnectionView {
         name: shown.name.into(),
         address: shown.address.into(),
         ssh_via: shown.ssh_via.into(),
+        kubernetes: shown.kubernetes,
         has_profile,
         profile_name: profile_name.into(),
         profile_tint,

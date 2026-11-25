@@ -211,7 +211,7 @@ impl KubeDialer {
     }
 
     /// A stream to `host:port` made by a command run in the relay pod; what it says on
-    /// stderr goes to the log.
+    /// stderr goes to the debug log (the probe reports failures to connect).
     async fn relay(&self, pod: &str, host: &str, port: u16) -> Result<BoxedStream, KubeError> {
         let mut process = self.run_relay(pod, "relay", host, port).await?;
         let failed = || KubeError::RelayFailed { pod: pod.to_string(), host: host.to_string(), port, message: "no stdin or stdout".into() };
@@ -221,7 +221,7 @@ impl KubeDialer {
             tokio::spawn(async move {
                 let mut lines = BufReader::new(stderr).lines();
                 while let Ok(Some(line)) = lines.next_line().await {
-                    tracing::warn!(%pod, %line, "the relay pod's command said");
+                    tracing::debug!(%pod, %line, "the relay pod's command said");
                 }
             });
         }

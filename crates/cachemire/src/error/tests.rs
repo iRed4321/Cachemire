@@ -2,6 +2,7 @@ use std::path::PathBuf;
 use std::sync::Arc;
 
 use super::*;
+use cachemire_core::connection::kube_tunnel::KubeError;
 use cachemire_core::connection::ssh_tunnel::UnknownHostKey;
 
 fn io() -> std::io::Error {
@@ -79,6 +80,18 @@ fn core_errors() -> Vec<CoreError> {
         TunnelError::LocalPort(io()),
         TunnelError::Ssh(russh::Error::KexInit),
     ];
+
+    let kube = [
+        KubeError::Config(kube::config::KubeconfigError::CurrentContextNotSet),
+        KubeError::Request(kube::Error::LinesCodecMaxLineLengthExceeded),
+        KubeError::Refused { message: "forbidden".into() },
+        KubeError::NoSelector { service: "redis".into() },
+        KubeError::NoReadyPod { service: "redis".into() },
+        KubeError::NoPod { namespace: "default".into(), host: "redis".into() },
+        KubeError::RelayFailed { pod: "tools".into(), host: "redis".into(), port: 6379, message: "refused".into() },
+        KubeError::Tls { host: "redis".into(), source: io() },
+        KubeError::LocalPort(io()),
+    ];
     let aws = [
         AwsError::Incomplete,
         service(),
@@ -144,6 +157,7 @@ fn core_errors() -> Vec<CoreError> {
     errors.extend(invalid.map(CoreError::from));
     errors.extend(not_found.map(CoreError::from));
     errors.extend(tunnel.map(CoreError::from));
+    errors.extend(kube.map(CoreError::from));
     errors.extend(aws.map(CoreError::from));
     errors.extend(query.map(CoreError::from));
     errors.extend(json_path.map(CoreError::from));

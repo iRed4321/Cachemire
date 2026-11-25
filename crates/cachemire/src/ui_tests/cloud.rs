@@ -22,6 +22,7 @@ fn form_ready() -> (Harness, Rc<crate::app::App>, tokio::runtime::Runtime, Event
         username: String::new(),
         password: Default::default(),
         ssh: None,
+        kubernetes: None,
         profile_id: String::new(),
         read_only: false,
     };

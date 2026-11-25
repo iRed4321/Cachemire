@@ -2,14 +2,14 @@
 //! what is typed, a source and a connection profile chip, the pinned ones apart. Also what the
 //! title bar says of the connection it shows (its profile, its server).
 
-use slint::{ComponentHandle, ModelRc, VecModel};
+use slint::{ComponentHandle, ModelRc, SharedString, VecModel};
 
 use crate::app::App;
 use crate::connections::profiles::to_tint;
 use crate::error::Localize;
 use crate::t;
 use crate::{AwsAccount, AwsChip, CloudSettings, ConnectionEditor, ConnectionState, MainWindow, PickerRow, ProfileTint};
-use cachemire_core::connection::{ConnectionItem, ServerKind};
+use cachemire_core::connection::{ConnectionItem, KubeSettings, ServerKind, kube_tunnel};
 use cachemire_core::state::AppState;
 
 /// The source keys: the saved connections, and the cloud account's.
@@ -52,6 +52,7 @@ pub(crate) struct Shown {
     pub name: String,
     pub address: String,
     pub ssh_via: String,
+    pub kubernetes: bool,
     pub profile: Option<(String, ProfileTint)>,
     pub server: String,
 }
@@ -62,7 +63,14 @@ pub(crate) fn shown(state: &AppState, id: &str) -> Shown {
         (store.get(id), store.server_kind(id))
     };
     let Some(item) = item else {
-        return Shown { name: String::new(), address: String::new(), ssh_via: String::new(), profile: None, server: String::new() };
+        return Shown {
+            name: String::new(),
+            address: String::new(),
+            ssh_via: String::new(),
+            kubernetes: false,
+            profile: None,
+            server: String::new(),
+        };
     };
     let profile = (!item.profile_id.is_empty())
         .then(|| state.settings.lock().connection_profile(&item.profile_id))
@@ -70,10 +78,35 @@ pub(crate) fn shown(state: &AppState, id: &str) -> Shown {
         .map(|p| (p.name, to_tint(p.color)));
     Shown {
         address: item.address(),
-        ssh_via: item.ssh.as_ref().map(super::connect::ssh_server_label).unwrap_or_default(),
+        ssh_via: item
+            .kubernetes
+            .as_ref()
+            .map(kube_place)
+            .or_else(|| item.ssh.as_ref().map(super::connect::ssh_server_label))
+            .unwrap_or_default(),
+        kubernetes: item.kubernetes.is_some(),
         name: item.name,
         profile,
         server: kind.as_ref().map(server_label).unwrap_or_default(),
+    }
+}
+
+/// "context/namespace" of a Kubernetes connection, a part left out when empty.
+pub(crate) fn kube_place(kube: &KubeSettings) -> String {
+    match (kube.context.as_str(), kube.namespace.as_str()) {
+        ("", "") => t!("current context").into_owned(),
+        (context, "") => context.to_string(),
+        ("", namespace) => namespace.to_string(),
+        (context, namespace) => format!("{context}/{namespace}"),
+    }
+}
+
+/// The row's tunnel label: "SSH via host" or "Kubernetes: place", empty without a tunnel.
+fn tunnel_label(item: &ConnectionItem) -> String {
+    match (&item.kubernetes, &item.ssh) {
+        (Some(kube), _) => t!("Kubernetes: %{place}", place = kube_place(kube)).into_owned(),
+        (None, Some(ssh)) => t!("SSH via %{host}", host = ssh.host).into_owned(),
+        (None, None) => String::new(),
     }
 }
 
@@ -105,7 +138,7 @@ fn row_of(app: &App, window: &MainWindow, item: &ConnectionItem, cloud: bool, no
         cloud,
         kind_label: kind.as_ref().map(kind_label).unwrap_or_default().into(),
         cluster: kind.as_ref().is_some_and(|k| k.primaries > 0),
-        ssh_label: item.ssh.as_ref().map(|ssh| t!("SSH via %{host}", host = ssh.host).into_owned()).unwrap_or_default().into(),
+        ssh_label: tunnel_label(item).into(),
         read_only,
         ..Default::default()
     };
@@ -275,6 +308,14 @@ fn save_filters(app: &App, window: &MainWindow, source: Option<&str>, chip: Opti
     }
 }
 
+/// Lists the kubeconfig's contexts in the form, and names the current one for the field's placeholder.
+pub(super) fn fill_kube_contexts(editor: &ConnectionEditor) {
+    let (contexts, current) = kube_tunnel::contexts().unwrap_or_default();
+    let label = if current.is_empty() { t!("current context").into_owned() } else { t!("current: %{name}", name = current).into_owned() };
+    editor.set_kube_contexts(ModelRc::new(VecModel::from(contexts.into_iter().map(SharedString::from).collect::<Vec<_>>())));
+    editor.set_kube_current_label(label.into());
+}
+
 /// Opens the form on saved connection `item`, its passwords left blank (blank keeps them).
 fn open_editor(window: &MainWindow, item: &ConnectionItem) {
     let editor = window.global::<ConnectionEditor>();
@@ -291,6 +332,12 @@ fn open_editor(window: &MainWindow, item: &ConnectionItem) {
     editor.set_ssh_password("".into());
     editor.set_ssh_key(ssh.map(|s| s.private_key.as_str()).unwrap_or_default().into());
     editor.set_ssh_passphrase("".into());
+    let kube = item.kubernetes.as_ref();
+    editor.set_kube_enabled(kube.is_some());
+    editor.set_kube_context(kube.map(|k| k.context.as_str()).unwrap_or_default().into());
+    editor.set_kube_namespace(kube.map(|k| k.namespace.as_str()).unwrap_or_default().into());
+    editor.set_kube_relay_pod(kube.map(|k| k.relay_pod.as_str()).unwrap_or_default().into());
+    fill_kube_contexts(&editor);
     editor.set_profile_enabled(!item.profile_id.is_empty());
     editor.set_profile_id(item.profile_id.as_str().into());
     editor.set_read_only(item.read_only);

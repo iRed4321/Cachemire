@@ -130,6 +130,12 @@ fn select_backend() -> Result<(), slint::PlatformError> {
 }
 
 fn main() -> Result<(), slint::PlatformError> {
+    // a kubeconfig's sign-in command (`aws eks get-token`…) runs without opening a console window
+    #[cfg(windows)]
+    // SAFETY: the first thing main does, before any other thread exists to read the environment
+    unsafe {
+        std::env::set_var("KUBE_RS_UNSTABLE_CREATE_NO_WINDOW", "1")
+    };
     let _log = logging::init(&cachemire_core::state::resolve_data_file().with_file_name("logs"));
     let link = links::from_args(std::env::args().skip(1));
     // held until the process ends

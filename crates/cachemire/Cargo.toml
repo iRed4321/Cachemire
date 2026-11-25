@@ -42,6 +42,8 @@ tracing-subscriber = { version = "0.3", default-features = false, features = ["f
 cachemire-core = { path = "../cachemire-core", features = ["test-support"] }
 # the SSH errors a tunnel error holds, for the tests that build one
 russh.workspace = true
+# the Kubernetes errors a tunnel error holds, for the tests that build one
+kube = { version = "5.2", default-features = false, features = ["client", "rustls-tls", "ring", "ws"] }
 
 [build-dependencies]
 # app.yml read into the table of the `t!` messages (see build.rs, src/i18n)

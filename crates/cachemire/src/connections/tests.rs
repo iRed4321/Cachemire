@@ -14,6 +14,10 @@ fn form() -> ConnectionForm {
         ssh_password: "".into(),
         ssh_key: "~/.ssh/id_ed25519".into(),
         ssh_passphrase: "".into(),
+        kube_enabled: false,
+        kube_context: "".into(),
+        kube_namespace: "".into(),
+        kube_relay_pod: "".into(),
         profile_id: "production".into(),
         read_only: false,
     }

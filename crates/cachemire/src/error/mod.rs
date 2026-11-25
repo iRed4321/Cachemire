@@ -5,6 +5,7 @@
 use crate::t;
 
 use cachemire_core::aws::AwsError;
+use cachemire_core::connection::kube_tunnel::KubeError;
 use cachemire_core::connection::ssh_tunnel::TunnelError;
 use cachemire_core::error::{Error as CoreError, FileError, Invalid, NotFound, SystemError, Timeout};
 use cachemire_core::json_path::{Found, ParseError};
@@ -57,6 +58,7 @@ impl Localize for CoreError {
             CoreError::NotFound(error) => error.localized(),
             CoreError::Timeout(error) => error.localized(),
             CoreError::Tunnel(error) => error.localized(),
+            CoreError::Kube(error) => error.localized(),
             CoreError::Keyring(error) => error.localized(),
             CoreError::File(error) => error.localized(),
             CoreError::Cloud(error) => error.localized(),
@@ -198,6 +200,37 @@ impl Localize for TunnelError {
             TunnelError::Tls { host, source } => t!("couldn't make a secure connection to %{host} through the SSH tunnel: %{error}", host = host, error = source),
             TunnelError::LocalPort(error) => t!("couldn't open a local port for the SSH tunnel: %{error}", error = error),
             TunnelError::Ssh(_) => return self.to_string(),
+        }
+        .into_owned()
+    }
+}
+
+impl Localize for KubeError {
+    fn localized(&self) -> String {
+        match self {
+            KubeError::Config(error) => t!("couldn't read the Kubernetes configuration: %{error}", error = error),
+            KubeError::Request(error) => t!("couldn't reach the Kubernetes cluster: %{error}", error = error),
+            KubeError::Refused { message } => t!("Kubernetes refused: %{message}", message = message),
+            KubeError::NoSelector { service } => {
+                t!("the Service %{service} has no pods behind it (no selector): name a relay pod in the connection", service = service)
+            }
+            KubeError::NoReadyPod { service } => t!("no pod behind the Service %{service} is ready", service = service),
+            KubeError::NoPod { namespace, host } => t!(
+                "no pod in the namespace %{namespace} answers to %{host}: name a relay pod in the connection",
+                namespace = namespace,
+                host = host
+            ),
+            KubeError::RelayFailed { pod, host, port, message } => t!(
+                "the relay pod %{pod} couldn't reach %{host}:%{port}: %{message}",
+                pod = pod,
+                host = host,
+                port = port,
+                message = message
+            ),
+            KubeError::Tls { host, source } => {
+                t!("couldn't make a secure connection to %{host} through the Kubernetes tunnel: %{error}", host = host, error = source)
+            }
+            KubeError::LocalPort(error) => t!("couldn't open a local port for the Kubernetes tunnel: %{error}", error = error),
         }
         .into_owned()
     }

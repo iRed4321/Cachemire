@@ -875,6 +875,58 @@ export component SshTunnelFields inherits VerticalLayout {
     }
 }
 
+// The kubeconfig's contexts to pick one from, in a box that scrolls past three and a half rows;
+// clicking the chosen one again clears it.
+export component ContextChoiceList inherits Rectangle {
+    in property <[string]> items: [];
+    in-out property <string> selected: "";
+
+    property <length> row-height: Theme.px(26px);
+    property <length> box-height: min(items.length * row-height, row-height * 3.5) + Theme.px(2px);
+
+    height: box-height;
+    background: Theme.bg-sunken;
+    border-radius: Theme.radius-md;
+    border-width: 1px;
+    border-color: Theme.border-soft;
+
+    HorizontalLayout {
+        padding: Theme.px(1px);
+        context-flick := Flickable {
+            horizontal-stretch: 1;
+            interactive: true;
+            context-content := VerticalLayout {
+                width: root.width - Theme.px(2px);
+                alignment: start;
+                for name in root.items: Rectangle {
+                    width: context-content.width;
+                    height: root.row-height;
+                    background: context-area.has-hover ? Theme.bg-hover-elevated : Theme.bg-sunken;
+                    context-area := TouchArea {
+                        mouse-cursor: pointer;
+                        clicked => { root.selected = root.selected == name ? "" : name; }
+                    }
+                    Text {
+                        x: Theme.px(10px);
+                        width: parent.width - Theme.px(20px);
+                        text: name;
+                        font-size: Theme.pt(11.5px);
+                        font-family: Theme.font-mono;
+                        font-weight: root.selected == name ? 700 : 400;
+                        color: root.selected == name ? Theme.accent-blue : Theme.text-primary;
+                        vertical-alignment: center;
+                        overflow: elide;
+                    }
+                }
+            }
+        }
+        VScrollBar {
+            content-height: context-flick.content-height;
+            content-y <=> context-flick.content-y;
+        }
+    }
+}
+
 // Full-window dimmed backdrop + centered card, for both "New connection…"
 // (field-id empty) and modify (pre-filled by the caller). Password boxes
 // start blank in edit mode — leaving one blank on save keeps it as stored.
@@ -897,6 +949,10 @@ export component ConnectionModal inherits Rectangle {
     in-out property <string> field-ssh-password <=> ConnectionEditor.ssh-password;
     in-out property <string> field-ssh-key <=> ConnectionEditor.ssh-key;
     in-out property <string> field-ssh-passphrase <=> ConnectionEditor.ssh-passphrase;
+    in-out property <bool> field-kube-enabled <=> ConnectionEditor.kube-enabled;
+    in-out property <string> field-kube-context <=> ConnectionEditor.kube-context;
+    in-out property <string> field-kube-namespace <=> ConnectionEditor.kube-namespace;
+    in-out property <string> field-kube-relay-pod <=> ConnectionEditor.kube-relay-pod;
     // "Add a connection profile" is ticked, and the one chosen
     in-out property <bool> field-profile-enabled <=> ConnectionEditor.profile-enabled;
     in-out property <string> field-profile-id <=> ConnectionEditor.profile-id;
@@ -965,7 +1021,7 @@ export component ConnectionModal inherits Rectangle {
                 ConnectionModalField {
                         clipboard-has-text() => { return root.clipboard-has-text(); }
                     label: @tr("Connection URL");
-                    placeholder: "redis://user:pass@host:6379/0";
+                    placeholder: root.field-kube-enabled ? "redis://redis:6379" : "redis://user:pass@host:6379/0";
                     text <=> root.field-connection-url;
                 }
                 HorizontalLayout {
@@ -986,7 +1042,10 @@ export component ConnectionModal inherits Rectangle {
                     text: @tr("Enable SSH Tunnel");
                     bold: true;
                     checked: root.field-ssh-enabled;
-                    toggled => { root.field-ssh-enabled = !root.field-ssh-enabled; }
+                    toggled => {
+                        root.field-ssh-enabled = !root.field-ssh-enabled;
+                        if root.field-ssh-enabled { root.field-kube-enabled = false; }
+                    }
                 }
                 if root.field-ssh-enabled: SshTunnelFields {
                     clipboard-has-text() => { return root.clipboard-has-text(); }
@@ -998,6 +1057,51 @@ export component ConnectionModal inherits Rectangle {
                     key <=> root.field-ssh-key;
                     passphrase <=> root.field-ssh-passphrase;
                     browse-key => { root.browse-key(); }
+                }
+
+                // the fields below only exist while the cluster is on
+                CheckRow {
+                    text: @tr("Inside a Kubernetes cluster");
+                    bold: true;
+                    checked: root.field-kube-enabled;
+                    toggled => {
+                        root.field-kube-enabled = !root.field-kube-enabled;
+                        if root.field-kube-enabled {
+                            root.field-ssh-enabled = false;
+                            ConnectionEditor.kube-contexts-requested();
+                        }
+                    }
+                }
+                if root.field-kube-enabled: VerticalLayout {
+                    spacing: Theme.px(10px);
+                    ConnectionModalField {
+                        clipboard-has-text() => { return root.clipboard-has-text(); }
+                        label: @tr("Context");
+                        placeholder: ConnectionEditor.kube-current-label;
+                        text <=> root.field-kube-context;
+                    }
+                    if ConnectionEditor.kube-contexts.length > 0: ContextChoiceList {
+                        items: ConnectionEditor.kube-contexts;
+                        selected <=> root.field-kube-context;
+                    }
+                    ConnectionModalField {
+                        clipboard-has-text() => { return root.clipboard-has-text(); }
+                        label: @tr("Namespace");
+                        placeholder: @tr("the context's namespace");
+                        text <=> root.field-kube-namespace;
+                    }
+                    ConnectionModalField {
+                        clipboard-has-text() => { return root.clipboard-has-text(); }
+                        label: @tr("Relay pod");
+                        placeholder: @tr("none");
+                        text <=> root.field-kube-relay-pod;
+                    }
+                    Text {
+                        text: @tr("For a Service with no pods behind it, or a server outside the cluster: a pod with socat, nc or bash connects for Cachemire.");
+                        font-size: Theme.pt(10.5px);
+                        color: Theme.text-tertiary;
+                        wrap: word-wrap;
+                    }
                 }
 
                 // the list only exists while the profile is on

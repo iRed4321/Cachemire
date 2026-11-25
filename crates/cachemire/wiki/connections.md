@@ -109,7 +109,7 @@ Points worth knowing:
 
 `components/title-bar.slint`. The pill shows `ConnectionView`:
 
-- in use: the name, the address, an outlined lock + `SSH` badge for a tunnel, a chevron;
+- in use: the name, the address, an outlined lock + `SSH` (or `K8s`) badge for a tunnel, a chevron;
 - connecting: the name, a spinner and "connecting…" (or "connecting through user@host…");
 - lost (status `Disconnected`): the name, a broken-link icon, the reason (`status_detail`) and a
   **Reconnect** button. A dot before the name is green once connected, grey otherwise (no hover
@@ -138,7 +138,7 @@ builds it in [`picker::list`](crate::connections::picker), on `ConnectionState.l
 - each row says when it was used ("in use" with a green dot, "open" with a green ring for one kept
   in the background, both also on pinned tiles), its profile,
   its kind (`Cluster · 3 primaries`, `Standalone`, nothing before the first connection), its SSH
-  server and read-only. The pencil opens the form (`picker::edit`, filling `ConnectionEditor`) or a
+  server (or `Kubernetes: context/namespace`) and read-only. The pencil opens the form (`picker::edit`, filling `ConnectionEditor`) or a
   cloud connection's settings. Up, Down, Enter and Escape work from the filter.
 
 ## Dialogs that interrupt an attempt
@@ -220,6 +220,12 @@ at any stage arrives as an [`Error::Tunnel`](cachemire_core::error::Error::Tunne
 text fields are always `Some`; the three secret fields are `None` when blank, meaning "keep what
 is stored". An empty SSH port is 22; a non-numeric or zero one is
 [`Invalid::SshPort`](cachemire_core::error::Invalid::SshPort).
+
+The form has two exclusive tunnel sections, SSH and "Inside a Kubernetes cluster" (turning one on
+turns the other off). The Kubernetes one holds the context (a choice list read by
+[`kube_tunnel::contexts`](cachemire_core::connection::kube_tunnel::contexts) when the switch is turned
+on or the form opens, still typeable), the namespace and the relay pod, all blank by default; the
+payload carries them as `kube_*` and the URL host is the name inside the cluster.
 
 - **Save** (`save_form` then
   `save_payload`): runs `create_with_id` or `update` inside

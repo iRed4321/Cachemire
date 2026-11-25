@@ -18,6 +18,8 @@ export struct ConnectionView {
     address: string,
     // "user@ssh-host" while the connection uses an SSH tunnel, known even on failure
     ssh-via: string,
+    // the tunnel is a Kubernetes cluster's, named by `ssh-via`
+    kubernetes: bool,
     // the last failure was setting up that tunnel, not the Redis endpoint past it
     ssh-failed: bool,
     // the connection shown, even while connecting or once it failed
@@ -92,6 +94,15 @@ export global ConnectionEditor {
     in-out property <string> ssh-password: "";
     in-out property <string> ssh-key: "";
     in-out property <string> ssh-passphrase: "";
+    in-out property <bool> kube-enabled: false;
+    in-out property <string> kube-context: "";
+    in-out property <string> kube-namespace: "";
+    in-out property <string> kube-relay-pod: "";
+    // the kubeconfig's contexts, and the placeholder naming the current one; Rust fills both
+    in-out property <[string]> kube-contexts: [];
+    in-out property <string> kube-current-label: "";
+    // the Kubernetes switch was turned on: Rust reads the kubeconfig again
+    callback kube-contexts-requested();
     in-out property <bool> profile-enabled: false;
     in-out property <string> profile-id: "";
     // the connection's own read-only setting; its profile may make it read-only too
@@ -118,6 +129,10 @@ export global ConnectionEditor {
         self.ssh-password = "";
         self.ssh-key = "";
         self.ssh-passphrase = "";
+        self.kube-enabled = false;
+        self.kube-context = "";
+        self.kube-namespace = "";
+        self.kube-relay-pod = "";
         self.profile-enabled = false;
         self.profile-id = "";
         self.read-only = false;
@@ -142,6 +157,10 @@ export global ConnectionEditor {
             ssh-password: ssh-password,
             ssh-key: ssh-key,
             ssh-passphrase: ssh-passphrase,
+            kube-enabled: kube-enabled,
+            kube-context: kube-context,
+            kube-namespace: kube-namespace,
+            kube-relay-pod: kube-relay-pod,
             profile-id: profile-enabled ? profile-id : "",
             read-only: read-only,
         };

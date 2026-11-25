@@ -62,8 +62,9 @@ component WindowDragArea inherits TouchArea {
     }
 }
 
-// A small outlined label in the pill: the SSH tunnel's lock and "SSH".
+// A small outlined label in the pill: the tunnel's lock and "SSH" or "K8s".
 component SshBadge inherits Rectangle {
+    in property <string> text: "SSH";
     height: Theme.px(18px);
     width: row.preferred-width;
     border-radius: Theme.radius-sm;
@@ -78,7 +79,7 @@ component SshBadge inherits Rectangle {
             IconLock { size: Theme.px(10px); tint: Theme.text-secondary; }
         }
         Text {
-            text: "SSH";
+            text: root.text;
             color: Theme.text-secondary;
             font-size: Theme.pt(10.5px);
             font-weight: 700;
@@ -328,7 +329,7 @@ export component TitleBar inherits Rectangle {
                 horizontal-stretch: 1;
                 overflow: elide;
             }
-            if root.named && !root.connecting && !root.lost && root.has-ssh && !root.compact: SshBadge { }
+            if root.named && !root.connecting && !root.lost && root.has-ssh && !root.compact: SshBadge { text: root.view.kubernetes ? "K8s" : "SSH"; }
             if !(root.lost && root.named) || root.compact: IconChevron { size: Theme.icon-xs; down: !root.expanded; up: root.expanded; tint: Theme.text-tertiary; }
             // the one thing to do about a connection lost, right where it says so
             if root.lost && root.named && !root.compact: reconnect := Rectangle {
@@ -494,7 +495,7 @@ export component ConnectionDetails inherits Rectangle {
         }
         if root.view.server != "": DetailLine { label: @tr("Server"); value: root.view.server; }
         if root.view.address != "": DetailLine { label: @tr("Address"); value: root.view.address; mono: true; }
-        if root.view.ssh-via != "": DetailLine { label: @tr("SSH tunnel"); value: root.view.ssh-via; mono: true; }
+        if root.view.ssh-via != "": DetailLine { label: root.view.kubernetes ? @tr("Kubernetes") : @tr("SSH tunnel"); value: root.view.ssh-via; mono: true; }
         if root.view.connected && !root.lost: DetailLine {
             label: @tr("Access");
             value: root.read-only ? @tr("read-only") : @tr("read and write");

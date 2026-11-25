@@ -17,6 +17,7 @@ This chapter covers everything under `src/connection/`; the secrets themselves a
 | `connection/tls.rs` | trusted roots: [`roots_pem`](crate::connection::tls::roots_pem), [`connector`](crate::connection::tls::connector) |
 | `connection/pool.rs` | [`ConnectionCache`](crate::connection::pool::ConnectionCache), [`ConnectionPool`](crate::connection::pool::ConnectionPool) and [`RedisConnection`](crate::connection::pool::RedisConnection) (one server or a cluster) |
 | `connection/tunnel/mod.rs` | [`Tunnel`](crate::connection::tunnel::Tunnel), [`Dialer`](crate::connection::tunnel::Dialer), [`TunnelResolver`](crate::connection::tunnel::TunnelResolver): the local ports, whatever transport carries them |
+| `connection/kube_tunnel/mod.rs` | [`open`](crate::connection::kube_tunnel::open) (the Kubernetes transport), [`KubeError`](crate::connection::kube_tunnel::KubeError), [`contexts`](crate::connection::kube_tunnel::contexts) |
 | `connection/ssh_tunnel/mod.rs` | [`open`](crate::connection::ssh_tunnel::open) (the SSH transport), [`HostKeys`](crate::connection::ssh_tunnel::HostKeys), [`TunnelError`](crate::connection::ssh_tunnel::TunnelError) |
 | `connection/store/mod.rs` | [`ConnectionStore`](crate::connection::store::ConnectionStore): the saved connections file |
 
@@ -24,7 +25,8 @@ This chapter covers everything under `src/connection/`; the secrets themselves a
 
 - [`ConnectionItem`](crate::connection::ConnectionItem) is the in-memory form of a
   connection: id, name, URL, optional username and [`Secret`](crate::secret::Secret) password,
-  an optional [`SshSettings`](crate::connection::SshSettings), the id of its (display) connection
+  an optional [`SshSettings`](crate::connection::SshSettings) or
+  [`KubeSettings`](crate::connection::KubeSettings) (the latter wins: one way in), the id of its (display) connection
   profile and a `read_only` flag.
 - [`Endpoint`](crate::connection::Endpoint) is what the URL *and* the item's own fields say
   together, computed by [`ConnectionItem::endpoint`](crate::connection::ConnectionItem::endpoint):
@@ -200,8 +202,8 @@ to the whole cluster; nothing in the saved connection says so, the pool finds ou
   Each cluster connection holds one socket per node.
 - The nodes are reached at the addresses they announce: a client that can reach the endpoint but not
   those addresses (NAT, Docker Desktop's port publishing) fails on the other nodes.
-- Through an SSH tunnel, the cluster client resolves every node's address with the tunnel's
-  [`TunnelResolver`](crate::connection::ssh_tunnel::TunnelResolver) (see [below](#ssh-tunnel)).
+- Through a tunnel (SSH or Kubernetes), the cluster client resolves every node's address with the tunnel's
+  [`TunnelResolver`](crate::connection::tunnel::TunnelResolver) (see [below](#ssh-tunnel)).
 
 ## TLS
 
@@ -325,6 +327,35 @@ connection. See the app's connections chapter.
 [`ErrorKind`](crate::error::ErrorKind) is `Tunnel` for every variant. The UI records that the
 failure was the tunnel's. Localisation and the full model are in
 [errors](crate::wiki::errors).
+
+## Kubernetes
+
+[`kube_tunnel::open`](crate::connection::kube_tunnel::open) reaches a server that only lives inside a
+Kubernetes cluster, through its API server, signed in with the user's kubeconfig (`kube` crate: the
+context's credentials, sign-in commands such as `aws eks get-token`, token refresh). The connection's
+[`KubeSettings`](crate::connection::KubeSettings) name the context, the namespace (empty: the
+kubeconfig's) and an optional relay pod; the URL's host is the name inside the cluster (`redis://redis:6379`).
+Its dialer is one of two kinds:
+
+- **Port-forward** (no relay pod), what `kubectl port-forward` does. Each address is first turned into a
+  pod: an IP is the pod with that `status.podIP` (a cluster's nodes announce theirs); `service` or
+  `service.namespace[.svc…]` is a ready pod behind that Service, with the Service's `targetPort`;
+  `pod.subdomain.namespace.svc…` and a bare name are that pod. Found pods are remembered until a
+  port-forward to one fails. A Service with no selector has no pods to forward to:
+  [`KubeError::NoSelector`](crate::connection::kube_tunnel::KubeError::NoSelector).
+- **Relay pod**: each stream is a `kubectl exec` in that pod of `RELAY_SCRIPT`, which connects to the
+  address with socat, else nc (through a fifo, so it stops when stdin ends), else bash's `/dev/tcp`, and
+  relays stdin and stdout. The pod resolves names itself, so this reaches Services with no selector,
+  servers outside the cluster, and any address a cluster's nodes announce. Its stderr goes to the debug log.
+
+`open` checks the way in before listening: the relay pod runs the script in `probe` mode (connect, then
+exit) and what it says on failure becomes [`KubeError::RelayFailed`](crate::connection::kube_tunnel::KubeError::RelayFailed);
+a port-forward is opened once; with TLS the handshake is tried. An error the API server answers (a
+missing pod, a refused permission) is [`KubeError::Refused`](crate::connection::kube_tunnel::KubeError::Refused)
+with its message. Like SSH, [`Error::Kube`](crate::error::Error::Kube) has the kind `Tunnel`.
+
+On Windows the app sets `KUBE_RS_UNSTABLE_CREATE_NO_WINDOW` first thing, so a sign-in command doesn't
+open a console window.
 
 ## Invariants to keep
 

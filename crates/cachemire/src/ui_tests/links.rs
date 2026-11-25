@@ -194,6 +194,7 @@ fn an_aws_link_follows_once_its_account_is_listed() {
         username: String::new(),
         password: Default::default(),
         ssh: None,
+        kubernetes: None,
         profile_id: String::new(),
         read_only: false,
     };

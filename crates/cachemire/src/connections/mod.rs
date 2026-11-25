@@ -154,6 +154,7 @@ pub fn init(app: &Rc<App>, window: &MainWindow) {
     editor.on_deleted(|id| crate::app::with(|app, window| delete(app, window, &id)));
     editor.on_test_requested(|form| crate::app::with(|app, window| test_form(app, window, &form)));
     editor.on_saved(|form| crate::app::with(|app, window| save_form(app, window, &form)));
+    editor.on_kube_contexts_requested(|| crate::app::with(|_, window| picker::fill_kube_contexts(&window.global::<ConnectionEditor>())));
     // "Browse…" beside the SSH private key
     editor.on_browse_key(|| {
         crate::app::with(|app, window| {
@@ -365,6 +366,10 @@ fn payload_from_form(form: &ConnectionForm) -> Result<ConnectionPayloadInput, Er
         ssh_password: keep_if_blank(&form.ssh_password),
         ssh_private_key: Some(form.ssh_key.to_string()),
         ssh_passphrase: keep_if_blank(&form.ssh_passphrase),
+        kube_enabled: Some(form.kube_enabled),
+        kube_context: Some(form.kube_context.trim().to_string()),
+        kube_namespace: Some(form.kube_namespace.trim().to_string()),
+        kube_relay_pod: Some(form.kube_relay_pod.trim().to_string()),
         profile_id: Some(form.profile_id.to_string()),
         read_only: Some(form.read_only),
     })

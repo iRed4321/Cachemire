@@ -282,6 +282,26 @@ _version: 2
 "couldn't open a local port for the SSH tunnel: %{error}":
   fr: "impossible d'ouvrir un port local pour le tunnel SSH : %{error}"
 
+# Kubernetes tunnels
+"couldn't read the Kubernetes configuration: %{error}":
+  fr: "impossible de lire la configuration Kubernetes : %{error}"
+"couldn't reach the Kubernetes cluster: %{error}":
+  fr: "impossible de joindre le cluster Kubernetes : %{error}"
+"Kubernetes refused: %{message}":
+  fr: "Kubernetes a refusé : %{message}"
+"the Service %{service} has no pods behind it (no selector): name a relay pod in the connection":
+  fr: "le Service %{service} n'a aucun pod derrière lui (pas de sélecteur) : indiquez un pod relais dans la connexion"
+"no pod behind the Service %{service} is ready":
+  fr: "aucun pod derrière le Service %{service} n'est prêt"
+"no pod in the namespace %{namespace} answers to %{host}: name a relay pod in the connection":
+  fr: "aucun pod de l'espace de noms %{namespace} ne répond à %{host} : indiquez un pod relais dans la connexion"
+"the relay pod %{pod} couldn't reach %{host}:%{port}: %{message}":
+  fr: "le pod relais %{pod} n'a pas pu joindre %{host}:%{port} : %{message}"
+"couldn't make a secure connection to %{host} through the Kubernetes tunnel: %{error}":
+  fr: "impossible d'établir une connexion sécurisée avec %{host} via le tunnel Kubernetes : %{error}"
+"couldn't open a local port for the Kubernetes tunnel: %{error}":
+  fr: "impossible d'ouvrir un port local pour le tunnel Kubernetes : %{error}"
+
 # search tabs
 "Search":
   fr: "Recherche"
@@ -605,6 +625,12 @@ _version: 2
   fr: "AWS · %{profile}"
 "SSH via %{host}":
   fr: "SSH via %{host}"
+"Kubernetes: %{place}":
+  fr: "Kubernetes : %{place}"
+"current context":
+  fr: "contexte courant"
+"current: %{name}":
+  fr: "courant : %{name}"
 # what a connection's server is, in the list and in the title bar's details
 "Standalone":
   fr: "Autonome"

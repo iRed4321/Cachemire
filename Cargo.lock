@@ -1054,6 +1054,7 @@ dependencies = [
  "dirs",
  "fontique",
  "icu_normalizer",
+ "kube",
  "natord",
  "open",
  "parking_lot 0.13.0",
