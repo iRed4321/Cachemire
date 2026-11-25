@@ -81,7 +81,7 @@ pub fn run_task(extra: Vec<String>) -> Result<()> {
             match start_cluster(&nodes)? {
                 Some(servers) => {
                     let ports: Vec<u16> = nodes.iter().map(|(port, _)| *port).collect();
-                    form_cluster(&nodes)?;
+                    form_cluster(&nodes).inspect_err(|_| print_cluster_logs(&nodes))?;
                     let url = format!("redis://127.0.0.1:{}", ports[0]);
                     println!("The Redis cluster is up at {url}");
                     (url, Some((servers, ports)))
@@ -94,10 +94,12 @@ pub fn run_task(extra: Vec<String>) -> Result<()> {
     let outcome = run(test_command(extra, with_cluster).current_dir(repo_root()).env(E2E_REDIS, &url).env(E2E_CLUSTER, &cluster_url));
     for (servers, ports) in server.map(|(server, ports)| (vec![server], ports)).into_iter().chain(cluster) {
         // asked first, since stopping WSL's launcher may leave the server itself running
+        let first = ports[0];
         for port in ports {
             shutdown(port);
         }
         drop(servers);
+        let _ = std::fs::remove_dir_all(cluster_dir(first));
     }
     outcome
 }
@@ -184,14 +186,16 @@ fn start_cluster(nodes: &[(u16, u16)]) -> Result<Option<Vec<Server>>> {
     };
     for program in ["redis-server", "valkey-server", "memurai"] {
         if works(program, "--version") {
-            let dir = repo_root().join("target").join("e2e-cluster");
+            let dir = cluster_dir(nodes[0].0);
+            let _ = std::fs::remove_dir_all(&dir);
             std::fs::create_dir_all(&dir).map_err(|e| format!("can't make {}: {e}", dir.display()))?;
-            println!("Starting a cluster of {} {program} on ports {nodes:?}", nodes.len());
+            println!("Starting a cluster of {} {program} on ports {nodes:?} (files in {})", nodes.len(), dir.display());
             let mut servers = Vec::new();
             for &(port, bus) in nodes {
                 let nodes_file = dir.join(format!("nodes-{port}.conf")).display().to_string();
+                let log_file = dir.join(format!("node-{port}.log")).display().to_string();
                 let child = Command::new(program)
-                    .args(["--bind", "127.0.0.1"])
+                    .args(["--bind", "127.0.0.1", "--logfile", &log_file])
                     .args(node_args(port, bus, nodes_file))
                     .stdout(Stdio::null())
                     .spawn();
@@ -227,6 +231,25 @@ fn start_cluster(nodes: &[(u16, u16)]) -> Result<Option<Vec<Server>>> {
          or set {E2E_CLUSTER} to a node of a cluster the tests may write keys into",
         if cfg!(windows) { ", or redis-server in WSL" } else { "" }
     ))
+}
+
+/// Where the nodes of a cluster started here keep their nodes files and logs: the system's temporary
+/// folder, as some file systems (a Windows Dev Drive) may not take the lock a nodes file needs.
+fn cluster_dir(first_port: u16) -> std::path::PathBuf {
+    std::env::temp_dir().join(format!("cachemire-e2e-cluster-{first_port}"))
+}
+
+/// The end of each node's log, for when the cluster didn't come up.
+fn print_cluster_logs(nodes: &[(u16, u16)]) {
+    for &(port, _) in nodes {
+        let file = cluster_dir(nodes[0].0).join(format!("node-{port}.log"));
+        let Ok(log) = std::fs::read_to_string(&file) else { continue };
+        let lines: Vec<&str> = log.lines().collect();
+        println!("--- the end of {}:", file.display());
+        for line in &lines[lines.len().saturating_sub(20)..] {
+            println!("{line}");
+        }
+    }
 }
 
 /// Gives each node its share of the slots, has the first meet the others, then waits for

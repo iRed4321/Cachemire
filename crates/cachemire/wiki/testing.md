@@ -98,7 +98,9 @@ Both e2e suites are `#[ignore = "needs a Redis server: cargo xtask e2e"]` (the c
 4. It also starts a cluster of three primaries (`CLUSTER_NODES`), the same first way that works (in Docker,
    all three in one container that publishes their ports), each with its own bus port and announcing
    `127.0.0.1`; it gives each a third of the slots (`CLUSTER ADDSLOTSRANGE`, Redis 7+), has the first
-   `CLUSTER MEET` the others and waits for `cluster_state:ok` on all. `CACHEMIRE_E2E_CLUSTER` set to one node's
+   `CLUSTER MEET` the others and waits for `cluster_state:ok` on all. Started here, the nodes keep their
+   nodes files and logs in the system's temporary folder (`cachemire-e2e-cluster-<port>`, removed afterwards;
+   a Windows Dev Drive may refuse a nodes file's lock), and the end of each log is printed if the cluster doesn't form. `CACHEMIRE_E2E_CLUSTER` set to one node's
    URL uses that cluster instead (the tests write keys under `e2e:` into it and leave some there). With WSL
    as the only way (a cluster can stall WSL 1), no cluster is started and the cluster's tests are left out
    of the filter (`FILTER_NO_CLUSTER`). The CI runs them on both OSes: on Windows it puts a native Redis
