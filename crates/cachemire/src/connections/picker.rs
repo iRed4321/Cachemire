@@ -10,6 +10,7 @@ use crate::error::Localize;
 use crate::t;
 use crate::{AwsAccount, AwsChip, CloudSettings, ConnectionEditor, ConnectionState, MainWindow, PickerRow, ProfileTint};
 use cachemire_core::connection::{ConnectionItem, KubeSettings, ServerKind, kube_tunnel};
+use cachemire_core::settings::PinnedCloud;
 use cachemire_core::state::AppState;
 
 /// The source keys: the saved connections, and the cloud account's.
@@ -27,20 +28,21 @@ fn product_version(kind: &ServerKind) -> String {
     if kind.version.is_empty() { kind.product.clone() } else { format!("{} {}", kind.product, kind.version) }
 }
 
-/// What the title bar's details say of a server: "Valkey 9.0.0 · cluster of 3 primaries".
+/// What the title bar's details say of a server: "Valkey 9.0.0 · cluster of 3 primaries", or
+/// only "Valkey 9.0.0" on its own (no mode said means standalone).
 fn server_label(kind: &ServerKind) -> String {
     let server = product_version(kind);
     match kind.primaries {
-        0 => t!("%{server} · standalone", server = server).into_owned(),
+        0 => server,
         1 => t!("%{server} · cluster of 1 primary", server = server).into_owned(),
         n => t!("%{server} · cluster of %{n} primaries", server = server, n = n).into_owned(),
     }
 }
 
-/// What a row says of a server's kind: "Cluster · 3 primaries" or "Standalone".
+/// What a row says of a server's kind: "Cluster · 3 primaries", nothing for a server on its own.
 fn kind_label(kind: &ServerKind) -> String {
     match kind.primaries {
-        0 => t!("Standalone").into_owned(),
+        0 => String::new(),
         1 => t!("Cluster · 1 primary").into_owned(),
         n => t!("Cluster · %{n} primaries", n = n).into_owned(),
     }
@@ -157,6 +159,40 @@ fn row_of(app: &App, window: &MainWindow, item: &ConnectionItem, cloud: bool, no
     (row, chip, used)
 }
 
+/// A pinned cloud connection whose profile isn't listed, as last seen: it says which AWS
+/// profile reaches it, and clicking it signs in with that one (see `cloud::open_pinned`).
+fn pinned_cloud_row(app: &App, pin: &PinnedCloud) -> (PickerRow, String) {
+    let profile = {
+        let settings = app.state.settings.lock();
+        let id = settings.cloud_profile_id(&pin.key());
+        (!id.is_empty()).then(|| settings.connection_profile(&id)).flatten()
+    };
+    let mut row = PickerRow {
+        id: pin.id.as_str().into(),
+        name: pin.name.as_str().into(),
+        address: pin.address.as_str().into(),
+        when: t!("AWS · %{profile}", profile = pin.profile.as_str()).as_ref().into(),
+        cloud: true,
+        kind_label: pin.server.as_ref().map(kind_label).unwrap_or_default().into(),
+        cluster: pin.server.as_ref().is_some_and(|k| k.primaries > 0),
+        read_only: profile.as_ref().is_some_and(|p| p.read_only),
+        ..Default::default()
+    };
+    let chip = match profile {
+        Some(profile) => {
+            row.has_tint = true;
+            row.tint = to_tint(profile.color);
+            row.profile_label = profile.name.into();
+            profile.id
+        }
+        None => {
+            row.profile_label = t!("No profile").as_ref().into();
+            NO_PROFILE_CHIP.to_string()
+        }
+    };
+    (row, chip)
+}
+
 /// The connection profile chips: all the connections, each profile some use (in the settings'
 /// order), those with none. None when they all fall under one chip.
 fn chip_lines(app: &App, keys: &[&str]) -> Vec<Vec<AwsChip>> {
@@ -210,6 +246,16 @@ pub(crate) fn list(app: &App, window: &MainWindow, filter: &str) {
             let (row, chip, used) = row_of(app, window, item, is_cloud, now);
             all.push(Entry { row, chip, used, cloud: is_cloud });
         }
+    }
+    // the pinned cloud connections another profile lists, or none listed now
+    let away: Vec<PinnedCloud> = {
+        let settings = app.state.settings.lock();
+        let pinned = settings.pinned_connections();
+        settings.pinned_cloud().iter().filter(|p| pinned.contains(&p.id) && !cloud.iter().any(|c| c.id == p.id)).cloned().collect()
+    };
+    for pin in &away {
+        let (row, chip) = pinned_cloud_row(app, pin);
+        all.push(Entry { row, chip, used: None, cloud: true });
     }
     let words: Vec<String> = filter.split_whitespace().map(str::to_lowercase).collect();
     let state = window.global::<ConnectionState>();
@@ -277,10 +323,12 @@ pub(crate) fn list(app: &App, window: &MainWindow, filter: &str) {
 
     let total = all.len();
     let unfiltered = words.is_empty() && source.is_empty() && chip.is_empty();
-    let count = match (unfiltered, total) {
-        (true, 1) => t!("1 connection").into_owned(),
-        (true, total) => t!("%{n} connections", n = total).into_owned(),
-        (false, total) => t!("%{shown} of %{total}", shown = pins.len() + rows.len(), total = total).into_owned(),
+    let all_count = if total == 1 { t!("1 connection").into_owned() } else { t!("%{n} connections", n = total).into_owned() };
+    let widest_filtered = t!("%{shown} of %{total}", shown = total, total = total).into_owned();
+    let count = if unfiltered {
+        all_count.clone()
+    } else {
+        t!("%{shown} of %{total}", shown = pins.len() + rows.len(), total = total).into_owned()
     };
     state.set_source(source.as_str().into());
     state.set_chip(chip.as_str().into());
@@ -292,6 +340,8 @@ pub(crate) fn list(app: &App, window: &MainWindow, filter: &str) {
     state.set_rows(ModelRc::new(VecModel::from(rows)));
     state.set_highlighted(0);
     state.set_count_label(count.into());
+    state.set_count_label_unfiltered(all_count.into());
+    state.set_count_label_filtered(widest_filtered.into());
 }
 
 /// Keeps the source or the chip picked over the list, for the next times it opens.
@@ -381,6 +431,7 @@ pub(crate) fn init(window: &MainWindow) {
                 tracing::warn!("can't save the pinned connections: {e}");
                 crate::toast::show(window, &e.localized());
             }
+            crate::cloud::remember_pins(app);
         });
     });
     state.on_edit_requested(|id| crate::app::with(|app, window| edit(app, window, &id)));

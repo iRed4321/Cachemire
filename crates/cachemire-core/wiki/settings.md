@@ -88,7 +88,9 @@ comment):
   `check_updates_at_startup`, `update_channel`, `accept_new_ssh_host_keys`, `server_search`,
   `search_depth`, `shortcuts`, `theme`, `syntax_theme` (names the app gives its themes);
 - lists: `ssh_profiles` (+ `active_ssh_profile`), `connection_profiles`, `saved_queries`;
-- `cloud`: per AWS account / endpoint overrides, plus which local AWS profile last listed what.
+- `cloud`: per AWS account / endpoint overrides, plus which local AWS profile last listed what, and
+  the pinned cloud connections as last listed ([`PinnedCloud`](crate::settings::PinnedCloud): profile,
+  name, address, account, region, server), forgotten when unpinned.
 - the title bar's connection list: `pinned_connections` (ids, in the order pinned), and the source
   and profile chip picked over it (`connection_source`, `connection_chip`).
 

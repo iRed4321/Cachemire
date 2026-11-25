@@ -54,6 +54,9 @@ export global ConnectionState {
     in-out property <[PickerRow]> pins: [];
     in-out property <int> highlighted: 0;
     in-out property <string> count-label: "";
+    // the widest forms the count can take ("9 connections", "9 of 9"): its room never changes
+    in-out property <string> count-label-unfiltered: "";
+    in-out property <string> count-label-filtered: "";
     in-out property <bool> has-pinned: false;
     // the source segments (all, saved, cloud) when there are cloud connections, and the
     // connection profile chips in lines that fit; the picked keys ("" for all)

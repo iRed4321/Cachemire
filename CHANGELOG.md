@@ -8,7 +8,7 @@ Every stable release of Cachemire; `Unreleased` is what the next one brings. Bet
 
 - **Clusters**: Redis and Valkey clusters are supported: connect to any node, even through an SSH tunnel, to browse, search and edit every key
 - **AWS**: ElastiCache groups in cluster mode and Valkey caches are listed
-- **Connection list**: a search box, a switch between saved and AWS connections, profile chips and pinned connections, like the AWS profile list; each connection shows its profile, SSH tunnel, and whether it is a cluster; Ctrl+P opens it (changeable in Key bindings)
+- **Connection list**: a search box, a switch between saved and AWS connections, profile chips and pinned connections, like the AWS profile list (a pinned AWS connection stays there signed out or on another profile, and picking it signs in with its profile); each connection shows its profile, SSH tunnel, and whether it is a cluster; Ctrl+P opens it (changeable in Key bindings)
 - **Title bar**: a dot (green once connected), the connection's name and address, a line in its profile's color, its details on hover, and a menu to copy, reconnect, edit or disconnect; connecting and a lost connection say so in words, with a Reconnect button
 - **Kubernetes**: a connection can reach a server from inside a Kubernetes cluster, by context and namespace, through a relay pod when a Service has no pods
 - **Windows shutdown**: a setting to make Windows wait while Cachemire is open, until you shut down anyway

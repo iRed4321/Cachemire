@@ -7,11 +7,36 @@ use std::collections::BTreeMap;
 use serde::{Deserialize, Serialize};
 
 use super::{SettingsStore, StoredSettings};
-use crate::connection::{CloudKey, ConnectionItem, SshSettings};
+use crate::connection::{CloudKey, ConnectionItem, ServerKind, SshSettings};
 use crate::error::{Error, Invalid, NotFound};
 use crate::secret::Secret;
 use crate::secret_vault::KeyringError;
 use crate::secret_vault::{Secrets, SecretsCleanup, SecretsPolicy, Vaulting, place};
+
+/// A pinned cloud connection as it was last listed: what the connection list shows of it
+/// while its profile isn't listed, and the profile to sign in with to reach it.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PinnedCloud {
+    /// the connection's id (see `aws::connection_id`)
+    pub id: String,
+    /// the local AWS profile that listed it
+    pub profile: String,
+    pub name: String,
+    /// `host:port`
+    pub address: String,
+    pub account: String,
+    pub region: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub server: Option<ServerKind>,
+}
+
+impl PinnedCloud {
+    /// Where it lives, for its settings.
+    pub fn key(&self) -> CloudKey {
+        CloudKey { account: self.account.clone(), region: self.region.clone(), name: self.name.clone() }
+    }
+}
 
 /// An SSH tunnel set for cloud endpoints, as `settings.json` keeps it.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -96,6 +121,9 @@ pub(super) struct StoredCloud {
     // the connection profile chip picked over the list of profiles ("" for all of them)
     #[serde(default, skip_serializing_if = "String::is_empty")]
     pub(super) chip: String,
+    // the pinned cloud connections as last listed (see `PinnedCloud`)
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub(super) pinned_connections: Vec<PinnedCloud>,
 }
 
 /// Which cloud settings are meant: an account's, or one endpoint's.
@@ -361,6 +389,27 @@ impl SettingsStore {
         next.cloud.pinned.retain(|p| p != profile);
         if pinned {
             next.cloud.pinned.push(profile.to_string());
+        }
+        self.commit(next, false)
+    }
+
+    /// The pinned cloud connections as last listed, to show while their profile isn't.
+    pub fn pinned_cloud(&self) -> &[PinnedCloud] {
+        &self.state.cloud.pinned_connections
+    }
+
+    /// Remembers what was just seen of pinned cloud connections (the others are ignored),
+    /// saving only when something changed.
+    pub fn remember_pinned_cloud(&mut self, seen: Vec<PinnedCloud>) -> Result<(), Error> {
+        let mut next = self.state.clone();
+        for seen in seen.into_iter().filter(|s| self.state.pinned_connections.contains(&s.id)) {
+            match next.cloud.pinned_connections.iter_mut().find(|p| p.id == seen.id) {
+                Some(known) => *known = seen,
+                None => next.cloud.pinned_connections.push(seen),
+            }
+        }
+        if next.cloud.pinned_connections == self.state.cloud.pinned_connections {
+            return Ok(());
         }
         self.commit(next, false)
     }

@@ -133,11 +133,15 @@ builds it in [`picker::list`](crate::connections::picker), on `ConnectionState.l
   account's; the connection profile chips (only when the connections fall under two or more) keep
   one profile. The source and chip are kept in the settings (`connection_filters`);
 - the pinned connections (`pinned_connections` in the settings, by id) are drawn two per line on
-  top and left out of the rows; the rows come in two sections, saved then cloud, each last used
+  top and left out of the rows. A pinned cloud connection its profile doesn't list now (signed out,
+  another profile, a restart) is drawn from what was last seen of it (`pinned_cloud`, refreshed by
+  `cloud::remember_pins` on each listing and pin), saying "AWS · profile"; picking it
+  (`connections::select`) goes through `cloud::open_pinned`, which signs in, lists that profile and
+  connects (`cloud::resume`), or says the endpoint is gone if that profile is the one listed; the rows come in two sections, saved then cloud, each last used
   first (`last_connected_at`; for a cloud connection, during the run only), titled only when both exist;
 - each row says when it was used ("in use" with a green dot, "open" with a green ring for one kept
   in the background, both also on pinned tiles), its profile,
-  its kind (`Cluster · 3 primaries`, `Standalone`, nothing before the first connection), its SSH
+  its kind (`Cluster · 3 primaries`; nothing for a server on its own or before the first connection), its SSH
   server (or `Kubernetes: context/namespace`) and read-only. The pencil opens the form (`picker::edit`, filling `ConnectionEditor`) or a
   cloud connection's settings. Up, Down, Enter and Escape work from the filter.
 

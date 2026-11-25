@@ -500,6 +500,8 @@ _version: 2
   fr: "Connectez-vous à AWS avec un profil qui liste %{server} pour ouvrir ce lien."
 "%{server} is no longer among the account's endpoints.":
   fr: "%{server} ne fait plus partie des endpoints du compte."
+"The AWS profile %{profile} isn't in the AWS configuration any more.":
+  fr: "Le profil AWS %{profile} ne figure plus dans la configuration AWS."
 # the lines of the settings' Key bindings page
 "Window":
   fr: "Fenêtre"
@@ -632,14 +634,10 @@ _version: 2
 "current: %{name}":
   fr: "courant : %{name}"
 # what a connection's server is, in the list and in the title bar's details
-"Standalone":
-  fr: "Autonome"
 "Cluster · 1 primary":
   fr: "Cluster · 1 primaire"
 "Cluster · %{n} primaries":
   fr: "Cluster · %{n} primaires"
-"%{server} · standalone":
-  fr: "%{server} · serveur autonome"
 "%{server} · cluster of 1 primary":
   fr: "%{server} · cluster à 1 primaire"
 "%{server} · cluster of %{n} primaries":

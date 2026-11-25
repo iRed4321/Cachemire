@@ -96,6 +96,19 @@ pub(crate) fn refresh(app: &App, window: &MainWindow) {
     window.global::<ConnectionState>().set_cloud_connections(ModelRc::new(VecModel::from(cloud_rows)));
 }
 
+/// Connects to the connection picked in the list; a pinned cloud one that isn't listed is
+/// reached through its AWS profile first.
+fn select(app: &App, window: &MainWindow, id: &str) {
+    if app.state.connections.lock().get(id).is_none() {
+        let pin = app.state.settings.lock().pinned_cloud().iter().find(|p| p.id == id).cloned();
+        if let Some(pin) = pin {
+            crate::cloud::open_pinned(app, window, &pin);
+            return;
+        }
+    }
+    connect_to(window, app.state.clone(), &app.rt, id.to_string(), true);
+}
+
 /// Drops the connection in use and returns to "No connection": it stops being
 /// the active one, its pool closes and its tabs are dropped, with the last session.
 pub(crate) fn disconnect(app: &App, window: &MainWindow) {
@@ -139,7 +152,7 @@ pub fn init(app: &Rc<App>, window: &MainWindow) {
         });
     });
     picker::init(window);
-    connection.on_selected(|id| crate::app::with(|app, window| connect_to(window, app.state.clone(), &app.rt, id.to_string(), true)));
+    connection.on_selected(|id| crate::app::with(|app, window| select(app, window, &id)));
     connection.on_established(|| {
         crate::app::with(|app, window| {
             refresh(app, window);

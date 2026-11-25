@@ -20,7 +20,7 @@ mod connection_profiles;
 mod saved_queries;
 mod ssh_profiles;
 
-pub use cloud::{CloudScope, CloudSsh};
+pub use cloud::{CloudScope, CloudSsh, PinnedCloud};
 use cloud::{StoredCloud, cloud_entries};
 pub use connection_profiles::{ConnectionProfile, ProfileColor};
 use connection_profiles::{DEFAULT_PROFILE_ID, StoredConnectionProfile};
@@ -223,13 +223,15 @@ impl SettingsStore {
         &self.state.pinned_connections
     }
 
-    /// Pins connection `id` at the end of the pinned ones, or unpins it.
+    /// Pins connection `id` at the end of the pinned ones, or unpins it (forgetting what was
+    /// remembered of it if it is a cloud one).
     pub fn set_connection_pinned(&mut self, id: &str, pinned: bool) -> Result<(), Error> {
         if self.state.pinned_connections.iter().any(|p| p == id) == pinned {
             return Ok(());
         }
         let mut next = self.state.clone();
         next.pinned_connections.retain(|p| p != id);
+        next.cloud.pinned_connections.retain(|p| p.id != id);
         if pinned {
             next.pinned_connections.push(id.to_string());
         }

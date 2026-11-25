@@ -15,7 +15,7 @@ use crate::app::App;
 use crate::t;
 use crate::{AwsAccount, AwsChip, AwsProfileRow, MainWindow};
 use cachemire_core::aws;
-use cachemire_core::settings::CloudScope;
+use cachemire_core::settings::{CloudScope, PinnedCloud};
 
 pub mod settings;
 
@@ -68,6 +68,44 @@ pub fn resume(app: &App, window: &MainWindow, profile: String, connection: Strin
         window.global::<AwsAccount>().invoke_profile_selected(profile.into());
     } else {
         window.global::<AwsAccount>().invoke_clicked();
+    }
+}
+
+/// Reaches a pinned cloud connection that isn't listed: signs in and lists its profile first
+/// (see [`resume`]), unless that profile is the one listed, which no longer has it.
+pub(crate) fn open_pinned(app: &App, window: &MainWindow, pin: &PinnedCloud) {
+    let account = window.global::<AwsAccount>();
+    let listed = app.cloud.borrow().profile == pin.profile && account.get_account_known() && !account.get_busy();
+    if listed {
+        crate::toast::show(window, &t!("%{server} is no longer among the account's endpoints.", server = pin.name.as_str()));
+        return;
+    }
+    resume(app, window, pin.profile.clone(), pin.id.clone());
+}
+
+/// Remembers what the listing shows of the pinned cloud connections, so they still show
+/// once another profile is listed, or none.
+pub(crate) fn remember_pins(app: &App) {
+    let profile = app.cloud.borrow().profile.clone();
+    let seen: Vec<PinnedCloud> = {
+        let store = app.state.connections.lock();
+        let (account, region) = store.cloud_account();
+        store
+            .cloud_connections()
+            .iter()
+            .map(|item| PinnedCloud {
+                id: item.id.clone(),
+                profile: profile.clone(),
+                name: item.name.clone(),
+                address: item.address(),
+                account: account.to_string(),
+                region: region.to_string(),
+                server: store.server_kind(&item.id),
+            })
+            .collect()
+    };
+    if let Err(e) = app.state.settings.lock().remember_pinned_cloud(seen) {
+        tracing::warn!("can't save the pinned cloud connections: {e}");
     }
 }
 
@@ -388,7 +426,12 @@ pub fn init(app: &Rc<App>, window: &MainWindow) {
                         tracing::info!(profiles = profiles.len(), "signed in to AWS");
                         let resumed = {
                             let mut cloud = app.cloud.borrow_mut();
-                            cloud.resume = cloud.resume.take().filter(|r| profiles.iter().any(|p| p.name == r.profile));
+                            let gone = cloud.resume.take_if(|r| !profiles.iter().any(|p| p.name == r.profile));
+                            if let Some(gone) = gone {
+                                let text =
+                                    t!("The AWS profile %{profile} isn't in the AWS configuration any more.", profile = gone.profile);
+                                crate::toast::show(window, &text);
+                            }
                             cloud.profiles = profiles;
                             cloud.resume.as_ref().map(|r| r.profile.clone())
                         };
@@ -466,6 +509,7 @@ pub fn init(app: &Rc<App>, window: &MainWindow) {
                             store.set_cloud_connections(&account, &region, items);
                             store.set_cloud_servers(servers);
                         }
+                        remember_pins(app);
                         window.global::<AwsAccount>().set_account_known(true);
                         crate::connections::refresh(app, window);
                         // the last session's connection, unless one was picked since

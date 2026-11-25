@@ -81,11 +81,12 @@ component SourceSegment inherits Rectangle {
     in property <bool> on;
     callback clicked <=> area.clicked;
 
-    width: row.preferred-width + Theme.px(18px);
+    width: row.preferred-width;
     background: on ? Theme.bg-selected-soft : (area.has-hover ? Theme.bg-hover-elevated : transparent);
     area := TouchArea { mouse-cursor: pointer; }
     row := HorizontalLayout {
-        x: Theme.px(9px);
+        padding-left: Theme.px(9px);
+        padding-right: Theme.px(9px);
         spacing: Theme.px(5px);
         Text {
             text: data.key == "saved" ? @tr("connection source" => "Saved") : data.label;
@@ -244,11 +245,28 @@ export component ConnectionDropdown inherits Rectangle {
                     }
                 }
             }
-            Text {
-                text: ConnectionState.count-label;
-                font-size: Theme.pt(11px);
-                color: Theme.text-tertiary;
-                vertical-alignment: center;
+            // as wide as the widest count it may show, so the filter keeps its width
+            Rectangle {
+                width: max(shown-count.preferred-width, unfiltered-count.preferred-width, filtered-count.preferred-width);
+                unfiltered-count := Text {
+                    visible: false;
+                    text: ConnectionState.count-label-unfiltered;
+                    font-size: Theme.pt(11px);
+                }
+                filtered-count := Text {
+                    visible: false;
+                    text: ConnectionState.count-label-filtered;
+                    font-size: Theme.pt(11px);
+                }
+                shown-count := Text {
+                    width: parent.width;
+                    height: parent.height;
+                    text: ConnectionState.count-label;
+                    font-size: Theme.pt(11px);
+                    color: Theme.text-tertiary;
+                    horizontal-alignment: right;
+                    vertical-alignment: center;
+                }
             }
         }
 
