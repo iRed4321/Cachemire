@@ -7,6 +7,7 @@ use std::path::PathBuf;
 use thiserror::Error;
 
 use crate::aws::AwsError;
+use crate::connection::kube_tunnel::KubeError;
 use crate::connection::ssh_tunnel::TunnelError;
 use crate::json_path;
 use crate::redisql::QueryError;
@@ -28,6 +29,8 @@ pub enum Error {
     /// boxed: it is the largest by far
     #[error(transparent)]
     Tunnel(Box<TunnelError>),
+    #[error(transparent)]
+    Kube(Box<KubeError>),
     #[error(transparent)]
     Keyring(#[from] KeyringError),
     #[error(transparent)]
@@ -141,7 +144,7 @@ pub enum ErrorKind {
     Invalid,
     /// what was asked for isn't there (a connection, a key, a profile)
     NotFound,
-    /// the SSH tunnel to the server couldn't be set up
+    /// the tunnel to the server (SSH, Kubernetes) couldn't be set up
     Tunnel,
     /// Redis refused the username or password
     Auth,
@@ -174,7 +177,7 @@ impl Error {
             Error::NotFound(_) => ErrorKind::NotFound,
             Error::Timeout(_) => ErrorKind::Timeout,
             Error::Redis(error) => redis_kind(error),
-            Error::Tunnel(_) => ErrorKind::Tunnel,
+            Error::Tunnel(_) | Error::Kube(_) => ErrorKind::Tunnel,
             Error::Keyring(_) => ErrorKind::Keyring,
             Error::File(_) => ErrorKind::File,
             Error::Cloud(error) => error.kind(),
@@ -245,6 +248,12 @@ fn redis_kind(error: &redis::RedisError) -> ErrorKind {
 impl From<tokio::task::JoinError> for Error {
     fn from(error: tokio::task::JoinError) -> Self {
         Error::System(SystemError::Task(error))
+    }
+}
+
+impl From<KubeError> for Error {
+    fn from(error: KubeError) -> Self {
+        Error::Kube(Box::new(error))
     }
 }
 

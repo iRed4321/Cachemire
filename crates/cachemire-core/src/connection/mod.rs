@@ -9,6 +9,7 @@ use std::sync::Arc;
 use std::time::Duration;
 
 pub mod client;
+pub mod kube_tunnel;
 pub mod pool;
 pub mod ssh_tunnel;
 pub mod store;
@@ -28,6 +29,16 @@ pub struct SshSettings {
     /// path of a private key file (`~` stands for the home directory)
     pub private_key: String,
     pub passphrase: Secret,
+}
+
+/// How to reach the Redis server from inside a Kubernetes cluster, signed in with the
+/// user's kubeconfig. Empty fields take the kubeconfig's current context and its namespace;
+/// a relay pod connects for us when the server isn't a pod there (a Service with no selector).
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct KubeSettings {
+    pub context: String,
+    pub namespace: String,
+    pub relay_pod: String,
 }
 
 /// What a server turned out to be the last time it was connected to (or what its cloud
@@ -72,6 +83,8 @@ pub struct ConnectionItem {
     pub password: Secret,
     /// `Some` when the connection goes through an SSH tunnel
     pub ssh: Option<SshSettings>,
+    /// `Some` when the server is reached inside a Kubernetes cluster (then `ssh` is unused)
+    pub kubernetes: Option<KubeSettings>,
     /// the connection profile (see Settings) it belongs to; "" for none
     pub profile_id: String,
     /// the connection's own read-only setting; its profile may make it read-only too
@@ -138,6 +151,10 @@ pub struct ConnectionPayloadInput {
     pub ssh_password: Option<Secret>,
     pub ssh_private_key: Option<String>,
     pub ssh_passphrase: Option<Secret>,
+    pub kube_enabled: Option<bool>,
+    pub kube_context: Option<String>,
+    pub kube_namespace: Option<String>,
+    pub kube_relay_pod: Option<String>,
     /// the connection profile to use; `Some("")` for none
     pub profile_id: Option<String>,
     pub read_only: Option<bool>,

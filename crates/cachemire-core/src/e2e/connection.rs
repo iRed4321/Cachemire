@@ -15,6 +15,7 @@ fn item(url: &str) -> ConnectionItem {
         username: String::new(),
         password: Default::default(),
         ssh: None,
+        kubernetes: None,
         profile_id: String::new(),
         read_only: false,
     }

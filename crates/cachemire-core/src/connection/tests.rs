@@ -8,6 +8,7 @@ fn connection(url: &str) -> ConnectionItem {
         username: " app ".into(),
         password: "pw".into(),
         ssh: None,
+        kubernetes: None,
         profile_id: String::new(),
         read_only: false,
     }

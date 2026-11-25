@@ -11,6 +11,7 @@ use tokio::task::JoinSet;
 
 use crate::connection::ConnectionItem;
 use crate::connection::client::{build_cluster_client, create_cluster_connection, create_connection, target_of, tls_name_of};
+use crate::connection::kube_tunnel;
 use crate::connection::ssh_tunnel::{self, HostKeys};
 use crate::connection::tunnel::Tunnel;
 use crate::error::{Error, Timeout};
@@ -76,14 +77,18 @@ impl ConnectionPool {
     /// The first connection is opened alone so bad credentials or an unreachable host
     /// fail once, quickly; the rest then open in parallel. A cluster gets cluster connections.
     async fn open(connection: &ConnectionItem, host_keys: &HostKeys) -> Result<Self, Error> {
-        let tunnel = match &connection.ssh {
-            Some(ssh) => {
+        let tunnel = match (&connection.kubernetes, &connection.ssh) {
+            (Some(kube), _) => {
+                let (host, port) = target_of(connection)?;
+                Some(kube_tunnel::open(kube, &host, port, tls_name_of(connection)?).await?)
+            }
+            (None, Some(ssh)) => {
                 let (host, port) = target_of(connection)?;
                 let tunnel = ssh_tunnel::open(ssh, &host, port, tls_name_of(connection)?, host_keys).await?;
                 tracing::info!(ssh_server = %format_args!("{}:{}", ssh.host, ssh.port), local_port = tunnel.local_port(), "SSH tunnel opened");
                 Some(tunnel)
             }
-            None => None,
+            (None, None) => None,
         };
         let via = tunnel.as_ref().map(Tunnel::local_port);
 

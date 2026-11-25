@@ -5,7 +5,7 @@ use std::sync::Arc;
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
-use crate::connection::{CloudKey, ConnectionItem, ConnectionPayloadInput, ConnectionsState, ServerKind, SshSettings};
+use crate::connection::{CloudKey, ConnectionItem, ConnectionPayloadInput, ConnectionsState, KubeSettings, ServerKind, SshSettings};
 use crate::error::{Error, Invalid, NotFound};
 use crate::now_ms;
 use crate::persist;
@@ -49,6 +49,16 @@ struct StoredConnection {
     ssh_private_key: String,
     #[serde(default)]
     ssh_passphrase: Secret,
+    // reached inside a Kubernetes cluster (then the SSH fields are unused): its kubeconfig
+    // context, namespace and relay pod, "" for the defaults
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    kube_enabled: bool,
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    kube_context: String,
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    kube_namespace: String,
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    kube_relay_pod: String,
     // the connection profile it uses ("" for none)
     #[serde(default)]
     profile_id: String,
@@ -100,6 +110,10 @@ impl Default for StoredConnection {
             ssh_password: Secret::default(),
             ssh_private_key: String::new(),
             ssh_passphrase: Secret::default(),
+            kube_enabled: false,
+            kube_context: String::new(),
+            kube_namespace: String::new(),
+            kube_relay_pod: String::new(),
             profile_id: String::new(),
             read_only: false,
             server: None,
@@ -243,6 +257,18 @@ fn apply_payload(conn: &mut StoredConnection, payload: ConnectionPayloadInput) {
         conn.ssh_passphrase = passphrase;
         conn.left_out.ssh_passphrase = false;
     }
+    if let Some(enabled) = payload.kube_enabled {
+        conn.kube_enabled = enabled;
+    }
+    if let Some(context) = payload.kube_context {
+        conn.kube_context = trimmed(context);
+    }
+    if let Some(namespace) = payload.kube_namespace {
+        conn.kube_namespace = trimmed(namespace);
+    }
+    if let Some(pod) = payload.kube_relay_pod {
+        conn.kube_relay_pod = trimmed(pod);
+    }
     if let Some(profile_id) = payload.profile_id {
         conn.profile_id = profile_id;
     }
@@ -273,6 +299,10 @@ fn finish(conn: &mut StoredConnection, secrets_loaded: bool) -> Result<(), Error
     {
         conn.password = parts.password;
         conn.connection_url = stripped;
+    }
+    // one way in: through Kubernetes, the SSH tunnel is off
+    if conn.kube_enabled {
+        conn.ssh_enabled = false;
     }
     if conn.ssh_enabled {
         if conn.ssh_host.is_empty() {
@@ -346,6 +376,11 @@ fn to_item(stored: &StoredConnection) -> ConnectionItem {
             password: stored.ssh_password.clone(),
             private_key: stored.ssh_private_key.clone(),
             passphrase: stored.ssh_passphrase.clone(),
+        }),
+        kubernetes: stored.kube_enabled.then(|| KubeSettings {
+            context: stored.kube_context.clone(),
+            namespace: stored.kube_namespace.clone(),
+            relay_pod: stored.kube_relay_pod.clone(),
         }),
         profile_id: stored.profile_id.clone(),
         read_only: stored.read_only,

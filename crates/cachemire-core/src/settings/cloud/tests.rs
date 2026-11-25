@@ -104,6 +104,7 @@ fn listed_endpoints_get_their_settings_without_secrets_until_asked() {
         username: String::new(),
         password: Default::default(),
         ssh: None,
+        kubernetes: None,
         profile_id: String::new(),
         read_only: false,
     }];

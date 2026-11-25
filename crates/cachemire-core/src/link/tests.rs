@@ -15,6 +15,7 @@ fn saved(id: &str, name: &str, url: &str, ssh: Option<(&str, u16)>) -> Connectio
             private_key: "~/.ssh/id_ed25519".to_string(),
             passphrase: Default::default(),
         }),
+        kubernetes: None,
         profile_id: String::new(),
         read_only: false,
     }
