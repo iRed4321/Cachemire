@@ -210,10 +210,10 @@ export struct PickerRow {
     has-tint: bool,
     tint: ProfileTint,
     profile-label: string,
-    // "Cluster · 3 primaries", or "" for a server on its own or not known yet
+    // "Cluster", or "" for a server on its own or not known yet
     kind-label: string,
     cluster: bool,
-    // "SSH via host", or ""
+    // "SSH", "Kubernetes", or ""
     ssh-label: string,
     read-only: bool,
     pinned: bool,
@@ -240,6 +240,8 @@ export struct ConnectionForm {
     kube-context: string, // "" for the current one
     kube-namespace: string, // "" for the context's own
     kube-relay-pod: string, // "" for none
+    kube-temporary-relay: bool, // a relay pod started for the connection, then `kube-relay-pod` is unused
+    kube-relay-image: string, // its image, "" for the default one
     profile-id: string, // "" for none
     read-only: bool, // the connection's own setting
 }

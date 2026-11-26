@@ -137,7 +137,7 @@ export component ConnectionDropdown inherits Rectangle {
     drop-shadow-color: Theme.shadow-color;
     drop-shadow-blur: Theme.shadow-blur;
     drop-shadow-offset-y: Theme.shadow-offset-y;
-    property <length> row-height: Theme.px(44px);
+    property <length> row-height: Theme.px(34px);
     property <length> section-height: Theme.px(24px);
     property <length> list-max-height: Theme.px(420px);
     property <length> filter-height: Theme.px(40px);
@@ -424,82 +424,78 @@ export component ConnectionDropdown inherits Rectangle {
                                     spacing: Theme.px(8px);
                                     // as the title bar's dot: in use, a green dot; kept open behind, a green ring
                                     OpenMark { active: r.active; kept: r.kept; }
-                                    VerticalLayout {
+                                    // one line: the name and address, what the connection has (profile,
+                                    // cluster, tunnel, read-only), when it was last used
+                                    HorizontalLayout {
                                         horizontal-stretch: 1;
-                                        alignment: center;
-                                        spacing: Theme.px(3px);
-                                        HorizontalLayout {
-                                            spacing: Theme.px(8px);
-                                            Text {
-                                                text: r.name;
-                                                font-size: Theme.pt(12.5px);
-                                                font-weight: r.active ? 700 : 500;
-                                                color: Theme.text-primary;
-                                                overflow: elide;
-                                                max-width: Theme.px(200px);
-                                                vertical-alignment: center;
-                                            }
-                                            Text {
-                                                text: r.address;
-                                                font-size: Theme.pt(10.5px);
-                                                font-family: Theme.font-mono;
-                                                color: Theme.text-tertiary;
-                                                overflow: elide;
-                                                horizontal-stretch: 1;
-                                                min-width: 0px;
-                                                vertical-alignment: center;
-                                            }
-                                            Text {
-                                                text: r.when;
-                                                font-size: Theme.pt(11px);
-                                                font-weight: r.active || r.kept ? 600 : 400;
-                                                color: r.active || r.kept ? Theme.accent-green.darker(0.15) : Theme.text-tertiary;
-                                                vertical-alignment: center;
-                                            }
+                                        spacing: Theme.px(6px);
+                                        Text {
+                                            text: r.name;
+                                            font-size: Theme.pt(12.5px);
+                                            font-weight: r.active ? 700 : 500;
+                                            color: Theme.text-primary;
+                                            overflow: elide;
+                                            max-width: Theme.px(200px);
+                                            vertical-alignment: center;
                                         }
-                                        HorizontalLayout {
-                                            spacing: Theme.px(6px);
-                                            VerticalLayout {
-                                                alignment: center;
-                                                if r.has-tint: TintDot { tint: r.tint; size: Theme.px(7px); }
-                                                if !r.has-tint: IconDot { size: Theme.px(7px); tint: Theme.text-tertiary; }
-                                            }
-                                            Text {
-                                                text: r.profile-label;
-                                                font-size: Theme.pt(11px);
-                                                color: r.has-tint ? Theme.text-secondary : Theme.text-tertiary;
-                                                overflow: elide;
-                                                min-width: 0px;
-                                            }
-                                            if r.kind-label != "": FactDot { }
-                                            if r.cluster: VerticalLayout {
-                                                alignment: center;
-                                                IconCluster { size: Theme.px(12px); tint: Theme.text-secondary; }
-                                            }
-                                            if r.kind-label != "": Text {
-                                                text: r.kind-label;
-                                                font-size: Theme.pt(11px);
-                                                color: Theme.text-secondary;
-                                            }
-                                            if r.ssh-label != "": FactDot { }
-                                            if r.ssh-label != "": VerticalLayout {
-                                                alignment: center;
-                                                IconLock { size: Theme.px(11px); tint: Theme.text-secondary; }
-                                            }
-                                            if r.ssh-label != "": Text {
-                                                text: r.ssh-label;
-                                                font-size: Theme.pt(11px);
-                                                color: Theme.text-secondary;
-                                                overflow: elide;
-                                                min-width: 0px;
-                                            }
-                                            if r.read-only: FactDot { }
-                                            if r.read-only: Text {
-                                                text: @tr("read-only");
-                                                font-size: Theme.pt(11px);
-                                                color: Theme.text-secondary;
-                                            }
-                                            Rectangle { horizontal-stretch: 1; }
+                                        Text {
+                                            text: r.address;
+                                            font-size: Theme.pt(10.5px);
+                                            font-family: Theme.font-mono;
+                                            color: Theme.text-tertiary;
+                                            overflow: elide;
+                                            horizontal-stretch: 1;
+                                            min-width: 0px;
+                                            vertical-alignment: center;
+                                        }
+                                        if r.has-tint: VerticalLayout {
+                                            alignment: center;
+                                            TintDot { tint: r.tint; size: Theme.px(7px); }
+                                        }
+                                        if r.has-tint: Text {
+                                            text: r.profile-label;
+                                            font-size: Theme.pt(11px);
+                                            color: Theme.text-secondary;
+                                            overflow: elide;
+                                            max-width: Theme.px(110px);
+                                            vertical-alignment: center;
+                                        }
+                                        if r.has-tint && r.kind-label != "": FactDot { }
+                                        if r.cluster: VerticalLayout {
+                                            alignment: center;
+                                            IconCluster { size: Theme.px(12px); tint: Theme.text-secondary; }
+                                        }
+                                        if r.kind-label != "": Text {
+                                            text: r.kind-label;
+                                            font-size: Theme.pt(11px);
+                                            color: Theme.text-secondary;
+                                            vertical-alignment: center;
+                                        }
+                                        if r.ssh-label != "" && (r.has-tint || r.kind-label != ""): FactDot { }
+                                        if r.ssh-label != "": VerticalLayout {
+                                            alignment: center;
+                                            IconLock { size: Theme.px(11px); tint: Theme.text-secondary; }
+                                        }
+                                        if r.ssh-label != "": Text {
+                                            text: r.ssh-label;
+                                            font-size: Theme.pt(11px);
+                                            color: Theme.text-secondary;
+                                            vertical-alignment: center;
+                                        }
+                                        if r.read-only && (r.has-tint || r.kind-label != "" || r.ssh-label != ""): FactDot { }
+                                        if r.read-only: Text {
+                                            text: @tr("read-only");
+                                            font-size: Theme.pt(11px);
+                                            color: Theme.text-secondary;
+                                            vertical-alignment: center;
+                                        }
+                                        Rectangle { width: Theme.px(4px); }
+                                        Text {
+                                            text: r.when;
+                                            font-size: Theme.pt(11px);
+                                            font-weight: r.active || r.kept ? 600 : 400;
+                                            color: r.active || r.kept ? Theme.accent-green.darker(0.15) : Theme.text-tertiary;
+                                            vertical-alignment: center;
                                         }
                                     }
                                     // the star and the pencil show on the row under the pointer or the keyboard
@@ -971,6 +967,8 @@ export component ConnectionModal inherits Rectangle {
     in-out property <string> field-kube-context <=> ConnectionEditor.kube-context;
     in-out property <string> field-kube-namespace <=> ConnectionEditor.kube-namespace;
     in-out property <string> field-kube-relay-pod <=> ConnectionEditor.kube-relay-pod;
+    in-out property <bool> field-kube-temporary-relay <=> ConnectionEditor.kube-temporary-relay;
+    in-out property <string> field-kube-relay-image <=> ConnectionEditor.kube-relay-image;
     // "Add a connection profile" is ticked, and the one chosen
     in-out property <bool> field-profile-enabled <=> ConnectionEditor.profile-enabled;
     in-out property <string> field-profile-id <=> ConnectionEditor.profile-id;
@@ -1108,14 +1106,28 @@ export component ConnectionModal inherits Rectangle {
                         placeholder: @tr("the context's namespace");
                         text <=> root.field-kube-namespace;
                     }
-                    ConnectionModalField {
+                    // a relay pod started for the connection, or one named
+                    CheckRow {
+                        text: @tr("Start a temporary relay pod");
+                        checked: root.field-kube-temporary-relay;
+                        toggled => { root.field-kube-temporary-relay = !root.field-kube-temporary-relay; }
+                    }
+                    if root.field-kube-temporary-relay: ConnectionModalField {
+                        clipboard-has-text() => { return root.clipboard-has-text(); }
+                        label: @tr("Relay image");
+                        placeholder: ConnectionEditor.kube-default-relay-image;
+                        text <=> root.field-kube-relay-image;
+                    }
+                    if !root.field-kube-temporary-relay: ConnectionModalField {
                         clipboard-has-text() => { return root.clipboard-has-text(); }
                         label: @tr("Relay pod");
                         placeholder: @tr("none");
                         text <=> root.field-kube-relay-pod;
                     }
                     Text {
-                        text: @tr("For a Service with no pods behind it, or a server outside the cluster: a pod with socat, nc or bash connects for Cachemire.");
+                        text: root.field-kube-temporary-relay
+                            ? @tr("Cachemire starts a small pod in the namespace while connected and deletes it once disconnected. Your account needs to create, delete and exec into pods there. Another image needs sh with socat, nc or bash.")
+                            : @tr("For a Service with no pods behind it, or a server outside the cluster: a pod with socat, nc or bash connects for Cachemire.");
                         font-size: Theme.pt(10.5px);
                         color: Theme.text-tertiary;
                         wrap: word-wrap;

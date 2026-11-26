@@ -32,7 +32,7 @@ export component AwsProfileDropdown inherits Rectangle {
     drop-shadow-color: Theme.shadow-color;
     drop-shadow-blur: Theme.shadow-blur;
     drop-shadow-offset-y: Theme.shadow-offset-y;
-    property <length> row-height: Theme.px(44px);
+    property <length> row-height: Theme.px(34px);
     property <length> section-height: Theme.px(24px);
     property <length> list-max-height: Theme.px(400px);
     property <length> filter-height: Theme.px(40px);
@@ -273,49 +273,44 @@ export component AwsProfileDropdown inherits Rectangle {
                                             tint: Theme.accent-blue;
                                         }
                                     }
-                                    VerticalLayout {
+                                    // one line: the name, its connection profile and SSH tunnel, when it was last used
+                                    HorizontalLayout {
                                         horizontal-stretch: 1;
-                                        alignment: center;
-                                        spacing: Theme.px(3px);
-                                        HorizontalLayout {
-                                            spacing: Theme.px(8px);
-                                            Text {
-                                                text: p.name;
-                                                font-size: Theme.pt(12.5px);
-                                                font-weight: p.name == root.selected ? 700 : 500;
-                                                color: Theme.text-primary;
-                                                overflow: elide;
-                                                horizontal-stretch: 1;
-                                                min-width: 0px;
-                                            }
-                                            Text {
-                                                text: p.when;
-                                                font-size: Theme.pt(11px);
-                                                color: Theme.text-tertiary;
-                                            }
+                                        spacing: Theme.px(6px);
+                                        Text {
+                                            text: p.name;
+                                            font-size: Theme.pt(12.5px);
+                                            font-weight: p.name == root.selected ? 700 : 500;
+                                            color: Theme.text-primary;
+                                            overflow: elide;
+                                            horizontal-stretch: 1;
+                                            min-width: 0px;
+                                            vertical-alignment: center;
                                         }
-                                        HorizontalLayout {
-                                            spacing: Theme.px(6px);
-                                            if p.has-tint: TintDot { tint: p.tint; size: Theme.px(7px); y: (parent.height - self.height) / 2; }
-                                            if !p.has-tint: IconDot { size: Theme.px(7px); tint: Theme.text-tertiary; y: (parent.height - self.height) / 2; }
-                                            Text {
-                                                text: p.profile-label;
-                                                font-size: Theme.pt(11px);
-                                                color: p.known ? Theme.text-secondary : Theme.text-tertiary;
-                                                overflow: elide;
-                                                horizontal-stretch: p.ssh-label == "" ? 1 : 0;
-                                                min-width: 0px;
-                                            }
-                                            // drawn separator: a "·" glyph may be missing from the UI font
-                                            if p.ssh-label != "": IconDot { size: Theme.px(3px); tint: Theme.text-tertiary; y: (parent.height - self.height) / 2; }
-                                            if p.ssh-label != "": Text {
-                                                text: p.ssh-label;
-                                                font-size: Theme.pt(11px);
-                                                color: Theme.text-secondary;
-                                                overflow: elide;
-                                                horizontal-stretch: 1;
-                                                min-width: 0px;
-                                            }
+                                        if p.has-tint: TintDot { tint: p.tint; size: Theme.px(7px); y: (parent.height - self.height) / 2; }
+                                        if !p.known: IconDot { size: Theme.px(7px); tint: Theme.text-tertiary; y: (parent.height - self.height) / 2; }
+                                        if p.profile-label != "": Text {
+                                            text: p.profile-label;
+                                            font-size: Theme.pt(11px);
+                                            color: p.known ? Theme.text-secondary : Theme.text-tertiary;
+                                            overflow: elide;
+                                            max-width: Theme.px(130px);
+                                            vertical-alignment: center;
+                                        }
+                                        // drawn separator: a "·" glyph may be missing from the UI font
+                                        if p.profile-label != "" && p.ssh-label != "": IconDot { size: Theme.px(3px); tint: Theme.text-tertiary; y: (parent.height - self.height) / 2; }
+                                        if p.ssh-label != "": Text {
+                                            text: p.ssh-label;
+                                            font-size: Theme.pt(11px);
+                                            color: Theme.text-secondary;
+                                            vertical-alignment: center;
+                                        }
+                                        Rectangle { width: Theme.px(4px); }
+                                        Text {
+                                            text: p.when;
+                                            font-size: Theme.pt(11px);
+                                            color: Theme.text-tertiary;
+                                            vertical-alignment: center;
                                         }
                                     }
                                     // the star shows on the row under the pointer or the keyboard

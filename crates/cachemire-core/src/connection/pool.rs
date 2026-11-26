@@ -125,11 +125,11 @@ impl ConnectionPool {
         self._tunnel.as_ref().is_none_or(Tunnel::is_alive)
     }
 
-    /// [`ConnectionPool::open`] within [`OPEN_TIMEOUT`].
+    /// [`ConnectionPool::open`] within [`OPEN_TIMEOUT`], plus the time a temporary relay pod may take to start.
     async fn open_in_time(connection: &ConnectionItem, host_keys: &HostKeys) -> Result<Self, Error> {
-        tokio::time::timeout(OPEN_TIMEOUT, Self::open(connection, host_keys))
-            .await
-            .map_err(|_| Timeout::Connect { seconds: OPEN_TIMEOUT.as_secs() })?
+        let starts_relay = connection.kubernetes.as_ref().is_some_and(|kube| kube.temporary_relay);
+        let limit = if starts_relay { OPEN_TIMEOUT + kube_tunnel::RELAY_START_TIMEOUT } else { OPEN_TIMEOUT };
+        tokio::time::timeout(limit, Self::open(connection, host_keys)).await.map_err(|_| Timeout::Connect { seconds: limit.as_secs() })?
     }
 
     /// The next connection for a short read or write, in turn.

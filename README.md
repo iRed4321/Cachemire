@@ -84,7 +84,7 @@ Open keys, searches and queries in tabs. Drag them around; each remembers its fi
 
 - **Connection URL**: `redis://user:pass@host:6379/0`, or `rediss://` for TLS. Test it before saving.
 - 🔐 **SSH tunnels** with a password, a private key, or both. A server's host key is shown for you to trust the first time (or trusted from `~/.ssh/known_hosts`), then refused if it changes. SSH profiles let you share one login across tunnels.
-- ☸️ **Kubernetes**: reach a server that only lives inside a Kubernetes cluster, signed in with your kubeconfig (context and namespace to choose), the way `kubectl port-forward` does. A Service with no pods behind it, or a server outside the cluster, is reached through a relay pod of your choice that has socat, nc or bash.
+- ☸️ **Kubernetes**: reach a server that only lives inside a Kubernetes cluster, signed in with your kubeconfig (context and namespace to choose), the way `kubectl port-forward` does. A Service with no pods behind it, or a server outside the cluster, is reached through a relay pod: one of your choice that has socat, nc or bash, or a small temporary one Cachemire starts while connected and deletes afterwards.
 - 🎛️ **Connection profiles**: a name and a color that tints the app while connected, so you always know you're on `Production`.
 - ☁️ **AWS**: sign in with your local `~/.aws` profiles (SSO included) and list their ElastiCache endpoints.
 - 📥 **Import / Export** your connections as JSON, with or without passwords.

@@ -86,7 +86,7 @@ Les clés, les recherches et les requêtes s'ouvrent dans des onglets que vous p
 
 - **URL de connexion** : `redis://user:pass@host:6379/0`, ou `rediss://` pour le TLS. Testez-la avant de l'enregistrer.
 - 🔐 **Tunnels SSH** par mot de passe, par clé privée, ou les deux. La clé d'hôte est présentée pour approbation la première fois (ou reprise de `~/.ssh/known_hosts`), puis refusée si elle change. Les profils SSH permettent de partager un même identifiant entre plusieurs tunnels.
-- ☸️ **Kubernetes** : atteignez un serveur qui ne vit qu'à l'intérieur d'un cluster Kubernetes, connecté avec votre kubeconfig (contexte et espace de noms au choix), comme le fait `kubectl port-forward`. Un Service sans pod derrière lui, ou un serveur hors du cluster, est atteint par un pod relais de votre choix qui dispose de socat, nc ou bash.
+- ☸️ **Kubernetes** : atteignez un serveur qui ne vit qu'à l'intérieur d'un cluster Kubernetes, connecté avec votre kubeconfig (contexte et espace de noms au choix), comme le fait `kubectl port-forward`. Un Service sans pod derrière lui, ou un serveur hors du cluster, est atteint par un pod relais : un pod de votre choix qui dispose de socat, nc ou bash, ou un petit pod temporaire que Cachemire démarre pendant la connexion et supprime ensuite.
 - 🎛️ **Profils de connexion** : un nom et une couleur qui teinte l'application pendant la connexion, pour toujours savoir si vous êtes sur `Production`.
 - ☁️ **AWS** : connectez-vous avec vos profils locaux `~/.aws` (SSO compris) et listez les points de terminaison ElastiCache de chacun.
 - 📥 **Import / export** de vos connexions au format JSON, avec ou sans les mots de passe.

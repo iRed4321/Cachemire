@@ -101,6 +101,10 @@ export global ConnectionEditor {
     in-out property <string> kube-context: "";
     in-out property <string> kube-namespace: "";
     in-out property <string> kube-relay-pod: "";
+    in-out property <bool> kube-temporary-relay: false;
+    in-out property <string> kube-relay-image: "";
+    // the image a temporary relay pod runs when none is given, for the field's placeholder; Rust sets it
+    in-out property <string> kube-default-relay-image: "";
     // the kubeconfig's contexts, and the placeholder naming the current one; Rust fills both
     in-out property <[string]> kube-contexts: [];
     in-out property <string> kube-current-label: "";
@@ -136,6 +140,8 @@ export global ConnectionEditor {
         self.kube-context = "";
         self.kube-namespace = "";
         self.kube-relay-pod = "";
+        self.kube-temporary-relay = false;
+        self.kube-relay-image = "";
         self.profile-enabled = false;
         self.profile-id = "";
         self.read-only = false;
@@ -164,6 +170,8 @@ export global ConnectionEditor {
             kube-context: kube-context,
             kube-namespace: kube-namespace,
             kube-relay-pod: kube-relay-pod,
+            kube-temporary-relay: kube-temporary-relay,
+            kube-relay-image: kube-relay-image,
             profile-id: profile-enabled ? profile-id : "",
             read-only: read-only,
         };

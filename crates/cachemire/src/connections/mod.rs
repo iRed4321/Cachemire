@@ -5,6 +5,7 @@
 use crate::app::App;
 use crate::host_key_dialog::Answered;
 use crate::t;
+use cachemire_core::connection::kube_tunnel;
 use rustc_hash::FxHashMap;
 use std::rc::Rc;
 
@@ -109,6 +110,15 @@ fn select(app: &App, window: &MainWindow, id: &str) {
     connect_to(window, app.state.clone(), &app.rt, id.to_string(), true);
 }
 
+/// Deletes the Kubernetes relay pods started for connections, waiting at most 3 s: for when
+/// the app quits (left behind, they'd stop by themselves two minutes later).
+pub(crate) fn delete_temporary_relays(app: &App) {
+    let deleted = async { tokio::time::timeout(std::time::Duration::from_secs(3), kube_tunnel::delete_temporary_relays()).await };
+    if app.rt.block_on(deleted).is_err() {
+        tracing::warn!("the temporary relay pods weren't all deleted in time");
+    }
+}
+
 /// Drops the connection in use and returns to "No connection": it stops being
 /// the active one, its pool closes and its tabs are dropped, with the last session.
 pub(crate) fn disconnect(app: &App, window: &MainWindow) {
@@ -164,6 +174,9 @@ pub fn init(app: &Rc<App>, window: &MainWindow) {
     connection.on_disconnect_requested(|| crate::app::with(|app, window| disconnect(app, window)));
 
     let editor = window.global::<ConnectionEditor>();
+    // the default relay image, without its digest
+    let image = kube_tunnel::DEFAULT_RELAY_IMAGE.split('@').next().unwrap_or_default();
+    editor.set_kube_default_relay_image(image.into());
     editor.on_deleted(|id| crate::app::with(|app, window| delete(app, window, &id)));
     editor.on_test_requested(|form| crate::app::with(|app, window| test_form(app, window, &form)));
     editor.on_saved(|form| crate::app::with(|app, window| save_form(app, window, &form)));
@@ -383,6 +396,8 @@ fn payload_from_form(form: &ConnectionForm) -> Result<ConnectionPayloadInput, Er
         kube_context: Some(form.kube_context.trim().to_string()),
         kube_namespace: Some(form.kube_namespace.trim().to_string()),
         kube_relay_pod: Some(form.kube_relay_pod.trim().to_string()),
+        kube_temporary_relay: Some(form.kube_temporary_relay),
+        kube_relay_image: Some(form.kube_relay_image.trim().to_string()),
         profile_id: Some(form.profile_id.to_string()),
         read_only: Some(form.read_only),
     })

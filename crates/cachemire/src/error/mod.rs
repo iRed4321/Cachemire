@@ -212,11 +212,11 @@ impl Localize for KubeError {
             KubeError::Request(error) => t!("couldn't reach the Kubernetes cluster: %{error}", error = error),
             KubeError::Refused { message } => t!("Kubernetes refused: %{message}", message = message),
             KubeError::NoSelector { service } => {
-                t!("the Service %{service} has no pods behind it (no selector): name a relay pod in the connection", service = service)
+                t!("the Service %{service} has no pods behind it (no selector): use a relay pod in the connection", service = service)
             }
             KubeError::NoReadyPod { service } => t!("no pod behind the Service %{service} is ready", service = service),
             KubeError::NoPod { namespace, host } => t!(
-                "no pod in the namespace %{namespace} answers to %{host}: name a relay pod in the connection",
+                "no pod in the namespace %{namespace} answers to %{host}: use a relay pod in the connection",
                 namespace = namespace,
                 host = host
             ),
@@ -227,6 +227,12 @@ impl Localize for KubeError {
                 port = port,
                 message = message
             ),
+            KubeError::RelayStart { namespace, message } => {
+                t!("couldn't start a relay pod in the namespace %{namespace}: %{message}", namespace = namespace, message = message)
+            }
+            KubeError::RelayNotReady { pod, seconds, status } => {
+                t!("the relay pod %{pod} wasn't running after %{seconds} s: %{status}", pod = pod, seconds = seconds, status = status)
+            }
             KubeError::Tls { host, source } => {
                 t!("couldn't make a secure connection to %{host} through the Kubernetes tunnel: %{error}", host = host, error = source)
             }

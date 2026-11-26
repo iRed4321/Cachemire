@@ -128,8 +128,8 @@ failure, the server (`ConnectionView.server`, from the remembered
 builds it in [`picker::list`](crate::connections::picker), on `ConnectionState.list-requested`
 (when it opens, and on each change of the filter, the source, a chip or a pin):
 
-- the filter keeps the connections holding every typed word in their name, address, profile, kind
-  or SSH host; the source switch (only with cloud connections) keeps the saved ones or the cloud
+- the filter keeps the connections holding every typed word in their name, address, profile, kind,
+  SSH host or Kubernetes context/namespace (not shown, but searched); the source switch (only with cloud connections) keeps the saved ones or the cloud
   account's; the connection profile chips (only when the connections fall under two or more) keep
   one profile. The source and chip are kept in the settings (`connection_filters`);
 - the pinned connections (`pinned_connections` in the settings, by id) are drawn two per line on
@@ -139,10 +139,10 @@ builds it in [`picker::list`](crate::connections::picker), on `ConnectionState.l
   (`connections::select`) goes through `cloud::open_pinned`, which signs in, lists that profile and
   connects (`cloud::resume`), or says the endpoint is gone if that profile is the one listed; the rows come in two sections, saved then cloud, each last used
   first (`last_connected_at`; for a cloud connection, during the run only), titled only when both exist;
-- each row says when it was used ("in use" with a green dot, "open" with a green ring for one kept
-  in the background, both also on pinned tiles), its profile,
-  its kind (`Cluster · 3 primaries`; nothing for a server on its own or before the first connection), its SSH
-  server (or `Kubernetes: context/namespace`) and read-only. The pencil opens the form (`picker::edit`, filling `ConnectionEditor`) or a
+- each row is one line: the name and address, then only what the connection has, its profile,
+  `Cluster` (nothing for a server on its own or before the first connection), `SSH` or `Kubernetes`
+  and read-only, and when it was used ("in use" with a green dot, "open" with a green ring for one
+  kept in the background, both also on pinned tiles). The pencil opens the form (`picker::edit`, filling `ConnectionEditor`) or a
   cloud connection's settings. Up, Down, Enter and Escape work from the filter.
 
 ## Dialogs that interrupt an attempt
@@ -228,8 +228,10 @@ is stored". An empty SSH port is 22; a non-numeric or zero one is
 The form has two exclusive tunnel sections, SSH and "Inside a Kubernetes cluster" (turning one on
 turns the other off). The Kubernetes one holds the context (a choice list read by
 [`kube_tunnel::contexts`](cachemire_core::connection::kube_tunnel::contexts) when the switch is turned
-on or the form opens, still typeable), the namespace and the relay pod, all blank by default; the
-payload carries them as `kube_*` and the URL host is the name inside the cluster.
+on or the form opens, still typeable), the namespace, then "Start a temporary relay pod" with its image
+(placeholder: the default image without its digest, `kube-default-relay-image`), or else the relay pod's
+name, all blank by default; the payload carries them as `kube_*` and the URL host is the name inside the
+cluster. The title bar's details add "temporary relay pod" after the context and namespace.
 
 - **Save** (`save_form` then
   `save_payload`): runs `create_with_id` or `update` inside
@@ -298,8 +300,8 @@ local profiles, selected profile, a `generation` counter and a pending [`resume`
   has (`observe_cloud_listing`; the cleanups run on a blocking thread), `apply_cloud` gives each item its
   profile and tunnel, and `set_cloud_connections` makes them known for the run.
 - **Profile list** (`AwsProfileDropdown`): a filter (`list_requested`, which fills `AwsAccount.profiles`; an edit scrolls back to the top),
-  the three profiles used last (`remember_cloud_profile` dates each listing) then the others, each with
-  its account's connection profile and tunnel, a star, a gear, and "Sign out of AWS" at the bottom. A profile's
+  the three profiles used last (`remember_cloud_profile` dates each listing) then the others, each on one
+  line with its account's connection profile and `SSH` when it has a tunnel (only what it has), a star, a gear, and "Sign out of AWS" at the bottom. A profile's
   account is the one listed now, the one it last listed, or its SSO `account_id` ([`account_of`](crate::cloud::account_of));
   with none known, it has no gear.
   The profiles are read at sign-in; the reload button beside the count (`reload_requested`) reads

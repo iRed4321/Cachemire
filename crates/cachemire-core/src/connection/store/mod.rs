@@ -50,7 +50,8 @@ struct StoredConnection {
     #[serde(default)]
     ssh_passphrase: Secret,
     // reached inside a Kubernetes cluster (then the SSH fields are unused): its kubeconfig
-    // context, namespace and relay pod, "" for the defaults
+    // context, namespace and relay pod, "" for the defaults; or a relay pod started for the
+    // connection, with its image ("" for the default one)
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     kube_enabled: bool,
     #[serde(default, skip_serializing_if = "String::is_empty")]
@@ -59,6 +60,10 @@ struct StoredConnection {
     kube_namespace: String,
     #[serde(default, skip_serializing_if = "String::is_empty")]
     kube_relay_pod: String,
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    kube_temporary_relay: bool,
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    kube_relay_image: String,
     // the connection profile it uses ("" for none)
     #[serde(default)]
     profile_id: String,
@@ -114,6 +119,8 @@ impl Default for StoredConnection {
             kube_context: String::new(),
             kube_namespace: String::new(),
             kube_relay_pod: String::new(),
+            kube_temporary_relay: false,
+            kube_relay_image: String::new(),
             profile_id: String::new(),
             read_only: false,
             server: None,
@@ -269,6 +276,12 @@ fn apply_payload(conn: &mut StoredConnection, payload: ConnectionPayloadInput) {
     if let Some(pod) = payload.kube_relay_pod {
         conn.kube_relay_pod = trimmed(pod);
     }
+    if let Some(temporary) = payload.kube_temporary_relay {
+        conn.kube_temporary_relay = temporary;
+    }
+    if let Some(image) = payload.kube_relay_image {
+        conn.kube_relay_image = trimmed(image);
+    }
     if let Some(profile_id) = payload.profile_id {
         conn.profile_id = profile_id;
     }
@@ -381,6 +394,8 @@ fn to_item(stored: &StoredConnection) -> ConnectionItem {
             context: stored.kube_context.clone(),
             namespace: stored.kube_namespace.clone(),
             relay_pod: stored.kube_relay_pod.clone(),
+            temporary_relay: stored.kube_temporary_relay,
+            relay_image: stored.kube_relay_image.clone(),
         }),
         profile_id: stored.profile_id.clone(),
         read_only: stored.read_only,

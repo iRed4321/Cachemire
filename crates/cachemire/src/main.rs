@@ -262,10 +262,12 @@ fn main() -> Result<(), slint::PlatformError> {
         move || {
             app::with(|app, window| last_session::save(app, window));
             save_window_state();
+            app::with(|app, _| connections::delete_temporary_relays(app));
         }
     });
     let outcome = window.run();
     last_session::save(&app, &window);
     save_window_state();
+    connections::delete_temporary_relays(&app);
     outcome
 }

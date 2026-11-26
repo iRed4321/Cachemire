@@ -16,6 +16,12 @@ apiVersion: v1
 kind: Namespace
 metadata: {name: cache}
 ---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: strict
+  labels: {pod-security.kubernetes.io/enforce: restricted, pod-security.kubernetes.io/enforce-version: latest}
+---
 apiVersion: apps/v1
 kind: StatefulSet
 metadata: {name: rc, namespace: cache}

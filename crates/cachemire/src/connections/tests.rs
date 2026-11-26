@@ -18,6 +18,8 @@ fn form() -> ConnectionForm {
         kube_context: "".into(),
         kube_namespace: "".into(),
         kube_relay_pod: "".into(),
+        kube_temporary_relay: false,
+        kube_relay_image: "".into(),
         profile_id: "production".into(),
         read_only: false,
     }

@@ -177,15 +177,11 @@ fn profile_row(app: &App, window: &MainWindow, name: &str, now: i64) -> (AwsProf
             row.profile_label = profile.name.into();
             profile_chip(&profile.id)
         }
-        None => {
-            row.profile_label = t!("No connection profile").as_ref().into();
-            NO_PROFILE_CHIP.to_string()
-        }
+        None => NO_PROFILE_CHIP.to_string(),
     };
-    row.ssh_label = match entry.ssh.filter(|ssh| ssh.enabled) {
-        Some(ssh) => t!("SSH %{host}", host = ssh.host).as_ref().into(),
-        None => t!("No SSH tunnel").as_ref().into(),
-    };
+    if entry.ssh.is_some_and(|ssh| ssh.enabled) {
+        row.ssh_label = "SSH".into();
+    }
     (row, chip)
 }
 
@@ -468,6 +464,10 @@ pub fn init(app: &Rc<App>, window: &MainWindow) {
             clear_connections(&app, &window);
             let generation = {
                 let mut cloud = app.cloud.borrow_mut();
+                // dropping the old profile's connection above is no pick: the one asked for still follows
+                if let Some(resume) = cloud.resume.as_mut() {
+                    resume.attempt = app.state.connect_attempt.load(Ordering::SeqCst);
+                }
                 cloud.profile.clone_from(&name);
                 cloud.generation += 1;
                 cloud.generation

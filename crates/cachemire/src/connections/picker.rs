@@ -39,13 +39,9 @@ fn server_label(kind: &ServerKind) -> String {
     }
 }
 
-/// What a row says of a server's kind: "Cluster · 3 primaries", nothing for a server on its own.
+/// What a row says of a server's kind: "Cluster", nothing for a server on its own.
 fn kind_label(kind: &ServerKind) -> String {
-    match kind.primaries {
-        0 => String::new(),
-        1 => t!("Cluster · 1 primary").into_owned(),
-        n => t!("Cluster · %{n} primaries", n = n).into_owned(),
-    }
+    if kind.primaries > 0 { t!("Cluster").into_owned() } else { String::new() }
 }
 
 /// What the title bar shows of connection `id`: its name, address, SSH server, profile and
@@ -83,7 +79,10 @@ pub(crate) fn shown(state: &AppState, id: &str) -> Shown {
         ssh_via: item
             .kubernetes
             .as_ref()
-            .map(kube_place)
+            .map(|kube| {
+                let place = kube_place(kube);
+                if kube.temporary_relay { t!("%{place} · temporary relay pod", place = place).into_owned() } else { place }
+            })
             .or_else(|| item.ssh.as_ref().map(super::connect::ssh_server_label))
             .unwrap_or_default(),
         kubernetes: item.kubernetes.is_some(),
@@ -103,17 +102,25 @@ pub(crate) fn kube_place(kube: &KubeSettings) -> String {
     }
 }
 
-/// The row's tunnel label: "SSH via host" or "Kubernetes: place", empty without a tunnel.
-fn tunnel_label(item: &ConnectionItem) -> String {
+/// The row's tunnel label, "SSH" or "Kubernetes", and where it goes (the SSH host, the
+/// Kubernetes place), which the row doesn't show but the filter looks in. Empty without a tunnel.
+fn tunnel_label(item: &ConnectionItem) -> (&'static str, String) {
     match (&item.kubernetes, &item.ssh) {
-        (Some(kube), _) => t!("Kubernetes: %{place}", place = kube_place(kube)).into_owned(),
-        (None, Some(ssh)) => t!("SSH via %{host}", host = ssh.host).into_owned(),
-        (None, None) => String::new(),
+        (Some(kube), _) => ("Kubernetes", kube_place(kube)),
+        (None, Some(ssh)) => ("SSH", ssh.host.clone()),
+        (None, None) => ("", String::new()),
     }
 }
 
-/// A connection as a row of the list, with its chip's key, its source and when it was last used.
-fn row_of(app: &App, window: &MainWindow, item: &ConnectionItem, cloud: bool, now: i64) -> (PickerRow, String, Option<i64>) {
+/// What the filter looks in, lowercased: what `row` shows, and `hidden`.
+fn search_text(row: &PickerRow, hidden: &str) -> String {
+    [&row.name, &row.address, &row.profile_label, &row.kind_label, &row.ssh_label].map(|t| t.as_str()).join("\n").to_lowercase()
+        + "\n"
+        + &hidden.to_lowercase()
+}
+
+/// A connection as a row of the list, with its chip's key, when it was last used and its search text.
+fn row_of(app: &App, window: &MainWindow, item: &ConnectionItem, cloud: bool, now: i64) -> (PickerRow, String, Option<i64>, String) {
     let state = &app.state;
     let (kind, used) = {
         let store = state.connections.lock();
@@ -130,6 +137,7 @@ fn row_of(app: &App, window: &MainWindow, item: &ConnectionItem, cloud: bool, no
         used.map(|used| crate::redisql::ago(now, used)).unwrap_or_default()
     };
     let read_only = cachemire_core::state::is_read_only(state, Some(&item.id)).unwrap_or(false);
+    let (tunnel, place) = tunnel_label(item);
     let mut row = PickerRow {
         id: item.id.as_str().into(),
         name: item.name.as_str().into(),
@@ -140,7 +148,7 @@ fn row_of(app: &App, window: &MainWindow, item: &ConnectionItem, cloud: bool, no
         cloud,
         kind_label: kind.as_ref().map(kind_label).unwrap_or_default().into(),
         cluster: kind.as_ref().is_some_and(|k| k.primaries > 0),
-        ssh_label: tunnel_label(item).into(),
+        ssh_label: tunnel.into(),
         read_only,
         ..Default::default()
     };
@@ -151,12 +159,10 @@ fn row_of(app: &App, window: &MainWindow, item: &ConnectionItem, cloud: bool, no
             row.profile_label = profile.name.into();
             profile.id
         }
-        None => {
-            row.profile_label = t!("No profile").as_ref().into();
-            NO_PROFILE_CHIP.to_string()
-        }
+        None => NO_PROFILE_CHIP.to_string(),
     };
-    (row, chip, used)
+    let search = search_text(&row, &place);
+    (row, chip, used, search)
 }
 
 /// A pinned cloud connection whose profile isn't listed, as last seen: it says which AWS
@@ -185,10 +191,7 @@ fn pinned_cloud_row(app: &App, pin: &PinnedCloud) -> (PickerRow, String) {
             row.profile_label = profile.name.into();
             profile.id
         }
-        None => {
-            row.profile_label = t!("No profile").as_ref().into();
-            NO_PROFILE_CHIP.to_string()
-        }
+        None => NO_PROFILE_CHIP.to_string(),
     };
     (row, chip)
 }
@@ -216,20 +219,19 @@ fn chip_lines(app: &App, keys: &[&str]) -> Vec<Vec<AwsChip>> {
     crate::cloud::in_lines(chips, CHIP_ROOM)
 }
 
-/// Whether `row` holds every word of `words` (lowercased) in its name, address, profile,
-/// kind or SSH server.
-fn matches(row: &PickerRow, words: &[String]) -> bool {
-    let text = [&row.name, &row.address, &row.profile_label, &row.kind_label, &row.ssh_label].map(|t| t.to_lowercase()).join("\n");
-    words.iter().all(|word| text.contains(word.as_str()))
+/// Whether `entry`'s search text holds every word of `words` (lowercased).
+fn matches(entry: &Entry, words: &[String]) -> bool {
+    words.iter().all(|word| entry.search.contains(word.as_str()))
 }
 
 /// A connection of the list: its row, its chip's key, when it was last used, whether it is a
-/// cloud one.
+/// cloud one, what the filter looks in.
 struct Entry {
     row: PickerRow,
     chip: String,
     used: Option<i64>,
     cloud: bool,
+    search: String,
 }
 
 /// Fills the list with the connections matching `filter`, under the source and chip picked: the
@@ -243,8 +245,8 @@ pub(crate) fn list(app: &App, window: &MainWindow, filter: &str) {
     let mut all: Vec<Entry> = Vec::new();
     for (items, is_cloud) in [(&saved, false), (&cloud, true)] {
         for item in items {
-            let (row, chip, used) = row_of(app, window, item, is_cloud, now);
-            all.push(Entry { row, chip, used, cloud: is_cloud });
+            let (row, chip, used, search) = row_of(app, window, item, is_cloud, now);
+            all.push(Entry { row, chip, used, cloud: is_cloud, search });
         }
     }
     // the pinned cloud connections another profile lists, or none listed now
@@ -255,7 +257,8 @@ pub(crate) fn list(app: &App, window: &MainWindow, filter: &str) {
     };
     for pin in &away {
         let (row, chip) = pinned_cloud_row(app, pin);
-        all.push(Entry { row, chip, used: None, cloud: true });
+        let search = search_text(&row, "");
+        all.push(Entry { row, chip, used: None, cloud: true, search });
     }
     let words: Vec<String> = filter.split_whitespace().map(str::to_lowercase).collect();
     let state = window.global::<ConnectionState>();
@@ -270,8 +273,7 @@ pub(crate) fn list(app: &App, window: &MainWindow, filter: &str) {
         source.clear();
     }
     let in_source = |is_cloud: bool, source: &str| source.is_empty() || (source == CLOUD) == is_cloud;
-    let chip_keys: Vec<&str> =
-        all.iter().filter(|e| in_source(e.cloud, &source) && matches(&e.row, &words)).map(|e| e.chip.as_str()).collect();
+    let chip_keys: Vec<&str> = all.iter().filter(|e| in_source(e.cloud, &source) && matches(e, &words)).map(|e| e.chip.as_str()).collect();
     let lines = chip_lines(app, &chip_keys);
     if !lines.iter().flatten().any(|c| c.key.as_str() == chip) {
         chip.clear();
@@ -281,7 +283,7 @@ pub(crate) fn list(app: &App, window: &MainWindow, filter: &str) {
         Vec::new()
     } else {
         let count = |key: &str| {
-            all.iter().filter(|e| in_source(e.cloud, key) && (chip.is_empty() || e.chip == chip) && matches(&e.row, &words)).count() as i32
+            all.iter().filter(|e| in_source(e.cloud, key) && (chip.is_empty() || e.chip == chip) && matches(e, &words)).count() as i32
         };
         // (the saved ones' label is the list's own, in Slint)
         [("", t!("All").into_owned()), (SAVED, String::new()), (CLOUD, "AWS".to_string())]
@@ -289,7 +291,7 @@ pub(crate) fn list(app: &App, window: &MainWindow, filter: &str) {
             .map(|(key, label)| AwsChip { key: key.into(), label: label.into(), count: count(key), ..Default::default() })
             .collect()
     };
-    let kept = |e: &&Entry| in_source(e.cloud, &source) && (chip.is_empty() || e.chip == chip) && matches(&e.row, &words);
+    let kept = |e: &&Entry| in_source(e.cloud, &source) && (chip.is_empty() || e.chip == chip) && matches(e, &words);
 
     let pinned: Vec<String> = app.state.settings.lock().pinned_connections().to_vec();
     let is_pinned = |row: &PickerRow| pinned.iter().any(|id| row.id.as_str() == id);
@@ -387,6 +389,8 @@ fn open_editor(window: &MainWindow, item: &ConnectionItem) {
     editor.set_kube_context(kube.map(|k| k.context.as_str()).unwrap_or_default().into());
     editor.set_kube_namespace(kube.map(|k| k.namespace.as_str()).unwrap_or_default().into());
     editor.set_kube_relay_pod(kube.map(|k| k.relay_pod.as_str()).unwrap_or_default().into());
+    editor.set_kube_temporary_relay(kube.is_some_and(|k| k.temporary_relay));
+    editor.set_kube_relay_image(kube.map(|k| k.relay_image.as_str()).unwrap_or_default().into());
     fill_kube_contexts(&editor);
     editor.set_profile_enabled(!item.profile_id.is_empty());
     editor.set_profile_id(item.profile_id.as_str().into());

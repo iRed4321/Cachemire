@@ -334,8 +334,8 @@ failure was the tunnel's. Localisation and the full model are in
 Kubernetes cluster, through its API server, signed in with the user's kubeconfig (`kube` crate: the
 context's credentials, sign-in commands such as `aws eks get-token`, token refresh). The connection's
 [`KubeSettings`](crate::connection::KubeSettings) name the context, the namespace (empty: the
-kubeconfig's) and an optional relay pod; the URL's host is the name inside the cluster (`redis://redis:6379`).
-Its dialer is one of two kinds:
+kubeconfig's) and an optional relay pod, named or temporary; the URL's host is the name inside the cluster
+(`redis://redis:6379`). Its dialer is one of two kinds:
 
 - **Port-forward** (no relay pod), what `kubectl port-forward` does. Each address is first turned into a
   pod: an IP is the pod with that `status.podIP` (a cluster's nodes announce theirs); `service` or
@@ -348,13 +348,41 @@ Its dialer is one of two kinds:
   relays stdin and stdout. The pod resolves names itself, so this reaches Services with no selector,
   servers outside the cluster, and any address a cluster's nodes announce. Its stderr goes to the debug log.
 
+**Temporary relay pod** (`temporary_relay`): `open` starts the relay pod itself (`TemporaryRelay`) and the
+dialer owns it, so it lives as long as the tunnel and its pool:
+
+- **Start**: first deletes the pods a previous run left in the namespace (labels `RELAY_LABELS`: ended, or
+  still not running five minutes on), then creates `cachemire-relay-<random>` (`generateName`) running
+  `relay_image`, else [`DEFAULT_RELAY_IMAGE`](crate::connection::kube_tunnel::DEFAULT_RELAY_IMAGE) (busybox,
+  pinned by digest). Its spec meets the "restricted" Pod Security level: user 65534, no capability, no
+  privilege escalation, `RuntimeDefault` seccomp, no service account token, small requests and limits, an
+  `emptyDir` on `/tmp` (the script's fifo). It is polled until `Running` within
+  [`RELAY_START_TIMEOUT`](crate::connection::kube_tunnel::RELAY_START_TIMEOUT) (90 s, added to the pool's
+  open timeout); an image that can't be pulled fails at once. Errors:
+  [`KubeError::RelayStart`](crate::connection::kube_tunnel::KubeError::RelayStart) (refused, failed, with
+  the server's or kubelet's reason) and
+  [`KubeError::RelayNotReady`](crate::connection::kube_tunnel::KubeError::RelayNotReady) (timeout, with the
+  last waiting reason). A failed start deletes the pod before returning.
+- **Lease**: the pod's command (`RELAY_LEASE_SCRIPT`, only `sh`, `sleep` and `rm`) ends after two minutes
+  without a renewal; `keep_lease` renews it every 30 s by `exec`. Three failed renewals in a row, or the pod
+  gone, make the dialer's `is_alive` false, so the pool is seen as dead and the next use reconnects (with a
+  new pod). A crash, a kill or a lost network thus leaves at most an ended pod, cleared at the next start.
+- **End**: dropping the tunnel deletes the pod in the background (grace period 1 s). The pods started and not
+  deleted yet are listed in `STARTED`, and
+  [`delete_temporary_relays`](crate::connection::kube_tunnel::delete_temporary_relays), which the app runs
+  when it quits (at most 3 s), deletes them all at once.
+
+The user's account needs `create`, `get`, `list` and `delete` on `pods` and `create` on `pods/exec`
+in the namespace (`list` only for the leftovers, best effort).
+
 `open` checks the way in before listening: the relay pod runs the script in `probe` mode (connect, then
 exit) and what it says on failure becomes [`KubeError::RelayFailed`](crate::connection::kube_tunnel::KubeError::RelayFailed);
 a port-forward is opened once; with TLS the handshake is tried. An error the API server answers (a
 missing pod, a refused permission) is [`KubeError::Refused`](crate::connection::kube_tunnel::KubeError::Refused)
 with its message. Like SSH, [`Error::Kube`](crate::error::Error::Kube) has the kind `Tunnel`.
 
-To try it by hand: `docs/kubernetes-test-cluster.md` (k3s in Docker, a selectorless Service, a relay pod).
+To try it by hand: `docs/kubernetes-test-cluster.md` (k3s in Docker, a selectorless Service, a relay pod,
+a namespace at the "restricted" level).
 
 On Windows the app sets `KUBE_RS_UNSTABLE_CREATE_NO_WINDOW` first thing, so a sign-in command doesn't
 open a console window.

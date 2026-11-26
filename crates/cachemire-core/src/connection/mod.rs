@@ -39,6 +39,10 @@ pub struct KubeSettings {
     pub context: String,
     pub namespace: String,
     pub relay_pod: String,
+    /// a relay pod is started for the connection and deleted after it (then `relay_pod` is unused),
+    /// running `relay_image` ("" for [`kube_tunnel::DEFAULT_RELAY_IMAGE`])
+    pub temporary_relay: bool,
+    pub relay_image: String,
 }
 
 /// What a server turned out to be the last time it was connected to (or what its cloud
@@ -155,6 +159,8 @@ pub struct ConnectionPayloadInput {
     pub kube_context: Option<String>,
     pub kube_namespace: Option<String>,
     pub kube_relay_pod: Option<String>,
+    pub kube_temporary_relay: Option<bool>,
+    pub kube_relay_image: Option<String>,
     /// the connection profile to use; `Some("")` for none
     pub profile_id: Option<String>,
     pub read_only: Option<bool>,
