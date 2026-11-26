@@ -153,8 +153,9 @@ export component KeyDetail inherits Rectangle {
     // what was fetched when the tab was first opened)
     callback refresh-key();
     refresh-key => { KeyPanel.refresh-key(); }
-    // right-click on selectable text in this panel (see AllValuesRow)
-    callback context-requested(x: length, y: length, selected: string);
+    // right-click on selectable text in this panel (see AllValuesRow), or on a table row:
+    // its field, "" elsewhere
+    callback context-requested(x: length, y: length, selected: string, table-field: string);
     // a value-list row opened or folded — see AllValuesRow.expanded-changed
     callback field-expanded-changed(field: string, expanded: bool);
     field-expanded-changed(field, expanded) => { KeyPanel.field-expanded-changed(field, expanded); }
@@ -238,7 +239,7 @@ export component KeyDetail inherits Rectangle {
                                         mouse-cursor: root.loaded ? MouseCursor.pointer : MouseCursor.default;
                                         pointer-event(event) => {
                                             if event.button == PointerEventButton.right && event.kind == PointerEventKind.down {
-                                                root.context-requested(self.mouse-x + self.absolute-position.x, self.mouse-y + self.absolute-position.y, root.name-selection);
+                                                root.context-requested(self.mouse-x + self.absolute-position.x, self.mouse-y + self.absolute-position.y, root.name-selection, "");
                                             }
                                         }
                                         HorizontalLayout {
@@ -463,16 +464,17 @@ export component KeyDetail inherits Rectangle {
             selected-count <=> root.table-selected-count;
             clear-selection => { root.table-clear-selection(); }
             select-range(from, to) => { root.table-select-range(from, to); }
-            context-requested(x, y, selected) => { root.context-requested(x, y, selected); }
+            context-requested(x, y, selected, field) => { root.context-requested(x, y, selected, field); }
             cell-copy-requested(row, column) => { KeyPanel.copy-table-cell(row, column); }
             near-end => { root.near-end(); }
+            near-start => { root.near-start(); }
         }
         if root.loaded && root.view == KeyView.fields: AllValuesTable {
             collapse-tick: root.collapse-tick;
             sortable: root.badge == "HASH";
             descending: root.sort-descending;
             sort-toggled => { root.sort-toggled(); }
-            context-requested(x, y, selected) => { root.context-requested(x, y, selected); }
+            context-requested(x, y, selected) => { root.context-requested(x, y, selected, ""); }
             near-end => { root.near-end(); }
             near-start => { root.near-start(); }
             field-expanded-changed(field, expanded) => { root.field-expanded-changed(field, expanded); }

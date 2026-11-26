@@ -22,8 +22,14 @@ export global KeyScroll {
     in-out property <length> restore-table-y: 0px;
     in-out property <bool> restore-table-pending: false;
     in-out property <[string]> all-values-expanded: [];
-    // rows just added above the first one (set by Rust with the rows): the list
-    // scrolls down by their height so what was in sight stays put
+    // each view's height of a closed row and of what it shows, so Rust can tell which rows are
+    // in sight when it drops loaded rows far from them (see paging::trim)
+    in-out property <length> all-row-stride: 0px;
+    in-out property <length> all-view-height: 0px;
+    in-out property <length> table-row-stride: 0px;
+    in-out property <length> table-view-height: 0px;
+    // rows just added above the first one, or removed from there if negative (set by Rust with
+    // the rows): the list scrolls by their height so what was in sight stays put
     in-out property <int> prepended: 0;
     // bumped when a row opens or folds, which can destroy the focused item: the
     // window gives its key handler the focus back (keys are dropped with none)

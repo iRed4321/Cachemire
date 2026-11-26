@@ -419,41 +419,45 @@ msgstr "Importer ({})"
 msgid "Export ({})"
 msgstr "Exporter ({})"
 
-#: crates/cachemire/ui/components/content-header.slint:402
-#: crates/cachemire/ui/components/content-header.slint:402
-#: crates/cachemire/ui/components/content-header.slint:402
-#: crates/cachemire/ui/components/content-header.slint:402
-#: crates/cachemire/ui/components/content-header.slint:402
-#: crates/cachemire/ui/components/content-header.slint:402
+#: crates/cachemire/ui/components/content-header.slint:406
+#: crates/cachemire/ui/components/content-header.slint:406
+#: crates/cachemire/ui/components/content-header.slint:406
+#: crates/cachemire/ui/components/content-header.slint:406
+#: crates/cachemire/ui/components/content-header.slint:406
+#: crates/cachemire/ui/components/content-header.slint:406
 msgid "Copy"
 msgstr "Copier"
 
-#: crates/cachemire/ui/components/content-header.slint:430
+#: crates/cachemire/ui/components/content-header.slint:407
+msgid "Open row in fields view"
+msgstr "Ouvrir la ligne dans la vue Champs"
+
+#: crates/cachemire/ui/components/content-header.slint:435
 msgid "Close other tabs"
 msgstr "Fermer les autres onglets"
 
-#: crates/cachemire/ui/components/content-header.slint:431
+#: crates/cachemire/ui/components/content-header.slint:436
 msgid "Close all tabs"
 msgstr "Fermer tous les onglets"
 
-#: crates/cachemire/ui/components/content-header.slint:470
-#: crates/cachemire/ui/components/content-header.slint:470
+#: crates/cachemire/ui/components/content-header.slint:475
+#: crates/cachemire/ui/components/content-header.slint:475
 msgid "Export…"
 msgstr "Exporter…"
 
-#: crates/cachemire/ui/components/content-header.slint:471
+#: crates/cachemire/ui/components/content-header.slint:476
 msgid "Select for export"
 msgstr "Sélectionner pour l'export"
 
-#: crates/cachemire/ui/components/content-header.slint:472
+#: crates/cachemire/ui/components/content-header.slint:477
 msgid "Export {} selected…"
 msgstr "Exporter {} sélectionné(s)…"
 
-#: crates/cachemire/ui/components/content-header.slint:473
+#: crates/cachemire/ui/components/content-header.slint:478
 msgid "Add key…"
 msgstr "Ajouter une clé…"
 
-#: crates/cachemire/ui/components/content-header.slint:474
+#: crates/cachemire/ui/components/content-header.slint:479
 msgid "Rename…"
 msgstr "Renommer…"
 
@@ -642,44 +646,44 @@ msgstr "Filtre"
 msgid "Table"
 msgstr "Tableau"
 
-#: crates/cachemire/ui/components/key-detail.slint:203
+#: crates/cachemire/ui/components/key-detail.slint:204
 msgid "Show active tab's key"
 msgstr "Afficher la clé de l'onglet actif"
 
-#: crates/cachemire/ui/components/key-detail.slint:246
+#: crates/cachemire/ui/components/key-detail.slint:247
 msgid "Select a key"
 msgstr "Sélectionnez une clé"
 
-#: crates/cachemire/ui/components/key-detail.slint:277
+#: crates/cachemire/ui/components/key-detail.slint:278
 msgid "Refresh value"
 msgstr "Actualiser la valeur"
 
-#: crates/cachemire/ui/components/key-detail.slint:283
+#: crates/cachemire/ui/components/key-detail.slint:284
 msgid "Copy a link to this key"
 msgstr "Copier un lien vers cette clé"
 
-#: crates/cachemire/ui/components/key-detail.slint:297
+#: crates/cachemire/ui/components/key-detail.slint:298
 msgid "Search fields and values, or filter with $.path"
 msgstr "Chercher dans les champs et les valeurs, ou filtrer avec $.chemin"
 
-#: crates/cachemire/ui/components/key-detail.slint:345
+#: crates/cachemire/ui/components/key-detail.slint:346
 msgid "to refine"
 msgstr "pour affiner"
 
-#: crates/cachemire/ui/components/key-detail.slint:384
+#: crates/cachemire/ui/components/key-detail.slint:385
 msgid "Add a field"
 msgstr "Ajouter un champ"
 
-#: crates/cachemire/ui/components/key-detail.slint:390
-#: crates/cachemire/ui/components/key-detail.slint:390
+#: crates/cachemire/ui/components/key-detail.slint:391
+#: crates/cachemire/ui/components/key-detail.slint:391
 msgid "{} selected"
 msgstr "{} sélectionné(s)"
 
-#: crates/cachemire/ui/components/key-detail.slint:449
+#: crates/cachemire/ui/components/key-detail.slint:450
 msgid "No field matches this filter"
 msgstr "Aucun champ ne correspond à ce filtre"
 
-#: crates/cachemire/ui/components/key-detail.slint:449
+#: crates/cachemire/ui/components/key-detail.slint:450
 msgid "Nothing to show as a table: no rows, or the rows share no top-level keys"
 msgstr ""
 "Rien à afficher en tableau : aucune ligne, ou les lignes n'ont aucune clé "

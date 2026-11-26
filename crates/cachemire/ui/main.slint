@@ -112,10 +112,10 @@ export component MainWindow inherits Window {
     // whether the clipboard holds text, for a text box's right-click "Paste"
     callback clipboard-has-text() -> bool;
 
-    // Right-click "Copy" over selectable text in the key detail
-    // panel: the panel reports the click position and the selected text
-    // (see KeyDetail.context-requested); the menu opens only if there is one.
+    // Right-click in the key detail panel: the panel reports the click position, the selected
+    // text ("Copy") and a table row's field ("Open row in fields view"); the menu opens with either.
     property <string> selection-text: "";
+    property <string> selection-menu-field: "";
     property <bool> selection-menu-open: false;
     property <length> selection-menu-x: 0px;
     property <length> selection-menu-y: 0px;
@@ -395,13 +395,14 @@ export component MainWindow inherits Window {
                                     empty-hint: QueryTab.ran ? "" : @tr("Write a Redisql query above (FROM/JOIN/WHERE/SELECT/LIMIT), then Run.");
                                     search-focus-tick: root.key-search-focus-tick;
                                     clipboard-has-text() => { return root.clipboard-has-text(); }
-                                    context-requested(x, y, selected) => {
-                                        if selected == "" {
+                                    context-requested(x, y, selected, field) => {
+                                        if selected == "" && field == "" {
                                             return;
                                         }
                                         root.selection-text = selected;
-                                        root.selection-menu-x = min(x, root.width - Theme.px(170px) - Theme.px(4px));
-                                        root.selection-menu-y = min(y, root.height - Theme.px(40px));
+                                        root.selection-menu-field = field;
+                                        root.selection-menu-x = min(x, root.width - Theme.px(230px) - Theme.px(4px));
+                                        root.selection-menu-y = min(y, root.height - Theme.px(68px));
                                         root.selection-menu-open = true;
                                     }
                                     vertical-stretch: 1;
@@ -598,9 +599,15 @@ export component MainWindow inherits Window {
         if selection-menu-open: SelectionContextMenu {
             x: root.selection-menu-x;
             y: root.selection-menu-y;
+            can-copy: root.selection-text != "";
+            can-open-row: root.selection-menu-field != "";
             copy => {
                 root.selection-menu-open = false;
                 KeyPanel.copy-selection(root.selection-text);
+            }
+            open-row => {
+                root.selection-menu-open = false;
+                KeyPanel.open-row-in-fields(root.selection-menu-field);
             }
         }
 

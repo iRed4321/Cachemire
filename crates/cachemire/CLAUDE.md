@@ -29,5 +29,8 @@ UI-thread glue between `ui/*.slint` and `cachemire-core`. No business logic here
   color is a `Theme` `in property` (default = the default theme's value) derived in `theme::derive` and set in `theme::apply`.
 - The UI is compiled with Slint's language edition 1.19 (`build.rs`): an `if`/`for` child counts toward its parent's
   size, and a binding loop is an error. An overlay (dialog) sets `x` and `y` so it stays out of its parent's size.
+- Memory: the allocator is mimalloc (`main.rs`), since glibc's never gave a closed big hash's memory back. A big hash
+  keeps about 1000 rows loaded (`key_detail/paging`, `trim`); idle tabs shrink (`tabs::shrink_idle_tabs`). To measure,
+  read `VmRSS` from `/proc/self/status` in a throwaway E2E UI test run with `cargo xtask e2e -- --cargo-profile fast <name>`.
 - UI tests: `src/ui_tests/` (`Harness` in `mod.rs`, headless, software renderer). Add only when asked.
 - After editing `@tr(...)`: `cargo xtask i18n`. Skills: `add-setting`, `add-ui-dialog`, `translations`.

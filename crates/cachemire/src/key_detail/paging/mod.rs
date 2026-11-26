@@ -8,15 +8,51 @@ use rustc_hash::FxHashSet;
 use serde_json::Value;
 use slint::{ComponentHandle, Model, ModelRc, VecModel};
 
-use crate::{AllValuesRowData, KeyPanel};
+use crate::{AllValuesRowData, KeyPanel, KeyScroll, MainWindow};
 use cachemire_core::explorer::{self, HashValues};
 use cachemire_core::key_name::KeyName;
 
-use super::field::{Fields, build_fields};
-use super::scroll::current_expanded_fields;
+use super::field::{Field, Fields, build_fields};
+use super::scroll::{ScrollPos, current_expanded_fields, current_scroll};
 use super::search_filter::SearchFilter;
 use super::value_list::{build_all_values_table, filter_fields, filter_status};
 use super::{Ctx, FetchedKey, HASH_PAGE_SIZE, KeyView, current_search_filter, search_or_filter_active};
+
+/// The most rows a hash keeps loaded, and what their values may weigh: past either (by a page,
+/// or a quarter), the rows farthest from the view are dropped back down to them (`trim`).
+/// Measured: a row costs about 40 KB with a 2 KB JSON value, its row in the window included.
+const KEPT_ROWS: usize = 1000;
+const KEPT_BYTES: usize = 16 << 20;
+
+/// The rows always kept on each side of those in sight, so the next scroll finds them.
+const KEPT_AROUND: usize = HASH_PAGE_SIZE;
+
+/// The rows a background tab's hash keeps on each side of those it showed (`shrink_idle`).
+const IDLE_AROUND: usize = HASH_PAGE_SIZE / 2;
+
+/// The height of a closed row and of what is shown, in each view (0 for one never shown), as the
+/// views report them (see `KeyScroll`): the same for every tab, the panel being one.
+#[derive(Clone, Copy)]
+pub(crate) struct ViewSizes {
+    list: (f32, f32),
+    table: (f32, f32),
+}
+
+/// What the views report of their sizes now.
+pub(crate) fn view_sizes(window: &MainWindow) -> ViewSizes {
+    let scroll = window.global::<KeyScroll>();
+    ViewSizes {
+        list: (scroll.get_all_row_stride(), scroll.get_all_view_height()),
+        table: (scroll.get_table_row_stride(), scroll.get_table_view_height()),
+    }
+}
+
+/// The closed rows wholly above a view scrolled to `y` (none past an open one, taller) and the
+/// first row below it, for rows `stride` high in a view `height` high.
+fn rows_in_sight(y: f32, (stride, height): (f32, f32), first_open: usize) -> (usize, usize) {
+    let above = ((-y / stride).floor().max(0.0) as usize).min(first_open);
+    (above, ((-y + height) / stride).ceil().max(0.0) as usize)
+}
 
 /// Which side of the loaded fields a hash page is added to.
 #[derive(Clone, Copy, PartialEq)]
@@ -58,6 +94,19 @@ struct BuiltPage {
     search: SearchFilter,
     field_chars: i32,
     rows: Vec<AllValuesRowData>,
+}
+
+/// How many fields of `far_end` (the side to drop from, at most `most` of them) leave the `rows`
+/// loaded, weighing `bytes`, within the budget.
+fn over_budget<'a>(mut far_end: impl Iterator<Item = &'a Arc<Field>>, most: usize, mut rows: usize, mut bytes: usize) -> usize {
+    let mut dropped = 0;
+    while dropped < most && (rows > KEPT_ROWS || bytes > KEPT_BYTES) {
+        let Some(field) = far_end.next() else { break };
+        rows -= 1;
+        bytes -= field.raw.len();
+        dropped += 1;
+    }
+    dropped
 }
 
 impl Ctx {
@@ -129,6 +178,7 @@ impl Ctx {
             self.on_search_changed();
             return;
         }
+        let added = rows.len();
         panel.set_all_values_field_chars(panel.get_all_values_field_chars().max(field_chars));
         let model = panel.get_all_values_rows();
         match (dir, model.as_any().downcast_ref::<VecModel<AllValuesRowData>>()) {
@@ -151,7 +201,129 @@ impl Ctx {
                 panel.set_all_values_rows(ModelRc::new(VecModel::from(all)));
             }
         }
-        self.show_view(&window, None);
+        let filtered = search_or_filter_active(&window);
+        let dropped_above = if filtered { 0 } else { self.trim(&window, dir) };
+        // the table keeps what was in sight: rows added above push it down, dropped ones pull it up
+        let shifted = if dir == PageDir::Previous && !filtered { added } else { 0 } as f32 - dropped_above as f32;
+        let scroll = (panel.get_view() == KeyView::Table && shifted != 0.0).then(|| {
+            let mut pos = current_scroll(&window);
+            pos.table_y = (pos.table_y - shifted * window.global::<KeyScroll>().get_table_row_stride()).min(0.0);
+            pos
+        });
+        self.show_view(&window, scroll);
+    }
+
+    /// Past the budget (`KEPT_ROWS`, `KEPT_BYTES`), drops the loaded rows farthest from the view
+    /// on the side away from the page that just `landed`, keeping `KEPT_AROUND` rows past those in
+    /// sight and every open row; scrolling back fetches them again. Returns the rows dropped above.
+    fn trim(&self, window: &MainWindow, landed: PageDir) -> usize {
+        let (panel, scroll) = (window.global::<KeyPanel>(), window.global::<KeyScroll>());
+        let table = panel.get_view() == KeyView::Table;
+        let jumping = scroll.get_reveal_pending() || scroll.get_restore_all_pending() || scroll.get_restore_table_pending();
+        // a table sorted or ticked here holds its rows in another order, or by their place
+        if jumping || table && (panel.get_table_selected_count() > 0 || panel.get_table_sort_column() >= 0) {
+            return 0;
+        }
+        let (stride, height, y) = match table {
+            true => (scroll.get_table_row_stride(), scroll.get_table_view_height(), scroll.get_table_y()),
+            false => (scroll.get_all_row_stride(), scroll.get_all_view_height(), scroll.get_all_y()),
+        };
+        let model = panel.get_all_values_rows();
+        let open = current_expanded_fields(window);
+        let mut content = self.shared.content.lock();
+        let n = content.loaded.len();
+        if stride <= 0.0 || !content.is_hash() || content.current.len() != n || model.row_count() != n {
+            return 0;
+        }
+        let bytes: usize = content.loaded.iter().map(|field| field.raw.len()).sum();
+        if n <= KEPT_ROWS + HASH_PAGE_SIZE && bytes <= KEPT_BYTES + KEPT_BYTES / 4 {
+            return 0;
+        }
+        // the closed rows wholly above the view (an open one is taller: none is dropped past it),
+        // and the first row below it; open rows only matter in the list view
+        let is_open = |field: &Arc<Field>| !table && open.contains(&field.name);
+        let first_open = content.loaded.iter().position(is_open).unwrap_or(n);
+        let last_open = content.loaded.iter().rposition(is_open);
+        let (above, below) = rows_in_sight(y, (stride, height), first_open);
+        let (front, back) = match landed {
+            PageDir::Next => (over_budget(content.loaded.iter(), above.saturating_sub(KEPT_AROUND), n, bytes), 0),
+            PageDir::Previous => {
+                let kept_to = (below + KEPT_AROUND).max(last_open.map_or(0, |i| i + 1));
+                (0, over_budget(content.loaded.iter().rev(), n.saturating_sub(kept_to), n, bytes))
+            }
+        };
+        if front + back == 0 {
+            return 0;
+        }
+        let gone: FxHashSet<String> =
+            content.loaded[..front].iter().chain(&content.loaded[n - back..]).map(|field| field.name.clone()).collect();
+        let shown = &mut *content;
+        for fields in [&mut shown.loaded, &mut shown.current] {
+            fields.truncate(n - back);
+            fields.drain(..front);
+        }
+        let slot = (window.connection_id().to_string(), shown.key.clone());
+        drop(content);
+        if let Some(fetch) = self.shared.fetched.lock().get_mut(&slot) {
+            fetch.fields.truncate(fetch.fields.len().saturating_sub(back));
+            fetch.fields.drain(..front.min(fetch.fields.len()));
+            fetch.start += front;
+        }
+        self.shared.pretty_cache.lock().forget(&gone);
+        match (front, model.as_any().downcast_ref::<VecModel<AllValuesRowData>>()) {
+            // only rows below the view: taken off the end in place
+            (0, Some(vec)) => (0..back).for_each(|_| _ = vec.remove(vec.row_count() - 1)),
+            _ => {
+                if !table {
+                    scroll.set_prepended(-(front as i32));
+                }
+                let kept: Vec<AllValuesRowData> = model.iter().skip(front).take(n - front - back).collect();
+                panel.set_all_values_rows(ModelRc::new(VecModel::from(kept)));
+            }
+        }
+        tracing::debug!(front, back, kept = n - front - back, "dropped loaded rows far from the view");
+        front
+    }
+
+    /// A background tab's hash, shown last in `view` scrolled to `scroll`: keeps what was fetched
+    /// of it to the rows in sight then and `IDLE_AROUND` on each side (and every `open` row), and
+    /// moves `scroll` by the rows dropped above. Coming back fetches the others again as needed.
+    pub(super) fn shrink_idle(
+        &self,
+        slot: (String, String),
+        view: KeyView,
+        scroll: &mut ScrollPos,
+        open: &FxHashSet<String>,
+        sizes: ViewSizes,
+    ) {
+        let mut fetched = self.shared.fetched.lock();
+        let Some(fetch) = fetched.get_mut(&slot).filter(|fetch| fetch.all_names.is_some()) else { return };
+        let n = fetch.fields.len();
+        let (sizes_shown, y) = match view {
+            KeyView::Table => (sizes.table, scroll.table_y),
+            KeyView::Fields => (sizes.list, scroll.all_y),
+        };
+        if n <= 2 * HASH_PAGE_SIZE || sizes_shown.0 <= 0.0 {
+            return;
+        }
+        let first_open = fetch.fields.iter().position(|field| open.contains(&field.name)).unwrap_or(n);
+        let last_open = fetch.fields.iter().rposition(|field| open.contains(&field.name));
+        let (above, below) = rows_in_sight(y, sizes_shown, if view == KeyView::Table { n } else { first_open });
+        let front = above.saturating_sub(IDLE_AROUND).min(first_open);
+        let kept_to = (below + IDLE_AROUND).max(last_open.map_or(0, |i| i + 1)).min(n);
+        if front == 0 && kept_to == n {
+            return;
+        }
+        fetch.fields.truncate(kept_to);
+        fetch.fields.drain(..front);
+        fetch.start += front;
+        // each view's place among the rows left: the table's rows are all one height; the list
+        // moves only if every row dropped was closed and above it, else starts from the top
+        let shift = front as f32;
+        scroll.table_y = (scroll.table_y + shift * sizes.table.0).min(0.0);
+        let (list_above, _) = rows_in_sight(scroll.all_y, sizes.list, first_open);
+        scroll.all_y = if sizes.list.0 > 0.0 && front <= list_above { (scroll.all_y + shift * sizes.list.0).min(0.0) } else { 0.0 };
+        tracing::info!(key = %slot.1, dropped = n - fetch.fields.len(), kept = fetch.fields.len(), "shrank an idle tab's hash");
     }
 
     /// A page fetch is over (shown, dropped or failed): the next one may start, and does

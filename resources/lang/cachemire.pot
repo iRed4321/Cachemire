@@ -2,7 +2,7 @@
 msgid ""
 msgstr ""
 "Project-Id-Version: cachemire VERSION\n"
-"POT-Creation-Date: 2026-11-26 18:48+0000\n"
+"POT-Creation-Date: 2026-11-26 19:20+0000\n"
 "PO-Revision-Date: YEAR-MO-DA HO:MI+ZONE\n"
 "Last-Translator: FULL NAME <EMAIL@ADDRESS>\n"
 "Language-Team: LANGUAGE <LL@li.org>\n"
@@ -406,41 +406,45 @@ msgstr ""
 msgid "Export ({})"
 msgstr ""
 
-#: crates/cachemire/ui/components/content-header.slint:402
-#: crates/cachemire/ui/components/content-header.slint:402
-#: crates/cachemire/ui/components/content-header.slint:402
-#: crates/cachemire/ui/components/content-header.slint:402
-#: crates/cachemire/ui/components/content-header.slint:402
-#: crates/cachemire/ui/components/content-header.slint:402
+#: crates/cachemire/ui/components/content-header.slint:406
+#: crates/cachemire/ui/components/content-header.slint:406
+#: crates/cachemire/ui/components/content-header.slint:406
+#: crates/cachemire/ui/components/content-header.slint:406
+#: crates/cachemire/ui/components/content-header.slint:406
+#: crates/cachemire/ui/components/content-header.slint:406
 msgid "Copy"
 msgstr ""
 
-#: crates/cachemire/ui/components/content-header.slint:430
+#: crates/cachemire/ui/components/content-header.slint:407
+msgid "Open row in fields view"
+msgstr ""
+
+#: crates/cachemire/ui/components/content-header.slint:435
 msgid "Close other tabs"
 msgstr ""
 
-#: crates/cachemire/ui/components/content-header.slint:431
+#: crates/cachemire/ui/components/content-header.slint:436
 msgid "Close all tabs"
 msgstr ""
 
-#: crates/cachemire/ui/components/content-header.slint:470
-#: crates/cachemire/ui/components/content-header.slint:470
+#: crates/cachemire/ui/components/content-header.slint:475
+#: crates/cachemire/ui/components/content-header.slint:475
 msgid "Export…"
 msgstr ""
 
-#: crates/cachemire/ui/components/content-header.slint:471
+#: crates/cachemire/ui/components/content-header.slint:476
 msgid "Select for export"
 msgstr ""
 
-#: crates/cachemire/ui/components/content-header.slint:472
+#: crates/cachemire/ui/components/content-header.slint:477
 msgid "Export {} selected…"
 msgstr ""
 
-#: crates/cachemire/ui/components/content-header.slint:473
+#: crates/cachemire/ui/components/content-header.slint:478
 msgid "Add key…"
 msgstr ""
 
-#: crates/cachemire/ui/components/content-header.slint:474
+#: crates/cachemire/ui/components/content-header.slint:479
 msgid "Rename…"
 msgstr ""
 
@@ -625,44 +629,44 @@ msgstr ""
 msgid "Table"
 msgstr ""
 
-#: crates/cachemire/ui/components/key-detail.slint:203
+#: crates/cachemire/ui/components/key-detail.slint:204
 msgid "Show active tab's key"
 msgstr ""
 
-#: crates/cachemire/ui/components/key-detail.slint:246
+#: crates/cachemire/ui/components/key-detail.slint:247
 msgid "Select a key"
 msgstr ""
 
-#: crates/cachemire/ui/components/key-detail.slint:277
+#: crates/cachemire/ui/components/key-detail.slint:278
 msgid "Refresh value"
 msgstr ""
 
-#: crates/cachemire/ui/components/key-detail.slint:283
+#: crates/cachemire/ui/components/key-detail.slint:284
 msgid "Copy a link to this key"
 msgstr ""
 
-#: crates/cachemire/ui/components/key-detail.slint:297
+#: crates/cachemire/ui/components/key-detail.slint:298
 msgid "Search fields and values, or filter with $.path"
 msgstr ""
 
-#: crates/cachemire/ui/components/key-detail.slint:345
+#: crates/cachemire/ui/components/key-detail.slint:346
 msgid "to refine"
 msgstr ""
 
-#: crates/cachemire/ui/components/key-detail.slint:384
+#: crates/cachemire/ui/components/key-detail.slint:385
 msgid "Add a field"
 msgstr ""
 
-#: crates/cachemire/ui/components/key-detail.slint:390
-#: crates/cachemire/ui/components/key-detail.slint:390
+#: crates/cachemire/ui/components/key-detail.slint:391
+#: crates/cachemire/ui/components/key-detail.slint:391
 msgid "{} selected"
 msgstr ""
 
-#: crates/cachemire/ui/components/key-detail.slint:449
+#: crates/cachemire/ui/components/key-detail.slint:450
 msgid "No field matches this filter"
 msgstr ""
 
-#: crates/cachemire/ui/components/key-detail.slint:449
+#: crates/cachemire/ui/components/key-detail.slint:450
 msgid "Nothing to show as a table: no rows, or the rows share no top-level keys"
 msgstr ""
 

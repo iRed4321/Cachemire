@@ -244,14 +244,17 @@ export component TableView inherits Rectangle {
     callback select-range(from: int, to: int);
     // the row last ticked or unticked, where a Shift-click's range starts (-1: none)
     property <int> select-anchor: -1;
-    // right-click in the table: window-relative position plus the text selected
-    // in a cell ("" if none), so the window can offer "Copy"
-    callback context-requested(x: length, y: length, selected: string);
+    // right-click in the table: window-relative position, the text selected in a cell
+    // ("" if none) and the row's field ("" off the rows), for "Copy" and "Open row in fields view"
+    callback context-requested(x: length, y: length, selected: string, field: string);
     // scrolled within `near-end-margin` rows of the end of what's loaded — see
     // AllValuesTable.near-end, same idea, same caveat (Rust decides if there's
     // really more to fetch)
     callback near-end();
     property <int> near-end-margin: 50;
+    // scrolled within `near-end-margin` rows of the first one: Rust decides whether earlier rows
+    // can be fetched (once those far above were dropped)
+    callback near-start();
     property <string> current-selection: "";
     // shown instead of the table when there's nothing to tabulate
     in property <string> empty-message: "";
@@ -310,6 +313,12 @@ export component TableView inherits Rectangle {
             root.near-end();
         }
     }
+    function check-near-start() {
+        if floor(-content-y-snapshot / row-stride) < near-end-margin && !KeyScroll.restore-table-pending {
+            root.near-start();
+        }
+    }
+    changed row-stride => { KeyScroll.table-row-stride = row-stride; }
 
     // The cell with the keyboard focus, outlined: its row, and its column in `columns` (-1:
     // none). A click on a cell puts it there, the arrow keys move it, and the view scrolls
@@ -470,6 +479,8 @@ export component TableView inherits Rectangle {
                                 root.content-y-snapshot = self.content-y;
                                 KeyScroll.table-x = self.content-x;
                                 KeyScroll.table-y = self.content-y;
+                                KeyScroll.table-row-stride = root.row-stride;
+                                KeyScroll.table-view-height = self.height;
                                 apply-restore();
                                 root.grow-if-needed();
                                 root.check-near-end();
@@ -477,6 +488,7 @@ export component TableView inherits Rectangle {
                             changed width => { root.flick-width-snapshot = self.width; }
                             changed height => {
                                 root.flick-height-snapshot = self.height;
+                                KeyScroll.table-view-height = self.height;
                                 root.grow-if-needed();
                                 root.check-near-end();
                             }
@@ -489,6 +501,7 @@ export component TableView inherits Rectangle {
                                 KeyScroll.table-y = self.content-y;
                                 root.grow-if-needed();
                                 root.check-near-end();
+                                root.check-near-start();
                             }
 
                             // wheel behind the rows, pinned under the visible frame (see
@@ -507,7 +520,7 @@ export component TableView inherits Rectangle {
                                 }
                                 // the cells' text leaves right-clicks to what is behind it,
                                 // which is this
-                                context-requested(x, y) => { root.context-requested(x, y, root.current-selection); }
+                                context-requested(x, y) => { root.context-requested(x, y, root.current-selection, ""); }
                             }
 
                             VerticalLayout {
@@ -538,7 +551,7 @@ export component TableView inherits Rectangle {
                                             root.select-anchor = i;
                                         }
                                         selection-changed(text) => { root.current-selection = text; }
-                                        context-requested(x, y) => { root.context-requested(x, y, root.current-selection); }
+                                        context-requested(x, y) => { root.context-requested(x, y, root.current-selection, row.field); }
                                         focus-col: root.focus-row == i ? root.focus-col : -1;
                                         cell-clicked(col) => {
                                             root.focus-row = i;

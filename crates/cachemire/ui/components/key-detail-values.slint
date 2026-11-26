@@ -173,7 +173,7 @@ export component AllValuesTable inherits Rectangle {
         // from the first batch
         stuck-index = -1;
         rendered-count = min(rows.length, batch-size);
-        if KeyScroll.prepended > 0 {
+        if KeyScroll.prepended != 0 {
             KeyScroll.restore-all-y = content-y-snapshot - KeyScroll.prepended * collapsed-row-stride;
             KeyScroll.restore-all-pending = true;
             KeyScroll.prepended = 0;
@@ -183,6 +183,8 @@ export component AllValuesTable inherits Rectangle {
         apply-restore();
         check-near-end();
     }
+    // the zoom changed it
+    changed collapsed-row-stride => { KeyScroll.all-row-stride = collapsed-row-stride; }
     // rows added to the same model (a hash's next page): the view fills up to them,
     // and asks for more if it still reaches the end
     property <int> row-count: rows.length;
@@ -214,6 +216,8 @@ export component AllValuesTable inherits Rectangle {
                         root.flick-height-snapshot = self.height;
                         root.content-y-snapshot = self.content-y;
                         KeyScroll.all-y = self.content-y;
+                        KeyScroll.all-row-stride = root.collapsed-row-stride;
+                        KeyScroll.all-view-height = self.height;
                         root.apply-restore();
                         root.grow-if-needed();
                         root.grow-for-reveal();
@@ -221,6 +225,7 @@ export component AllValuesTable inherits Rectangle {
                     }
                     changed height => {
                         root.flick-height-snapshot = self.height;
+                        KeyScroll.all-view-height = self.height;
                         root.grow-if-needed();
                         root.check-near-end();
                     }

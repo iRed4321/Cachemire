@@ -46,6 +46,7 @@ mod word;
 
 pub(crate) use fold::{contains_folded, fold, unescaped_json};
 pub(crate) use highlight::{display_sample, search_plain_text, search_value_text};
+pub(crate) use paging::{ViewSizes, view_sizes};
 pub use scroll::{ScrollPos, current_expanded_fields, current_scroll, restore_expanded_fields};
 pub use table::clear_table;
 
@@ -335,6 +336,21 @@ impl Ctx {
         }
     }
 
+    /// A table row's "Open row in fields view": the fields view comes back with `field`'s row
+    /// open and scrolled to (see `KeyScroll.reveal-*`), the list built up to it.
+    fn open_row_in_fields(&self, field: &str) {
+        let Some(window) = self.weak.upgrade() else { return };
+        let panel = window.global::<KeyPanel>();
+        let Some(index) = panel.get_all_values_rows().iter().position(|row| row.field == field) else { return };
+        set_field_expanded(&window, field, true);
+        let scroll = window.global::<crate::KeyScroll>();
+        scroll.set_reveal_field(field.into());
+        scroll.set_reveal_index(index as i32);
+        scroll.set_reveal_pending(true);
+        panel.set_view(KeyView::Fields);
+        self.on_view_changed();
+    }
+
     /// The header's refresh button: fetches the shown key again. The filters, the open
     /// rows and the scroll position are all still in the window, read as a tab switch does.
     fn refresh_key(&self) {
@@ -492,6 +508,10 @@ pub fn init(window: &MainWindow, state: Arc<AppState>, rt: Handle) -> KeyDetail 
         move |text, cursor, index| ctx.complete_suggestion(text, cursor, index)
     });
     panel.on_view_changed(with_ctx(Ctx::on_view_changed));
+    panel.on_open_row_in_fields({
+        let ctx = ctx.clone();
+        move |field| ctx.open_row_in_fields(&field)
+    });
 
     // a value-list row opened or folded: kept in KeyScroll.all-values-expanded,
     // for tabs/mod.rs to save when the tab is left and restore when it's shown again
@@ -547,6 +567,27 @@ impl KeyDetail {
     /// then scrolls it to `scroll`.
     pub fn load(&self, key: String, scroll: ScrollPos, reuse: bool) {
         self.0.load_key(LoadRequest { key, scroll, reuse, announce: false });
+    }
+
+    /// Shrinks what was fetched of a background tab's hash (see `Ctx::shrink_idle`).
+    pub fn shrink_idle(
+        &self,
+        connection: &str,
+        key: &str,
+        view: KeyView,
+        scroll: &mut ScrollPos,
+        open: &FxHashSet<String>,
+        sizes: ViewSizes,
+    ) {
+        self.0.shrink_idle((connection.to_string(), key.to_string()), view, scroll, open, sizes);
+    }
+
+    /// Empties the panel and drops what it held of the key it showed (its fields, renderings,
+    /// suggestions), for when no tab is left to show.
+    pub fn clear(&self) {
+        if let Some(window) = self.0.weak.upgrade() {
+            show_nothing(&window, &self.0.shared);
+        }
     }
 
     /// Shows a query tab's result rows in the panel (named by the tab's id), or nothing for `None`.

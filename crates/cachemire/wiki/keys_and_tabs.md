@@ -134,7 +134,8 @@ Rules visible in the code:
   (`KeyTree.reveal-active-tab` -> `focus_key`) brings it back.
 - `close(key)` returns `(was_active, next_active)`; `close_others` keeps one tab and makes it active;
   `close_all` forgets everything. All of them call `KeyDetail::forget` (drops the fetched cache of those
-  tabs) and `forget_special` (frees search or query state).
+  tabs) and `forget_special` (frees search or query state); with no tab left, `clear_detail_view` also
+  calls `KeyDetail::clear`, which drops the fields the panel itself still held.
 - Reordering is `TabStrip.reordered(key, index)`: the id is moved inside `open`.
 - `rename_keys(moves)` (after a rename on the server) renames tab ids and their view state and reloads the
   active one; `close_keys(gone)` closes the tabs of deleted keys (not search or query tabs).
@@ -185,7 +186,8 @@ everything shown to the right of the tree when a key (or a query's rows) is open
 the two views, value rows, editing and exports. Its public surface is small:
 [`init`](crate::key_detail::init) returns a [`KeyDetail`](crate::key_detail::KeyDetail) handle stored in
 `App::key_detail`, with `load(key, scroll, reuse)`, `show_rows(id, rows, scroll)` (query results),
-`forget(connection, key)` and the new-hash bookkeeping (`mark_new`, `is_new`, `forget_new`).
+`forget(connection, key)`, `clear()` (no tab left), `shrink_idle(…)` (a background tab, see
+[Paging a hash](#paging-a-hash-paging)) and the new-hash bookkeeping (`mark_new`, `is_new`, `forget_new`).
 
 ## Shared state
 
@@ -308,6 +310,20 @@ Hashes load in pages: `get_key_details` returns all the field *names* known so f
   (`kick_off_scan_if_active` -> `fetch_more`: Next, then Previous once the end is reached) until the whole
   hash is read, so the filter can find matches beyond the first page.
 - `meta` ("N fields · M loaded, sorted among themselves") is recomputed with `hash_meta` as names arrive.
+- **Dropping far rows** (`trim`, after each page lands): past `KEPT_ROWS` (1000) rows or `KEPT_BYTES`
+  (16 MB of values), by a page or a quarter, the rows farthest from the view on the side away from the
+  page are dropped from `loaded`, `current`, the fetch cache (`start` moves), the renderings and the
+  rows, keeping `KEPT_AROUND` (a page) past those in sight and every open row (none is dropped past one).
+  Which rows are in sight comes from `KeyScroll`'s row and view heights (closed rows are all one height).
+  Rows dropped above set a negative `KeyScroll.prepended`, so the list stays put; the table gets its
+  position shifted the same way (and for a page added above, now that it has a `near-start` too).
+  Scrolling back fetches them again (`near-start` / `near-end`). Not while a search or the path filter
+  is active, a jump is pending, or the table is sorted here or has ticked rows. Measured with 2 KB JSON
+  values: a row costs about 40 KB, and 8000 rows scrolled through stay under 150 MB instead of 380.
+- **Idle tabs** (`tabs::shrink_idle_tabs`, every minute): a background tab left 5 minutes ago, with no
+  search or path filter, keeps in the fetch cache only the rows it showed and `IDLE_AROUND` on each side
+  (`KeyDetail::shrink_idle`); its saved scroll moves by what was dropped above (the list's only if every
+  dropped row was closed and above it, else to the top).
 
 Sorting: the Field header's arrow (`sort-toggled` -> `toggle_sort`) flips `sort-descending`, folds every
 row and reloads from the top (`reuse: false`); in the table, a column header triangle orders rows
@@ -421,6 +437,11 @@ first (`with_full_values`, using `hash_full_values`). `ExportFormat` is `Json` o
 `ExportTarget::{Open, Download, Copy}`. `full_value.rs` handles "Try to load" on a too-long row: reads it
 with [`explorer::hash_full_values`](cachemire_core::explorer::hash_full_values), swaps the `Field` in
 both `loaded` and `current`, rebuilds the row and opens it.
+
+The panel's right-click menu (`SelectionContextMenu`, opened by `main.slint` on
+`KeyDetail.context-requested`) offers "Copy" when text is selected, and on a table row "Open row in
+fields view": `open_row_in_fields` finds the row among `all-values-rows` (kept while the table shows),
+opens it, sets `KeyScroll.reveal-*` with its index and switches the view, as a search hit does.
 
 ## Concurrency discipline in this module
 

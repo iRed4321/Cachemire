@@ -3,6 +3,7 @@
 
 use rustc_hash::{FxHashMap, FxHashSet};
 use std::rc::Rc;
+use std::time::{Duration, Instant};
 
 use slint::{ComponentHandle, Model, ModelRc, VecModel};
 
@@ -39,6 +40,35 @@ struct TabViewState {
     escaped: bool,
     // a field to scroll to the next time the tab is shown (a link's)
     reveal: Option<String>,
+    // when the tab was last left (`None`: never shown), for `shrink_idle_tabs`
+    left_at: Option<Instant>,
+}
+
+/// How long a tab stays in the background before its hash keeps only the rows around where
+/// it was left, and how often the tabs are looked at.
+const IDLE_BEFORE_SHRINK: Duration = Duration::from_secs(5 * 60);
+const IDLE_CHECK_EVERY: Duration = Duration::from_secs(60);
+
+/// The background tabs left alone for [`IDLE_BEFORE_SHRINK`], those of other connections
+/// included: what was fetched of their hash shrinks to the rows around where they were left
+/// (see `KeyDetail::shrink_idle`), unless a search or the path filter needs it all.
+fn shrink_idle_tabs(app: &App, window: &MainWindow) {
+    let sizes = crate::key_detail::view_sizes(window);
+    let mut tabs = app.tabs.borrow_mut();
+    let tabs = &mut *tabs;
+    let shown = (tabs.connection.as_str(), tabs.active.as_deref());
+    let parked = tabs.parked.iter_mut().map(|(connection, parked)| (connection.as_str(), &mut parked.view_state));
+    for (connection, states) in std::iter::once((tabs.connection.as_str(), &mut tabs.view_state)).chain(parked) {
+        for (key, state) in states.iter_mut() {
+            let idle = state.left_at.is_some_and(|left| left.elapsed() >= IDLE_BEFORE_SHRINK);
+            let needs_all = !state.badges.is_empty() || !state.json_filter.is_empty();
+            if !idle || needs_all || special_kind(key).is_some() || (connection, Some(key.as_str())) == shown {
+                continue;
+            }
+            let (view, open) = (state.view, &state.expanded_fields);
+            app.key_detail.shrink_idle(connection, key, view, &mut state.scroll, open, sizes);
+        }
+    }
 }
 
 /// Where a link leads in a key: its tab, a hash's field opened and scrolled to, a filter.
@@ -280,7 +310,8 @@ fn render(window: &MainWindow, tabs: &Tabs) {
     }
 }
 
-fn clear_detail_view(window: &MainWindow) {
+fn clear_detail_view(app: &App, window: &MainWindow) {
+    app.key_detail.clear();
     window.global::<KeyPanel>().set_badge("".into());
     window.global::<KeyPanel>().set_loaded(false);
     crate::key_detail::show_key_name(window, "");
@@ -320,6 +351,7 @@ fn save_view_state(app: &App, window: &MainWindow, tabs: &mut Tabs, key: &str) {
             shown_format: window.global::<ExportPrefs>().get_format(),
             escaped: window.global::<ExportPrefs>().get_header_escaped(),
             reveal: None,
+            left_at: Some(Instant::now()),
         },
     );
 }
@@ -570,7 +602,7 @@ pub(crate) fn follow_connection(app: &App, window: &MainWindow) {
     crate::connections::refresh(app, window);
     match active {
         Some((key, scroll)) => show_tab(app, window, key, scroll, true),
-        None => clear_detail_view(window),
+        None => clear_detail_view(app, window),
     }
 }
 
@@ -588,7 +620,7 @@ fn on_tab_closed(app: &App, window: &MainWindow, key: String) {
         tabs.open.is_empty()
     };
     if is_empty {
-        clear_detail_view(window);
+        clear_detail_view(app, window);
     } else if let Some(next_key) = next_active {
         let scroll = {
             let mut tabs = app.tabs.borrow_mut();
@@ -646,6 +678,9 @@ fn on_search_hit_opened(app: &App, window: &MainWindow, key: String, field: Stri
 
 /// Wires the tab bar, and the buttons and links that open tabs.
 pub fn init(app: &Rc<App>, window: &MainWindow) {
+    let idle = slint::Timer::default();
+    idle.start(slint::TimerMode::Repeated, IDLE_CHECK_EVERY, || crate::app::with(|app, window| shrink_idle_tabs(app, window)));
+    std::mem::forget(idle);
     // runs `f` with the app and the window, from a callback
     fn on<A>(app: &Rc<App>, f: impl Fn(&App, &MainWindow, A) + 'static) -> impl Fn(A) + 'static {
         let app = app.clone();
@@ -710,7 +745,7 @@ pub fn init(app: &Rc<App>, window: &MainWindow) {
         tabs.highlighted = false;
         tabs.view_state.clear();
         render(window, &tabs);
-        clear_detail_view(window);
+        clear_detail_view(app, window);
     });
     window.global::<TabStrip>().on_close_all(move || close_all(()));
 

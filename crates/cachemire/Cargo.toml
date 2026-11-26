@@ -37,6 +37,8 @@ thiserror.workspace = true
 tracing.workspace = true
 tracing-appender = "0.2"
 tracing-subscriber = { version = "0.3", default-features = false, features = ["fmt", "std", "ansi"] }
+# the allocator: unlike glibc's, it hands freed memory back to the system (see main.rs)
+mimalloc = { version = "0.1", default-features = false }
 
 [dev-dependencies]
 cachemire-core = { path = "../cachemire-core", features = ["test-support"] }

@@ -381,12 +381,16 @@ component MenuRow inherits Rectangle {
 // Right-click menu over a text selection in the key detail panel: a single
 // "Copy" entry. Same ownership arrangement as TabContextMenu.
 export component SelectionContextMenu inherits Rectangle {
+    // "Copy" with selected text, "Open row in fields view" on a table row
+    in property <bool> can-copy: true;
+    in property <bool> can-open-row: false;
     callback copy();
+    callback open-row();
 
     property <length> row-h: Theme.px(28px);
     property <length> pad: Theme.px(4px);
-    width: Theme.px(170px);
-    height: row-h + 2 * pad;
+    width: Theme.px(230px);
+    height: ((can-copy ? 1 : 0) + (can-open-row ? 1 : 0)) * row-h + 2 * pad;
     background: Theme.bg-elevated;
     border-radius: Theme.radius-md;
     border-width: 1px;
@@ -399,7 +403,8 @@ export component SelectionContextMenu inherits Rectangle {
 
     VerticalLayout {
         padding: pad;
-        MenuRow { label: @tr("Copy"); clicked => { root.copy(); } }
+        if can-copy: MenuRow { label: @tr("Copy"); clicked => { root.copy(); } }
+        if can-open-row: MenuRow { label: @tr("Open row in fields view"); clicked => { root.open-row(); } }
     }
 }
 

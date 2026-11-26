@@ -225,6 +225,11 @@ impl PrettyRenderings {
     pub(super) fn clear(&mut self) {
         self.0.iter_mut().for_each(FxHashMap::clear);
     }
+
+    /// Drops the renderings of the fields named in `gone`.
+    pub(super) fn forget(&mut self, gone: &rustc_hash::FxHashSet<String>) {
+        self.0.iter_mut().for_each(|renderings| renderings.retain(|name, _| !gone.contains(name)));
+    }
 }
 
 /// The renderings, shared with the background tasks that fill them.

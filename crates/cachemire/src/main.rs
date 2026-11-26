@@ -129,6 +129,11 @@ fn select_backend() -> Result<(), slint::PlatformError> {
     selector.select()
 }
 
+/// mimalloc, which gives freed memory back to the system within seconds; glibc's allocator
+/// keeps what a closed big hash took (measured: 248 MB kept, against 95 MB once given back).
+#[global_allocator]
+static GLOBAL: mimalloc::MiMalloc = mimalloc::MiMalloc;
+
 fn main() -> Result<(), slint::PlatformError> {
     // a kubeconfig's sign-in command (`aws eks get-token`…) runs without opening a console window
     #[cfg(windows)]

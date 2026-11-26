@@ -241,7 +241,7 @@ properties then `set_open(true)`. A modal's dimmed backdrop is a `BackdropArea` 
   two secret prompts, sharing `DialogBackdrop` from `secrets-dialogs.slint`.
 - A dialog that must resume a flow after the user answers keeps a boxed closure in
   [`App::asked`](crate::app::App) and calls it on answer (see host-key `Answer`).
-- Dropdowns and context menus (connections, AWS profiles, tab menu, row menu, "Copy") are
+- Dropdowns and context menus (connections, AWS profiles, tab menu, row menu, "Copy" / "Open row in fields view") are
   `if flag: BackdropArea` catchers (any click outside closes, the wheel scrolls nothing behind) followed by the menu component, so the menu
   paints on top. Positions are clamped to the window with `min(x, root.width - ..)`. The flags
   (`connections-open`, `tab-menu-open`, `row-menu-open`...) are pure UI state on `MainWindow`; they are

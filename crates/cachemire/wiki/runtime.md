@@ -11,6 +11,12 @@ Where to look:
   [`later`](crate::app::later), [`spawn`](crate::app::spawn), [`spawn_blocking`](crate::app::spawn_blocking).
 - `crates/cachemire-core/src/runtime.rs`: [`runtime::spawn`](cachemire_core::runtime::spawn).
 
+## Memory
+
+The allocator is mimalloc (`#[global_allocator]` in `main.rs`): glibc's keeps the memory a big hash
+took after its tab closes (measured: 248 MB kept), where mimalloc gives it back to the system within
+seconds (95 MB). How much a big hash holds at a time: [Paging a hash](crate::wiki::keys_and_tabs#paging-a-hash-paging).
+
 ## Threads at a glance
 
 | Thread | Created by | Runs | May touch Slint? |
