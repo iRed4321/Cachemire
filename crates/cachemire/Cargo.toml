@@ -29,9 +29,9 @@ rayon.workspace = true
 natord = "1"
 open.workspace = true
 semver.workspace = true
-# the fork's patched/1.19.0 branch at a fixed commit (also for slint-build): move both `rev`s to update
+# the fork's patched/1.19.1 branch at a fixed commit (also for slint-build): move both `rev`s to update
 # what the fork changes and how to move to a newer Slint: docs/slint-fork.md
-slint = { git = "https://github.com/iRed4321/SlintFork.git", rev = "83de1d91f49ada0f7a17e999a48cbe88095f9efb", default-features = false, features = ["std", "backend-winit", "renderer-software", "compat-1-2", "unstable-winit-030"] }
+slint = { git = "https://github.com/iRed4321/SlintFork.git", rev = "669793340b1d78ced848aaf271140578e725bb59", default-features = false, features = ["std", "backend-winit", "renderer-software", "compat-1-2", "unstable-winit-030"] }
 thiserror.workspace = true
 # the log: a daily file in the data directory (see logging.rs), and stderr in debug builds
 tracing.workspace = true
@@ -48,7 +48,7 @@ kube = { version = "5.2", default-features = false, features = ["client", "rustl
 [build-dependencies]
 # app.yml read into the table of the `t!` messages (see build.rs, src/i18n)
 serde_norway = "0.9"
-slint-build = { git = "https://github.com/iRed4321/SlintFork.git", rev = "83de1d91f49ada0f7a17e999a48cbe88095f9efb" }
+slint-build = { git = "https://github.com/iRed4321/SlintFork.git", rev = "669793340b1d78ced848aaf271140578e725bb59" }
 
 # a message to the window that clears winit's drag latch (see drag_latch.rs)
 [target.'cfg(windows)'.dependencies]

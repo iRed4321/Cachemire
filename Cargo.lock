@@ -1391,7 +1391,7 @@ dependencies = [
 [[package]]
 name = "const-field-offset"
 version = "0.2.1"
-source = "git+https://github.com/iRed4321/SlintFork.git?rev=83de1d91f49ada0f7a17e999a48cbe88095f9efb#83de1d91f49ada0f7a17e999a48cbe88095f9efb"
+source = "git+https://github.com/iRed4321/SlintFork.git?rev=669793340b1d78ced848aaf271140578e725bb59#669793340b1d78ced848aaf271140578e725bb59"
 dependencies = [
  "const-field-offset-macro",
  "field-offset",
@@ -1400,7 +1400,7 @@ dependencies = [
 [[package]]
 name = "const-field-offset-macro"
 version = "0.2.1"
-source = "git+https://github.com/iRed4321/SlintFork.git?rev=83de1d91f49ada0f7a17e999a48cbe88095f9efb#83de1d91f49ada0f7a17e999a48cbe88095f9efb"
+source = "git+https://github.com/iRed4321/SlintFork.git?rev=669793340b1d78ced848aaf271140578e725bb59#669793340b1d78ced848aaf271140578e725bb59"
 dependencies = [
  "proc-macro2",
  "quote",
@@ -2846,8 +2846,8 @@ dependencies = [
 
 [[package]]
 name = "i-slint-backend-linuxkms"
-version = "1.19.0"
-source = "git+https://github.com/iRed4321/SlintFork.git?rev=83de1d91f49ada0f7a17e999a48cbe88095f9efb#83de1d91f49ada0f7a17e999a48cbe88095f9efb"
+version = "1.19.1"
+source = "git+https://github.com/iRed4321/SlintFork.git?rev=669793340b1d78ced848aaf271140578e725bb59#669793340b1d78ced848aaf271140578e725bb59"
 dependencies = [
  "bytemuck",
  "calloop 0.14.5",
@@ -2867,8 +2867,8 @@ dependencies = [
 
 [[package]]
 name = "i-slint-backend-selector"
-version = "1.19.0"
-source = "git+https://github.com/iRed4321/SlintFork.git?rev=83de1d91f49ada0f7a17e999a48cbe88095f9efb#83de1d91f49ada0f7a17e999a48cbe88095f9efb"
+version = "1.19.1"
+source = "git+https://github.com/iRed4321/SlintFork.git?rev=669793340b1d78ced848aaf271140578e725bb59#669793340b1d78ced848aaf271140578e725bb59"
 dependencies = [
  "cfg_aliases",
  "i-slint-backend-linuxkms",
@@ -2881,8 +2881,8 @@ dependencies = [
 
 [[package]]
 name = "i-slint-backend-testing"
-version = "1.19.0"
-source = "git+https://github.com/iRed4321/SlintFork.git?rev=83de1d91f49ada0f7a17e999a48cbe88095f9efb#83de1d91f49ada0f7a17e999a48cbe88095f9efb"
+version = "1.19.1"
+source = "git+https://github.com/iRed4321/SlintFork.git?rev=669793340b1d78ced848aaf271140578e725bb59#669793340b1d78ced848aaf271140578e725bb59"
 dependencies = [
  "cfg_aliases",
  "i-slint-common",
@@ -2893,8 +2893,8 @@ dependencies = [
 
 [[package]]
 name = "i-slint-backend-winit"
-version = "1.19.0"
-source = "git+https://github.com/iRed4321/SlintFork.git?rev=83de1d91f49ada0f7a17e999a48cbe88095f9efb#83de1d91f49ada0f7a17e999a48cbe88095f9efb"
+version = "1.19.1"
+source = "git+https://github.com/iRed4321/SlintFork.git?rev=669793340b1d78ced848aaf271140578e725bb59#669793340b1d78ced848aaf271140578e725bb59"
 dependencies = [
  "arboard",
  "block2 0.6.2",
@@ -2936,8 +2936,8 @@ dependencies = [
 
 [[package]]
 name = "i-slint-common"
-version = "1.19.0"
-source = "git+https://github.com/iRed4321/SlintFork.git?rev=83de1d91f49ada0f7a17e999a48cbe88095f9efb#83de1d91f49ada0f7a17e999a48cbe88095f9efb"
+version = "1.19.1"
+source = "git+https://github.com/iRed4321/SlintFork.git?rev=669793340b1d78ced848aaf271140578e725bb59#669793340b1d78ced848aaf271140578e725bb59"
 dependencies = [
  "derive_more",
  "euclid",
@@ -2954,8 +2954,8 @@ dependencies = [
 
 [[package]]
 name = "i-slint-compiler"
-version = "1.19.0"
-source = "git+https://github.com/iRed4321/SlintFork.git?rev=83de1d91f49ada0f7a17e999a48cbe88095f9efb#83de1d91f49ada0f7a17e999a48cbe88095f9efb"
+version = "1.19.1"
+source = "git+https://github.com/iRed4321/SlintFork.git?rev=669793340b1d78ced848aaf271140578e725bb59#669793340b1d78ced848aaf271140578e725bb59"
 dependencies = [
  "annotate-snippets",
  "by_address",
@@ -2992,8 +2992,8 @@ dependencies = [
 
 [[package]]
 name = "i-slint-core"
-version = "1.19.0"
-source = "git+https://github.com/iRed4321/SlintFork.git?rev=83de1d91f49ada0f7a17e999a48cbe88095f9efb#83de1d91f49ada0f7a17e999a48cbe88095f9efb"
+version = "1.19.1"
+source = "git+https://github.com/iRed4321/SlintFork.git?rev=669793340b1d78ced848aaf271140578e725bb59#669793340b1d78ced848aaf271140578e725bb59"
 dependencies = [
  "bitflags 2.13.2",
  "bytemuck",
@@ -3043,8 +3043,8 @@ dependencies = [
 
 [[package]]
 name = "i-slint-core-macros"
-version = "1.19.0"
-source = "git+https://github.com/iRed4321/SlintFork.git?rev=83de1d91f49ada0f7a17e999a48cbe88095f9efb#83de1d91f49ada0f7a17e999a48cbe88095f9efb"
+version = "1.19.1"
+source = "git+https://github.com/iRed4321/SlintFork.git?rev=669793340b1d78ced848aaf271140578e725bb59#669793340b1d78ced848aaf271140578e725bb59"
 dependencies = [
  "quote",
  "serde_json",
@@ -3053,8 +3053,8 @@ dependencies = [
 
 [[package]]
 name = "i-slint-renderer-skia"
-version = "1.19.0"
-source = "git+https://github.com/iRed4321/SlintFork.git?rev=83de1d91f49ada0f7a17e999a48cbe88095f9efb#83de1d91f49ada0f7a17e999a48cbe88095f9efb"
+version = "1.19.1"
+source = "git+https://github.com/iRed4321/SlintFork.git?rev=669793340b1d78ced848aaf271140578e725bb59#669793340b1d78ced848aaf271140578e725bb59"
 dependencies = [
  "bytemuck",
  "cfg_aliases",
@@ -3090,8 +3090,8 @@ dependencies = [
 
 [[package]]
 name = "i-slint-renderer-software"
-version = "1.19.0"
-source = "git+https://github.com/iRed4321/SlintFork.git?rev=83de1d91f49ada0f7a17e999a48cbe88095f9efb#83de1d91f49ada0f7a17e999a48cbe88095f9efb"
+version = "1.19.1"
+source = "git+https://github.com/iRed4321/SlintFork.git?rev=669793340b1d78ced848aaf271140578e725bb59#669793340b1d78ced848aaf271140578e725bb59"
 dependencies = [
  "bytemuck",
  "clru",
@@ -6023,7 +6023,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "969cde0349344dbbf58b5f9badbfb8f806db13969364eb8007c057ef687007d9"
 dependencies = [
  "annotate-snippets",
- "base64 0.23.1",
+ "base64 0.22.1",
  "encoding_rs_io",
  "granit-parser",
  "nohash-hasher",
@@ -6300,8 +6300,8 @@ checksum = "0c790de23124f9ab44544d7ac05d60440adc586479ce501c1d6d7da3cd8c9cf5"
 
 [[package]]
 name = "slint"
-version = "1.19.0"
-source = "git+https://github.com/iRed4321/SlintFork.git?rev=83de1d91f49ada0f7a17e999a48cbe88095f9efb#83de1d91f49ada0f7a17e999a48cbe88095f9efb"
+version = "1.19.1"
+source = "git+https://github.com/iRed4321/SlintFork.git?rev=669793340b1d78ced848aaf271140578e725bb59#669793340b1d78ced848aaf271140578e725bb59"
 dependencies = [
  "const-field-offset",
  "i-slint-backend-linuxkms",
@@ -6319,8 +6319,8 @@ dependencies = [
 
 [[package]]
 name = "slint-build"
-version = "1.19.0"
-source = "git+https://github.com/iRed4321/SlintFork.git?rev=83de1d91f49ada0f7a17e999a48cbe88095f9efb#83de1d91f49ada0f7a17e999a48cbe88095f9efb"
+version = "1.19.1"
+source = "git+https://github.com/iRed4321/SlintFork.git?rev=669793340b1d78ced848aaf271140578e725bb59#669793340b1d78ced848aaf271140578e725bb59"
 dependencies = [
  "derive_more",
  "fontique",
@@ -6331,8 +6331,8 @@ dependencies = [
 
 [[package]]
 name = "slint-macros"
-version = "1.19.0"
-source = "git+https://github.com/iRed4321/SlintFork.git?rev=83de1d91f49ada0f7a17e999a48cbe88095f9efb#83de1d91f49ada0f7a17e999a48cbe88095f9efb"
+version = "1.19.1"
+source = "git+https://github.com/iRed4321/SlintFork.git?rev=669793340b1d78ced848aaf271140578e725bb59#669793340b1d78ced848aaf271140578e725bb59"
 dependencies = [
  "i-slint-compiler",
  "proc-macro2",
@@ -7426,7 +7426,7 @@ checksum = "5c3082ca00d5a5ef149bb8b555a72ae84c9c59f7250f013ac822ac2e49b19c64"
 [[package]]
 name = "vtable"
 version = "0.5.1"
-source = "git+https://github.com/iRed4321/SlintFork.git?rev=83de1d91f49ada0f7a17e999a48cbe88095f9efb#83de1d91f49ada0f7a17e999a48cbe88095f9efb"
+source = "git+https://github.com/iRed4321/SlintFork.git?rev=669793340b1d78ced848aaf271140578e725bb59#669793340b1d78ced848aaf271140578e725bb59"
 dependencies = [
  "const-field-offset",
  "portable-atomic",
@@ -7437,7 +7437,7 @@ dependencies = [
 [[package]]
 name = "vtable-macro"
 version = "0.5.1"
-source = "git+https://github.com/iRed4321/SlintFork.git?rev=83de1d91f49ada0f7a17e999a48cbe88095f9efb#83de1d91f49ada0f7a17e999a48cbe88095f9efb"
+source = "git+https://github.com/iRed4321/SlintFork.git?rev=669793340b1d78ced848aaf271140578e725bb59#669793340b1d78ced848aaf271140578e725bb59"
 dependencies = [
  "proc-macro2",
  "quote",

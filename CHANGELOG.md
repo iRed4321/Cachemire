@@ -18,6 +18,7 @@ Every stable release of Cachemire; `Unreleased` is what the next one brings. Bet
 
 ### Fixes
 
+- **Window**: moving it to a screen with another scale no longer crashes Cachemire or gives the window a wrong size
 - **Windows**: shutting down or restarting no longer waits on Cachemire, which saves its tabs and closes
 - **Windows**: an update no longer asks again about the Start menu and desktop shortcuts
 
